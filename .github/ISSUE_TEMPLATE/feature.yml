@@ -1,0 +1,30 @@
+name: Feature
+description: Uusi ominaisuus tai käyttäjälle näkyvä parannus
+title: "[Feature] "
+labels:
+  - feature
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: Tavoite
+      description: Mitä halutaan saavuttaa?
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Hyväksymiskriteerit
+      description: Milloin työ on valmis?
+      placeholder: |
+        - [ ] ...
+        - [ ] ...
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Tekniset huomiot
+      description: Linkit taskiin, ADR:ään, rajaukset tai muut tekniset tiedot.
+    validations:
+      required: false

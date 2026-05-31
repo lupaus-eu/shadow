@@ -1,0 +1,45 @@
+name: Bug
+description: Virheraportti
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Ongelma
+      description: Mitä tapahtui?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Toistamisohjeet
+      description: Miten virhe toistetaan?
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Odotettu lopputulos
+      description: Mitä olisi pitänyt tapahtua?
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Toteutunut lopputulos
+      description: Mitä oikeasti tapahtui?
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Lisätiedot
+      description: Lokit, kuvakaappaukset, ympäristö tai muut havainnot.
+    validations:
+      required: false

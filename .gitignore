@@ -144,3 +144,6 @@ vite.config.ts.timestamp-*
 
 # WIP — speksauksen apuhakemisto agenttikäyttöä varten
 WIP/
+
+# Local Codex project configuration
+.codex/

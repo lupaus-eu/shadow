@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  repository-baseline:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check required project documents
+        run: |
+          test -f AGENTS.md
+          test -f ARCHITECTURE.md
+          test -f AI-FIRST-ENGINEERING-HANDBOOK.md
+          test -f docs/AI-DEVELOPMENT-WORKFLOW.md
+          test -f docs/LOCAL-DEVELOPMENT.md
+          test -f tasks/TASK-TEMPLATE.md
+
+      - name: Explain CI status
+        run: |
+          echo "Project stack is still TBD."
+          echo "Replace this baseline job with install/lint/test/build after ADR-001 is accepted."
