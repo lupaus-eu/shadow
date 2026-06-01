@@ -1,5 +1,21 @@
 # TASK-XXX Short Name
 
+Use the GitHub Issue number as the task number by default.
+
+Example:
+
+```text
+GitHub Issue #42 -> TASK-042-short-name
+```
+
+If one issue is split into multiple tasks, use suffixes:
+
+```text
+TASK-042A-api
+TASK-042B-ui
+TASK-042C-tests
+```
+
 ## Related Issue
 
 Closes #TBD
@@ -31,17 +47,47 @@ Kirjaa tekniset huomiot, tiedostot, rajaukset ja mahdolliset riippuvuudet.
 
 Jos toteutus edellyttää arkkitehtuuripäätöstä, luo ADR ennen toteutusta.
 
+Jos toteutus koskee tiettyä domainia, linkitä relevantti domain-dokumentti:
+
+```text
+docs/domains/<DOMAIN>.md
+```
+
+Jos toteutus koskee liiketoimintakäsitettä, linkitä relevantti concept-dokumentti:
+
+```text
+docs/concepts/<CONCEPT>.md
+```
+
+Jos toteutus muuttaa tietomallia tai skeemaa, linkitä:
+
+```text
+docs/data/DATA-MODEL.md
+docs/data/DATABASE.md
+db/migrations/README.md
+```
+
 ## Testing
 
-Kuvaa miten työ tarkistetaan.
+Kuvaa miten työ tarkistetaan. Katso myös `docs/TESTING.md`.
 
-Esimerkkejä:
+Required:
 
-- unit tests
-- integration tests
-- manual verification
-- build
-- lint
+- [ ] Unit tests
+- [ ] Integration tests
+- [ ] Manual verification
+- [ ] Build
+- [ ] Lint
+
+Not applicable:
+
+- [ ] Reason:
+
+Commands:
+
+```bash
+# TBD until stack is selected
+```
 
 ## Documentation
 
@@ -52,12 +98,27 @@ Päivitä tarvittaessa:
 - `README.md`
 - `docs/AI-DEVELOPMENT-WORKFLOW.md`
 - `docs/LOCAL-DEVELOPMENT.md`
+- `docs/TESTING.md`
+- `docs/domains/DOMAIN.md`
+- `docs/domains/<DOMAIN>.md`
+- `docs/concepts/CONCEPTS.md`
+- `docs/concepts/<CONCEPT>.md`
+- `docs/data/DATA-MODEL.md`
+- `docs/data/DATABASE.md`
+- `docs/diagrams/*.puml`
+- `docs/diagrams/generated/*.svg`
+- `db/migrations/*.sql`
+- `db/init/*.sql`
 - `docs/decisions/*.md`
 
 ## Notes For AI Agent
 
 - Lue `AGENTS.md` ja `ARCHITECTURE.md` ennen toteutusta.
+- Lue relevantit domain-dokumentit ennen domainin dataan, APIeihin tai sääntöihin koskevia muutoksia.
+- Lue relevantit concept-dokumentit ennen käsitteen kenttiin, suhteisiin, invariantteihin tai lifecycleen koskevia muutoksia.
+- Lue `docs/data/` ja `db/`-ohjeet ennen tietomalli- tai skeemamuutoksia.
 - Toteuta vain tämän taskin scope.
 - Älä lisää uusia riippuvuuksia ilman hyväksyntää.
 - Lisää testit, kun muutos koskee sovelluskoodia.
+- Jos et lisää testejä sovelluskoodin muutokselle, perustele miksi.
 - Kerro lopuksi mitä muutit ja miten tarkistit työn.

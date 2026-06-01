@@ -63,20 +63,48 @@ Mahdolliset WIP-suositukset eivät ole vielä päätöksiä.
 
 # Source Of Truth
 
-Lue lähteet tässä järjestyksessä:
+Yleinen lähdejärjestys:
 
 1. `AGENTS.md`
 2. `ARCHITECTURE.md`
 3. `docs/decisions/*.md`
-4. `tasks/*.md`
-5. `README.md`
+4. `docs/domains/DOMAIN.md`
+5. relevantit `docs/domains/<DOMAIN>.md` -tiedostot
+6. `docs/concepts/CONCEPTS.md`
+7. relevantit `docs/concepts/<CONCEPT>.md` -tiedostot
+8. `docs/data/DATA-MODEL.md` ja `docs/data/DATABASE.md`, jos muutos koskee dataa tai skeemaa
+9. `tasks/*.md`
+10. `README.md`
 
 Jos dokumentit ovat ristiriidassa:
 
 - ADR voittaa vanhemman toteutuksen.
 - `ARCHITECTURE.md` voittaa `README.md`:n.
+- Domain-dokumentit määrittävät datan, APIen ja liiketoimintasääntöjen omistajuuden.
+- Concept-dokumentit määrittävät käsitteiden merkityksen, invariantit ja lifecyclet.
+- Data-dokumentit määrittävät loogisen ja fyysisen datamallin.
 - Taskin scope määrittää toteutettavan työn.
 - Jos vastausta ei löydy, kysy ihmisen päätös.
+
+---
+
+# Per Task Reading Order
+
+Kun toteutat yksittäistä issuea tai taskia, käytä tätä kevyempää käytännön järjestystä:
+
+1. Lue `AGENTS.md`.
+2. Lue GitHub Issue tai `tasks/TASK-*.md`.
+3. Lue `ARCHITECTURE.md`.
+4. Lue relevantit ADR:t, jos muutos koskee teknologiaa, arkkitehtuuria, tietokantaa, autentikointia, integraatioita tai deploymentia.
+5. Lue relevantit domain-dokumentit vain, jos muutos koskee domainin dataa, APIeja tai sääntöjä.
+6. Lue relevantit concept-dokumentit vain, jos muutos koskee käsitteen kenttiä, suhteita, invariantteja tai lifecycleä.
+7. Lue `docs/data/` ja `db/`-ohjeet vain, jos muutos koskee tietomallia, skeemaa, migraatioita tai init-skriptejä.
+8. Lue `docs/TESTING.md`, jos muutos koskee sovelluskoodia tai testejä.
+9. Toteuta muutos.
+10. Aja relevantit tarkistukset.
+11. Kerro lopuksi mitä muutettiin ja miten työ tarkistettiin.
+
+Älä lue kaikkia dokumentteja jokaista pientä muutosta varten. Käytä lisädokumentteja silloin, kun taskin scope sitä koskee.
 
 ---
 
@@ -98,7 +126,13 @@ Pieni yksiselitteinen muutos voi käyttää pelkkää GitHub Issuea. Laajempi ta
 
 - Toteuta vain taskissa tai issuessa määritelty scope.
 - Lue arkkitehtuuri ja relevantit ADR:t ennen toteutusta.
+- Lue relevantit domain-dokumentit ennen domainin dataan, APIeihin tai sääntöihin koskevia muutoksia.
+- Lue relevantit concept-dokumentit ennen käsitteen kenttiin, suhteisiin, invariantteihin tai lifecycleen koskevia muutoksia.
+- Lue `docs/data/` ja `db/`-ohjeet ennen tietomalli- tai skeemamuutoksia.
+- Lue `docs/TESTING.md` ennen sovelluskoodin tai testien muuttamista.
+- Päivitä `docs/diagrams/` PlantUML-lähteet ja generoidut SVG:t, jos muutos vaikuttaa arkkitehtuurikuviin, domain-kuviin tai workflow-kuviin.
 - Lisää tai päivitä testit, kun muutos koskee sovelluskoodia.
+- Jos et lisää testejä sovelluskoodin muutokselle, perustele miksi.
 - Päivitä dokumentaatio tarvittaessa.
 - Käytä olemassa olevia abstrahointeja.
 - Suosi pieniä muutoksia.
@@ -184,6 +218,9 @@ Päivitä dokumentaatio jos:
 
 - arkkitehtuuri muuttuu
 - tietomalli muuttuu
+- domain boundary tai domain ownership muuttuu
+- conceptin merkitys, invariantit tai lifecycle muuttuu
+- arkkitehtuurikuva, domain-kuva tai workflow-kuva muuttuu
 - integraatio muuttuu
 - deployment muuttuu
 - uusi toimintamalli lisätään

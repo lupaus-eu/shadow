@@ -127,6 +127,8 @@ Tietokantaa ja ORM:ää ei ole vielä päätetty.
 Kun tietokantapäätös tehdään, päivitä:
 
 - `docs/decisions/ADR-002-database.md`
+- `docs/data/DATA-MODEL.md`
+- `docs/data/DATABASE.md`
 - tämä dokumentti
 - paikallisen kehityksen ohjeet
 
@@ -135,6 +137,8 @@ Kun tietokantapäätös tehdään, päivitä:
 - Yksi ensisijainen totuuden lähde.
 - Kaikki skeemamuutokset tehdään migraatioina.
 - Migraatiot versionhallitaan.
+- Migraatiot sijaitsevat `db/migrations/`-hakemistossa.
+- Kehitysympäristön alustusskriptit sijaitsevat `db/init/`-hakemistossa.
 - Tuotantotietokantaa ei muuteta käsin.
 
 ## Candidate Core Entities
@@ -149,6 +153,32 @@ AuditEvent
 ```
 
 Lopullinen tietomalli määritellään taskien ja ADR:ien kautta.
+
+---
+
+# Concept Model
+
+Status: initial candidate model
+
+Concept documentation is maintained in:
+
+- `docs/concepts/CONCEPTS.md`
+- `docs/concepts/<CONCEPT>.md`
+
+Concept documents define:
+
+- business meaning
+- owning domain
+- key fields
+- invariants
+- lifecycle
+- relationships to other concepts
+
+Architecture rule:
+
+```text
+If a concept changes meaning, lifecycle or ownership, update concept, domain, data and diagram documentation together.
+```
 
 ---
 
@@ -202,6 +232,56 @@ Alustava virheformaattisuositus:
   }
 }
 ```
+
+---
+
+# Domain Architecture
+
+Status: initial candidate model
+
+Domain boundaries are documented in:
+
+- `docs/domains/DOMAIN.md`
+- `docs/domains/<DOMAIN>.md`
+
+Domain documents define:
+
+- data ownership
+- table ownership
+- API ownership
+- domain rules
+- cross-domain dependencies
+- AI-agent implementation guidance
+
+Architecture rule:
+
+```text
+One domain may reference another domain's data, but it may not modify another domain's owned tables directly.
+```
+
+If implementation requires changing domain ownership or introducing a new domain, update `docs/domains/DOMAIN.md` and create or update the relevant domain document. Add an ADR if the change affects system architecture.
+
+---
+
+# Architecture Diagrams
+
+Architecture diagrams are documented in:
+
+- `docs/diagrams/README.md`
+- `docs/diagrams/*.puml`
+- `docs/diagrams/generated/*.svg`
+
+Rules:
+
+- Use C4 framework with PlantUML for architecture diagrams.
+- Use C4 Level 1 for system context.
+- Use C4 Level 2 for containers.
+- Use C4 Level 3 for components.
+- Use C4 Level 4 only when the code-level view is genuinely useful.
+- Use PlantUML state, sequence or activity diagrams for domain lifecycle and concept-level behavior when C4 is not the right fit.
+- Use PlantUML ER-style or class-style diagrams for logical and physical data model views when useful.
+
+Generated SVG files are documentation artifacts. Do not edit them manually; update the `.puml` source and regenerate the SVG.
 
 ---
 

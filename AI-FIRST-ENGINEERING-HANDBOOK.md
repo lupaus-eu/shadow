@@ -33,7 +33,7 @@ Tavoitteena on:
 Perussääntö:
 
 ```text
-Issue -> Task -> AI Implementation -> AI Review -> Human Review -> PR -> Merge -> Deploy
+Issue -> Issue Context / Task -> AI Implementation -> AI Review -> Human Review -> PR -> Merge -> Deploy
 ```
 
 ---
@@ -51,6 +51,22 @@ repo/
 ├── docs/
 |   ├── AI-DEVELOPMENT-WORKFLOW.md
 |   ├── LOCAL-DEVELOPMENT.md
+|   ├── domains/
+|   |   ├── DOMAIN.md
+|   |   ├── DOMAIN-TEMPLATE.md
+|   |   └── <DOMAIN>.md
+|   ├── concepts/
+|   |   ├── CONCEPTS.md
+|   |   ├── CONCEPT-TEMPLATE.md
+|   |   └── <CONCEPT>.md
+|   ├── data/
+|   |   ├── DATA-MODEL.md
+|   |   └── DATABASE.md
+|   ├── diagrams/
+|   |   ├── README.md
+|   |   ├── *.puml
+|   |   └── generated/
+|   |       └── *.svg
 |   └── decisions/
 |       ├── ADR-001-*.md
 |       ├── ADR-002-*.md
@@ -60,6 +76,14 @@ repo/
 |   ├── TASK-TEMPLATE.md
 |   ├── TASK-001-*.md
 |   └── ...
+|
+├── db/
+|   ├── migrations/
+|   |   ├── README.md
+|   |   └── 001_*.sql
+|   └── init/
+|       ├── README.md
+|       └── 001_*.sql
 |
 ├── frontend/
 ├── backend/
@@ -82,13 +106,21 @@ AI-agentin tulee lukea lähteet tässä järjestyksessä:
 1. `AGENTS.md`
 2. `ARCHITECTURE.md`
 3. `docs/decisions/*.md`
-4. `tasks/*.md`
-5. `README.md`
+4. `docs/domains/DOMAIN.md`
+5. relevantit `docs/domains/<DOMAIN>.md` -tiedostot
+6. `docs/concepts/CONCEPTS.md`
+7. relevantit `docs/concepts/<CONCEPT>.md` -tiedostot
+8. `docs/data/DATA-MODEL.md` ja `docs/data/DATABASE.md`, jos muutos koskee dataa tai skeemaa
+9. `tasks/*.md`
+10. `README.md`
 
 Jos dokumentit ovat ristiriidassa:
 
 - ADR voittaa vanhemman toteutuksen.
 - `ARCHITECTURE.md` voittaa `README.md`:n.
+- Domain-dokumentit määrittävät datan, APIen ja liiketoimintasääntöjen omistajuuden.
+- Concept-dokumentit määrittävät keskeisten liiketoimintakäsitteiden merkityksen, invariantit ja lifecyclet.
+- Data-dokumentit määrittävät loogisen ja fyysisen datamallin.
 - Taskin scope voittaa yleisen toiveen, ellei task ole ristiriidassa arkkitehtuurin tai ADR:n kanssa.
 - Jos vastausta ei löydy, kysy ihmiseltä päätös.
 
@@ -127,6 +159,12 @@ Tiedosto ei ole roadmap. Se kuvaa päätettyä tai toteutettua nykytilaa.
 
 Kaikki merkittävät päätökset dokumentoidaan tiedostoon `docs/decisions/ADR-XXX-*.md`.
 
+Kopioi uusi ADR pohjasta:
+
+```text
+docs/decisions/ADR-TEMPLATE.md
+```
+
 ADR tarvitaan, kun:
 
 - valitaan uusi teknologia
@@ -144,13 +182,171 @@ ADR-003-authentication.md
 ADR-004-deployment.md
 ```
 
+## Domain Documents
+
+Domain-dokumentit sijaitsevat hakemistossa `docs/domains/`.
+
+`docs/domains/DOMAIN.md` antaa kokonaiskuvan domaineista ja niiden riippuvuuksista.
+
+Jokaisella domainilla on oma tarkentava dokumentti:
+
+```text
+docs/domains/CUSTOMER.md
+docs/domains/BILLING.md
+docs/domains/DOCUMENT.md
+docs/domains/AI.md
+```
+
+Domain-dokumentti kertoo:
+
+- mitä domain omistaa
+- mitä domain ei omista
+- mitä tauluja domain saa muuttaa
+- mitkä API-polut kuuluvat domainille
+- mistä muista domaineista domain riippuu
+- mitä agentin pitää välttää
+
+AI-agentin tulee lukea relevantti domain-dokumentti ennen muutosta, joka koskee domainin dataa, APIeja tai liiketoimintasääntöjä.
+
+## Concept Documents
+
+Concept-dokumentit sijaitsevat hakemistossa `docs/concepts/`.
+
+`docs/concepts/CONCEPTS.md` antaa kokonaiskuvan keskeisistä liiketoimintakäsitteistä.
+
+Jokaisella merkittävällä käsitteellä on oma dokumentti:
+
+```text
+docs/concepts/CUSTOMER.md
+docs/concepts/INVOICE.md
+docs/concepts/DOCUMENT.md
+docs/concepts/AI_EXTRACTION.md
+```
+
+Concept-dokumentti kertoo:
+
+- mitä käsite tarkoittaa
+- mitä käsite ei tarkoita
+- mikä domain omistaa käsitteen
+- mitkä kentät, suhteet ja invariantit ovat tärkeitä
+- mikä lifecycle käsitteellä on
+- mitä agentin pitää välttää
+
+AI-agentin tulee lukea relevantti concept-dokumentti ennen muutosta, joka koskee käsitteen tulkintaa, kenttiä, suhteita, invariantteja tai lifecycleä.
+
+## Data Documents
+
+Datamallin dokumentit sijaitsevat hakemistossa `docs/data/`.
+
+```text
+docs/data/DATA-MODEL.md
+docs/data/DATABASE.md
+```
+
+`DATA-MODEL.md` kuvaa loogisen datamallin:
+
+- käsitteet
+- entiteetit
+- suhteet
+- domain ownership
+- invariantit
+
+`DATABASE.md` kuvaa fyysisen tietokantamallin:
+
+- taulut
+- sarakkeet
+- foreign keyt
+- indeksit
+- skeeman omistajuuden
+- migraatiokäytännöt
+
+Tietokantakaaviot piirretään PlantUML:llä:
+
+```text
+docs/diagrams/data-logical-model.puml
+docs/diagrams/db-physical-schema.puml
+docs/diagrams/generated/data-logical-model.svg
+docs/diagrams/generated/db-physical-schema.svg
+```
+
+## Database Script Directories
+
+Tietokantascriptit sijaitsevat hakemistossa `db/`.
+
+```text
+db/migrations/
+db/init/
+```
+
+`db/migrations/` sisältää versionhallittavat skeemamuutokset.
+
+Nimeämiskäytäntö:
+
+```text
+NNN_<verb>_<object>.sql
+```
+
+Esimerkkejä:
+
+```text
+001_create_customers.sql
+002_create_contacts.sql
+003_add_customer_soft_delete.sql
+004_create_documents.sql
+005_add_document_status.sql
+```
+
+Sallitut yleiset verbit:
+
+- `create`
+- `add`
+- `alter`
+- `rename`
+- `drop`
+- `backfill`
+
+`db/init/` sisältää paikallisen tai kehitysympäristön alustusskriptejä.
+
+Nimeämiskäytäntö:
+
+```text
+NNN_<action>_<purpose>.sql
+```
+
+Esimerkkejä:
+
+```text
+001_create_extensions.sql
+002_seed_reference_data.sql
+003_seed_development_users.sql
+```
+
+Init-skriptit eivät korvaa migraatioita. Jos skeema muuttuu, lisää aina migraatio `db/migrations/`-hakemistoon.
+
+## Diagram Documents
+
+Diagrammit sijaitsevat hakemistossa `docs/diagrams/`.
+
+Säännöt:
+
+- Arkkitehtuurikuvat piirretään C4 frameworkilla käyttäen PlantUML:ää.
+- PlantUML-lähteet tallennetaan `docs/diagrams/*.puml`.
+- Generoidut SVG-kuvat tallennetaan `docs/diagrams/generated/*.svg`.
+- C4-kuvia käytetään system context-, container-, component- ja tarvittaessa code-tason kuvauksiin.
+- Domain- ja concept-tason lifecycle-kuvauksiin saa käyttää PlantUML state-, sequence- tai activity-kaavioita.
+- Mermaid `gitGraph` on sallittu Git-branchien kuvaamiseen.
+
+Nimeämiskäytäntö on dokumentoitu tiedostossa `docs/diagrams/README.md`.
+
 ---
 
 # Task Driven Development
 
 Kaikki merkittävä työ alkaa taskista.
 
-Pienessä projektissa GitHub Issue voi riittää, kun muutos on pieni ja yksiselitteinen. Erillinen `tasks/TASK-XXX-*.md` tarvitaan, kun työ:
+Pienessä projektissa GitHub Issue voi riittää, kun muutos on pieni ja yksiselitteinen. Silloin agentille pitää antaa issuen sisältö erikseen ennen toteutusta.
+
+Erillinen `tasks/TASK-XXX-*.md` tarvitaan, kun työ:
 
 - koskee useampaa moduulia
 - muuttaa tietomallia
@@ -160,6 +356,22 @@ Pienessä projektissa GitHub Issue voi riittää, kun muutos on pieni ja yksisel
 - annetaan AI-agentille itsenäisesti toteutettavaksi
 
 Task sisältää varsinaisen teknisen speksin. Issue toimii työnhallinnan ja keskustelun paikkana.
+
+Numerointisääntö:
+
+- Pääsääntöisesti task-numero on sama kuin GitHub Issuen numero.
+- Esimerkki: GitHub Issue `#42` -> `tasks/TASK-042-user-profile.md`.
+- Branch käyttää samaa numeroa: `feature/TASK-042-user-profile`.
+- Jos yhdestä issuesta syntyy useita taskeja, käytä suffiksia: `TASK-042A-auth-api.md`, `TASK-042B-auth-ui.md`.
+- Poikkeukset kirjataan taskin `Related Issue` -kohtaan.
+
+Jos taskia ei tehdä, GitHub Issue on toteutusspeksi. Tällöin agentin promptissa pitää olla joko:
+
+- issuen numero ja lupa käyttää GitHub-työkalua tai `gh`-komentoa
+- issuen koko sisältö kopioituna promptiin
+- linkki issueen ja käytössä oleva GitHub-integraatio, joka pystyy lukemaan sen
+
+Agentti ei saa olettaa tietävänsä issuen sisältöä pelkän numeron perusteella.
 
 ---
 
@@ -187,13 +399,72 @@ Pienelle projektille riittää aluksi kaksi issue-templatea:
 
 Muita templateja lisätään vasta kun niille on todellinen tarve.
 
-## 3. Create Task Spec
+## 3. Give Issue Context To Agent
+
+Jos työ tehdään pelkän GitHub Issuen pohjalta, issue pitää tuoda agentin saataville ennen toteutusta.
+
+Sallitut tavat:
+
+### Option A: Paste Issue Into Prompt
+
+Kehittäjä kopioi issuen sisällön agentille:
+
+```text
+Toteuta GitHub Issue #42.
+
+Issue title:
+[Feature] User profile page
+
+Issue body:
+Goal:
+...
+
+Acceptance criteria:
+- [ ] ...
+- [ ] ...
+
+Lue lisäksi AGENTS.md ja ARCHITECTURE.md.
+Toteuta vain tässä issuessa kuvattu scope.
+```
+
+Tämä on varmin tapa, jos agentilla ei ole GitHub-työkalua.
+
+### Option B: Agent Reads Issue With GitHub Tooling
+
+Jos ympäristössä on GitHub CLI tai GitHub-connector, kehittäjä voi antaa:
+
+```text
+Lue GitHub Issue #42 tästä reposta ja toteuta se.
+Jos et pysty lukemaan issuea, pysähdy ja pyydä minua liittämään sen sisältö.
+```
+
+Tyypillinen komento, jos `gh` on käytössä:
+
+```bash
+gh issue view 42 --comments
+```
+
+Agentti saa käyttää tätä vain, jos GitHub-pääsy on konfiguroitu.
+
+### Option C: Convert Issue To Task
+
+Jos issue on pitkä, epäselvä tai teknisesti riskialtis, siitä tehdään task:
+
+```text
+tasks/TASK-042-user-profile.md
+```
+
+Tämän jälkeen agentti toteuttaa taskin, ei pelkkää issuea.
+
+## 4. Create Task Spec
 
 Task luodaan tiedostoon:
 
 ```text
-tasks/TASK-XXX-short-name.md
+tasks/TASK-042-short-name.md
 ```
+
+Käytä task-numerona ensisijaisesti GitHub Issuen numeroa.
 
 Taskissa määritellään:
 
@@ -205,11 +476,13 @@ Taskissa määritellään:
 - Testing
 - Documentation
 
-## 4. Scope Approval
+## 5. Scope Approval
 
 Ihminen hyväksyy taskin scopin ennen toteutusta, jos työ on laaja, epäselvä tai vaikuttaa arkkitehtuuriin.
 
-## 5. Create Branch
+Jos työ tehdään pelkän issuen pohjalta, kehittäjä varmistaa ennen toteutusta, että issuessa on riittävät hyväksymiskriteerit.
+
+## 6. Create Branch
 
 Kehittäjä luo oman branchin DEV-ympäristössä:
 
@@ -229,14 +502,21 @@ chore/TASK-004-ci-setup
 refactor/TASK-005-auth-service
 ```
 
-## 6. AI Implementation
+Jos erillistä taskia ei ole, käytä issue-numeroa:
+
+```text
+feature/ISSUE-042-user-profile
+fix/ISSUE-043-login-timeout
+```
+
+## 7. AI Implementation
 
 AI-agentti:
 
 - lukee `AGENTS.md`
 - lukee `ARCHITECTURE.md`
 - lukee relevantit ADR:t
-- lukee taskin
+- lukee taskin tai sille annetun GitHub Issuen sisällön
 - toteuttaa vain hyväksytyn scopin
 - lisää tai päivittää testit
 - päivittää dokumentaation tarvittaessa
@@ -251,7 +531,7 @@ AI-agentti ei saa:
 - muuttaa tuotantoympäristöä
 - mergata main-haaraan
 
-## 7. Local Verification
+## 8. Local Verification
 
 Ennen pushia kehittäjä tai agentti ajaa projektin vaatimat tarkistukset.
 
@@ -265,7 +545,7 @@ npm run build
 
 Jos stack on vielä `TBD`, taskissa määritellään mitä voidaan tarkistaa.
 
-## 8. Update Branch Before PR
+## 9. Update Branch Before PR
 
 Ennen PR:ää branch päivitetään mainin päälle:
 
@@ -276,13 +556,13 @@ git rebase origin/main
 
 Jos rebase ei ole tiimille tuttu, voidaan käyttää mergeä, mutta valitaan yksi tapa ja kirjataan se `CONTRIBUTING.md`:hen.
 
-## 9. Push Branch
+## 10. Push Branch
 
 ```bash
 git push -u origin feature/TASK-001-user-auth
 ```
 
-## 10. Open Pull Request
+## 11. Open Pull Request
 
 PR:ssä pitää näkyä:
 
@@ -292,7 +572,7 @@ PR:ssä pitää näkyä:
 - miten testattiin
 - mitkä riskit tai rajaukset jäivät
 
-## 11. Continuous Integration
+## 12. Continuous Integration
 
 Jokaisessa PR:ssä suoritetaan, kun sovelluksen stack on valittu:
 
@@ -305,7 +585,7 @@ Build
 
 Merge estetään, jos CI epäonnistuu.
 
-## 12. AI Review
+## 13. AI Review
 
 Ensimmäinen review voidaan tehdä AI-agentilla.
 
@@ -317,7 +597,7 @@ AI-review tarkistaa:
 - onko tietoturvaongelmia
 - onko dokumentaatio päivittämättä
 
-## 13. Human Review
+## 14. Human Review
 
 Ihminen tarkistaa:
 
@@ -327,7 +607,7 @@ Ihminen tarkistaa:
 - Database: ovatko migraatiot järkeviä
 - Maintainability: onko toteutus ylläpidettävä
 
-## 14. Merge
+## 15. Merge
 
 Käytetään:
 
@@ -343,7 +623,7 @@ fix(api): validate document upload input
 docs(workflow): document AI-first PR process
 ```
 
-## 15. Deploy
+## 16. Deploy
 
 Kun deployment on päätetty ADR:ssä, merge mainiin käynnistää sovitun julkaisuprosessin.
 
@@ -355,7 +635,7 @@ main -> GitHub Actions -> Docker image -> staging -> production
 
 Tuotantojulkaisu on ihmisen vastuulla.
 
-## 16. Close Work
+## 17. Close Work
 
 Työ suljetaan, kun:
 
@@ -626,8 +906,12 @@ Dokumentaatio päivitetään, jos:
 
 - arkkitehtuuri muuttuu
 - tietomalli muuttuu
+- domain boundary tai domain ownership muuttuu
+- conceptin merkitys, invariantit tai lifecycle muuttuu
 - integraatio muuttuu
 - deployment muuttuu
+- arkkitehtuurikuva, domain-kuva tai workflow-kuva muuttuu
+- tietokantakaavio tai migraatiomalli muuttuu
 - uusi toimintamalli lisätään
 - taskin toteutus muuttaa aiempaa oletusta
 
@@ -639,6 +923,15 @@ ARCHITECTURE.md
 AI-FIRST-ENGINEERING-HANDBOOK.md
 docs/AI-DEVELOPMENT-WORKFLOW.md
 docs/LOCAL-DEVELOPMENT.md
+docs/domains/DOMAIN.md
+docs/domains/DOMAIN-TEMPLATE.md
+docs/concepts/CONCEPTS.md
+docs/concepts/CONCEPT-TEMPLATE.md
+docs/data/DATA-MODEL.md
+docs/data/DATABASE.md
+docs/diagrams/README.md
+db/migrations/README.md
+db/init/README.md
 docs/decisions/ADR-001-tech-stack.md
 tasks/TASK-TEMPLATE.md
 ```

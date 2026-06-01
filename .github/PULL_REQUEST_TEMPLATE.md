@@ -22,6 +22,12 @@ Task: `tasks/TASK-XXX-short-name.md`
 - [ ] Manual verification
 - [ ] Not applicable, reason:
 
+Commands run:
+
+```text
+
+```
+
 ## Documentation
 
 - [ ] Documentation updated

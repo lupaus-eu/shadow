@@ -18,9 +18,26 @@ jobs:
           test -f AGENTS.md
           test -f ARCHITECTURE.md
           test -f AI-FIRST-ENGINEERING-HANDBOOK.md
+          test -f CONTRIBUTING.md
+          test -f README.md
           test -f docs/AI-DEVELOPMENT-WORKFLOW.md
           test -f docs/LOCAL-DEVELOPMENT.md
+          test -f docs/TESTING.md
+          test -f docs/domains/DOMAIN.md
+          test -f docs/domains/DOMAIN-TEMPLATE.md
+          test -f docs/concepts/CONCEPTS.md
+          test -f docs/concepts/CONCEPT-TEMPLATE.md
+          test -f docs/data/DATA-MODEL.md
+          test -f docs/data/DATABASE.md
+          test -f docs/diagrams/README.md
+          test -f docs/decisions/ADR-TEMPLATE.md
+          test -f docs/decisions/ADR-001-tech-stack.md
+          test -f db/migrations/README.md
+          test -f db/init/README.md
           test -f tasks/TASK-TEMPLATE.md
+          test -f .github/PULL_REQUEST_TEMPLATE.md
+          test -f .github/ISSUE_TEMPLATE/feature.yml
+          test -f .github/ISSUE_TEMPLATE/bug.yml
 
       - name: Explain CI status
         run: |

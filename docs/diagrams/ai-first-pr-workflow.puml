@@ -1,0 +1,61 @@
+@startuml
+title AI-First Pull Request Workflow
+
+skinparam shadowing false
+skinparam activity {
+  BackgroundColor #F8FAFC
+  BorderColor #334155
+  FontColor #0F172A
+}
+skinparam diamond {
+  BackgroundColor #FEF3C7
+  BorderColor #92400E
+  FontColor #0F172A
+}
+
+start
+
+:1. Select or create GitHub Issue;
+
+if (2. Need task spec?) then (yes)
+  :3B. Create task spec;
+else (no)
+  :3A. Give issue context to agent;
+endif
+
+:4. Create branch;
+:5. Prompt AI agent;
+:6. AI implements scoped change;
+:7. Review agent output locally;
+:8. Run local verification;
+:9. Update branch from main;
+:10. Push branch;
+:11. Open Pull Request;
+
+if (12. CI passed?) then (yes)
+else (no)
+  :12F. Fix CI failures;
+  :10. Push branch;
+endif
+
+if (13. AI review passed?) then (yes)
+else (no)
+  :13F. Fix AI review findings;
+  :8. Run local verification;
+  :9. Update branch from main;
+  :10. Push branch;
+endif
+
+if (14. Human review approved?) then (yes)
+else (no)
+  :14F. Fix human review findings;
+  :8. Run local verification;
+  :9. Update branch from main;
+  :10. Push branch;
+endif
+
+:15. Squash merge, deploy if configured, close work;
+
+stop
+
+@enduml
