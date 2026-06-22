@@ -7,59 +7,55 @@ Lue ennen työn aloittamista:
 1. `AGENTS.md`
 2. `ARCHITECTURE.md`
 3. `AI-FIRST-ENGINEERING-HANDBOOK.md`
-4. `docs/domains/DOMAIN.md`
-5. relevantti domain-dokumentti tiedostosta `docs/domains/`
-6. `docs/concepts/CONCEPTS.md`
-7. relevantti concept-dokumentti tiedostosta `docs/concepts/`
-8. `docs/data/DATA-MODEL.md`, jos muutos koskee dataa
-9. relevantti task tiedostosta `tasks/`
+4. `docs/decisions/ADR-001-tech-stack.md`
+5. relevantti task tiedostosta `tasks/`
+6. relevantit domain-, concept- ja data-dokumentit, jos muutos koskee niitä
 
 ---
 
 # Workflow
 
 ```text
-Issue -> Issue Context / Task -> Branch -> AI Implementation -> Review -> Pull Request -> Merge
+Idea -> AI Implementation Plan -> Developer Approval -> Task(s) -> Branch -> AI Implementation -> Review -> Pull Request -> Developer Merge
 ```
 
 ---
 
-# 1. Create Or Pick Issue
+# 1. Ask AI For An Implementation Plan
 
-Kaikki työ alkaa GitHub Issuesta.
+Kaikki työ alkaa ideasta ja AI-agentin tekemästä toteutussuunnitelmasta.
 
-Pieni muutos voi käyttää pelkkää issuea.
+Hyvä suunnitteluprompti:
 
-Jos käytät pelkkää issuea, agentille pitää antaa issuen sisältö joko kopioimalla se promptiin tai antamalla agentille toimiva GitHub-työkalu, esimerkiksi `gh issue view`.
+```text
+Tee toteutussuunnitelma seuraavasta ideasta.
 
-Luo lisäksi `tasks/TASK-XXX-*.md`, jos työ:
+Idea:
+[kuvaa tavoite, ongelma, rajaukset ja tunnetut taustatiedot]
 
-- on monivaiheinen
-- koskee useampaa moduulia
-- muuttaa tietomallia
-- vaikuttaa arkkitehtuuriin
-- annetaan AI-agentille itsenäisesti toteutettavaksi
+Lue AGENTS.md, ARCHITECTURE.md ja relevantit ADR:t ennen suunnitelmaa.
+Älä muuta tiedostoja. Ehdota tarvittavat taskit ja hyväksymiskriteerit.
+```
+
+Kehittäjä hyväksyy suunnitelman tai pyytää siihen muutoksia ennen taskien luontia.
 
 ---
 
-# 2. Give Issue Or Task Context
+# 2. Create Task Context
 
-Agentti ei näe GitHub Issuea automaattisesti.
+Hyväksytystä suunnitelmasta luodaan yksi tai useampi task-tiedosto:
 
-Käytä jotain näistä:
-
-- Kopioi issuen title, body ja acceptance criteria agentin promptiin.
-- Anna agentille lupa lukea issue GitHub CLI:llä: `gh issue view <number> --comments`.
-- Tee issuesta task-tiedosto `tasks/TASK-XXX-*.md`.
-
-Jos issue on epäselvä, tee task ennen koodausta.
+```text
+tasks/TASK-XXX-short-name.md
+```
 
 Task-numeron oletus:
 
-- Käytä task-numerona GitHub Issuen numeroa.
-- Esimerkki: Issue `#42` -> `tasks/TASK-042-user-profile.md`.
-- Branch: `feature/TASK-042-user-profile`.
-- Jos yhdestä issuesta tulee useita taskeja, käytä suffiksia: `TASK-042A-*`, `TASK-042B-*`.
+- Käytä seuraavaa vapaata `TASK-XXX`-numeroa.
+- Branch käyttää samaa numeroa: `feature/TASK-042-user-profile`.
+- Jos yksi hyväksytty suunnitelma jaetaan läheisesti liittyviin osiin, käytä suffiksia: `TASK-042A-*`, `TASK-042B-*`.
+
+Task on toteutuksen pysyvä scope-lähde.
 
 ---
 
@@ -69,12 +65,6 @@ Task-numeron oletus:
 git checkout main
 git pull origin main
 git checkout -b feature/TASK-001-short-name
-```
-
-Jos taskia ei ole:
-
-```bash
-git checkout -b feature/ISSUE-042-short-name
 ```
 
 Branch-prefixit:
@@ -91,40 +81,39 @@ refactor/
 
 # 4. Use AI Agent
 
-Hyvä prompti:
+Hyvä toteutusprompti:
 
 ```text
-Lue AGENTS.md, ARCHITECTURE.md ja tasks/TASK-001-short-name.md.
+Lue AGENTS.md, ARCHITECTURE.md, relevantit ADR:t ja tasks/TASK-001-short-name.md.
 Toteuta vain taskissa määritelty scope.
 Älä lisää uusia riippuvuuksia ilman hyväksyntää.
 Lisää testit ja päivitä dokumentaatio tarvittaessa.
 Lopuksi kerro mitä muutettiin ja mitkä tarkistukset ajoit.
 ```
 
-Jos käytät pelkkää issuea:
-
-```text
-Lue AGENTS.md ja ARCHITECTURE.md.
-Toteuta alla oleva GitHub Issue #42.
-Toteuta vain issuen scope.
-Jos hyväksymiskriteerit ovat epäselvät, pysähdy ja kysy tarkennus.
-
-[liitä issue tähän]
-```
-
 ---
 
 # 5. Verify Locally
 
-Kun stack on päätetty, aja ennen PR:ää:
+Backendin oletustarkistukset:
 
 ```bash
-npm run lint
-npm test
-npm run build
+cd backend
+uv run ruff check .
+uv run pytest
+uv run pyright
 ```
 
-Jos stack on vielä `TBD`, noudata taskissa määriteltyjä tarkistuksia.
+Frontendin oletustarkistukset:
+
+```bash
+cd frontend
+pnpm lint
+pnpm test
+pnpm build
+```
+
+Kun typecheck-scripti on lisätty frontendiin, aja myös se ennen PR:ää.
 
 ---
 
@@ -143,7 +132,7 @@ Käytä `.github/PULL_REQUEST_TEMPLATE.md` -templatea.
 
 PR:n pitää:
 
-- liittyä yhteen issueen tai taskiin
+- liittyä yhteen taskiin
 - kuvata mitä tehtiin
 - kertoa miten testattiin
 - nostaa riskit esiin
@@ -175,4 +164,4 @@ Käytetään:
 Squash and Merge
 ```
 
-Lopullisen mergen hyväksyy ihminen.
+Lopullisen mergen tekee kehittäjä human reviewn jälkeen. AI-agentti ei mergaa main-haaraan.

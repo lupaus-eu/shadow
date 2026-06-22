@@ -10,18 +10,19 @@ Tämän tiedoston tulee kuvata päätettyä tai toteutettua nykytilaa. Tulevaisu
 
 Status: project bootstrap
 
-Sovelluksen varsinainen tekninen arkkitehtuuri on vielä päättämättä.
+Teknologiapino on päätetty ADR-001:ssä.
 
-Tärkeimmät avoimet päätökset:
+Päätetty tekninen perusrakenne:
 
-- teknologiapino
-- frontend-rakenne
-- backend-rakenne
-- tietokantastrategia
-- autentikointi ja valtuutus
-- deployment-malli
+- frontend: React, TypeScript, Vite, pnpm, Vitest, ESLint hakemistossa `frontend/`
+- backend: Python, FastAPI, Pydantic, uv, pytest, pyright, Ruff hakemistossa `backend/`
+- database: PostgreSQL
+- ORM: SQLAlchemy
+- authentication: Microsoft Entra ID
+- local runtime: frontend, backend ja database omissa Docker-konteissaan
+- initial staging deployment: Railway
 
-Nämä päätetään ADR-dokumenteilla ennen toteutusta.
+Tarkemmat toteutusyksityiskohdat täsmentyvät taskien ja tarvittaessa uusien ADR:ien kautta.
 
 ---
 
@@ -41,37 +42,47 @@ Kun tuotesuunta täsmentyy, lisää tähän lyhyt kuvaus:
 
 # Target Shape
 
-Tämä on alustava tavoiterakenne, ei vielä toteutettu arkkitehtuuripäätös:
+Päätetty tavoiterakenne:
 
 ```text
-Frontend
+Frontend container
+React / TypeScript / Vite
    |
    v
-Backend/API
+Backend container
+FastAPI / Python
    |
-   +--> Database
+   +--> Database container
+   |    PostgreSQL
    |
    +--> External integrations
+        Microsoft Entra ID
 ```
-
-Kun stack on päätetty, päivitä tämä kaavio vastaamaan todellista toteutusta.
 
 ---
 
 # Frontend
 
-Status: TBD
+Status: decided in ADR-001
 
-Frontend-teknologiaa ei ole vielä päätetty.
+Frontend sijaitsee hakemistossa:
 
-Kun frontend päätetään, kirjaa tähän:
+```text
+frontend/
+```
 
-- framework
-- hakemistorakenne
-- state management -linjaus
-- API-kutsujen sijainti
-- autentikoinnin käsittely frontendissä
-- testauskäytännöt
+Teknologiat:
+
+- React
+- TypeScript
+- Vite
+- pnpm
+- Vitest
+- ESLint
+
+Frontend kutsuu backendin APIa. Frontend ei tee suoria tietokantakutsuja eikä sisällä luotettavaa authorization-logiikkaa.
+
+State management, API client -rakenne ja routing täsmennetään ensimmäisissä frontend-taskeissa.
 
 ## Frontend Principles
 
@@ -89,19 +100,28 @@ Kaikki luotettava data ja oikeustarkistus kulkee backendin kautta.
 
 # Backend
 
-Status: TBD
+Status: decided in ADR-001
 
-Backend-teknologiaa ei ole vielä päätetty.
+Backend sijaitsee hakemistossa:
 
-Kun backend päätetään, kirjaa tähän:
+```text
+backend/
+```
 
-- runtime ja framework
-- API-rakenne
-- moduulirakenne
-- validointikäytäntö
-- autentikointi- ja authorization-malli
-- virheenkäsittely
-- testauskäytännöt
+Teknologiat:
+
+- Python
+- FastAPI
+- Pydantic
+- uv
+- pytest
+- pyright
+- Ruff
+- SQLAlchemy
+
+Backend tarjoaa API-rajapinnan frontendille ja vastaa luotettavasta validoinnista, autentikoinnista, authorizationista, liiketoimintalogiikasta ja tietokantaoperaatioista. API-skeemat ja validointi tehdään Pydanticilla FastAPI:n käytäntöjen mukaisesti.
+
+API-rakenne, moduulirakenne, virheformaatti ja tarkka autentikointi-/authorization-malli täsmennetään toteutustaskeissa ja tarvittaessa erillisissä ADR:issä.
 
 ## Backend Principles
 
@@ -120,17 +140,14 @@ Backend vastaa:
 
 # Database
 
-Status: TBD
+Status: decided in ADR-001
 
-Tietokantaa ja ORM:ää ei ole vielä päätetty.
+Tietokanta:
 
-Kun tietokantapäätös tehdään, päivitä:
+- PostgreSQL
+- SQLAlchemy ORM
 
-- `docs/decisions/ADR-002-database.md`
-- `docs/data/DATA-MODEL.md`
-- `docs/data/DATABASE.md`
-- tämä dokumentti
-- paikallisen kehityksen ohjeet
+Migraatiotyökalu päätetään erikseen. Siihen asti migraatioiden periaatteet ovat voimassa, mutta tarkat generointi- ja ajokomennot lisätään, kun työkalu on valittu.
 
 ## Database Principles
 
@@ -184,17 +201,13 @@ If a concept changes meaning, lifecycle or ownership, update concept, domain, da
 
 # Authentication
 
-Status: TBD
+Status: decided in ADR-001
 
-Autentikointimalli päätetään ADR:llä.
+Autentikointi perustuu Microsoft Entra ID:hen.
 
-Kirjaa päätöksen jälkeen:
+Tarkka token/session-malli, callback-flow, roolien mappaus ja käyttäjän deaktivointi täsmennetään taskissa tai erillisessä ADR:ssä ennen autentikoinnin toteutusta.
 
-- kirjautumistapa
-- sessio- tai token-malli
-- salasanapolitiikka, jos relevantti
-- tokenien voimassaolo
-- käyttäjän poistaminen ja deaktivointi
+Salasanapolitiikkaa ei hallita sovelluksessa, ellei Entra ID -integraation ulkopuolelle lisätä erillistä kirjautumistapaa.
 
 ---
 
@@ -212,15 +225,11 @@ Periaate:
 
 # API Design
 
-Status: TBD
+Status: initial direction
 
-Kun API-tyyli päätetään, kirjaa tähän:
+Backend toteutetaan FastAPI:lla. API-tyyli on alustavasti HTTP/JSON.
 
-- REST, GraphQL, RPC tai muu valittu malli
-- endpointien nimeämiskäytäntö
-- request/response-malli
-- virheformaatti
-- versionointikäytäntö, jos tarpeen
+Endpointien nimeämiskäytäntö, request/response-malli, virheformaatti ja versionointikäytäntö täsmennetään ensimmäisissä API-taskeissa.
 
 Alustava virheformaattisuositus:
 
@@ -373,11 +382,11 @@ Kielletty:
 
 # Deployment
 
-Status: TBD
+Status: initial staging decided in ADR-001
 
-Deployment-malli päätetään ADR:llä.
+Alkuvaiheen staging-deployment tehdään Railwayhin. Deployment target voi muuttua myöhemmin.
 
-Alustava tavoite:
+Tavoitemalli:
 
 ```text
 GitHub
@@ -388,7 +397,7 @@ GitHub Actions
    v
 Build artifact / Docker image
    |
-   +--> staging
+   +--> Railway staging
    |
    +--> production
 ```
@@ -408,13 +417,13 @@ Ympäristöjen tulee käyttää:
 
 # ADR References
 
-Päivitettävä, kun päätökset tehdään:
+Päätökset:
 
 ```text
-ADR-001 Tech Stack
-ADR-002 Database
-ADR-003 Authentication
-ADR-004 Deployment
+ADR-001 Tech Stack: accepted
+ADR-002 Database: optional follow-up for migration tooling or deeper database strategy
+ADR-003 Authentication: optional follow-up for Entra ID flow details
+ADR-004 Deployment: optional follow-up for production deployment
 ```
 
 ---

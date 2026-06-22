@@ -75,5 +75,4 @@ Esimerkkejä:
 
 # Related
 
-- Related issue: #TBD
 - Related task: `tasks/TASK-XXX-short-name.md`

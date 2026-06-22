@@ -15,16 +15,11 @@ skinparam diamond {
 
 start
 
-:1. Select or create GitHub Issue;
-
-if (2. Need task spec?) then (yes)
-  :3B. Create task spec;
-else (no)
-  :3A. Give issue context to agent;
-endif
-
+:1. Describe idea to AI agent;
+:2. Review and accept implementation plan;
+:3. Create task spec;
 :4. Create branch;
-:5. Prompt AI agent;
+:5. Prompt AI agent to implement task;
 :6. AI implements scoped change;
 :7. Review agent output locally;
 :8. Run local verification;
@@ -54,7 +49,7 @@ else (no)
   :10. Push branch;
 endif
 
-:15. Squash merge, deploy if configured, close work;
+:15. Developer squash merge, deploy if configured, close work;
 
 stop
 

@@ -2,9 +2,14 @@
 
 Tämä dokumentti kuvaa järjestelmän fyysisen tietokantamallin ja tietokantakäytännöt.
 
-Status: initial candidate model
+Status: initial candidate model, database stack decided
 
-Tietokantateknologia ja ORM päätetään ADR:llä.
+Tietokantateknologia ja ORM on päätetty ADR-001:ssä:
+
+- PostgreSQL
+- SQLAlchemy
+
+Migraatiotyökalu päätetään erikseen.
 
 ---
 
@@ -17,7 +22,8 @@ Lue nämä yhdessä tietokantamallin kanssa:
 - `docs/concepts/CONCEPTS.md`
 - `db/migrations/README.md`
 - `db/init/README.md`
-- `docs/decisions/ADR-002-database.md`, kun se on luotu
+- `docs/decisions/ADR-001-tech-stack.md`
+- `docs/decisions/ADR-002-database.md`, jos se luodaan migraatiotyökalua tai tarkempaa tietokantastrategiaa varten
 
 ---
 

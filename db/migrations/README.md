@@ -2,7 +2,9 @@
 
 Tämä hakemisto sisältää versionhallittavat tietokantamigraatiot.
 
-Status: migration convention defined, database stack TBD
+Status: migration convention defined, PostgreSQL and SQLAlchemy selected
+
+Tietokantateknologia on PostgreSQL ja ORM on SQLAlchemy. Migraatiotyökalu päätetään erikseen.
 
 ---
 

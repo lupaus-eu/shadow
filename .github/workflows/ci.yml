@@ -36,8 +36,6 @@ jobs:
           test -f db/init/README.md
           test -f tasks/TASK-TEMPLATE.md
           test -f .github/PULL_REQUEST_TEMPLATE.md
-          test -f .github/ISSUE_TEMPLATE/feature.yml
-          test -f .github/ISSUE_TEMPLATE/bug.yml
 
       - name: Explain CI status
         run: |

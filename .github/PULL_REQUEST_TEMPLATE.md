@@ -2,9 +2,7 @@
 
 Kuvaa lyhyesti mitä tehtiin.
 
-## Related Issue / Task
-
-Closes #
+## Task
 
 Task: `tasks/TASK-XXX-short-name.md`
 
@@ -18,6 +16,7 @@ Task: `tasks/TASK-XXX-short-name.md`
 
 - [ ] Lint
 - [ ] Tests
+- [ ] Typecheck
 - [ ] Build
 - [ ] Manual verification
 - [ ] Not applicable, reason:

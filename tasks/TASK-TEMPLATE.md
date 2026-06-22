@@ -1,14 +1,16 @@
 # TASK-XXX Short Name
 
-Use the GitHub Issue number as the task number by default.
+Create this task from a developer-approved AI implementation plan.
 
-Example:
+Use the next free task number by default:
 
 ```text
-GitHub Issue #42 -> TASK-042-short-name
+TASK-001-short-name
+TASK-002-short-name
+TASK-003-short-name
 ```
 
-If one issue is split into multiple tasks, use suffixes:
+If one accepted plan is split into closely related tasks, use suffixes:
 
 ```text
 TASK-042A-api
@@ -16,9 +18,9 @@ TASK-042B-ui
 TASK-042C-tests
 ```
 
-## Related Issue
+## Source Plan
 
-Closes #TBD
+Kirjaa lyhyesti hyväksytty suunnitelma tai sen olennainen osa, josta tämä task syntyi.
 
 ## Goal
 
@@ -73,11 +75,13 @@ Kuvaa miten työ tarkistetaan. Katso myös `docs/TESTING.md`.
 
 Required:
 
-- [ ] Unit tests
+- [ ] Frontend tests
+- [ ] Backend tests
 - [ ] Integration tests
 - [ ] Manual verification
-- [ ] Build
 - [ ] Lint
+- [ ] Build
+- [ ] Typecheck
 
 Not applicable:
 
@@ -86,7 +90,17 @@ Not applicable:
 Commands:
 
 ```bash
-# TBD until stack is selected
+# Frontend, if applicable
+cd frontend
+pnpm lint
+pnpm test
+pnpm build
+
+# Backend, if applicable
+cd backend
+uv run ruff check .
+uv run pytest
+uv run pyright
 ```
 
 ## Documentation
@@ -114,6 +128,7 @@ Päivitä tarvittaessa:
 ## Notes For AI Agent
 
 - Lue `AGENTS.md` ja `ARCHITECTURE.md` ennen toteutusta.
+- Lue relevantit ADR:t ennen teknologiaan, arkkitehtuuriin, tietokantaan, autentikointiin, integraatioihin tai deploymentiin koskevia muutoksia.
 - Lue relevantit domain-dokumentit ennen domainin dataan, APIeihin tai sääntöihin koskevia muutoksia.
 - Lue relevantit concept-dokumentit ennen käsitteen kenttiin, suhteisiin, invariantteihin tai lifecycleen koskevia muutoksia.
 - Lue `docs/data/` ja `db/`-ohjeet ennen tietomalli- tai skeemamuutoksia.

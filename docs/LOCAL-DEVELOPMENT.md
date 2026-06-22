@@ -2,7 +2,7 @@
 
 Tämä dokumentti kuvaa paikallisen DEV-ympäristön perusmallin.
 
-Teknologiapino on vielä `TBD`, joten osa komennoista täsmennetään ADR-päätösten jälkeen.
+Teknologiapino on päätetty tiedostossa `docs/decisions/ADR-001-tech-stack.md`.
 
 ---
 
@@ -64,39 +64,61 @@ refactor/
 
 # Running The App
 
-Status: TBD
+Status: stack decided, scaffolding pending
 
-Kun stack on päätetty, lisää tähän:
+Paikallinen ympäristö ajetaan Docker-konteissa:
 
-- dependency install -komento
-- dev server -komento
-- Docker Compose -komento
-- tietokannan migraatiokomennot
-- testikomennot
+- frontend container: React / TypeScript / Vite
+- backend container: FastAPI / Python
+- database container: PostgreSQL
 
-Esimerkkirunko myöhempää käyttöä varten:
+Kun Docker Compose -konfiguraatio on lisätty:
 
 ```bash
 docker compose up -d
-npm install
-npm run dev
 ```
 
-Älä ota näitä komentoja pakollisiksi ennen kuin teknologiapino on päätetty.
+Frontend-kehitys:
+
+```bash
+cd frontend
+pnpm install
+pnpm dev
+```
+
+Backend-kehitys:
+
+```bash
+cd backend
+uv sync
+uv run fastapi dev
+```
+
+Tietokannan migraatiokomennot lisätään, kun migraatiotyökalu on valittu.
 
 ---
 
 # Verification Before PR
 
-Kun stack on päätetty, minimivaatimus ennen PR:ää:
+Backendin oletustarkistukset:
 
 ```bash
-npm run lint
-npm test
-npm run build
+cd backend
+uv run ruff check .
+uv run pytest
+uv run pyright
 ```
 
-Jos projekti käyttää muuta työkalua, päivitä komennot tähän.
+Frontendin oletustarkistukset:
+
+```bash
+cd frontend
+pnpm lint
+pnpm test
+pnpm build
+```
+
+Kun frontendin typecheck-scripti on lisätty, aja myös se ennen PR:ää.
 
 ---
 

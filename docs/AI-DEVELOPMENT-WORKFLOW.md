@@ -1,6 +1,6 @@
 # AI Development Workflow
 
-Tämä dokumentti kuvaa käytännön työnkulun, kun kehittäjä käyttää AI-agenttia toteutuksessa.
+Tämä dokumentti kuvaa käytännön työnkulun, kun kehittäjä käyttää AI-agenttia suunnittelussa ja toteutuksessa.
 
 Laajemmat säännöt ovat tiedostossa `AI-FIRST-ENGINEERING-HANDBOOK.md`.
 
@@ -16,102 +16,45 @@ Kaavion numerot vastaavat tämän dokumentin vaiheotsikoita. PlantUML-lähde on 
 
 # Step By Step
 
-## 1. Select Or Create GitHub Issue
+## 1. Describe Idea To AI Agent
 
-Luo GitHub Issue ennen työn aloittamista.
+Työ alkaa ideasta, bugihavainnosta, käyttäjäpalautteesta tai teknisestä tarpeesta.
 
-Issue toimii työnhallinnan lähteenä:
-
-- mitä tehdään
-- miksi tehdään
-- kuka tekee
-- mikä on työn status
-- mihin PR linkittyy
-
-Issue riittää toteutusspeksiksi vain, jos muutos on pieni ja yksiselitteinen.
-
-Tärkeää: agentti ei automaattisesti tiedä GitHub Issuen sisältöä. Jos taskia ei tehdä, issuen sisältö pitää antaa agentille erikseen vaiheessa 3A.
-
-## 2. Decide Whether Task Spec Is Needed
-
-Luo task-tiedosto, jos muutos:
-
-- koskee useampaa osaa sovelluksesta
-- muuttaa tietomallia
-- lisää integraation
-- vaatii useita hyväksymiskriteerejä
-- vaikuttaa arkkitehtuuriin
-- annetaan AI-agentille itsenäisesti toteutettavaksi
-
-Jos muutos on pieni ja issue sisältää riittävät hyväksymiskriteerit, voit käyttää pelkkää issuea ja jatkaa vaiheeseen 3A.
-
-Jos task tarvitaan, jatka vaiheeseen 3B.
-
-## 3A. Give Issue Context To Agent
-
-Jos työ tehdään pelkän GitHub Issuen perusteella, käytä yhtä näistä tavoista.
-
-### Option A: Paste Issue Content
-
-Kopioi issue agentin promptiin:
+Kehittäjä pyytää AI-agentilta toteutussuunnitelman ennen taskien kirjoittamista:
 
 ```text
-Toteuta GitHub Issue #42.
+Tee toteutussuunnitelma seuraavasta ideasta.
 
-Title:
-[Feature] User profile page
+Idea:
+[kuvaa tavoite, ongelma, rajaukset ja tunnetut taustatiedot]
 
-Body:
-Goal:
-...
-
-Acceptance criteria:
-- [ ] ...
-- [ ] ...
-
-Lue AGENTS.md ja ARCHITECTURE.md ennen toteutusta.
-Toteuta vain tämän issuen scope.
+Lue AGENTS.md, ARCHITECTURE.md ja relevantit ADR:t ennen suunnitelmaa.
+Älä muuta tiedostoja. Ehdota tarvittavat taskit ja hyväksymiskriteerit.
 ```
 
-Tämä on suositeltu tapa, jos agentilla ei ole GitHub-integraatiota.
+Tässä vaiheessa AI-agentti ei vielä tee koodimuutoksia.
 
-### Option B: Let Agent Read Issue With Tooling
+## 2. Review And Accept Implementation Plan
 
-Jos ympäristössä on GitHub CLI tai GitHub-connector, prompti voi olla:
+Kehittäjä tarkistaa AI-agentin suunnitelmasta:
 
-```text
-Lue GitHub Issue #42 tästä reposta ja toteuta se.
-Jos et pysty lukemaan issuea, pysähdy ja pyydä minua liittämään sen sisältö.
-```
+- ratkaiseeko suunnitelma oikean ongelman
+- onko scope sopiva ja pieni
+- tarvitaanko yksi vai useampi task
+- vaatiiko työ ADR:n ennen toteutusta
+- ovatko hyväksymiskriteerit ja testaus selkeät
 
-Tyypillinen komento:
+Jos suunnitelma ei ole valmis, kehittäjä pyytää agenttia tarkentamaan sitä. Taskit luodaan vasta, kun kehittäjä hyväksyy suunnitelman.
 
-```bash
-gh issue view 42 --comments
-```
+## 3. Create Task Spec
 
-Agentti saa jatkaa vasta, kun se on oikeasti saanut issuen sisällön.
-
-## 3B. Create Task Spec
-
-Kopioi `tasks/TASK-TEMPLATE.md` uuteen tiedostoon:
+Hyväksytystä suunnitelmasta luodaan yksi tai useampi task-tiedosto:
 
 ```text
 tasks/TASK-042-short-name.md
 ```
 
-Käytä task-numerona ensisijaisesti GitHub Issuen numeroa.
-
-Esimerkki:
-
-```text
-GitHub Issue #42
-tasks/TASK-042-user-profile.md
-branch feature/TASK-042-user-profile
-PR: Closes #42
-```
-
-Jos yhdestä issuesta syntyy useita taskeja:
+Käytä seuraavaa vapaata `TASK-XXX`-numeroa. Jos yksi hyväksytty suunnitelma jaetaan useaan läheisesti liittyvään taskiin, käytä suffiksia:
 
 ```text
 tasks/TASK-042A-auth-api.md
@@ -125,8 +68,9 @@ Taskin pitää kertoa agentille:
 - mitä ei tehdä
 - millä kriteereillä työ hyväksytään
 - miten työ testataan
+- mitä dokumentaatiota pitää päivittää
 
-Jos issue on pitkä tai epäselvä, tee siitä task ennen koodausta.
+Task on toteutuksen pysyvä scope-lähde.
 
 ## 4. Create Branch
 
@@ -134,12 +78,6 @@ Jos issue on pitkä tai epäselvä, tee siitä task ennen koodausta.
 git checkout main
 git pull origin main
 git checkout -b feature/TASK-042-short-name
-```
-
-Jos erillistä taskia ei ole, käytä issue-numeroa:
-
-```bash
-git checkout -b feature/ISSUE-042-short-name
 ```
 
 Käytä branch-prefixejä:
@@ -160,27 +98,16 @@ Prefixien käyttö:
 - `chore/` kun teet ylläpitotyötä, joka ei muuta sovelluksen toimintaa
 - `refactor/` kun muutat koodin rakennetta ilman tarkoituksellista toiminnallista muutosta
 
-## 5. Prompt AI Agent
+## 5. Prompt AI Agent To Implement Task
 
 Hyvä prompti taskin pohjalta:
 
 ```text
-Lue AGENTS.md, ARCHITECTURE.md, relevantit domain-dokumentit ja tasks/TASK-042-short-name.md.
+Lue AGENTS.md, ARCHITECTURE.md, relevantit ADR:t, relevantit domain-dokumentit ja tasks/TASK-042-short-name.md.
 Toteuta vain taskissa määritelty scope.
 Älä lisää uusia riippuvuuksia ilman hyväksyntää.
 Lisää testit ja päivitä dokumentaatio tarvittaessa.
 Lopuksi kerro mitä muutettiin ja mitkä tarkistukset ajoit.
-```
-
-Hyvä prompti pelkän issuen pohjalta:
-
-```text
-Lue AGENTS.md, ARCHITECTURE.md ja relevantit domain-dokumentit.
-Toteuta alla oleva GitHub Issue #42.
-Toteuta vain issuen scope.
-Jos hyväksymiskriteerit ovat epäselvät, pysähdy ja kysy tarkennus.
-
-[liitä issue tähän]
 ```
 
 Jos työ koskee tietokantaa, lisää:
@@ -200,17 +127,18 @@ Jos toteutus vaatii arkkitehtuurimuutoksen, pysähdy ja ehdota ADR:ää ennen ko
 AI-agentti:
 
 - lukee sovitut lähdedokumentit
-- toteuttaa vain issuen tai taskin scopessa olevan muutoksen
+- toteuttaa vain taskin scopessa olevan muutoksen
 - lisää tai päivittää testit, kun muutos koskee sovelluskoodia
 - päivittää dokumentaation tarvittaessa
 - ei lisää riippuvuuksia ilman hyväksyntää
 - ei muuta arkkitehtuuria ilman ADR:ää
+- ei mergaa main-haaraan
 
 ## 7. Review Agent Output Locally
 
 Kehittäjä tarkistaa diffistä:
 
-- toteuttaako muutos issuen tai taskin
+- toteuttaako muutos taskin
 - lisäsikö agentti turhaa scopea
 - lisäsikö agentti riippuvuuksia
 - poistuiko testejä
@@ -219,15 +147,27 @@ Kehittäjä tarkistaa diffistä:
 
 ## 8. Run Local Verification
 
-Kun stack on valittu, aja vähintään:
+Aja taskiin relevantit tarkistukset.
+
+Backendin oletustarkistukset:
 
 ```bash
-npm run lint
-npm test
-npm run build
+cd backend
+uv run ruff check .
+uv run pytest
+uv run pyright
 ```
 
-Jos stack on vielä päättämättä, aja issueen tai taskiin määritellyt tarkistukset.
+Frontendin oletustarkistukset:
+
+```bash
+cd frontend
+pnpm lint
+pnpm test
+pnpm build
+```
+
+Kun typecheck-scripti on lisätty frontendiin, aja myös se ennen PR:ää.
 
 ## 9. Update Branch From Main
 
@@ -246,12 +186,6 @@ Ratkaise konfliktit ja aja vaiheen 8 tarkistukset uudelleen.
 git push -u origin feature/TASK-042-short-name
 ```
 
-Jos käytit issue-branchia:
-
-```bash
-git push -u origin feature/ISSUE-042-short-name
-```
-
 ## 11. Open Pull Request
 
 Käytä `.github/PULL_REQUEST_TEMPLATE.md` -templatea.
@@ -259,27 +193,22 @@ Käytä `.github/PULL_REQUEST_TEMPLATE.md` -templatea.
 PR:ssä pitää näkyä:
 
 - summary
-- related issue/task
+- task
 - acceptance criteria
 - testing
 - risks
-
-PR linkittää issueen:
-
-```text
-Closes #42
-```
 
 ## 12. CI
 
 CI ajaa projektin määritellyt tarkistukset.
 
-Kun stack on valittu, minimiputki on:
+Minimiputki, kun sovelluskoodi on olemassa:
 
 ```text
 Install
 Lint
 Tests
+Typecheck
 Build
 ```
 
@@ -296,7 +225,7 @@ AI-reviewn pitää etsiä:
 - tietoturvaongelmia
 - puuttuvia testejä
 - dokumentaatiopuutteita
-- issuen tai taskin ulkopuolista scopea
+- taskin ulkopuolista scopea
 
 Jos AI-review löytää korjattavaa, tee korjaukset ja palaa vaiheeseen 8.
 
@@ -314,6 +243,8 @@ Jos human review pyytää muutoksia, tee korjaukset ja palaa vaiheeseen 8.
 
 ## 15. Squash Merge, Deploy, Close Work
 
+Kehittäjä mergaa hyväksytyn PR:n `main`-haaraan. AI-agentti voi auttaa yhteenvedossa, tarkistuksissa ja reviewssa, mutta agentti ei tee mergeä.
+
 Käytä:
 
 ```text
@@ -328,13 +259,13 @@ fix(scope): short description
 docs(scope): short description
 ```
 
-Kun deployment on konfiguroitu, merge mainiin käynnistää sovitun deployment-putken.
+Kun deployment on konfiguroitu, merge mainiin käynnistää sovitun deployment-putken. Alkuvaiheessa staging-deployment tehdään Railwayhin.
 
 Lopuksi:
 
-- issue sulkeutuu PR:n `Closes #42` -linkityksellä
-- task merkitään valmiiksi, jos taskia käytettiin
+- task merkitään valmiiksi
 - dokumentaatio jää ajan tasalle
+- mahdollinen staging- tai production-deploy tarkistetaan
 
 ---
 
@@ -354,20 +285,20 @@ gitGraph
   commit id: "B: branch TASK-043"
   commit id: "B: AI implements fix"
   checkout main
-  merge dev-a id: "PR #42 squash merge"
+  merge dev-a id: "PR #42 developer squash merge"
   checkout dev-b
   commit id: "B: rebase on main"
   commit id: "B: resolve feedback"
   checkout main
-  merge dev-b id: "PR #43 squash merge"
+  merge dev-b id: "PR #43 developer squash merge"
 ```
 
 Periaate:
 
 - jokainen kehittäjä tekee oman branchin mainista
-- jokainen työ linkitetään issueen tai taskiin
+- jokainen työ linkitetään taskiin
 - branch päivitetään mainista ennen PR:ää
-- mainiin päätyy vain reviewattu ja squashattu muutos
+- mainiin päätyy vain ihmisen reviewaama ja kehittäjän squash-mergaama muutos
 
 ---
 
@@ -380,4 +311,4 @@ Pysähdy ja pyydä ihmisen päätös, jos AI-agentti:
 - muuttaa tietokantastrategiaa
 - tarvitsee salaisuuksia tai tuotantopääsyä
 - haluaa poistaa testejä
-- toteuttaa issuen tai taskin ulkopuolista scopea
+- toteuttaa taskin ulkopuolista scopea

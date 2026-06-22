@@ -9,7 +9,7 @@ Päivittäisessä työssä riittää yleensä:
 
 1. `AGENTS.md`
 2. `CONTRIBUTING.md`
-3. relevantti GitHub Issue tai `tasks/TASK-*.md`
+3. relevantti `tasks/TASK-*.md`
 
 Käytännön lukupolku:
 
@@ -45,12 +45,24 @@ git pull origin main
 cp .env.example .env
 ```
 
-Teknologiapino on vielä `TBD`. Varsinaiset install-, dev-, test- ja build-komennot lisätään, kun `docs/decisions/ADR-001-tech-stack.md` hyväksytään.
+Teknologiapino on päätetty tiedostossa `docs/decisions/ADR-001-tech-stack.md`.
+
+Päätetty rakenne:
+
+- frontend: React, TypeScript, Vite, pnpm, Vitest, ESLint hakemistossa `frontend/`
+- backend: Python, FastAPI, Pydantic, uv, pytest, pyright, Ruff hakemistossa `backend/`
+- database: PostgreSQL
+- ORM: SQLAlchemy
+- authentication: Microsoft Entra ID
+- local runtime: frontend, backend ja database omissa Docker-konteissaan
+- initial staging deployment: Railway
+
+Tarkat install-, dev-, test- ja build-komennot täsmentyvät, kun `frontend/` ja `backend/` alustetaan.
 
 ## Kehitysworkflow
 
 ```text
-Issue -> Task -> Branch -> AI Implementation -> Review -> Pull Request -> Merge
+Idea -> AI Implementation Plan -> Developer Approval -> Task(s) -> Branch -> AI Implementation -> Review -> Pull Request -> Developer Merge
 ```
 
 Katso tarkempi ohje:

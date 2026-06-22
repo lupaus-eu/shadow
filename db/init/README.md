@@ -2,7 +2,9 @@
 
 Tämä hakemisto sisältää paikallisen tai kehitysympäristön tietokanta-alustuksen skriptejä.
 
-Status: convention defined, database stack TBD
+Status: convention defined, PostgreSQL selected
+
+Paikallinen database container käyttää PostgreSQL:ää.
 
 ---
 

@@ -2,9 +2,15 @@
 
 Tämä dokumentti kuvaa projektin testauskäytännön ihmisille ja AI-agenteille.
 
-Status: baseline, stack TBD
+Status: stack decided
 
-Teknologiapino on vielä `TBD`, joten tarkat testityökalut ja komennot päätetään ADR-001:n yhteydessä.
+Testityökalut on päätetty ADR-001:ssä:
+
+- frontend: Vitest
+- frontend linting: ESLint
+- backend: pytest
+- backend type checking: pyright
+- backend linting: Ruff
 
 ---
 
@@ -111,6 +117,14 @@ Use for:
 - formatting/parsing
 - small service functions
 
+Frontend unit tests use Vitest.
+
+Backend unit tests use pytest.
+
+Frontend linting uses ESLint.
+
+Backend linting uses Ruff.
+
 ## Integration Tests
 
 Use for:
@@ -171,7 +185,17 @@ Not applicable:
 Commands:
 
 ```bash
-# TBD until stack is selected
+# Frontend, if applicable
+cd frontend
+pnpm lint
+pnpm test
+pnpm build
+
+# Backend, if applicable
+cd backend
+uv run ruff check .
+uv run pytest
+uv run pyright
 ```
 ````
 
@@ -200,17 +224,17 @@ Aja saatavilla olevat testikomennot ja raportoi tulokset.
 
 ---
 
-# When Stack Is TBD
+# When Scaffolding Is Missing
 
-Before ADR-001 is accepted, the project may not have runnable test commands.
+ADR-001 has selected the stack, but the repository may not yet have runnable `frontend/` or `backend/` scaffolds.
 
 In that case:
 
-- do not invent a test framework
+- do not invent scripts outside the task scope
 - do not add dependencies without approval
 - document what should be tested later
 - perform available static or manual checks
-- report that automated tests are not yet configured
+- report that automated tests are not yet configured in the affected package
 
 ---
 
@@ -218,12 +242,13 @@ In that case:
 
 Current baseline CI checks repository documentation structure.
 
-After ADR-001 is accepted and the application stack exists, CI should run:
+When the application scaffolds exist, CI should run:
 
 ```text
 Install
 Lint
 Tests
+Typecheck
 Build
 ```
 

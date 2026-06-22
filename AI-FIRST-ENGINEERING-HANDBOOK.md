@@ -33,7 +33,7 @@ Tavoitteena on:
 Perussääntö:
 
 ```text
-Issue -> Issue Context / Task -> AI Implementation -> AI Review -> Human Review -> PR -> Merge -> Deploy
+Idea -> AI Implementation Plan -> Developer Approval -> Task(s) -> AI Implementation -> AI Review -> Human Review -> PR -> Developer Merge -> Deploy
 ```
 
 ---
@@ -90,7 +90,6 @@ repo/
 ├── infra/
 |
 └── .github/
-    ├── ISSUE_TEMPLATE/
     ├── workflows/
     └── PULL_REQUEST_TEMPLATE.md
 ```
@@ -136,7 +135,7 @@ Sisältää:
 
 - projektin tarkoituksen
 - nykyisen statuksen
-- teknologiapinon tai `TBD`-tilan
+- teknologiapinon
 - agenttisäännöt
 - lähteiden lukujärjestyksen
 - mitä AI saa ja ei saa tehdä
@@ -342,40 +341,30 @@ Nimeämiskäytäntö on dokumentoitu tiedostossa `docs/diagrams/README.md`.
 
 # Task Driven Development
 
-Kaikki merkittävä työ alkaa taskista.
+Kaikki merkittävä työ alkaa ideasta, AI-agentin tekemästä toteutussuunnitelmasta ja kehittäjän hyväksynnästä.
 
-Pienessä projektissa GitHub Issue voi riittää, kun muutos on pieni ja yksiselitteinen. Silloin agentille pitää antaa issuen sisältö erikseen ennen toteutusta.
+Hyväksytystä suunnitelmasta luodaan yksi tai useampi task. Task on toteutuksen pysyvä scope-lähde.
 
-Erillinen `tasks/TASK-XXX-*.md` tarvitaan, kun työ:
+`tasks/TASK-XXX-*.md` tarvitaan aina ennen toteutusta. Task kertoo:
 
-- koskee useampaa moduulia
-- muuttaa tietomallia
-- lisää integraation
-- vaikuttaa arkkitehtuuriin
-- vaatii useita hyväksymiskriteerejä
-- annetaan AI-agentille itsenäisesti toteutettavaksi
-
-Task sisältää varsinaisen teknisen speksin. Issue toimii työnhallinnan ja keskustelun paikkana.
+- tavoitteen
+- vaatimukset
+- hyväksymiskriteerit
+- ulos rajatut asiat
+- toteutushuomiot
+- testauksen
+- dokumentaatiopäivitykset
 
 Numerointisääntö:
 
-- Pääsääntöisesti task-numero on sama kuin GitHub Issuen numero.
-- Esimerkki: GitHub Issue `#42` -> `tasks/TASK-042-user-profile.md`.
+- Käytä seuraavaa vapaata `TASK-XXX`-numeroa.
+- Esimerkki: `tasks/TASK-042-user-profile.md`.
 - Branch käyttää samaa numeroa: `feature/TASK-042-user-profile`.
-- Jos yhdestä issuesta syntyy useita taskeja, käytä suffiksia: `TASK-042A-auth-api.md`, `TASK-042B-auth-ui.md`.
-- Poikkeukset kirjataan taskin `Related Issue` -kohtaan.
-
-Jos taskia ei tehdä, GitHub Issue on toteutusspeksi. Tällöin agentin promptissa pitää olla joko:
-
-- issuen numero ja lupa käyttää GitHub-työkalua tai `gh`-komentoa
-- issuen koko sisältö kopioituna promptiin
-- linkki issueen ja käytössä oleva GitHub-integraatio, joka pystyy lukemaan sen
-
-Agentti ei saa olettaa tietävänsä issuen sisältöä pelkän numeron perusteella.
+- Jos yksi hyväksytty suunnitelma jaetaan useaan läheisesti liittyvään taskiin, käytä suffiksia: `TASK-042A-auth-api.md`, `TASK-042B-auth-ui.md`.
 
 ---
 
-# Issue To Merge Workflow
+# Idea To Merge Workflow
 
 ## 1. Idea
 
@@ -383,88 +372,42 @@ Idea voi tulla ihmiseltä, käyttäjäpalautteesta, bugista tai teknisestä tarp
 
 Tässä vaiheessa ei vielä tehdä koodia.
 
-## 2. Create GitHub Issue
+## 2. Ask AI For Implementation Plan
 
-Issueen kirjataan:
+Kehittäjä pyytää AI-agentilta toteutussuunnitelman:
 
-- tavoite
+```text
+Tee toteutussuunnitelma seuraavasta ideasta.
+
+Idea:
+[kuvaa tavoite, ongelma, rajaukset ja tunnetut taustatiedot]
+
+Lue AGENTS.md, ARCHITECTURE.md ja relevantit ADR:t ennen suunnitelmaa.
+Älä muuta tiedostoja. Ehdota tarvittavat taskit ja hyväksymiskriteerit.
+```
+
+AI-agentti ei tee tiedostomuutoksia suunnitteluvaiheessa.
+
+## 3. Developer Approval
+
+Kehittäjä tarkistaa suunnitelman ja hyväksyy sen tai pyytää muutoksia.
+
+Tarkista erityisesti:
+
+- tavoite ja rajaus
+- taskien koko ja määrä
+- arkkitehtuurivaikutukset
+- tietoturva- ja tietokantavaikutukset
 - hyväksymiskriteerit
-- mahdolliset tekniset huomiot
-- linkki taskiin, jos task luodaan
-
-Pienelle projektille riittää aluksi kaksi issue-templatea:
-
-- Feature
-- Bug
-
-Muita templateja lisätään vasta kun niille on todellinen tarve.
-
-## 3. Give Issue Context To Agent
-
-Jos työ tehdään pelkän GitHub Issuen pohjalta, issue pitää tuoda agentin saataville ennen toteutusta.
-
-Sallitut tavat:
-
-### Option A: Paste Issue Into Prompt
-
-Kehittäjä kopioi issuen sisällön agentille:
-
-```text
-Toteuta GitHub Issue #42.
-
-Issue title:
-[Feature] User profile page
-
-Issue body:
-Goal:
-...
-
-Acceptance criteria:
-- [ ] ...
-- [ ] ...
-
-Lue lisäksi AGENTS.md ja ARCHITECTURE.md.
-Toteuta vain tässä issuessa kuvattu scope.
-```
-
-Tämä on varmin tapa, jos agentilla ei ole GitHub-työkalua.
-
-### Option B: Agent Reads Issue With GitHub Tooling
-
-Jos ympäristössä on GitHub CLI tai GitHub-connector, kehittäjä voi antaa:
-
-```text
-Lue GitHub Issue #42 tästä reposta ja toteuta se.
-Jos et pysty lukemaan issuea, pysähdy ja pyydä minua liittämään sen sisältö.
-```
-
-Tyypillinen komento, jos `gh` on käytössä:
-
-```bash
-gh issue view 42 --comments
-```
-
-Agentti saa käyttää tätä vain, jos GitHub-pääsy on konfiguroitu.
-
-### Option C: Convert Issue To Task
-
-Jos issue on pitkä, epäselvä tai teknisesti riskialtis, siitä tehdään task:
-
-```text
-tasks/TASK-042-user-profile.md
-```
-
-Tämän jälkeen agentti toteuttaa taskin, ei pelkkää issuea.
+- testaus
 
 ## 4. Create Task Spec
 
-Task luodaan tiedostoon:
+Task luodaan hyväksytystä suunnitelmasta tiedostoon:
 
 ```text
 tasks/TASK-042-short-name.md
 ```
-
-Käytä task-numerona ensisijaisesti GitHub Issuen numeroa.
 
 Taskissa määritellään:
 
@@ -478,9 +421,7 @@ Taskissa määritellään:
 
 ## 5. Scope Approval
 
-Ihminen hyväksyy taskin scopin ennen toteutusta, jos työ on laaja, epäselvä tai vaikuttaa arkkitehtuuriin.
-
-Jos työ tehdään pelkän issuen pohjalta, kehittäjä varmistaa ennen toteutusta, että issuessa on riittävät hyväksymiskriteerit.
+Ihminen hyväksyy taskin scopin ennen toteutusta. Taskia ei toteuteta ennen hyväksyntää.
 
 ## 6. Create Branch
 
@@ -502,13 +443,6 @@ chore/TASK-004-ci-setup
 refactor/TASK-005-auth-service
 ```
 
-Jos erillistä taskia ei ole, käytä issue-numeroa:
-
-```text
-feature/ISSUE-042-user-profile
-fix/ISSUE-043-login-timeout
-```
-
 ## 7. AI Implementation
 
 AI-agentti:
@@ -516,7 +450,7 @@ AI-agentti:
 - lukee `AGENTS.md`
 - lukee `ARCHITECTURE.md`
 - lukee relevantit ADR:t
-- lukee taskin tai sille annetun GitHub Issuen sisällön
+- lukee taskin
 - toteuttaa vain hyväksytyn scopin
 - lisää tai päivittää testit
 - päivittää dokumentaation tarvittaessa
@@ -535,15 +469,21 @@ AI-agentti ei saa:
 
 Ennen pushia kehittäjä tai agentti ajaa projektin vaatimat tarkistukset.
 
-Kun stack on valittu, minimikomentoja ovat tyypillisesti:
+Päätetyllä stackilla minimikomentoja ovat tyypillisesti:
 
 ```bash
-npm run lint
-npm test
-npm run build
+cd frontend
+pnpm lint
+pnpm test
+pnpm build
+
+cd backend
+uv run ruff check .
+uv run pytest
+uv run pyright
 ```
 
-Jos stack on vielä `TBD`, taskissa määritellään mitä voidaan tarkistaa.
+Kun typecheck-scripti on lisätty frontendiin, aja myös se ennen PR:ää.
 
 ## 9. Update Branch Before PR
 
@@ -567,7 +507,7 @@ git push -u origin feature/TASK-001-user-auth
 PR:ssä pitää näkyä:
 
 - mitä tehtiin
-- mihin issueen tai taskiin muutos liittyy
+- mihin taskiin muutos liittyy
 - mitkä hyväksymiskriteerit täyttyvät
 - miten testattiin
 - mitkä riskit tai rajaukset jäivät
@@ -609,6 +549,8 @@ Ihminen tarkistaa:
 
 ## 15. Merge
 
+Kehittäjä mergaa hyväksytyn PR:n `main`-haaraan. AI-agentti voi auttaa yhteenvedossa, tarkistuksissa ja reviewssa, mutta agentti ei tee mergeä.
+
 Käytetään:
 
 ```text
@@ -639,7 +581,6 @@ Tuotantojulkaisu on ihmisen vastuulla.
 
 Työ suljetaan, kun:
 
-- Issue sulkeutuu
 - task merkitään valmiiksi
 - dokumentaatio on ajan tasalla
 - mahdollinen release/deploy on tarkistettu
@@ -693,7 +634,7 @@ git push -u origin feature/TASK-001-user-auth
 
 Pakolliset ehdot:
 
-- PR liittyy yhteen issueen tai taskiin.
+- PR liittyy yhteen taskiin.
 - CI on vihreä, kun CI on käytössä.
 - Hyväksymiskriteerit täyttyvät.
 - Testit on lisätty tai puuttuminen perustellaan.
@@ -798,12 +739,13 @@ Kun sovelluksen stack on valittu, jokaisessa PR:ssä suoritetaan:
 Install
 Lint
 Test
+Typecheck
 Build
 ```
 
 Suositeltu GitHub Actions -putki dokumentoidaan tiedostossa `.github/workflows/ci.yml`.
 
-Jos projektissa ei vielä ole sovelluskoodia tai package manageria, CI saa olla kevyt dokumentaatiotarkistus. Varsinainen build/lint/test otetaan käyttöön heti, kun stack-päätös on tehty.
+Jos projektissa ei vielä ole sovelluskoodia, CI saa olla kevyt dokumentaatiotarkistus. Varsinainen build/lint/test/typecheck otetaan käyttöön heti, kun frontend- ja backend-rungot on alustettu.
 
 ---
 
@@ -826,8 +768,9 @@ Esimerkki:
 
 ```env
 DATABASE_URL=
-JWT_SECRET=
 APP_URL=http://localhost:3000
+ENTRA_ID_TENANT_ID=
+ENTRA_ID_CLIENT_ID=
 ```
 
 Salaisuudet tallennetaan ympäristökohtaisiin secret-varastoihin, ei repositoryyn.
@@ -846,7 +789,7 @@ ALTER TABLE production ...
 
 manuaalisesti tuotantoympäristössä.
 
-Kun ORM valitaan, migraatioiden generointi- ja ajokomennot dokumentoidaan `README.md`:ssä tai `docs/LOCAL-DEVELOPMENT.md`:ssä.
+ORM on SQLAlchemy. Migraatioiden generointi- ja ajokomennot dokumentoidaan `README.md`:ssä tai `docs/LOCAL-DEVELOPMENT.md`:ssä, kun migraatiotyökalu on valittu.
 
 ---
 
@@ -942,9 +885,9 @@ tasks/TASK-TEMPLATE.md
 
 Kun juniorikoodari käyttää AI-agenttia:
 
-1. Valitse GitHub Issue.
-2. Tarkista, onko erillinen task tarpeen.
-3. Luo tai lue `tasks/TASK-XXX-*.md`.
+1. Kuvaa idea AI-agentille ja pyydä toteutussuunnitelma.
+2. Tarkista ja hyväksy suunnitelma.
+3. Luo tai lue hyväksytystä suunnitelmasta tehty `tasks/TASK-XXX-*.md`.
 4. Luo branch mainista.
 5. Anna agentille taskin polku ja pyydä toteuttamaan vain sen scope.
 6. Pyydä agenttia ajamaan testit ja kertomaan tulokset.
@@ -1010,24 +953,24 @@ documentation
 tech-debt
 security
 performance
-good-first-issue
+good-first-task
 ```
 
 ---
 
-# First Sprint Seed Issues
+# First Sprint Seed Tasks
 
-Projektin käynnistykseen suositellut ensimmäiset issuet:
+Projektin käynnistykseen suositellut ensimmäiset taskit:
 
 ```text
-#1 Project bootstrap
-#2 Tech stack ADR
-#3 Local development environment
-#4 CI baseline
-#5 Authentication decision
-#6 Database decision
-#7 Deployment decision
-#8 Audit logging requirements
+TASK-001 Project bootstrap
+TASK-002 Tech stack documentation alignment
+TASK-003 Local development environment
+TASK-004 CI baseline
+TASK-005 Authentication implementation plan
+TASK-006 Database migration tooling decision
+TASK-007 Deployment implementation plan
+TASK-008 Audit logging requirements
 ```
 
 ---

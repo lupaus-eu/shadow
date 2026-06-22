@@ -38,26 +38,25 @@ Projektissa ollaan aloitusvaiheessa.
 Ensimmäiset tavoitteet:
 
 1. AI-first kehitysmallin dokumentointi
-2. teknologiapinon päätös ADR:llä
-3. paikallisen kehitysympäristön kuvaus
-4. CI-baselinen käyttöönotto
-5. ensimmäisten feature-taskien määrittely
+2. paikallisen kehitysympäristön kuvaus
+3. CI-baselinen käyttöönotto
+4. ensimmäisten feature-taskien määrittely
 
 ---
 
 # Tech Stack
 
-Status: TBD
+Status: decided in `docs/decisions/ADR-001-tech-stack.md`
 
-Älä lukitse teknologioita tähän ennen ADR-päätöstä.
+Päätetty teknologiapino:
 
-Kun päätös tehdään, päivitä:
-
-- `docs/decisions/ADR-001-tech-stack.md`
-- `ARCHITECTURE.md`
-- tarvittaessa tämä tiedosto
-
-Mahdolliset WIP-suositukset eivät ole vielä päätöksiä.
+- frontend: React, TypeScript, Vite, pnpm, Vitest, ESLint hakemistossa `frontend/`
+- backend: Python, FastAPI, Pydantic, uv, pytest, pyright, Ruff hakemistossa `backend/`
+- database: PostgreSQL
+- ORM: SQLAlchemy
+- authentication: Microsoft Entra ID
+- local runtime: frontend, backend ja database omissa Docker-konteissaan
+- initial staging deployment: Railway
 
 ---
 
@@ -90,10 +89,10 @@ Jos dokumentit ovat ristiriidassa:
 
 # Per Task Reading Order
 
-Kun toteutat yksittäistä issuea tai taskia, käytä tätä kevyempää käytännön järjestystä:
+Kun toteutat yksittäistä taskia, käytä tätä kevyempää käytännön järjestystä:
 
 1. Lue `AGENTS.md`.
-2. Lue GitHub Issue tai `tasks/TASK-*.md`.
+2. Lue `tasks/TASK-*.md`.
 3. Lue `ARCHITECTURE.md`.
 4. Lue relevantit ADR:t, jos muutos koskee teknologiaa, arkkitehtuuria, tietokantaa, autentikointia, integraatioita tai deploymentia.
 5. Lue relevantit domain-dokumentit vain, jos muutos koskee domainin dataa, APIeja tai sääntöjä.
@@ -113,10 +112,10 @@ Kun toteutat yksittäistä issuea tai taskia, käytä tätä kevyempää käytä
 Kaikki merkittävä työ tehdään tämän putken kautta:
 
 ```text
-Issue -> Task -> AI Implementation -> AI Review -> Human Review -> Pull Request -> Merge -> Deploy
+Idea -> AI Implementation Plan -> Developer Approval -> Task(s) -> AI Implementation -> AI Review -> Human Review -> Pull Request -> Developer Merge -> Deploy
 ```
 
-Pieni yksiselitteinen muutos voi käyttää pelkkää GitHub Issuea. Laajempi tai AI-agentille itsenäisesti annettava työ tarvitsee task-tiedoston.
+GitHubin työnhallintaa ei käytetä työn lähteenä. Hyväksytystä AI-suunnitelmasta luodut taskit määrittävät toteutuksen scopin.
 
 ---
 
@@ -124,7 +123,7 @@ Pieni yksiselitteinen muutos voi käyttää pelkkää GitHub Issuea. Laajempi ta
 
 ## Always
 
-- Toteuta vain taskissa tai issuessa määritelty scope.
+- Toteuta vain taskissa määritelty scope.
 - Lue arkkitehtuuri ja relevantit ADR:t ennen toteutusta.
 - Lue relevantit domain-dokumentit ennen domainin dataan, APIeihin tai sääntöihin koskevia muutoksia.
 - Lue relevantit concept-dokumentit ennen käsitteen kenttiin, suhteisiin, invariantteihin tai lifecycleen koskevia muutoksia.
@@ -164,7 +163,7 @@ refactor/TASK-005-short-name
 
 Jokaisen PR:n tulee:
 
-- liittyä yhteen issueen tai taskiin
+- liittyä yhteen taskiin
 - sisältää testit tai perustella miksi testejä ei tarvita
 - läpäistä CI, kun CI on käytössä
 - olla reviewattavissa kohtuullisessa ajassa
