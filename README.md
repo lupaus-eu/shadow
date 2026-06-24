@@ -57,7 +57,23 @@ Päätetty rakenne:
 - local runtime: frontend, backend ja database omissa Docker-konteissaan
 - initial staging deployment: Railway
 
-Tarkat install-, dev-, test- ja build-komennot täsmentyvät, kun `frontend/` ja `backend/` alustetaan.
+Frontendin voi ajaa Dockerissa:
+
+```bash
+docker compose up frontend
+```
+
+Frontend dev on saatavilla osoitteessa `http://localhost:5173`.
+
+Buildatun frontendin preview:
+
+```bash
+docker compose --profile preview up frontend-preview
+```
+
+Preview on saatavilla osoitteessa `http://localhost:4173`.
+
+Backendin ja tietokannan Docker-ajotavat täsmentyvät, kun niiden scaffoldit lisätään.
 
 ## Kehitysworkflow
 

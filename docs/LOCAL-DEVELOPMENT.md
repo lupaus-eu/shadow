@@ -64,7 +64,7 @@ refactor/
 
 # Running The App
 
-Status: stack decided, scaffolding pending
+Status: frontend Docker runtime available, backend and database scaffolding pending
 
 Paikallinen ympäristö ajetaan Docker-konteissa:
 
@@ -72,13 +72,51 @@ Paikallinen ympäristö ajetaan Docker-konteissa:
 - backend container: FastAPI / Python
 - database container: PostgreSQL
 
-Kun Docker Compose -konfiguraatio on lisätty:
+Frontend-kehityskontti:
 
 ```bash
-docker compose up -d
+docker compose up frontend
 ```
 
-Frontend-kehitys:
+Frontend on saatavilla osoitteessa:
+
+```text
+http://localhost:5173
+```
+
+Frontendin lähdekoodi bind mountataan konttiin, joten muutokset näkyvät ilman image rebuildia.
+
+Frontendin `/api`-proxy osoittaa oletuksena hostilla ajettavaan backendin osoitteeseen:
+
+```text
+http://host.docker.internal:8000
+```
+
+Voit vaihtaa proxyn kohteen paikallisessa `.env`-tiedostossa:
+
+```bash
+FRONTEND_DEV_API_PROXY_TARGET=http://host.docker.internal:8000
+```
+
+Frontend preview -kontti buildatulle Vite-tuotokselle:
+
+```bash
+docker compose --profile preview up frontend-preview
+```
+
+Preview on saatavilla osoitteessa:
+
+```text
+http://localhost:4173
+```
+
+Kontit pysäytetään:
+
+```bash
+docker compose down
+```
+
+Frontend-kehitys ilman Dockeria:
 
 ```bash
 cd frontend
@@ -93,6 +131,8 @@ cd backend
 uv sync
 uv run fastapi dev
 ```
+
+Backend scaffold lisätään erillisessä taskissa.
 
 Tietokannan migraatiokomennot lisätään, kun migraatiotyökalu on valittu.
 
