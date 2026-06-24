@@ -10,6 +10,7 @@ export type WorkspaceTab = {
   signature: WorkspaceTabSignature;
   label: string;
   emptyText: string;
+  requiresScenarioAndOrgState?: boolean;
 };
 
 export const WORKSPACE_TABS: WorkspaceTab[] = [
@@ -21,12 +22,14 @@ export const WORKSPACE_TABS: WorkspaceTab[] = [
   {
     signature: "graph",
     label: "Structure",
-    emptyText: "Organisation structure views will appear here."
+    emptyText: "Organisation structure views will appear here.",
+    requiresScenarioAndOrgState: true
   },
   {
     signature: "events",
     label: "Events",
-    emptyText: "Event timelines and event editing will appear here."
+    emptyText: "Event timelines and event editing will appear here.",
+    requiresScenarioAndOrgState: true
   },
   {
     signature: "metrics",

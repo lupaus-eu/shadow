@@ -8,6 +8,7 @@ export type WorkspaceScenarioSummary = {
 export type WorkspaceOrgStateSummary = {
   id: string;
   name: string;
+  targetDate: string;
 };
 
 type WorkspaceSelectionContextValue = {

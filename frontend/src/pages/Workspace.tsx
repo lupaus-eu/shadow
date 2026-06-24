@@ -8,9 +8,10 @@ import {
   useParams
 } from "react-router-dom";
 import EmptyTab from "../components/EmptyTab";
+import ScenariosTab from "../features/scenarios/ScenariosTab";
 import { useWorkspaceSelection } from "../workspace/WorkspaceSelectionContext";
 import WorkspaceSelectionProvider from "../workspace/WorkspaceSelectionProvider";
-import { WORKSPACE_TABS } from "../workspace/workspaceTabs";
+import { WORKSPACE_TABS, type WorkspaceTab } from "../workspace/workspaceTabs";
 
 type WorkspaceNavState = {
   organisationName?: string;
@@ -51,7 +52,7 @@ export default function Workspace() {
   const forwardedState: WorkspaceNavState = { organisationName };
 
   return (
-    <WorkspaceSelectionProvider>
+    <WorkspaceSelectionProvider key={orgId}>
       <div className="workspace-shell">
         <header className="workspace-header">
           <div className="workspace-header__top">
@@ -63,21 +64,7 @@ export default function Workspace() {
             </div>
             <WorkspaceIndicators organisationName={organisationName} />
           </div>
-          <nav className="tab-bar" aria-label="Schatten workspace tabs">
-            {WORKSPACE_TABS.map((tab) => (
-              <NavLink
-                key={tab.signature}
-                className={({ isActive }) =>
-                  `tab-link${isActive ? " tab-link--active" : ""}`
-                }
-                to={`/schatten/${orgId}/${tab.signature}`}
-                state={forwardedState}
-                end
-              >
-                {tab.label}
-              </NavLink>
-            ))}
-          </nav>
+          <WorkspaceTabs orgId={orgId} forwardedState={forwardedState} />
         </header>
 
         <main className="workspace-content">
@@ -92,9 +79,7 @@ export default function Workspace() {
               <Route
                 key={tab.signature}
                 path={tab.signature}
-                element={
-                  <EmptyTab title={tab.label} description={tab.emptyText} />
-                }
+                element={<WorkspaceTabContent tab={tab} orgId={orgId} />}
               />
             ))}
             <Route
@@ -115,14 +100,83 @@ export default function Workspace() {
 
 function WorkspaceIndicators(props: { organisationName: string }) {
   const { selectedScenario, selectedOrgState } = useWorkspaceSelection();
+  const orgStateValue = selectedOrgState
+    ? `${selectedOrgState.name} (${selectedOrgState.targetDate})`
+    : "None";
 
   return (
     <div className="workspace-indicators" aria-label="Current workspace context">
       <ReadOnlyChip label="Organisation" value={props.organisationName} />
       <ReadOnlyChip label="Scenario" value={selectedScenario?.name ?? "None"} />
-      <ReadOnlyChip label="Org state" value={selectedOrgState?.name ?? "None"} />
+      <ReadOnlyChip label="Org state" value={orgStateValue} />
     </div>
   );
+}
+
+function WorkspaceTabs(props: {
+  orgId: string;
+  forwardedState: WorkspaceNavState;
+}) {
+  const { selectedScenario, selectedOrgState } = useWorkspaceSelection();
+  const hasScenarioAndOrgState = Boolean(selectedScenario && selectedOrgState);
+
+  return (
+    <nav className="tab-bar" aria-label="Schatten workspace tabs">
+      {WORKSPACE_TABS.map((tab) => {
+        const isDisabled =
+          tab.requiresScenarioAndOrgState && !hasScenarioAndOrgState;
+
+        if (isDisabled) {
+          return (
+            <span
+              key={tab.signature}
+              className="tab-link tab-link--disabled"
+              aria-disabled="true"
+              title="Select a scenario and org state in Scenarios first"
+            >
+              {tab.label}
+            </span>
+          );
+        }
+
+        return (
+          <NavLink
+            key={tab.signature}
+            className={({ isActive }) =>
+              `tab-link${isActive ? " tab-link--active" : ""}`
+            }
+            to={`/schatten/${props.orgId}/${tab.signature}`}
+            state={props.forwardedState}
+            end
+          >
+            {tab.label}
+          </NavLink>
+        );
+      })}
+    </nav>
+  );
+}
+
+function WorkspaceTabContent(props: { tab: WorkspaceTab; orgId: string }) {
+  const { selectedScenario, selectedOrgState } = useWorkspaceSelection();
+
+  if (props.tab.signature === "org-states") {
+    return <ScenariosTab orgId={props.orgId} />;
+  }
+
+  if (
+    props.tab.requiresScenarioAndOrgState &&
+    (!selectedScenario || !selectedOrgState)
+  ) {
+    return (
+      <EmptyTab
+        title={props.tab.label}
+        description="Select a scenario and org state in Scenarios to activate this tab."
+      />
+    );
+  }
+
+  return <EmptyTab title={props.tab.label} description={props.tab.emptyText} />;
 }
 
 function ReadOnlyChip(props: { label: string; value: string }) {
