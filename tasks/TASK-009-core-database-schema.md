@@ -134,8 +134,8 @@ The schema must support organisations, scenarios, organisation states, events, m
   - `position_x DOUBLE PRECISION`
   - `position_y DOUBLE PRECISION`
   - `attributes JSONB NOT NULL DEFAULT '{}'::jsonb`
-  - `timeserie_id BIGINT REFERENCES timeseries(timeserie_id)`
-  - `timeserie_secondary_id BIGINT REFERENCES timeseries(timeserie_id)`
+  - `timeserie_id BIGINT REFERENCES timeseries(timeserie_id) ON DELETE SET NULL`
+  - `timeserie_secondary_id BIGINT REFERENCES timeseries(timeserie_id) ON DELETE SET NULL`
 - Add `graph_edges` columns:
   - `graph_id BIGINT NOT NULL REFERENCES graphs(graph_id)`
   - `edge_key TEXT NOT NULL`
@@ -145,7 +145,7 @@ The schema must support organisations, scenarios, organisation states, events, m
   - `create_date DATE`
   - `attributes JSONB NOT NULL DEFAULT '{}'::jsonb`
 - Add `timeseries` columns:
-  - `scenario_id BIGINT NOT NULL REFERENCES scenarios(scenario_id)`
+  - `scenario_id BIGINT NOT NULL REFERENCES scenarios(scenario_id) ON DELETE CASCADE`
   - `timeserie_key TEXT NOT NULL`
   - `name TEXT NOT NULL`
   - `description TEXT`
@@ -153,7 +153,7 @@ The schema must support organisations, scenarios, organisation states, events, m
   - `time_unit TEXT NOT NULL CHECK (time_unit IN ('day', 'week', 'month', 'year'))`
   - `value_unit TEXT NOT NULL CHECK (value_unit IN ('number', 'string', 'boolean'))`
 - Add `timeserie_values` columns:
-  - `timeserie_id BIGINT NOT NULL REFERENCES timeseries(timeserie_id)`
+  - `timeserie_id BIGINT NOT NULL REFERENCES timeseries(timeserie_id) ON DELETE CASCADE`
   - `date DATE NOT NULL`
   - `value JSONB NOT NULL`
 - Add indexes for parent lookups, active stable-key uniqueness, graph traversal and timeserie value lookup.
@@ -173,7 +173,9 @@ The schema must support organisations, scenarios, organisation states, events, m
 - [ ] Graph nodes are unique by active `(graph_id, node_key)`.
 - [ ] Graph edges are unique by active `(graph_id, edge_key)`.
 - [ ] Graph edges reference relational source and target graph nodes.
-- [ ] Deleting a scenario cascades to its `org_states`, `events` and related `graphs`.
+- [ ] Normal scenario deletion is documented as soft delete using `deleted_time`.
+- [ ] Soft-deleting a scenario is documented to require application/service logic that also soft-deletes scenario-owned `org_states`, `events`, `graphs`, `timeseries` and `timeserie_values`.
+- [ ] Physical hard-delete cascades are documented as cleanup/safety behavior, not the normal application deletion flow.
 - [ ] Timeserie values are unique by `(timeserie_id, date)`.
 - [ ] Documentation reflects the new physical schema.
 - [ ] No seed data is added in this task.

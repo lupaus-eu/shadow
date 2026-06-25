@@ -1,0 +1,172 @@
+@startuml
+title Schatten - Core Physical Database Schema
+
+hide circle
+skinparam linetype ortho
+skinparam classAttributeIconSize 0
+
+entity "users" as users {
+  * user_id : BIGINT
+  --
+  name : TEXT
+  role : TEXT
+}
+
+entity "organisations" as organisations {
+  * organisation_id : BIGINT
+  --
+  organisation_key : TEXT
+  name : TEXT
+}
+
+entity "scenarios" as scenarios {
+  * scenario_id : BIGINT
+  --
+  organisation_id : BIGINT
+  scenario_key : TEXT
+  name : TEXT
+  protected : BOOLEAN
+  source_scenario_id : BIGINT
+  initial_state_id : BIGINT
+  version : INT
+}
+
+entity "org_states" as org_states {
+  * org_state_id : BIGINT
+  --
+  scenario_id : BIGINT
+  org_state_key : TEXT
+  version : INT
+  target_date : DATE
+}
+
+entity "events" as events {
+  * event_id : BIGINT
+  --
+  scenario_id : BIGINT
+  event_key : TEXT
+  name : TEXT
+  target_date : DATE
+  version : INT
+}
+
+entity "metamodels" as metamodels {
+  * metamodel_id : BIGINT
+  --
+  organisation_id : BIGINT
+  version : INT
+}
+
+entity "node_types" as node_types {
+  * node_type_id : BIGINT
+  --
+  metamodel_id : BIGINT
+  node_type_key : TEXT
+  name : TEXT
+  display_name : TEXT
+}
+
+entity "edge_types" as edge_types {
+  * edge_type_id : BIGINT
+  --
+  metamodel_id : BIGINT
+  edge_type_key : TEXT
+  name : TEXT
+  display_name : TEXT
+}
+
+entity "type_attributes" as type_attributes {
+  * type_attribute_id : BIGINT
+  --
+  metamodel_id : BIGINT
+  owner_kind : TEXT
+  owner_node_type_id : BIGINT
+  owner_edge_type_id : BIGINT
+  attribute_key : TEXT
+  display_name : TEXT
+}
+
+entity "allowed_connections" as allowed_connections {
+  * allowed_connection_id : BIGINT
+  --
+  metamodel_id : BIGINT
+  edge_type_id : BIGINT
+  source_node_type_id : BIGINT
+  target_node_type_id : BIGINT
+}
+
+entity "graphs" as graphs {
+  * graph_id : BIGINT
+  --
+  org_state_id : BIGINT
+  name : TEXT
+}
+
+entity "graph_nodes" as graph_nodes {
+  * graph_node_id : BIGINT
+  --
+  graph_id : BIGINT
+  node_key : TEXT
+  node_type_id : BIGINT
+  attributes : JSONB
+  timeserie_id : BIGINT
+  timeserie_secondary_id : BIGINT
+}
+
+entity "graph_edges" as graph_edges {
+  * graph_edge_id : BIGINT
+  --
+  graph_id : BIGINT
+  edge_key : TEXT
+  edge_type_id : BIGINT
+  source_graph_node_id : BIGINT
+  target_graph_node_id : BIGINT
+  attributes : JSONB
+}
+
+entity "timeseries" as timeseries {
+  * timeserie_id : BIGINT
+  --
+  scenario_id : BIGINT
+  timeserie_key : TEXT
+  name : TEXT
+  time_unit : TEXT
+  value_unit : TEXT
+}
+
+entity "timeserie_values" as timeserie_values {
+  * timeserie_value_id : BIGINT
+  --
+  timeserie_id : BIGINT
+  date : DATE
+  value : JSONB
+}
+
+organisations ||--o{ scenarios
+organisations ||--o{ metamodels
+scenarios ||--o{ org_states
+scenarios ||--o{ events
+scenarios ||--o{ timeseries
+scenarios ||--o{ scenarios : source
+scenarios }o--o| org_states : initial
+org_states ||--o{ graphs
+metamodels ||--o{ node_types
+metamodels ||--o{ edge_types
+metamodels ||--o{ type_attributes
+metamodels ||--o{ allowed_connections
+node_types ||--o{ type_attributes
+edge_types ||--o{ type_attributes
+edge_types ||--o{ allowed_connections
+node_types ||--o{ allowed_connections : source
+node_types ||--o{ allowed_connections : target
+graphs ||--o{ graph_nodes
+graphs ||--o{ graph_edges
+node_types ||--o{ graph_nodes
+edge_types ||--o{ graph_edges
+graph_nodes ||--o{ graph_edges : source
+graph_nodes ||--o{ graph_edges : target
+timeseries ||--o{ timeserie_values
+timeseries ||--o{ graph_nodes : primary
+timeseries ||--o{ graph_nodes : secondary
+
+@enduml
