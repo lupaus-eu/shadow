@@ -1,4 +1,17 @@
 services:
+  database:
+    # Use 18.0 locally because the official 18.0.4 image is not available yet.
+    # Revisit this pin for production deployment once the managed 18.0.4 target is available.
+    image: postgres:18.0
+    ports:
+      - "${DATABASE_PORT:-5432}:5432"
+    environment:
+      POSTGRES_DB: ${DATABASE_NAME:-schatten}
+      POSTGRES_USER: ${DATABASE_USER:-schatten}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-schatten_dev_password}
+    volumes:
+      - database_data:/var/lib/postgresql
+
   frontend:
     build:
       context: ./frontend
@@ -23,4 +36,5 @@ services:
       - "4173:4173"
 
 volumes:
+  database_data:
   frontend_node_modules:

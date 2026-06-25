@@ -64,7 +64,7 @@ refactor/
 
 # Running The App
 
-Status: frontend Docker runtime available, backend and database scaffolding pending
+Status: frontend and database Docker runtimes available, backend scaffolding pending
 
 Paikallinen ympäristö ajetaan Docker-konteissa:
 
@@ -108,6 +108,60 @@ Preview on saatavilla osoitteessa:
 
 ```text
 http://localhost:4173
+```
+
+Tietokantakontti:
+
+```bash
+docker compose up database
+```
+
+Paikallinen PostgreSQL on saatavilla osoitteessa:
+
+```text
+localhost:5432
+```
+
+Tietokantakontti käyttää Docker-imagea:
+
+```text
+postgres:18.0
+```
+
+Paikallinen runtime käyttää versiota `18.0`, jotta kontti voidaan oikeasti käynnistää virallisesta PostgreSQL-imagesta. Production deploymentissa pinnaus pitää vaihtaa versioon `18.0.4`, kun managed PostgreSQL -ympäristö käyttää sitä ja sopiva image/target on saatavilla.
+
+Paikallisen tietokannan oletusarvot ovat:
+
+```text
+database: schatten
+user: schatten
+password: schatten_dev_password
+```
+
+Voit vaihtaa arvoja paikallisessa `.env`-tiedostossa:
+
+```bash
+DATABASE_NAME=schatten
+DATABASE_USER=schatten
+DATABASE_PASSWORD=schatten_dev_password
+DATABASE_HOST=localhost
+DATABASE_PORT=5432
+DATABASE_URL=postgresql://schatten:schatten_dev_password@localhost:5432/schatten
+```
+
+Tietokannan data säilyy konttien uudelleenkäynnistysten yli named volume -volumessa `database_data`.
+
+Tietokantakontin pysäytys:
+
+```bash
+docker compose stop database
+```
+
+Tietokannan resetointi pysäyttää tietokantakontin ja poistaa vain paikallisen tietokantavolumen `schatten_database_data`. Älä aja tätä, jos haluat säilyttää paikallisen tietokantadatan.
+
+```bash
+docker compose stop database
+docker volume rm schatten_database_data
 ```
 
 Kontit pysäytetään:
