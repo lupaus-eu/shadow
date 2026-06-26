@@ -35,6 +35,17 @@ services:
     ports:
       - "4173:4173"
 
+  diagram-renderer:
+    profiles:
+      - docs
+    build:
+      context: ./docs/diagrams
+    user: "${UID:-1000}:${GID:-1000}"
+    working_dir: /workspace/docs/diagrams
+    volumes:
+      - .:/workspace
+    command: ["-tsvg", "-o", "generated", "db-physical-schema.puml"]
+
 volumes:
   database_data:
   frontend_node_modules:

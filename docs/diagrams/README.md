@@ -168,6 +168,25 @@ Jos PlantUML-ympäristö ei tue C4-kirjastoa suoraan, lisää projektiin tai ren
 
 # Rendering
 
+Project diagrams can be rendered through the Docker Compose docs profile:
+
+```bash
+docker compose --profile docs build diagram-renderer
+docker compose --profile docs run --rm diagram-renderer
+```
+
+By default, `diagram-renderer` renders:
+
+```text
+docs/diagrams/db-physical-schema.puml
+```
+
+to:
+
+```text
+docs/diagrams/generated/db-physical-schema.svg
+```
+
 Jos paikallinen PlantUML-serveri on käytössä portissa `9000`, renderöi SVG:t serverin kautta.
 
 Projektissa käytetty oletus:

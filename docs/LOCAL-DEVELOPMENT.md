@@ -210,6 +210,27 @@ db/init/metamodel_state_##default##.json
 
 Seed on tarkoitettu vain paikalliseen kehitykseen. Sitä ei ajeta staging- tai tuotantoympäristöihin.
 
+## Rendering Diagrams
+
+PlantUML diagrams can be rendered through the Docker Compose docs profile:
+
+```bash
+docker compose --profile docs build diagram-renderer
+docker compose --profile docs run --rm diagram-renderer
+```
+
+The default command renders:
+
+```text
+docs/diagrams/db-physical-schema.puml
+```
+
+to:
+
+```text
+docs/diagrams/generated/db-physical-schema.svg
+```
+
 ---
 
 # Verification Before PR
