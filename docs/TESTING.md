@@ -2,7 +2,7 @@
 
 Tämä dokumentti kuvaa projektin testauskäytännön ihmisille ja AI-agenteille.
 
-Status: stack decided
+Status: frontend and backend test tooling configured
 
 Testityökalut on päätetty ADR-001:ssä:
 
@@ -242,7 +242,8 @@ In that case:
 
 Current baseline CI checks repository documentation structure.
 
-When the application scaffolds exist, CI should run:
+CI runs the repository baseline checks and backend scaffold checks. As application
+coverage grows, CI should run:
 
 ```text
 Install

@@ -65,6 +65,20 @@ docker compose up frontend
 
 Frontend dev on saatavilla osoitteessa `http://localhost:5173`.
 
+Backendin voi ajaa Dockerissa:
+
+```bash
+docker compose up backend
+```
+
+Backend on saatavilla osoitteessa `http://localhost:8000`.
+
+Health endpoint:
+
+```bash
+curl http://localhost:8000/health
+```
+
 Buildatun frontendin preview:
 
 ```bash
@@ -73,7 +87,14 @@ docker compose --profile preview up frontend-preview
 
 Preview on saatavilla osoitteessa `http://localhost:4173`.
 
-Backendin ja tietokannan Docker-ajotavat täsmentyvät, kun niiden scaffoldit lisätään.
+Backendin oletustarkistukset:
+
+```bash
+cd backend
+uv run ruff check .
+uv run pytest
+uv run pyright
+```
 
 ## Kehitysworkflow
 

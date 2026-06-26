@@ -12,6 +12,21 @@ services:
     volumes:
       - database_data:/var/lib/postgresql
 
+  backend:
+    build:
+      context: ./backend
+      target: dev
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://schatten:schatten_dev_password@database:5432/schatten}
+    depends_on:
+      - database
+    volumes:
+      - ./backend:/app
+      - backend_uv_cache:/root/.cache/uv
+      - backend_venv:/app/.venv
+
   frontend:
     build:
       context: ./frontend
@@ -19,7 +34,7 @@ services:
     ports:
       - "5173:5173"
     environment:
-      VITE_DEV_API_PROXY_TARGET: ${FRONTEND_DEV_API_PROXY_TARGET:-http://host.docker.internal:8000}
+      VITE_DEV_API_PROXY_TARGET: ${FRONTEND_DEV_API_PROXY_TARGET:-http://backend:8000}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
@@ -47,5 +62,7 @@ services:
     command: ["-tsvg", "-o", "generated", "db-physical-schema.puml"]
 
 volumes:
+  backend_uv_cache:
+  backend_venv:
   database_data:
   frontend_node_modules:

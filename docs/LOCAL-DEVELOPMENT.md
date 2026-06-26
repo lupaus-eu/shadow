@@ -64,7 +64,7 @@ refactor/
 
 # Running The App
 
-Status: frontend and database Docker runtimes available, backend scaffolding pending
+Status: frontend, backend and database Docker runtimes available
 
 Paikallinen ympäristö ajetaan Docker-konteissa:
 
@@ -86,16 +86,40 @@ http://localhost:5173
 
 Frontendin lähdekoodi bind mountataan konttiin, joten muutokset näkyvät ilman image rebuildia.
 
-Frontendin `/api`-proxy osoittaa oletuksena hostilla ajettavaan backendin osoitteeseen:
+Frontendin `/api`-proxy osoittaa Docker Composessa oletuksena backend-konttiin:
 
 ```text
-http://host.docker.internal:8000
+http://backend:8000
 ```
 
 Voit vaihtaa proxyn kohteen paikallisessa `.env`-tiedostossa:
 
 ```bash
+FRONTEND_DEV_API_PROXY_TARGET=http://backend:8000
+```
+
+Jos ajat frontendin Dockerissa mutta backendin suoraan hostilla, käytä:
+
+```bash
 FRONTEND_DEV_API_PROXY_TARGET=http://host.docker.internal:8000
+```
+
+Backend-kehityskontti:
+
+```bash
+docker compose up backend
+```
+
+Backend on saatavilla osoitteessa:
+
+```text
+http://localhost:8000
+```
+
+Health endpoint:
+
+```bash
+curl http://localhost:8000/health
 ```
 
 Frontend preview -kontti buildatulle Vite-tuotokselle:
@@ -183,10 +207,8 @@ Backend-kehitys:
 ```bash
 cd backend
 uv sync
-uv run fastapi dev
+uv run fastapi dev app/main.py
 ```
-
-Backend scaffold lisätään erillisessä taskissa.
 
 Tietokannan migraatiokomennot lisätään, kun migraatiotyökalu on valittu.
 

@@ -39,5 +39,37 @@ jobs:
 
       - name: Explain CI status
         run: |
-          echo "Project stack is still TBD."
-          echo "Replace this baseline job with install/lint/test/build after ADR-001 is accepted."
+          echo "Repository baseline documents are present."
+
+  backend-checks:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: backend/.python-version
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: uv sync --frozen
+
+      - name: Lint backend
+        working-directory: backend
+        run: uv run ruff check .
+
+      - name: Test backend
+        working-directory: backend
+        run: uv run pytest
+
+      - name: Typecheck backend
+        working-directory: backend
+        run: uv run pyright

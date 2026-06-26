@@ -1,0 +1,37 @@
+[project]
+name = "schatten-backend"
+version = "0.1.0"
+description = "Schatten FastAPI backend"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi[standard]>=0.115.0",
+    "pydantic>=2.10.0",
+    "psycopg[binary]>=3.2.0",
+    "sqlalchemy>=2.0.0",
+]
+
+[dependency-groups]
+dev = [
+    "pyright>=1.1.0",
+    "pytest>=8.0.0",
+    "ruff>=0.8.0",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.pyright]
+pythonVersion = "3.12"
+typeCheckingMode = "strict"
+include = ["app", "tests"]
+venv = ".venv"
+venvPath = "."
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
