@@ -1,0 +1,671 @@
+{
+  "version": 1,
+  "node_types": [
+    {
+      "id": "nt_person",
+      "display_name": "Person",
+      "ui": {
+        "color": "#FECDC2",
+        "shape": "rectangle"
+      },
+      "attributes": [
+        {
+          "id": "a_name",
+          "display_name": "Name",
+          "data_type": "string",
+          "max_length": 100,
+          "multiline": false,
+          "mandatory": true
+        },
+        {
+          "id": "a_description",
+          "display_name": "Description",
+          "data_type": "string",
+          "max_length": 1000,
+          "multiline": true,
+          "mandatory": false
+        }
+      ]
+    },
+    {
+      "id": "nt_team",
+      "display_name": "Team",
+      "ui": {
+        "color": "#FEC294",
+        "shape": "rectangle"
+      },
+      "attributes": [
+        {
+          "id": "a_name",
+          "display_name": "Name",
+          "data_type": "string",
+          "max_length": 100,
+          "multiline": false,
+          "mandatory": true
+        },
+        {
+          "id": "a_description",
+          "display_name": "Description",
+          "data_type": "string",
+          "max_length": 1000,
+          "multiline": true,
+          "mandatory": false
+        }
+      ]
+    },
+    {
+      "id": "nt_product",
+      "display_name": "Product",
+      "ui": {
+        "color": "#FDDB96",
+        "shape": "rectangle"
+      },
+      "attributes": [
+        {
+          "id": "a_name",
+          "display_name": "Name",
+          "data_type": "string",
+          "max_length": 100,
+          "multiline": false,
+          "mandatory": true
+        },
+        {
+          "id": "a_description",
+          "display_name": "Description",
+          "data_type": "string",
+          "max_length": 1000,
+          "multiline": true,
+          "mandatory": false
+        }
+      ]
+    },
+    {
+      "id": "nt_goal",
+      "display_name": "Goal",
+      "ui": {
+        "color": "#d7d94d",
+        "shape": "rectangle"
+      },
+      "attributes": [
+        {
+          "id": "a_name",
+          "display_name": "Name",
+          "data_type": "string",
+          "max_length": 100,
+          "multiline": false,
+          "mandatory": true
+        },
+        {
+          "id": "a_description",
+          "display_name": "Description",
+          "data_type": "string",
+          "max_length": 1000,
+          "multiline": true,
+          "mandatory": false
+        }
+      ]
+    },
+    {
+      "id": "nt_business_object",
+      "display_name": "Business object",
+      "ui": {
+        "color": "#FFD240",
+        "shape": "rectangle"
+      },
+      "attributes": [
+        {
+          "id": "a_name",
+          "display_name": "Name",
+          "data_type": "string",
+          "max_length": 100,
+          "multiline": false,
+          "mandatory": true
+        },
+        {
+          "id": "a_description",
+          "display_name": "Description",
+          "data_type": "string",
+          "max_length": 1000,
+          "multiline": true,
+          "mandatory": false
+        }
+      ]
+    },
+    {
+      "id": "nt_contract",
+      "display_name": "Contract",
+      "ui": {
+        "color": "#BFE5A4",
+        "shape": "rectangle"
+      },
+      "attributes": [
+        {
+          "id": "a_name",
+          "display_name": "Name",
+          "data_type": "string",
+          "max_length": 100,
+          "multiline": false,
+          "mandatory": true
+        },
+        {
+          "id": "a_description",
+          "display_name": "Description",
+          "data_type": "string",
+          "max_length": 1000,
+          "multiline": true,
+          "mandatory": false
+        }
+      ]
+    },
+    {
+      "id": "nt_app_service",
+      "display_name": "App service",
+      "ui": {
+        "color": "#B7D9E6",
+        "shape": "rectangle"
+      },
+      "attributes": [
+        {
+          "id": "a_name",
+          "display_name": "Name",
+          "data_type": "string",
+          "max_length": 100,
+          "multiline": false,
+          "mandatory": true
+        },
+        {
+          "id": "a_description",
+          "display_name": "Description",
+          "data_type": "string",
+          "max_length": 1000,
+          "multiline": true,
+          "mandatory": false
+        }
+      ]
+    },
+    {
+      "id": "nt_app_component",
+      "display_name": "App component",
+      "ui": {
+        "color": "#B8CBFF",
+        "shape": "rectangle"
+      },
+      "attributes": [
+        {
+          "id": "a_name",
+          "display_name": "Name",
+          "data_type": "string",
+          "max_length": 100,
+          "multiline": false,
+          "mandatory": true
+        },
+        {
+          "id": "a_description",
+          "display_name": "Description",
+          "data_type": "string",
+          "max_length": 1000,
+          "multiline": true,
+          "mandatory": false
+        }
+      ]
+    },
+    {
+      "id": "nt_journey",
+      "display_name": "Journey",
+      "ui": {
+        "color": "#CFC6F5",
+        "shape": "rectangle"
+      },
+      "attributes": [
+        {
+          "id": "a_name",
+          "display_name": "Name",
+          "data_type": "string",
+          "max_length": 100,
+          "multiline": false,
+          "mandatory": true
+        },
+        {
+          "id": "a_description",
+          "display_name": "Description",
+          "data_type": "string",
+          "max_length": 1000,
+          "multiline": true,
+          "mandatory": false
+        }
+      ]
+    },
+    {
+      "id": "nt_brand",
+      "display_name": "Brand",
+      "ui": {
+        "color": "#FCC9FB",
+        "shape": "rectangle"
+      },
+      "attributes": [
+        {
+          "id": "a_name",
+          "display_name": "Name",
+          "data_type": "string",
+          "max_length": 100,
+          "multiline": false,
+          "mandatory": true
+        },
+        {
+          "id": "a_description",
+          "display_name": "Description",
+          "data_type": "string",
+          "max_length": 1000,
+          "multiline": true,
+          "mandatory": false
+        }
+      ]
+    },
+    {
+      "id": "nt_metric",
+      "display_name": "Metric",
+      "ui": {
+        "color": "#F4A9BA",
+        "shape": "rectangle"
+      },
+      "timeserie": {
+        "timeserie_id": "id1",
+        "timeserie_secundary_id": "id2",
+        "timeserie_id_rule": "MEASURED_BY from Goal HAS_GOAL from Organisation"
+      },
+      "attributes": [
+        {
+          "id": "a_name",
+          "display_name": "Name",
+          "data_type": "string",
+          "max_length": 100,
+          "multiline": false,
+          "mandatory": true
+        },
+        {
+          "id": "a_description",
+          "display_name": "Description",
+          "data_type": "string",
+          "max_length": 1000,
+          "multiline": true,
+          "mandatory": false
+        }
+      ]
+    }
+  ],
+  "edge_types": [
+    {
+      "id": "et_features_in",
+      "display_name": "Features in",
+      "ui": {
+        "style": "solid",
+        "source_end": "none",
+        "target_end": "arrow"
+      },
+      "attributes": [
+        {
+          "id": "a_name",
+          "display_name": "Name",
+          "data_type": "string",
+          "max_length": 100,
+          "multiline": false,
+          "mandatory": true
+        },
+        {
+          "id": "a_description",
+          "display_name": "Description",
+          "data_type": "string",
+          "max_length": 1000,
+          "multiline": true,
+          "mandatory": false
+        }
+      ],
+      "allowed_connections": [
+        {
+          "source_node_type_ids": [
+            "nt_product"
+          ],
+          "target_node_type_ids": [
+            "nt_journey"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "et_is_composed_of",
+      "display_name": "Is composed of",
+      "ui": {
+        "style": "solid",
+        "source_end": "none",
+        "target_end": "arrow"
+      },
+      "attributes": [
+        {
+          "id": "a_name",
+          "display_name": "Name",
+          "data_type": "string",
+          "max_length": 100,
+          "multiline": false,
+          "mandatory": true
+        },
+        {
+          "id": "a_description",
+          "display_name": "Description",
+          "data_type": "string",
+          "max_length": 1000,
+          "multiline": true,
+          "mandatory": false
+        }
+      ],
+      "allowed_connections": [
+        {
+          "source_node_type_ids": [
+            "nt_product"
+          ],
+          "target_node_type_ids": [
+            "nt_app_service"
+          ]
+        },
+        {
+          "source_node_type_ids": [
+            "nt_product"
+          ],
+          "target_node_type_ids": [
+            "nt_contract"
+          ]
+        },
+        {
+          "source_node_type_ids": [
+            "nt_product"
+          ],
+          "target_node_type_ids": [
+            "nt_business_object"
+          ]
+        },
+        {
+          "source_node_type_ids": [
+            "nt_goal"
+          ],
+          "target_node_type_ids": [
+            "nt_goal"
+          ]
+        },
+        {
+          "source_node_type_ids": [
+            "nt_team"
+          ],
+          "target_node_type_ids": [
+            "nt_team"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "et_association",
+      "display_name": "Association",
+      "ui": {
+        "style": "solid",
+        "source_end": "none",
+        "target_end": "none"
+      },
+      "attributes": [
+        {
+          "id": "a_name",
+          "display_name": "Name",
+          "data_type": "string",
+          "max_length": 100,
+          "multiline": false,
+          "mandatory": true
+        },
+        {
+          "id": "a_description",
+          "display_name": "Description",
+          "data_type": "string",
+          "max_length": 1000,
+          "multiline": true,
+          "mandatory": false
+        }
+      ],
+      "allowed_connections": [
+        {
+          "source_node_type_ids": [
+            "nt_business_object"
+          ],
+          "target_node_type_ids": [
+            "nt_business_object"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "et_realizes",
+      "display_name": "Realizes",
+      "ui": {
+        "style": "solid",
+        "source_end": "none",
+        "target_end": "arrow"
+      },
+      "attributes": [
+        {
+          "id": "a_name",
+          "display_name": "Name",
+          "data_type": "string",
+          "max_length": 100,
+          "multiline": false,
+          "mandatory": true
+        },
+        {
+          "id": "a_description",
+          "display_name": "Description",
+          "data_type": "string",
+          "max_length": 1000,
+          "multiline": true,
+          "mandatory": false
+        }
+      ],
+      "allowed_connections": [
+        {
+          "source_node_type_ids": [
+            "nt_app_component"
+          ],
+          "target_node_type_ids": [
+            "nt_app_service"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "et_embodies",
+      "display_name": "Embodies",
+      "ui": {
+        "style": "solid",
+        "source_end": "none",
+        "target_end": "arrow"
+      },
+      "attributes": [
+        {
+          "id": "a_name",
+          "display_name": "Name",
+          "data_type": "string",
+          "max_length": 100,
+          "multiline": false,
+          "mandatory": true
+        },
+        {
+          "id": "a_description",
+          "display_name": "Description",
+          "data_type": "string",
+          "max_length": 1000,
+          "multiline": true,
+          "mandatory": false
+        }
+      ],
+      "allowed_connections": [
+        {
+          "source_node_type_ids": [
+            "nt_product"
+          ],
+          "target_node_type_ids": [
+            "nt_brand"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "et_has",
+      "display_name": "Has",
+      "ui": {
+        "style": "solid",
+        "source_end": "none",
+        "target_end": "arrow"
+      },
+      "attributes": [
+        {
+          "id": "a_name",
+          "display_name": "Name",
+          "data_type": "string",
+          "max_length": 100,
+          "multiline": false,
+          "mandatory": true
+        },
+        {
+          "id": "a_description",
+          "display_name": "Description",
+          "data_type": "string",
+          "max_length": 1000,
+          "multiline": true,
+          "mandatory": false
+        }
+      ],
+      "allowed_connections": [
+        {
+          "source_node_type_ids": [
+            "nt_goal"
+          ],
+          "target_node_type_ids": [
+            "nt_metric"
+          ]
+        },
+        {
+          "source_node_type_ids": [
+            "nt_team"
+          ],
+          "target_node_type_ids": [
+            "nt_goal"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "et_is_assigned_to",
+      "display_name": "Is assigned to",
+      "ui": {
+        "style": "solid",
+        "source_end": "none",
+        "target_end": "arrow"
+      },
+      "attributes": [
+        {
+          "id": "a_name",
+          "display_name": "Name",
+          "data_type": "string",
+          "max_length": 100,
+          "multiline": false,
+          "mandatory": true
+        },
+        {
+          "id": "a_description",
+          "display_name": "Description",
+          "data_type": "string",
+          "max_length": 1000,
+          "multiline": true,
+          "mandatory": false
+        }
+      ],
+      "allowed_connections": [
+        {
+          "source_node_type_ids": [
+            "nt_person"
+          ],
+          "target_node_type_ids": [
+            "nt_team"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "et_offers",
+      "display_name": "Offers",
+      "ui": {
+        "style": "solid",
+        "source_end": "none",
+        "target_end": "arrow"
+      },
+      "attributes": [
+        {
+          "id": "a_name",
+          "display_name": "Name",
+          "data_type": "string",
+          "max_length": 100,
+          "multiline": false,
+          "mandatory": true
+        },
+        {
+          "id": "a_description",
+          "display_name": "Description",
+          "data_type": "string",
+          "max_length": 1000,
+          "multiline": true,
+          "mandatory": false
+        }
+      ],
+      "allowed_connections": [
+        {
+          "source_node_type_ids": [
+            "nt_team"
+          ],
+          "target_node_type_ids": [
+            "nt_product"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "et_uses",
+      "display_name": "Uses",
+      "ui": {
+        "style": "solid",
+        "source_end": "none",
+        "target_end": "arrow"
+      },
+      "attributes": [
+        {
+          "id": "a_name",
+          "display_name": "Name",
+          "data_type": "string",
+          "max_length": 100,
+          "multiline": false,
+          "mandatory": true
+        },
+        {
+          "id": "a_description",
+          "display_name": "Description",
+          "data_type": "string",
+          "max_length": 1000,
+          "multiline": true,
+          "mandatory": false
+        }
+      ],
+      "allowed_connections": [
+        {
+          "source_node_type_ids": [
+            "nt_team"
+          ],
+          "target_node_type_ids": [
+            "nt_product"
+          ]
+        }
+      ]
+    }
+  ]
+}

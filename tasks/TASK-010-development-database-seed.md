@@ -4,7 +4,7 @@
 
 Approved plan: add local development seed data after the relational database schema exists.
 
-This task seeds a dummy admin user and the default metamodel from Varjo's `metamodel_state_##default##.json`.
+This task seeds a dummy admin user and the default metamodel from the repo-local `db/init/metamodel_state_##default##.json` file.
 
 ## Goal
 
@@ -17,8 +17,8 @@ The seed must create a dummy admin user when `users` is empty and import the Var
 - Add a dev/local seed script under `db/init/`.
 - Seed a dummy admin user only when `users` is empty.
 - Seed the default metamodel only when no active default metamodel exists.
-- Use Varjo's default metamodel source file:
-  - `/home/j/workspace/Reflector/varjo/varjo/data/metamodels/metamodel_state_##default##.json`
+- Use the repo-local copy of Varjo's default metamodel source file:
+  - `db/init/metamodel_state_##default##.json`
 - Store the default metamodel in `metamodels` with:
   - `organisation_id = NULL`
   - `version` from the JSON root `version` field
@@ -74,7 +74,7 @@ The seed must create a dummy admin user when `users` is empty and import the Var
 - This task depends on `TASK-009 Core Database Schema`.
 - If `TASK-008 Database Runtime Baseline` is complete, document how to run the seed against the local Docker database.
 - Prefer a SQL seed script if it can remain readable and idempotent.
-- If parsing the Varjo JSON directly in SQL becomes too awkward, stop and ask for approval before introducing a script-based seed approach or new tooling.
+- If parsing the metamodel JSON directly in SQL becomes too awkward, stop and ask for approval before introducing a script-based seed approach or new tooling.
 - Do not commit secrets.
 - The dummy admin should be obviously non-production.
 - Suggested dummy admin values:
@@ -142,5 +142,5 @@ No ADR is required because this task adds local/dev seed data only.
 - Älä muuta skeemaa tässä taskissa.
 - Älä muuta Varjo-repositoryä.
 - Älä lisää uusia riippuvuuksia ilman hyväksyntää.
-- Jos Varjo JSON -tiedostoa ei ole saatavilla toteutusympäristössä, pysähdy ja pyydä ihmisen päätös seed-lähteen vendoroimisesta tai vaihtoehtoisesta seed-tavasta.
+- Jos repo-local metamodel JSON -tiedostoa ei ole saatavilla toteutusympäristössä, pysähdy ja pyydä ihmisen päätös seed-lähteen lisäämisestä tai vaihtoehtoisesta seed-tavasta.
 - Kerro lopuksi mitä muutit ja miten tarkistit työn.

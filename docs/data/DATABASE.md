@@ -186,6 +186,22 @@ Init scripts are for local/dev bootstrap only unless explicitly documented other
 
 Do not use `db/init/` as a replacement for migrations.
 
+Current local/dev seed:
+
+```text
+db/init/002_seed_development_data.sql
+```
+
+The seed creates non-production bootstrap data only:
+
+- one `Development Admin` user when `users` is empty
+- one active default metamodel when no active default metamodel exists
+- node types, edge types, type attributes and allowed connections from `db/init/metamodel_state_##default##.json`
+
+The default metamodel uses `metamodels.organisation_id = NULL` and stores the JSON root `version` field in `metamodels.version`.
+
+The seed does not create organisations, scenarios, org states, events, graphs, graph nodes, graph edges, timeseries or timeserie values.
+
 ---
 
 # Change Rules

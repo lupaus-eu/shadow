@@ -18,6 +18,12 @@ Init scripts are for:
 
 Init scripts are not a substitute for migrations.
 
+Current init scripts:
+
+| Script | Purpose |
+| --- | --- |
+| `002_seed_development_data.sql` | Local/dev-only seed for a dummy admin user and the default metamodel from `db/init/metamodel_state_##default##.json`. |
+
 ---
 
 # Naming Convention
@@ -66,3 +72,16 @@ db/migrations/
 ```
 
 Init scripts may help create a local database quickly, but production and staging schema changes must flow through migrations.
+
+Run migrations before seed scripts. For the current local database baseline:
+
+```bash
+PGPASSWORD=schatten_dev_password psql -h localhost -p 5432 -U schatten -d schatten -f db/migrations/001_create_core_schema.sql
+PGPASSWORD=schatten_dev_password psql -h localhost -p 5432 -U schatten -d schatten -f db/init/002_seed_development_data.sql
+```
+
+`002_seed_development_data.sql` is idempotent for normal local use:
+
+- it inserts `Development Admin` only when `users` is empty
+- it inserts the default metamodel only when no active default metamodel exists
+- it does not create organisations, scenarios, org states, events, graphs, graph nodes, graph edges, timeseries or timeserie values

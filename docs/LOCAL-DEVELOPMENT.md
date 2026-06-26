@@ -190,6 +190,26 @@ Backend scaffold lisätään erillisessä taskissa.
 
 Tietokannan migraatiokomennot lisätään, kun migraatiotyökalu on valittu.
 
+Tietokannan nykyisen skeeman voi alustaa paikalliseen tietokantaan SQL-migraatiolla:
+
+```bash
+PGPASSWORD=schatten_dev_password psql -h localhost -p 5432 -U schatten -d schatten -f db/migrations/001_create_core_schema.sql
+```
+
+Paikallisen kehitysdatan seed on dev-only ja se luo tyhjään tietokantaan dummy-adminin sekä repo-local JSON-lähteeseen perustuvan Schattenin default-metamallin:
+
+```bash
+PGPASSWORD=schatten_dev_password psql -h localhost -p 5432 -U schatten -d schatten -f db/init/002_seed_development_data.sql
+```
+
+Seed lukee lähteen ajon aikana tiedostosta:
+
+```text
+db/init/metamodel_state_##default##.json
+```
+
+Seed on tarkoitettu vain paikalliseen kehitykseen. Sitä ei ajeta staging- tai tuotantoympäristöihin.
+
 ---
 
 # Verification Before PR
