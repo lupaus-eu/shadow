@@ -1,6 +1,18 @@
+from datetime import date as dt_date
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, Text, func
+from sqlalchemy import (
+    JSON,
+    BigInteger,
+    Boolean,
+    Date,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    Text,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.models import Base
@@ -231,6 +243,165 @@ class AllowedConnection(Base):
         ForeignKey("node_types.node_type_id"),
     )
     name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("users.user_id"),
+        nullable=True,
+    )
+    created_time: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+    )
+    modified_by: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("users.user_id"),
+        nullable=True,
+    )
+    modified_time: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+    )
+    deleted_by: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("users.user_id"),
+        nullable=True,
+    )
+    deleted_time: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+
+class Graph(Base):
+    __tablename__ = "graphs"
+
+    graph_id: Mapped[int] = mapped_column(
+        BigIntPrimaryKey,
+        primary_key=True,
+        autoincrement=True,
+    )
+    org_state_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("org_states.org_state_id", ondelete="CASCADE"),
+    )
+    name: Mapped[str] = mapped_column(Text)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("users.user_id"),
+        nullable=True,
+    )
+    created_time: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+    )
+    modified_by: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("users.user_id"),
+        nullable=True,
+    )
+    modified_time: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+    )
+    deleted_by: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("users.user_id"),
+        nullable=True,
+    )
+    deleted_time: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+
+class GraphNode(Base):
+    __tablename__ = "graph_nodes"
+
+    graph_node_id: Mapped[int] = mapped_column(
+        BigIntPrimaryKey,
+        primary_key=True,
+        autoincrement=True,
+    )
+    graph_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("graphs.graph_id", ondelete="CASCADE"),
+    )
+    node_key: Mapped[str] = mapped_column(Text)
+    node_type_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("node_types.node_type_id"),
+    )
+    create_date: Mapped[dt_date | None] = mapped_column(Date, nullable=True)
+    position_x: Mapped[float | None] = mapped_column(Float, nullable=True)
+    position_y: Mapped[float | None] = mapped_column(Float, nullable=True)
+    attributes: Mapped[dict[str, object]] = mapped_column(JSON, default=dict)
+    timeserie_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("timeseries.timeserie_id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    timeserie_secondary_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("timeseries.timeserie_id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    created_by: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("users.user_id"),
+        nullable=True,
+    )
+    created_time: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+    )
+    modified_by: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("users.user_id"),
+        nullable=True,
+    )
+    modified_time: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+    )
+    deleted_by: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("users.user_id"),
+        nullable=True,
+    )
+    deleted_time: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+
+class GraphEdge(Base):
+    __tablename__ = "graph_edges"
+
+    graph_edge_id: Mapped[int] = mapped_column(
+        BigIntPrimaryKey,
+        primary_key=True,
+        autoincrement=True,
+    )
+    graph_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("graphs.graph_id", ondelete="CASCADE"),
+    )
+    edge_key: Mapped[str] = mapped_column(Text)
+    edge_type_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("edge_types.edge_type_id"),
+    )
+    source_graph_node_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("graph_nodes.graph_node_id", ondelete="CASCADE"),
+    )
+    target_graph_node_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("graph_nodes.graph_node_id", ondelete="CASCADE"),
+    )
+    create_date: Mapped[dt_date | None] = mapped_column(Date, nullable=True)
+    attributes: Mapped[dict[str, object]] = mapped_column(JSON, default=dict)
     created_by: Mapped[int | None] = mapped_column(
         BigInteger,
         ForeignKey("users.user_id"),

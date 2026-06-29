@@ -1,4 +1,5 @@
 from collections.abc import Iterator
+from datetime import date
 from typing import cast
 
 import pytest
@@ -6,10 +7,19 @@ from fastapi.testclient import TestClient
 from sqlalchemy import StaticPool, create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.api.v1.org_states.models import OrgState, Scenario
+from app.api.v1.org_states.models import (
+    Event,
+    OrgState,
+    Scenario,
+    Timeserie,
+    TimeserieValue,
+)
 from app.api.v1.org_twin_structure.models import (
     AllowedConnection,
     EdgeType,
+    Graph,
+    GraphEdge,
+    GraphNode,
     Metamodel,
     NodeType,
     TypeAttribute,
@@ -330,3 +340,456 @@ def test_patch_organisation_rejects_duplicate_active_name(
     )
 
     assert response.status_code == 409
+
+
+def test_scenario_crud_uses_stable_keys_and_excludes_soft_deleted_rows(
+    client: TestClient,
+) -> None:
+    organisation_key = _create_organisation(client)
+
+    create_response = client.post(
+        f"/api/v1/organisations/{organisation_key}/scenarios",
+        json={"name": "  Future plan  ", "description": "Expansion"},
+    )
+    assert create_response.status_code == 201
+    created_scenario = create_response.json()
+    assert created_scenario["id"].startswith("scenario_")
+    assert created_scenario == {
+        "id": created_scenario["id"],
+        "name": "Future plan",
+        "description": "Expansion",
+        "protected": False,
+    }
+
+    scenario_key = created_scenario["id"]
+    assert (
+        client.get(
+            f"/api/v1/organisations/{organisation_key}/scenarios/{scenario_key}",
+        ).json()
+        == created_scenario
+    )
+    assert created_scenario in client.get(
+        f"/api/v1/organisations/{organisation_key}/scenarios",
+    ).json()
+
+    patch_response = client.patch(
+        f"/api/v1/organisations/{organisation_key}/scenarios/{scenario_key}",
+        json={"name": "Updated future", "description": "Updated"},
+    )
+    assert patch_response.status_code == 200
+    assert patch_response.json() == {
+        "id": scenario_key,
+        "name": "Updated future",
+        "description": "Updated",
+        "protected": False,
+    }
+
+    delete_response = client.delete(
+        f"/api/v1/organisations/{organisation_key}/scenarios/{scenario_key}",
+    )
+    assert delete_response.status_code == 204
+    assert (
+        client.get(
+            f"/api/v1/organisations/{organisation_key}/scenarios/{scenario_key}",
+        ).status_code
+        == 404
+    )
+    listed_ids = [
+        item["id"]
+        for item in client.get(
+            f"/api/v1/organisations/{organisation_key}/scenarios",
+        ).json()
+    ]
+    assert scenario_key not in listed_ids
+
+
+def test_scenario_endpoints_return_404_for_missing_parents_and_resources(
+    client: TestClient,
+) -> None:
+    assert client.get("/api/v1/organisations/missing/scenarios").status_code == 404
+
+    organisation_key = _create_organisation(client)
+    assert (
+        client.get(
+            f"/api/v1/organisations/{organisation_key}/scenarios/missing",
+        ).status_code
+        == 404
+    )
+    assert (
+        client.get(
+            f"/api/v1/organisations/{organisation_key}/scenarios/reality/"
+            "org-states/missing",
+        ).status_code
+        == 404
+    )
+
+
+def test_scenario_create_and_patch_validate_blank_names(client: TestClient) -> None:
+    organisation_key = _create_organisation(client)
+
+    create_response = client.post(
+        f"/api/v1/organisations/{organisation_key}/scenarios",
+        json={"name": "   ", "description": "Nope"},
+    )
+    assert create_response.status_code == 422
+
+    patch_response = client.patch(
+        f"/api/v1/organisations/{organisation_key}/scenarios/reality",
+        json={"name": "   "},
+    )
+    assert patch_response.status_code == 422
+
+
+def test_protected_scenario_patch_and_delete_return_409(client: TestClient) -> None:
+    organisation_key = _create_organisation(client)
+
+    patch_response = client.patch(
+        f"/api/v1/organisations/{organisation_key}/scenarios/reality",
+        json={"name": "Reality edited"},
+    )
+    assert patch_response.status_code == 409
+
+    delete_response = client.delete(
+        f"/api/v1/organisations/{organisation_key}/scenarios/reality",
+    )
+    assert delete_response.status_code == 409
+
+
+def test_org_state_crud_uses_stable_keys_and_excludes_soft_deleted_rows(
+    client: TestClient,
+) -> None:
+    organisation_key = _create_organisation(client)
+
+    create_response = client.post(
+        f"/api/v1/organisations/{organisation_key}/scenarios/reality/org-states",
+        json={
+            "name": "  Launch state  ",
+            "description": "Launch",
+            "targetDate": "2030-01-01",
+        },
+    )
+    assert create_response.status_code == 201
+    created_org_state = create_response.json()
+    assert created_org_state["id"].startswith("org_state_")
+    assert created_org_state == {
+        "id": created_org_state["id"],
+        "name": "Launch state",
+        "description": "Launch",
+        "targetDate": "2030-01-01",
+    }
+
+    org_state_key = created_org_state["id"]
+    assert (
+        client.get(
+            f"/api/v1/organisations/{organisation_key}/scenarios/reality/"
+            f"org-states/{org_state_key}",
+        ).json()
+        == created_org_state
+    )
+    assert created_org_state in client.get(
+        f"/api/v1/organisations/{organisation_key}/scenarios/reality/org-states",
+    ).json()
+
+    patch_response = client.patch(
+        f"/api/v1/organisations/{organisation_key}/scenarios/reality/"
+        f"org-states/{org_state_key}",
+        json={
+            "name": "Updated launch",
+            "description": "Updated",
+            "targetDate": "2030-02-01",
+        },
+    )
+    assert patch_response.status_code == 200
+    assert patch_response.json() == {
+        "id": org_state_key,
+        "name": "Updated launch",
+        "description": "Updated",
+        "targetDate": "2030-02-01",
+    }
+
+    delete_response = client.delete(
+        f"/api/v1/organisations/{organisation_key}/scenarios/reality/"
+        f"org-states/{org_state_key}",
+    )
+    assert delete_response.status_code == 204
+    assert (
+        client.get(
+            f"/api/v1/organisations/{organisation_key}/scenarios/reality/"
+            f"org-states/{org_state_key}",
+        ).status_code
+        == 404
+    )
+    listed_ids = [
+        item["id"]
+        for item in client.get(
+            f"/api/v1/organisations/{organisation_key}/scenarios/reality/org-states",
+        ).json()
+    ]
+    assert org_state_key not in listed_ids
+
+
+def test_org_state_create_and_patch_validate_blank_names(client: TestClient) -> None:
+    organisation_key = _create_organisation(client)
+
+    create_response = client.post(
+        f"/api/v1/organisations/{organisation_key}/scenarios/reality/org-states",
+        json={"name": "   ", "targetDate": "2030-01-01"},
+    )
+    assert create_response.status_code == 422
+
+    patch_response = client.patch(
+        f"/api/v1/organisations/{organisation_key}/scenarios/reality/"
+        "org-states/initial_state",
+        json={"name": "   "},
+    )
+    assert patch_response.status_code == 422
+
+
+def test_org_state_duplicate_active_target_date_returns_409_and_deleted_date_reuses(
+    client: TestClient,
+) -> None:
+    organisation_key = _create_organisation(client)
+
+    duplicate_response = client.post(
+        f"/api/v1/organisations/{organisation_key}/scenarios/reality/org-states",
+        json={"name": "Duplicate date", "targetDate": "2020-01-01"},
+    )
+    assert duplicate_response.status_code == 409
+
+    assert (
+        client.delete(
+            f"/api/v1/organisations/{organisation_key}/scenarios/reality/"
+            "org-states/initial_state",
+        ).status_code
+        == 204
+    )
+    reused_response = client.post(
+        f"/api/v1/organisations/{organisation_key}/scenarios/reality/org-states",
+        json={"name": "Reused date", "targetDate": "2020-01-01"},
+    )
+    assert reused_response.status_code == 201
+
+
+def test_org_state_delete_clears_scenario_initial_state(
+    client: TestClient,
+    session_factory: sessionmaker[Session],
+) -> None:
+    organisation_key = _create_organisation(client)
+
+    response = client.delete(
+        f"/api/v1/organisations/{organisation_key}/scenarios/reality/"
+        "org-states/initial_state",
+    )
+    assert response.status_code == 204
+
+    with session_factory() as session:
+        organisation = _get_organisation(session, organisation_key)
+        scenario = _get_scenario(session, organisation, "reality")
+        assert scenario.initial_state_id is None
+
+
+def test_scenario_soft_delete_propagates_to_active_owned_rows(
+    client: TestClient,
+    session_factory: sessionmaker[Session],
+) -> None:
+    organisation_key = _create_organisation(client)
+    scenario_response = client.post(
+        f"/api/v1/organisations/{organisation_key}/scenarios",
+        json={"name": "Propagation", "description": "Checks propagation"},
+    )
+    assert scenario_response.status_code == 201
+    scenario_key_value = cast(dict[str, object], scenario_response.json())["id"]
+    assert isinstance(scenario_key_value, str)
+    scenario_key = scenario_key_value
+    org_state_response = client.post(
+        f"/api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/"
+        "org-states",
+        json={"name": "Propagation state", "targetDate": "2035-01-01"},
+    )
+    assert org_state_response.status_code == 201
+    org_state_key_value = cast(dict[str, object], org_state_response.json())["id"]
+    assert isinstance(org_state_key_value, str)
+    org_state_key = org_state_key_value
+
+    with session_factory() as session:
+        organisation = _get_organisation(session, organisation_key)
+        scenario = _get_scenario(session, organisation, scenario_key)
+        org_state = _get_org_state(session, scenario, org_state_key)
+
+        event = Event(
+            scenario_id=scenario.scenario_id,
+            event_key="event_1",
+            name="Event",
+            target_date=date(2035, 1, 1),
+        )
+        timeserie = Timeserie(
+            scenario_id=scenario.scenario_id,
+            timeserie_key="timeserie_1",
+            name="Timeserie",
+            time_unit="year",
+            value_unit="number",
+        )
+        graph = Graph(
+            org_state_id=org_state.org_state_id,
+            name="Graph",
+        )
+        session.add_all([event, timeserie, graph])
+        session.flush()
+        node_type = session.scalar(
+            select(NodeType)
+            .where(NodeType.node_type_key == "nt_person")
+            .order_by(NodeType.metamodel_id.desc()),
+        )
+        edge_type = session.scalar(
+            select(EdgeType)
+            .where(EdgeType.edge_type_key == "et_reports_to")
+            .order_by(EdgeType.metamodel_id.desc()),
+        )
+        assert node_type is not None
+        assert edge_type is not None
+        graph_node = GraphNode(
+            graph_id=graph.graph_id,
+            node_key="node_1",
+            node_type_id=node_type.node_type_id,
+            attributes={"name": "Node"},
+        )
+        session.add(graph_node)
+        session.flush()
+        graph_edge = GraphEdge(
+            graph_id=graph.graph_id,
+            edge_key="edge_1",
+            edge_type_id=edge_type.edge_type_id,
+            source_graph_node_id=graph_node.graph_node_id,
+            target_graph_node_id=graph_node.graph_node_id,
+            attributes={},
+        )
+        timeserie_value = TimeserieValue(
+            timeserie_id=timeserie.timeserie_id,
+            date=date(2035, 1, 1),
+            value={"value": 42},
+        )
+        session.add_all([graph_edge, timeserie_value])
+        session.commit()
+
+    delete_response = client.delete(
+        f"/api/v1/organisations/{organisation_key}/scenarios/{scenario_key}",
+    )
+    assert delete_response.status_code == 204
+
+    with session_factory() as session:
+        organisation = _get_organisation(session, organisation_key)
+        scenario = _get_scenario_including_deleted(session, organisation, scenario_key)
+        org_state = _get_org_state_including_deleted(session, scenario, org_state_key)
+        event = session.scalar(
+            select(Event).where(Event.scenario_id == scenario.scenario_id),
+        )
+        timeserie = session.scalar(
+            select(Timeserie).where(Timeserie.scenario_id == scenario.scenario_id),
+        )
+        assert timeserie is not None
+        timeserie_value = session.scalar(
+            select(TimeserieValue).where(
+                TimeserieValue.timeserie_id == timeserie.timeserie_id,
+            ),
+        )
+        graph = session.scalar(
+            select(Graph).where(Graph.org_state_id == org_state.org_state_id),
+        )
+        assert graph is not None
+        graph_node = session.scalar(
+            select(GraphNode).where(GraphNode.graph_id == graph.graph_id),
+        )
+        graph_edge = session.scalar(
+            select(GraphEdge).where(GraphEdge.graph_id == graph.graph_id),
+        )
+
+        assert scenario.deleted_time is not None
+        assert org_state.deleted_time is not None
+        assert event is not None
+        assert event.deleted_time is not None
+        assert timeserie.deleted_time is not None
+        assert timeserie_value is not None
+        assert timeserie_value.deleted_time is not None
+        assert graph.deleted_time is not None
+        assert graph_node is not None
+        assert graph_node.deleted_time is not None
+        assert graph_edge is not None
+        assert graph_edge.deleted_time is not None
+
+
+def _create_organisation(client: TestClient, name: str = "Acme Corp") -> str:
+    response = client.post("/api/v1/organisations", json={"name": name})
+    assert response.status_code == 201
+    organisation_key = response.json()["id"]
+    assert isinstance(organisation_key, str)
+    return organisation_key
+
+
+def _get_organisation(session: Session, organisation_key: str) -> Organisation:
+    organisation = session.scalar(
+        select(Organisation).where(Organisation.organisation_key == organisation_key),
+    )
+    assert organisation is not None
+    return organisation
+
+
+def _get_scenario(
+    session: Session,
+    organisation: Organisation,
+    scenario_key: str,
+) -> Scenario:
+    scenario = session.scalar(
+        select(Scenario).where(
+            Scenario.organisation_id == organisation.organisation_id,
+            Scenario.scenario_key == scenario_key,
+            Scenario.deleted_time.is_(None),
+        ),
+    )
+    assert scenario is not None
+    return scenario
+
+
+def _get_scenario_including_deleted(
+    session: Session,
+    organisation: Organisation,
+    scenario_key: str,
+) -> Scenario:
+    scenario = session.scalar(
+        select(Scenario).where(
+            Scenario.organisation_id == organisation.organisation_id,
+            Scenario.scenario_key == scenario_key,
+        ),
+    )
+    assert scenario is not None
+    return scenario
+
+
+def _get_org_state(
+    session: Session,
+    scenario: Scenario,
+    org_state_key: str,
+) -> OrgState:
+    org_state = session.scalar(
+        select(OrgState).where(
+            OrgState.scenario_id == scenario.scenario_id,
+            OrgState.org_state_key == org_state_key,
+            OrgState.deleted_time.is_(None),
+        ),
+    )
+    assert org_state is not None
+    return org_state
+
+
+def _get_org_state_including_deleted(
+    session: Session,
+    scenario: Scenario,
+    org_state_key: str,
+) -> OrgState:
+    org_state = session.scalar(
+        select(OrgState).where(
+            OrgState.scenario_id == scenario.scenario_id,
+            OrgState.org_state_key == org_state_key,
+        ),
+    )
+    assert org_state is not None
+    return org_state

@@ -1,8 +1,47 @@
 from datetime import date
 
-from pydantic import Field
+from pydantic import Field, field_validator
 
 from app.core.schemas import StrictBaseModel
+
+
+class ScenarioCreateRequest(StrictBaseModel):
+    name: str = Field(min_length=1, description="Scenario display name.")
+    description: str | None = Field(
+        default=None,
+        description="Scenario description.",
+    )
+
+    @field_validator("name")
+    @classmethod
+    def name_must_not_be_blank(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("Scenario name must not be blank.")
+        return stripped
+
+
+class ScenarioPatchRequest(StrictBaseModel):
+    name: str | None = Field(
+        default=None,
+        min_length=1,
+        description="Scenario display name.",
+    )
+    description: str | None = Field(
+        default=None,
+        description="Scenario description.",
+    )
+
+    @field_validator("name")
+    @classmethod
+    def name_must_not_be_blank(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("Scenario name must not be blank.")
+        return stripped
 
 
 class ScenarioResponse(StrictBaseModel):
@@ -10,6 +49,55 @@ class ScenarioResponse(StrictBaseModel):
     name: str = Field(description="Scenario display name.")
     description: str = Field(description="Scenario description.")
     protected: bool = Field(description="Whether the scenario is protected.")
+
+
+class OrgStateCreateRequest(StrictBaseModel):
+    name: str = Field(min_length=1, description="Organisation state display name.")
+    description: str | None = Field(
+        default=None,
+        description="Organisation state description.",
+    )
+    target_date: date | None = Field(
+        default=None,
+        alias="targetDate",
+        description="Organisation state target date.",
+    )
+
+    @field_validator("name")
+    @classmethod
+    def name_must_not_be_blank(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("Organisation state name must not be blank.")
+        return stripped
+
+
+class OrgStatePatchRequest(StrictBaseModel):
+    name: str | None = Field(
+        default=None,
+        min_length=1,
+        description="Organisation state display name.",
+    )
+    description: str | None = Field(
+        default=None,
+        description="Organisation state description.",
+    )
+    target_date: date | None = Field(
+        default=None,
+        alias="targetDate",
+        description="Organisation state target date.",
+    )
+
+    @field_validator("name")
+    @classmethod
+    def name_must_not_be_blank(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("Organisation state name must not be blank.")
+        return stripped
 
 
 class OrgStateResponse(StrictBaseModel):

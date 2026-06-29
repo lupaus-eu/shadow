@@ -7,7 +7,6 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.v1.org_states import org_states_service
-from app.api.v1.org_states.schemas import OrgStateResponse, ScenarioResponse
 from app.api.v1.org_twin_structure import org_twin_structure_service
 from app.api.v1.organisations.models import Organisation
 from app.api.v1.organisations.schemas import (
@@ -106,23 +105,6 @@ def soft_delete_organisation(session: Session, organisation_key: str) -> None:
     organisation.deleted_time = now
     organisation.modified_time = now
     session.commit()
-
-
-def list_organisation_scenarios(
-    session: Session,
-    organisation_key: str,
-) -> list[ScenarioResponse]:
-    organisation = get_active_organisation(session, organisation_key)
-    return org_states_service.list_scenarios(session, organisation)
-
-
-def list_organisation_scenario_org_states(
-    session: Session,
-    organisation_key: str,
-    scenario_key: str,
-) -> list[OrgStateResponse]:
-    organisation = get_active_organisation(session, organisation_key)
-    return org_states_service.list_org_states(session, organisation, scenario_key)
 
 
 def get_active_organisation(session: Session, organisation_key: str) -> Organisation:

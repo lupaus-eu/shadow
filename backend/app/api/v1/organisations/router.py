@@ -3,7 +3,6 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.orm import Session
 
-from app.api.v1.org_states.schemas import OrgStateResponse, ScenarioResponse
 from app.api.v1.organisations import service
 from app.api.v1.organisations.schemas import (
     OrganisationCreateRequest,
@@ -29,30 +28,6 @@ def get_organisation(
     session: SessionDependency,
 ) -> OrganisationResponse:
     return service.get_organisation(session, organisation_key)
-
-
-@router.get("/{organisation_key}/scenarios", response_model=list[ScenarioResponse])
-def list_organisation_scenarios(
-    organisation_key: str,
-    session: SessionDependency,
-) -> list[ScenarioResponse]:
-    return service.list_organisation_scenarios(session, organisation_key)
-
-
-@router.get(
-    "/{organisation_key}/scenarios/{scenario_key}/org-states",
-    response_model=list[OrgStateResponse],
-)
-def list_organisation_scenario_org_states(
-    organisation_key: str,
-    scenario_key: str,
-    session: SessionDependency,
-) -> list[OrgStateResponse]:
-    return service.list_organisation_scenario_org_states(
-        session,
-        organisation_key,
-        scenario_key,
-    )
 
 
 @router.post(

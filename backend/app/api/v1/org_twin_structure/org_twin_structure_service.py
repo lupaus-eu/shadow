@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -5,6 +7,9 @@ from sqlalchemy.orm import Session
 from app.api.v1.org_twin_structure.models import (
     AllowedConnection,
     EdgeType,
+    Graph,
+    GraphEdge,
+    GraphNode,
     Metamodel,
     NodeType,
     TypeAttribute,
@@ -61,6 +66,49 @@ def copy_active_default_metamodel(
     )
 
     return copied
+
+
+def soft_delete_graphs_for_org_states(
+    session: Session,
+    org_state_ids: list[int],
+    deleted_time: datetime,
+) -> None:
+    if not org_state_ids:
+        return
+
+    graphs = session.scalars(
+        select(Graph).where(
+            Graph.org_state_id.in_(org_state_ids),
+            Graph.deleted_time.is_(None),
+        ),
+    ).all()
+    graph_ids = [graph.graph_id for graph in graphs]
+
+    if graph_ids:
+        graph_edges = session.scalars(
+            select(GraphEdge).where(
+                GraphEdge.graph_id.in_(graph_ids),
+                GraphEdge.deleted_time.is_(None),
+            ),
+        ).all()
+        graph_nodes = session.scalars(
+            select(GraphNode).where(
+                GraphNode.graph_id.in_(graph_ids),
+                GraphNode.deleted_time.is_(None),
+            ),
+        ).all()
+
+        for graph_edge in graph_edges:
+            graph_edge.deleted_time = deleted_time
+            graph_edge.modified_time = deleted_time
+
+        for graph_node in graph_nodes:
+            graph_node.deleted_time = deleted_time
+            graph_node.modified_time = deleted_time
+
+    for graph in graphs:
+        graph.deleted_time = deleted_time
+        graph.modified_time = deleted_time
 
 
 def _get_active_default_metamodel(session: Session) -> Metamodel:
