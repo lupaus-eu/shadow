@@ -36,6 +36,7 @@ entity "org_states" as org_states {
   --
   scenario_id : BIGINT
   org_state_key : TEXT
+  name : TEXT
   version : INT
   target_date : DATE
 }

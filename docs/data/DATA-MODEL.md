@@ -32,9 +32,9 @@ Lue nämä yhdessä datamallin kanssa:
 | Entity | Notes |
 | --- | --- |
 | User | Application user with role `consultant` or `admin`. |
-| Organisation | Tenant-like organisation boundary for scenarios and organisation-specific metamodels. |
+| Organisation | Tenant-like organisation boundary for scenarios and organisation-specific metamodels. Active organisation names are case-insensitively unique. |
 | Scenario | Versioned planning or analysis context within an organisation. |
-| Organisation State | Scenario-specific snapshot state with target date and version. |
+| Organisation State | Scenario-specific named snapshot state with target date and version. |
 | Event | Scenario-specific dated event. |
 | Metamodel | Default or organisation-specific model that defines allowed node and edge types. |
 | Node Type | Metamodel-owned type definition for graph nodes. |
@@ -52,6 +52,7 @@ Lue nämä yhdessä datamallin kanssa:
 # Relationship Rules
 
 - An organisation owns many scenarios.
+- Active organisations cannot share the same name when compared case-insensitively.
 - A scenario owns many organisation states and events.
 - Normal application-level scenario deletion is a soft delete using `deleted_time`.
 - When the application soft-deletes a scenario, it must also soft-delete owned organisation states, events, graphs, timeseries and timeserie values.

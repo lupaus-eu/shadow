@@ -41,6 +41,10 @@ docs/concepts/CUSTOMER.md
 docs/concepts/INVOICE.md
 docs/concepts/DOCUMENT.md
 docs/concepts/AI_EXTRACTION.md
+docs/concepts/ORGANISATION.md
+docs/concepts/SCENARIO.md
+docs/concepts/ORGANISATION_STATE.md
+docs/concepts/METAMODEL.md
 ```
 
 Uuden conceptin dokumentti luodaan mallista:
@@ -58,7 +62,67 @@ AI-agentin tulee lukea relevantti concept-dokumentti ennen muutosta, joka koskee
 
 ---
 
-# Initial Concepts
+# Core Concepts
+
+## Organisation
+
+Meaning:
+
+- tenant-like organisation boundary for scenarios and organisation-specific metamodels
+
+Owned By:
+
+- Organisations Domain
+
+Related Document:
+
+- `docs/concepts/ORGANISATION.md`
+
+## Scenario
+
+Meaning:
+
+- versioned planning or analysis context inside one organisation
+
+Owned By:
+
+- Organisation States Domain
+
+Related Document:
+
+- `docs/concepts/SCENARIO.md`
+
+## Organisation State
+
+Meaning:
+
+- named scenario-specific snapshot of an organisation at a target date or version
+
+Owned By:
+
+- Organisation States Domain
+
+Related Document:
+
+- `docs/concepts/ORGANISATION_STATE.md`
+
+## Metamodel
+
+Meaning:
+
+- default or organisation-specific type model defining allowed organisation twin nodes, edges and attributes
+
+Owned By:
+
+- Organisation Twin Structure Domain
+
+Related Document:
+
+- `docs/concepts/METAMODEL.md`
+
+---
+
+# Initial Candidate Concepts
 
 ## Customer
 

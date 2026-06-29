@@ -24,6 +24,10 @@ docs/domains/CUSTOMER.md
 docs/domains/BILLING.md
 docs/domains/DOCUMENT.md
 docs/domains/AI.md
+docs/domains/USERS.md
+docs/domains/ORGANISATIONS.md
+docs/domains/ORG_STATES.md
+docs/domains/ORG_TWIN_STRUCTURE.md
 ```
 
 Uuden domainin dokumentti luodaan mallista:
@@ -38,6 +42,155 @@ AI-agentin tulee lukea domain-dokumentti ennen muutoksia, jotka koskevat:
 - domainin APIeja
 - domainin sääntöjä
 - domainien välisiä riippuvuuksia
+
+---
+
+# Core Domains
+
+The core domain model covers users, organisations, scenarios, organisation states, organisation twin structure and metamodels.
+
+These domains define the MVP source of truth for access-facing identities, tenant-like organisation boundaries and the graph-based organisation twin data model.
+
+## Users Domain
+
+Responsible for:
+
+- application user records
+- user role data
+- future Entra ID identity mapping
+
+Owns:
+
+- users
+
+Does NOT Own:
+
+- organisations
+- scenarios
+- organisation twin structure
+
+Depends On:
+
+- Microsoft Entra ID, when authentication is implemented
+
+Primary APIs:
+
+- `/users`
+
+Related Documents:
+
+- `docs/domains/USERS.md`
+
+## Organisations Domain
+
+Responsible for:
+
+- organisation records
+- active organisation name uniqueness
+- organisation-level scenario boundaries
+- organisation-specific metamodel ownership
+
+Owns:
+
+- organisations
+
+Does NOT Own:
+
+- users
+- scenario-owned state snapshots
+- graph nodes or graph edges
+
+Depends On:
+
+- Users Domain for audit references
+
+Primary APIs:
+
+- `/organisations`
+
+Related Documents:
+
+- `docs/domains/ORGANISATIONS.md`
+
+## Organisation States Domain
+
+Responsible for:
+
+- scenarios
+- organisation state snapshots
+- events
+- scenario-owned timeseries
+
+Owns:
+
+- scenarios
+- org_states
+- events
+- timeseries
+- timeserie_values
+
+Does NOT Own:
+
+- organisations
+- graph structure inside an organisation state
+- metamodel type definitions
+
+Depends On:
+
+- Organisations Domain
+- Users Domain for audit references
+
+Primary APIs:
+
+- `/scenarios`
+- `/org-states`
+- `/events`
+- `/timeseries`
+
+Related Documents:
+
+- `docs/domains/ORG_STATES.md`
+
+## Organisation Twin Structure Domain
+
+Responsible for:
+
+- metamodels
+- node and edge type definitions
+- allowed graph connections
+- graph snapshots, graph nodes and graph edges
+
+Owns:
+
+- metamodels
+- node_types
+- edge_types
+- type_attributes
+- allowed_connections
+- graphs
+- graph_nodes
+- graph_edges
+
+Does NOT Own:
+
+- organisations
+- scenarios
+- organisation state lifecycle
+- timeseries values
+
+Depends On:
+
+- Organisations Domain
+- Organisation States Domain
+- Users Domain for audit references
+
+Primary APIs:
+
+- TBD
+
+Related Documents:
+
+- `docs/domains/ORG_TWIN_STRUCTURE.md`
 
 ---
 
