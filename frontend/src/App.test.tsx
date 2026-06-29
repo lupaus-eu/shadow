@@ -23,12 +23,21 @@ function noContentResponse() {
   return new Response(null, { status: 204 });
 }
 
-function mockSchattenApi() {
+function mockSchattenApi(options?: { duplicateCreate?: boolean }) {
   const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const method = init?.method ?? "GET";
 
     if (url.endsWith("/api/v1/organisations") && method === "POST") {
+      if (options?.duplicateCreate) {
+        return Promise.resolve(
+          jsonResponse(
+            { detail: "An active organisation with this name already exists." },
+            { status: 409 }
+          )
+        );
+      }
+
       return Promise.resolve(jsonResponse({ id: "new-org", name: "New org" }));
     }
 
@@ -215,6 +224,45 @@ describe("Schatten UI shell", () => {
 
     expect(await screen.findByRole("option", { name: "Acme" })).toBeVisible();
     expect(screen.getByLabelText("Create new organisation")).toBeVisible();
+  });
+
+  it("creates an organisation through the backend API and selects it", async () => {
+    const fetchMock = mockSchattenApi();
+
+    renderAt("/");
+
+    const nameInput = screen.getByLabelText("Create new organisation");
+    fireEvent.change(nameInput, { target: { value: "New org" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create organisation" }));
+
+    expect(await screen.findByRole("option", { name: "New org" })).toBeVisible();
+    expect(screen.getByLabelText("Organisation")).toHaveValue("new-org");
+    expect(
+      fetchMock.mock.calls.some(([input, init]) => {
+        return (
+          String(input).endsWith("/api/v1/organisations") &&
+          init?.method === "POST" &&
+          init.body === JSON.stringify({ name: "New org" })
+        );
+      })
+    ).toBe(true);
+  });
+
+  it("shows duplicate organisation errors from the backend clearly", async () => {
+    mockSchattenApi({ duplicateCreate: true });
+
+    renderAt("/");
+
+    fireEvent.change(screen.getByLabelText("Create new organisation"), {
+      target: { value: "Acme" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create organisation" }));
+
+    expect(
+      await screen.findByText(
+        "Failed to create organisation (409): An active organisation with this name already exists."
+      )
+    ).toBeInTheDocument();
   });
 
   it("redirects an organisation workspace URL to the default Scenarios tab", async () => {

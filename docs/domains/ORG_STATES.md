@@ -52,6 +52,20 @@ Every organisation state has:
 
 The `name` is the display name for the snapshot and is required.
 
+## Organisation Defaults
+
+When a new organisation is created, the Organisation States Domain creates:
+
+- default scenario `Reality`
+- default scenario description `The reality of the organisation`
+- protected default scenario flag `True`
+- default organisation state `Initial state`
+- default organisation state description `Initial state of reality`
+- default organisation state target date `2020-01-01`
+
+The default scenario references the created default organisation state as its
+`initial_state_id`.
+
 ## Soft Delete Propagation
 
 Scenario deletion is a soft delete in normal application flows.
@@ -126,6 +140,16 @@ Flow:
 3. Create organisation state row.
 4. Create related graph data only through Organisation Twin Structure behavior.
 
+## Create Organisation Defaults
+
+Flow:
+
+1. Receive an active organisation created by Organisations Domain.
+2. Create the protected `Reality` scenario.
+3. Create the `Initial state` organisation state for the scenario.
+4. Link the scenario `initial_state_id` to the created organisation state.
+5. Commit only as part of the outer organisation creation transaction.
+
 ---
 
 # AI Agent Guidance
@@ -148,4 +172,3 @@ Avoid:
 # Open Questions
 
 - scenario lifecycle states beyond active and soft-deleted
-- default scenario and organisation state creation flow

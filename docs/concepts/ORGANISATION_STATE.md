@@ -55,6 +55,7 @@ An Organisation State is a named scenario-specific snapshot state of an Organisa
 - Organisation State must always have `name`.
 - Active organisation state keys are unique within a scenario.
 - Normal deletion is soft delete through the owning scenario flow.
+- A new organisation receives a default organisation state named `Initial state`.
 
 ---
 
@@ -98,6 +99,8 @@ Related APIs:
 
 - `name` is required and is the display name for the snapshot.
 - `org_state_key` is the stable scenario-local key.
+- The default organisation state uses description `Initial state of reality`
+  and target date `2020-01-01`.
 - A graph may belong to one organisation state through Organisation Twin Structure Domain.
 
 ---
@@ -120,5 +123,4 @@ Avoid:
 
 # Open Questions
 
-- default organisation state naming strategy
 - snapshot copy behavior

@@ -51,6 +51,7 @@ A Metamodel is the default or organisation-specific type model used to validate 
 - There can be one active default metamodel.
 - There can be one active organisation-specific metamodel per organisation.
 - Metamodel version values are unique within their default or organisation-specific scope.
+- A new organisation receives a copy of the active default metamodel.
 
 ---
 
@@ -100,6 +101,9 @@ Related APIs:
 - Node types and edge types belong to one metamodel.
 - Type attributes belong to exactly one node type or exactly one edge type.
 - Allowed connections define valid edge/source/target combinations.
+- Organisation-specific metamodel creation copies the active default
+  metamodel, node types, edge types, type attributes and allowed connections
+  from database rows.
 - A graph snapshot should follow the relevant metamodel rules when graph validation is in scope.
 
 ---
@@ -122,5 +126,4 @@ Avoid:
 
 # Open Questions
 
-- metamodel copy behavior for new organisations
 - organisation-specific metamodel lifecycle

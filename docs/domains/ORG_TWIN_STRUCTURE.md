@@ -49,6 +49,11 @@ An organisation-specific metamodel belongs to exactly one organisation.
 
 There can be one active default metamodel and one active organisation-specific metamodel per organisation.
 
+When a new organisation is created, the active default metamodel is copied into
+an organisation-specific metamodel. The copy preserves stable type keys and
+copies the metamodel row, node types, edge types, type attributes and allowed
+connections from database rows, not from the JSON seed file at runtime.
+
 ## Type Ownership
 
 Metamodels own node types, edge types, type attributes and allowed connections.
@@ -120,6 +125,19 @@ Flow:
 2. Read node types, edge types, attributes and allowed connections.
 3. Apply structure rules when graph data is created or validated.
 
+## Copy Default Metamodel For Organisation
+
+Flow:
+
+1. Load the active default metamodel where `organisation_id IS NULL`.
+2. Validate copied values against the allowed attribute data types, node shapes
+   and edge endings.
+3. Create an organisation-specific metamodel row.
+4. Copy node types and edge types while preserving stable keys.
+5. Copy type attributes to the copied node or edge types.
+6. Copy allowed connections to the copied edge and node types.
+7. Commit only as part of the outer organisation creation transaction.
+
 ## Create Graph Snapshot
 
 Flow:
@@ -150,5 +168,5 @@ Avoid:
 
 # Open Questions
 
-- metamodel copy and versioning workflow
+- metamodel versioning workflow after organisation creation
 - graph validation API boundaries

@@ -6,6 +6,9 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.api.v1.org_states import org_states_service
+from app.api.v1.org_states.schemas import OrgStateResponse, ScenarioResponse
+from app.api.v1.org_twin_structure import org_twin_structure_service
 from app.api.v1.organisations.models import Organisation
 from app.api.v1.organisations.schemas import (
     OrganisationCreateRequest,
@@ -32,26 +35,38 @@ def list_organisations(session: Session) -> list[OrganisationResponse]:
 
 
 def get_organisation(session: Session, organisation_key: str) -> OrganisationResponse:
-    return to_organisation_response(_get_active_organisation(session, organisation_key))
+    return to_organisation_response(get_active_organisation(session, organisation_key))
 
 
 def create_organisation(
     session: Session,
     payload: OrganisationCreateRequest,
 ) -> OrganisationResponse:
-    _ensure_name_is_available(session, payload.name)
-
-    organisation = Organisation(
-        organisation_key=_generate_organisation_key(),
-        name=payload.name,
-    )
-    session.add(organisation)
-
     try:
+        _ensure_name_is_available(session, payload.name)
+
+        organisation = Organisation(
+            organisation_key=_generate_organisation_key(),
+            name=payload.name,
+        )
+        session.add(organisation)
+        session.flush()
+
+        scenario = org_states_service.create_default_scenario(session, organisation)
+        org_state = org_states_service.create_default_org_state(session, scenario)
+        org_states_service.link_initial_state(scenario, org_state)
+        org_twin_structure_service.copy_active_default_metamodel(
+            session,
+            organisation,
+        )
+
         session.commit()
     except IntegrityError as exc:
         session.rollback()
         raise _duplicate_name_exception() from exc
+    except Exception:
+        session.rollback()
+        raise
 
     session.refresh(organisation)
     return to_organisation_response(organisation)
@@ -62,7 +77,7 @@ def patch_organisation(
     organisation_key: str,
     payload: OrganisationPatchRequest,
 ) -> OrganisationResponse:
-    organisation = _get_active_organisation(session, organisation_key)
+    organisation = get_active_organisation(session, organisation_key)
 
     if payload.name is not None and payload.name != organisation.name:
         _ensure_name_is_available(
@@ -85,7 +100,7 @@ def patch_organisation(
 
 
 def soft_delete_organisation(session: Session, organisation_key: str) -> None:
-    organisation = _get_active_organisation(session, organisation_key)
+    organisation = get_active_organisation(session, organisation_key)
     now = datetime.now(UTC)
 
     organisation.deleted_time = now
@@ -93,7 +108,24 @@ def soft_delete_organisation(session: Session, organisation_key: str) -> None:
     session.commit()
 
 
-def _get_active_organisation(session: Session, organisation_key: str) -> Organisation:
+def list_organisation_scenarios(
+    session: Session,
+    organisation_key: str,
+) -> list[ScenarioResponse]:
+    organisation = get_active_organisation(session, organisation_key)
+    return org_states_service.list_scenarios(session, organisation)
+
+
+def list_organisation_scenario_org_states(
+    session: Session,
+    organisation_key: str,
+    scenario_key: str,
+) -> list[OrgStateResponse]:
+    organisation = get_active_organisation(session, organisation_key)
+    return org_states_service.list_org_states(session, organisation, scenario_key)
+
+
+def get_active_organisation(session: Session, organisation_key: str) -> Organisation:
     organisation = session.scalar(
         select(Organisation).where(
             Organisation.organisation_key == organisation_key,
