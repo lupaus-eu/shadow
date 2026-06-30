@@ -91,7 +91,7 @@ class OrgState(Base):
     name: Mapped[str] = mapped_column(Text)
     version: Mapped[int] = mapped_column(Integer, server_default="1")
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    target_date: Mapped[dt_date | None] = mapped_column(Date, nullable=True)
+    target_date: Mapped[dt_date] = mapped_column(Date, nullable=False)
     created_by: Mapped[int | None] = mapped_column(
         BigInteger,
         ForeignKey("users.user_id"),
@@ -135,7 +135,7 @@ class Event(Base):
     )
     event_key: Mapped[str] = mapped_column(Text)
     name: Mapped[str] = mapped_column(Text)
-    target_date: Mapped[dt_date | None] = mapped_column(Date, nullable=True)
+    target_date: Mapped[dt_date] = mapped_column(Date, nullable=False)
     version: Mapped[int] = mapped_column(Integer, server_default="1")
     event_details: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_by: Mapped[int | None] = mapped_column(

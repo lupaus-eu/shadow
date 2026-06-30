@@ -134,12 +134,6 @@ def copy_scenario(
         payload.source_org_state_id,
     )
 
-    if source_boundary_org_state.target_date is None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Source organisation state must have a target date.",
-        )
-
     copied_scenario = Scenario(
         organisation_id=organisation.organisation_id,
         scenario_key=_generate_scenario_key(),

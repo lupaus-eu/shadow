@@ -129,8 +129,7 @@ class OrgStateResponse(StrictBaseModel):
     id: str = Field(description="Stable organisation state key.")
     name: str = Field(description="Organisation state display name.")
     description: str = Field(description="Organisation state description.")
-    target_date: date | None = Field(
-        default=None,
+    target_date: date = Field(
         alias="targetDate",
         description="Organisation state target date.",
     )

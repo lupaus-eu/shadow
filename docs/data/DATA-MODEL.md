@@ -54,8 +54,7 @@ Lue nämä yhdessä datamallin kanssa:
 - An organisation owns many scenarios.
 - Active organisations cannot share the same name when compared case-insensitively.
 - A scenario owns many organisation states and events.
-- An organisation state has a required `target_date` at the application/API
-  level.
+- Organisation states and events have required `target_date` values.
 - Normal application-level scenario deletion is a soft delete using `deleted_time`.
 - When the application soft-deletes a scenario, it must also soft-delete owned organisation states, events, graphs, timeseries and timeserie values.
 - Physical database cascades exist only as hard-delete cleanup/safety behavior, not as the normal application deletion flow.

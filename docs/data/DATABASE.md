@@ -48,6 +48,7 @@ Core schema is created and updated by:
 ```text
 db/migrations/001_create_core_schema.sql
 db/migrations/002_add_org_state_name_and_org_name_unique_index.sql
+db/migrations/003_alter_scenario_target_dates_not_null.sql
 ```
 
 | Table | Purpose | Notes |
@@ -55,8 +56,8 @@ db/migrations/002_add_org_state_name_and_org_name_unique_index.sql
 | `users` | Application users | `role` is `consultant` or `admin`. |
 | `organisations` | Organisation records | Uses `organisation_key` for stable external/import identity. Active names are case-insensitively unique. |
 | `scenarios` | Scenario versions within an organisation | References source scenario and optional initial org state. |
-| `org_states` | Scenario-specific organisation state snapshots | `name` is the human-readable state display name; `target_date` is required by the application/API; soft-deleted with parent scenario in normal application flows. |
-| `events` | Scenario events | Soft-deleted with parent scenario in normal application flows. |
+| `org_states` | Scenario-specific organisation state snapshots | `name` is the human-readable state display name; `target_date` is required and enforced as `NOT NULL`; soft-deleted with parent scenario in normal application flows. |
+| `events` | Scenario events | `target_date` is required and enforced as `NOT NULL`; soft-deleted with parent scenario in normal application flows. |
 | `metamodels` | Default or organisation-specific type model | `organisation_id IS NULL` means the default metamodel. |
 | `node_types` | Node type definitions for a metamodel | Preserves Varjo-style `node_type_key`. |
 | `edge_types` | Edge type definitions for a metamodel | Preserves Varjo-style `edge_type_key`. |
@@ -88,6 +89,7 @@ Primary key names follow table-specific singular names, for example `scenario_id
 
 - `users.role` is constrained to `consultant` or `admin`.
 - Active organisation names are unique case-insensitively through `lower(name)` where `deleted_time IS NULL`; soft-deleted historical names are reusable.
+- `org_states.target_date` and `events.target_date` are required with `NOT NULL` constraints.
 - `org_states.scenario_id` and `events.scenario_id` use `ON DELETE CASCADE` for physical hard-delete cleanup/safety behavior.
 - `graphs.org_state_id` uses `ON DELETE CASCADE` for physical hard-delete cleanup/safety behavior.
 - `graph_nodes.graph_id` and `graph_edges.graph_id` use `ON DELETE CASCADE`.

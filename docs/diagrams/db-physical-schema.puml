@@ -38,7 +38,7 @@ entity "org_states" as org_states {
   org_state_key : TEXT
   name : TEXT
   version : INT
-  target_date : DATE
+  target_date : DATE NOT NULL
 }
 
 entity "events" as events {
@@ -47,7 +47,7 @@ entity "events" as events {
   scenario_id : BIGINT
   event_key : TEXT
   name : TEXT
-  target_date : DATE
+  target_date : DATE NOT NULL
   version : INT
 }
 

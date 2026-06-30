@@ -212,10 +212,12 @@ uv run fastapi dev app/main.py
 
 Tietokannan migraatiokomennot lisätään, kun migraatiotyökalu on valittu.
 
-Tietokannan nykyisen skeeman voi alustaa paikalliseen tietokantaan SQL-migraatiolla:
+Tietokannan nykyisen skeeman voi alustaa paikalliseen tietokantaan ajamalla SQL-migraatiot järjestyksessä:
 
 ```bash
 PGPASSWORD=schatten_dev_password psql -h localhost -p 5432 -U schatten -d schatten -f db/migrations/001_create_core_schema.sql
+PGPASSWORD=schatten_dev_password psql -h localhost -p 5432 -U schatten -d schatten -f db/migrations/002_add_org_state_name_and_org_name_unique_index.sql
+PGPASSWORD=schatten_dev_password psql -h localhost -p 5432 -U schatten -d schatten -f db/migrations/003_alter_scenario_target_dates_not_null.sql
 ```
 
 Paikallisen kehitysdatan seed on dev-only ja se luo tyhjään tietokantaan dummy-adminin sekä repo-local JSON-lähteeseen perustuvan Schattenin default-metamallin:
