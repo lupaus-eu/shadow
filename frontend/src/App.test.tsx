@@ -103,19 +103,16 @@ function mockSchattenApi(options?: { duplicateCreate?: boolean }) {
     }
 
     if (
-      url.endsWith(
-        "/api/v1/organisations/acme/scenarios/future/org-states/synchronise-graph-dates"
-      )
+      url.endsWith("/api/v1/organisations/acme/scenarios/future") &&
+      method === "GET"
     ) {
       return Promise.resolve(
-        jsonResponse([
-          {
-            org_state_id: "synced",
-            org_state_name: "Synced state",
-            org_state_description: "From graph changes",
-            target_date: "2026-08-01"
-          }
-        ])
+        jsonResponse({
+          scenario_id: "future",
+          scenario_name: "Future refreshed",
+          scenario_description: "Refreshed from API",
+          is_protected: false
+        })
       );
     }
 
@@ -295,7 +292,7 @@ describe("Schatten UI shell", () => {
     });
   });
 
-  it("synchronises the selected scenario states from the refresh control", async () => {
+  it("refreshes the selected scenario and states from read endpoints", async () => {
     const fetchMock = mockSchattenApi();
 
     renderAt("/schatten/acme/org-states");
@@ -304,19 +301,38 @@ describe("Schatten UI shell", () => {
     await screen.findByRole("button", { name: /Draft state/ });
     fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
 
-    await screen.findByRole("button", { name: /Synced state/ });
+    await screen.findByRole("button", { name: /Future refreshed/ });
+    expect(
+      fetchMock.mock.calls.some(([input, init]) => {
+        const url = String(input);
+        return (
+          url.endsWith("/api/v1/organisations/acme/scenarios/future") &&
+          (init?.method ?? "GET") === "GET"
+        );
+      })
+    ).toBe(true);
     expect(
       fetchMock.mock.calls.some(([input, init]) => {
         const url = String(input);
         return (
           url.endsWith(
-            "/api/v1/organisations/acme/scenarios/future/org-states/synchronise-graph-dates"
-          ) && (init?.method ?? "GET") === "POST"
+            "/api/v1/organisations/acme/scenarios/future/org-states"
+          ) && (init?.method ?? "GET") === "GET"
         );
       })
     ).toBe(true);
     expect(
-      screen.getByTitle("Org state: Synced state (2026-08-01)")
+      fetchMock.mock.calls.some(([input]) =>
+        String(input).endsWith(
+          "/api/v1/organisations/acme/scenarios/future/org-states/synchronise-graph-dates"
+        )
+      )
+    ).toBe(false);
+    expect(
+      screen.getByTitle("Scenario: Future refreshed")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTitle("Org state: Draft state (2026-06-01)")
     ).toBeInTheDocument();
   });
 

@@ -6,8 +6,8 @@ import {
   deleteOrgState,
   deleteScenario,
   fetchOrgStates,
+  fetchScenario,
   fetchScenarios,
-  synchroniseOrgStatesToGraphDates,
   updateOrgState,
   updateScenario
 } from "../../api/scenarios";
@@ -264,26 +264,48 @@ export default function ScenariosTab(props: { orgId: string }) {
   }
 
   async function refreshScenariosAndStates() {
-    await loadScenarios();
-    if (!selectedScenario?.id) return;
+    if (!selectedScenario?.id) {
+      await loadScenarios();
+      return;
+    }
 
     try {
+      setLoadingScenarios(true);
       setLoadingOrgStates(true);
+      setScenarioError("");
       setOrgStateError("");
-      const updated = sortOrgStates(
-        await synchroniseOrgStatesToGraphDates(props.orgId, selectedScenario.id)
+      const [updatedScenario, updatedOrgStates] = await Promise.all([
+        fetchScenario(props.orgId, selectedScenario.id),
+        fetchOrgStates(props.orgId, selectedScenario.id)
+      ]);
+      const sortedOrgStates = sortOrgStates(updatedOrgStates);
+      setScenarios((current) =>
+        current.map((scenario) =>
+          scenario.id === updatedScenario.id ? updatedScenario : scenario
+        )
       );
-      setOrgStates(updated);
-      const stillSelected = updated.find(
+      setSelectedScenario({
+        id: updatedScenario.id,
+        name: updatedScenario.name
+      });
+      setScenarioEditName(updatedScenario.name);
+      setScenarioEditDescription(updatedScenario.description);
+      setForkName(`Fork of ${updatedScenario.name}`);
+      setForkDescription(updatedScenario.description);
+      setOrgStates(sortedOrgStates);
+      const stillSelected = sortedOrgStates.find(
         (orgState) => orgState.id === selectedOrgState?.id
       );
-      const nextOrgState = stillSelected ?? updated[0] ?? null;
+      const nextOrgState = stillSelected ?? sortedOrgStates[0] ?? null;
       setSelectedOrgState(
         nextOrgState ? orgStateSummary(nextOrgState) : null
       );
     } catch (error) {
-      setOrgStateError(messageFromError(error));
+      const message = messageFromError(error);
+      setScenarioError(message);
+      setOrgStateError(message);
     } finally {
+      setLoadingScenarios(false);
       setLoadingOrgStates(false);
     }
   }

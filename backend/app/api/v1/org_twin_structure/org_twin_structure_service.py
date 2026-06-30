@@ -1,3 +1,4 @@
+from copy import deepcopy
 from datetime import datetime
 
 from fastapi import HTTPException, status
@@ -109,6 +110,44 @@ def soft_delete_graphs_for_org_states(
     for graph in graphs:
         graph.deleted_time = deleted_time
         graph.modified_time = deleted_time
+
+
+def copy_graph_snapshots_for_org_states(
+    session: Session,
+    copied_org_state_id_by_source_id: dict[int, int],
+) -> None:
+    if not copied_org_state_id_by_source_id:
+        return
+
+    source_org_state_ids = list(copied_org_state_id_by_source_id)
+    source_graphs = session.scalars(
+        select(Graph)
+        .where(
+            Graph.org_state_id.in_(source_org_state_ids),
+            Graph.deleted_time.is_(None),
+        )
+        .order_by(Graph.org_state_id, Graph.graph_id),
+    ).all()
+
+    for source_graph in source_graphs:
+        copied_org_state_id = copied_org_state_id_by_source_id.get(
+            source_graph.org_state_id,
+        )
+        if copied_org_state_id is None:
+            raise _invalid_graph_copy_exception(
+                "Missing copied organisation state for graph.",
+            )
+
+        copied_graph = Graph(
+            org_state_id=copied_org_state_id,
+            name=source_graph.name,
+            description=source_graph.description,
+        )
+        session.add(copied_graph)
+        session.flush()
+
+        graph_node_id_map = _copy_graph_nodes(session, source_graph, copied_graph)
+        _copy_graph_edges(session, source_graph, copied_graph, graph_node_id_map)
 
 
 def _get_active_default_metamodel(session: Session) -> Metamodel:
@@ -288,6 +327,79 @@ def _copy_allowed_connections(
     session.flush()
 
 
+def _copy_graph_nodes(
+    session: Session,
+    source: Graph,
+    copied: Graph,
+) -> dict[int, int]:
+    id_map: dict[int, int] = {}
+    graph_nodes = session.scalars(
+        select(GraphNode)
+        .where(
+            GraphNode.graph_id == source.graph_id,
+            GraphNode.deleted_time.is_(None),
+        )
+        .order_by(GraphNode.graph_node_id),
+    ).all()
+
+    for source_node in graph_nodes:
+        copied_node = GraphNode(
+            graph_id=copied.graph_id,
+            node_key=source_node.node_key,
+            node_type_id=source_node.node_type_id,
+            create_date=source_node.create_date,
+            position_x=source_node.position_x,
+            position_y=source_node.position_y,
+            attributes=deepcopy(source_node.attributes),
+            timeserie_id=None,
+            timeserie_secondary_id=None,
+        )
+        session.add(copied_node)
+        session.flush()
+        id_map[source_node.graph_node_id] = copied_node.graph_node_id
+
+    return id_map
+
+
+def _copy_graph_edges(
+    session: Session,
+    source: Graph,
+    copied: Graph,
+    graph_node_id_map: dict[int, int],
+) -> None:
+    graph_edges = session.scalars(
+        select(GraphEdge)
+        .where(
+            GraphEdge.graph_id == source.graph_id,
+            GraphEdge.deleted_time.is_(None),
+        )
+        .order_by(GraphEdge.graph_edge_id),
+    ).all()
+
+    for source_edge in graph_edges:
+        session.add(
+            GraphEdge(
+                graph_id=copied.graph_id,
+                edge_key=source_edge.edge_key,
+                edge_type_id=source_edge.edge_type_id,
+                source_graph_node_id=_mapped_id(
+                    source_edge.source_graph_node_id,
+                    graph_node_id_map,
+                    "source graph node",
+                ),
+                target_graph_node_id=_mapped_id(
+                    source_edge.target_graph_node_id,
+                    graph_node_id_map,
+                    "target graph node",
+                ),
+                create_date=source_edge.create_date,
+                attributes=deepcopy(source_edge.attributes),
+            ),
+        )
+
+    session.flush()
+
+
 def _validate_node_type(node_type: NodeType) -> None:
     if node_type.ui_shape not in ALLOWED_NODE_SHAPES:
         raise _invalid_metamodel_exception(
@@ -331,6 +443,13 @@ def _mapped_id(source_id: int, id_map: dict[int, int], label: str) -> int:
 
 
 def _invalid_metamodel_exception(detail: str) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail=detail,
+    )
+
+
+def _invalid_graph_copy_exception(detail: str) -> HTTPException:
     return HTTPException(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         detail=detail,

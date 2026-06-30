@@ -82,10 +82,36 @@ The default `Reality` scenario is protected.
 
 ## Organisation State Target Dates
 
+Every active organisation state has a `target_date`.
+
 Active organisation states inside the same scenario cannot share the same
-non-null `target_date`.
+`target_date`.
 
 Soft-deleted organisation states do not reserve their historical target dates.
+
+## Scenario Copy
+
+Scenario copy creates an editable scenario branch from a selected source
+scenario and source organisation state.
+
+Copy rules:
+
+- the source scenario must be active and belong to the requested organisation
+- the source organisation state must be active and belong to the source scenario
+- the copied scenario receives a generated `scenario_key`
+- request `name` and `description` become the copied scenario fields
+- copied scenarios are always `protected=false`
+- copied `source_scenario_id` references the selected source scenario
+- all active source organisation states that belong to the source scenario and
+  have `target_date <= sourceOrgStateId.target_date` are copied
+- copied organisation states receive generated `org_state_key` values and
+  preserve `name`, `description`, `target_date` and `version`
+- copied `initial_state_id` points to the copied version of the selected source
+  organisation state
+- active graph snapshots for copied organisation states are copied through the
+  Organisation Twin Structure Domain service boundary
+- scenario-owned timeseries and timeserie values are not copied
+- source scenario, source organisation states and source graphs are not mutated
 
 ---
 
@@ -115,6 +141,7 @@ Scenario CRUD endpoints:
 ```text
 GET /api/v1/organisations/{organisation_key}/scenarios
 POST /api/v1/organisations/{organisation_key}/scenarios
+POST /api/v1/organisations/{organisation_key}/scenarios/copy
 GET /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}
 PATCH /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}
 DELETE /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}
@@ -164,11 +191,15 @@ Missing active organisations, scenarios or organisation states return HTTP
 
 Protected scenario patch and delete return HTTP `409`.
 
-Duplicate active non-null organisation state target dates inside one scenario
-return HTTP `409`.
+Duplicate active organisation state target dates inside one scenario return
+HTTP `409`.
 
-Scenario copy and organisation state graph-date synchronisation endpoints are
-not part of the current CRUD API.
+Scenario copy returns HTTP `201`. Missing active source scenarios or source
+organisation states return HTTP `404`.
+
+Organisation state graph-date synchronisation is not implemented. The frontend
+Refresh action reloads selected scenario and organisation state data through
+existing GET endpoints.
 
 ---
 
@@ -198,15 +229,35 @@ Flow:
 
 Scenario CRUD does not copy source scenario data, graph data or metamodel data.
 
+## Copy Scenario
+
+Flow:
+
+1. Validate organisation exists and is active.
+2. Validate source scenario exists, is active and belongs to the organisation.
+3. Validate source organisation state exists, is active and belongs to the
+   source scenario.
+4. Create an unprotected scenario with generated `scenario_key`, request fields
+   and `source_scenario_id`.
+5. Copy active source organisation states in the source scenario whose
+   `target_date` is less than or equal to the selected source organisation
+   state's `target_date`.
+6. Set the copied scenario `initial_state_id` to the copied selected source
+   organisation state.
+7. Ask Organisation Twin Structure Domain to copy active graph snapshots for the
+   copied organisation state pairs.
+8. Return copied scenario data.
+
 ## Create Organisation State
 
 Flow:
 
 1. Validate scenario exists and is active.
 2. Validate required `name`.
-3. Validate active non-null `target_date` uniqueness inside the scenario.
-4. Generate a server-side `org_state_key`.
-5. Create organisation state row.
+3. Validate required `target_date`.
+4. Validate active `target_date` uniqueness inside the scenario.
+5. Generate a server-side `org_state_key`.
+6. Create organisation state row.
 
 Organisation state CRUD does not create graph data or synchronise graph dates.
 
@@ -228,9 +279,10 @@ Flow:
 2. Validate scenario exists and is active.
 3. Validate organisation state exists and is active.
 4. Validate supplied `name`.
-5. Validate active non-null `target_date` uniqueness inside the scenario.
-6. Update only supplied `name`, `description` and `target_date` fields.
-7. Update `modified_time`.
+5. Validate supplied `target_date` is not null when the field is patched.
+6. Validate active `target_date` uniqueness inside the scenario.
+7. Update only supplied `name`, `description` and `target_date` fields.
+8. Update `modified_time`.
 
 ## Delete Scenario
 

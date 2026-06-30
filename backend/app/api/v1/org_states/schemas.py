@@ -44,6 +44,32 @@ class ScenarioPatchRequest(StrictBaseModel):
         return stripped
 
 
+class ScenarioCopyRequest(StrictBaseModel):
+    source_scenario_id: str = Field(
+        min_length=1,
+        alias="sourceScenarioId",
+        description="Stable scenario key to copy from.",
+    )
+    source_org_state_id: str = Field(
+        min_length=1,
+        alias="sourceOrgStateId",
+        description="Stable organisation state key that defines the copy boundary.",
+    )
+    name: str = Field(min_length=1, description="Copied scenario display name.")
+    description: str | None = Field(
+        default=None,
+        description="Copied scenario description.",
+    )
+
+    @field_validator("source_scenario_id", "source_org_state_id", "name")
+    @classmethod
+    def text_fields_must_not_be_blank(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("Value must not be blank.")
+        return stripped
+
+
 class ScenarioResponse(StrictBaseModel):
     id: str = Field(description="Stable scenario key.")
     name: str = Field(description="Scenario display name.")
@@ -57,8 +83,7 @@ class OrgStateCreateRequest(StrictBaseModel):
         default=None,
         description="Organisation state description.",
     )
-    target_date: date | None = Field(
-        default=None,
+    target_date: date = Field(
         alias="targetDate",
         description="Organisation state target date.",
     )

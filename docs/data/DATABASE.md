@@ -55,7 +55,7 @@ db/migrations/002_add_org_state_name_and_org_name_unique_index.sql
 | `users` | Application users | `role` is `consultant` or `admin`. |
 | `organisations` | Organisation records | Uses `organisation_key` for stable external/import identity. Active names are case-insensitively unique. |
 | `scenarios` | Scenario versions within an organisation | References source scenario and optional initial org state. |
-| `org_states` | Scenario-specific organisation state snapshots | `name` is the human-readable state display name; soft-deleted with parent scenario in normal application flows. |
+| `org_states` | Scenario-specific organisation state snapshots | `name` is the human-readable state display name; `target_date` is required by the application/API; soft-deleted with parent scenario in normal application flows. |
 | `events` | Scenario events | Soft-deleted with parent scenario in normal application flows. |
 | `metamodels` | Default or organisation-specific type model | `organisation_id IS NULL` means the default metamodel. |
 | `node_types` | Node type definitions for a metamodel | Preserves Varjo-style `node_type_key`. |

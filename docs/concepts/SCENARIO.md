@@ -100,6 +100,7 @@ Related APIs:
 
 - `GET /api/v1/organisations/{organisation_key}/scenarios`
 - `POST /api/v1/organisations/{organisation_key}/scenarios`
+- `POST /api/v1/organisations/{organisation_key}/scenarios/copy`
 - `GET /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}`
 - `PATCH /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}`
 - `DELETE /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}`
@@ -116,6 +117,17 @@ Related APIs:
 - Scenario patch accepts `name` and `description`.
 - Scenario patch and delete for protected scenarios return HTTP `409`.
 - Scenario CRUD does not implement copy or branching behavior.
+- Scenario copy creates an unprotected scenario with request `name` and
+  `description`.
+- Scenario copy sets `source_scenario_id` to the selected source scenario.
+- Scenario copy sets `initial_state_id` to the copied version of the selected
+  source organisation state.
+- Scenario copy copies active source organisation states that belong to the
+  source scenario and are within the selected source organisation state's
+  `target_date` boundary.
+- Scenario copy delegates graph snapshot copying to Organisation Twin Structure
+  Domain.
+- Scenario copy does not copy scenario-owned timeseries or timeserie values.
 
 ---
 
@@ -132,10 +144,10 @@ Avoid:
 
 - treating physical cascade deletes as the normal deletion path
 - adding metamodel copy behavior unless task scope requires it
-- documenting scenario copy or branching behavior unless implemented by the task
+- copying scenario-owned timeseries unless task scope requires it
 
 ---
 
 # Open Questions
 
-- scenario copy and branching behavior
+- scenario lifecycle states beyond active and deleted

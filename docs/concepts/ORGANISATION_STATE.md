@@ -53,8 +53,9 @@ An Organisation State is a named scenario-specific snapshot state of an Organisa
 - Organisation State must belong to exactly one scenario.
 - Organisation State must always have `org_state_key`.
 - Organisation State must always have `name`.
+- Organisation State must always have `target_date`.
 - Active organisation state keys are unique within a scenario.
-- Active non-null `target_date` values are unique within a scenario at the API level.
+- Active `target_date` values are unique within a scenario at the API level.
 - Normal deletion is soft delete through the owning scenario flow.
 - A new organisation receives a default organisation state named `Initial state`.
 
@@ -108,17 +109,22 @@ Related APIs:
 
 - `name` is required and is the display name for the snapshot.
 - `org_state_key` is the stable scenario-local key.
+- `target_date` is required.
 - Organisation state create generates `org_state_key` server-side.
 - Organisation state responses use stable `org_state_key` as `id`.
 - Organisation state patch accepts `name`, `description` and `targetDate`.
-- Duplicate active non-null `targetDate` values inside one scenario return HTTP
-  `409`.
+- Duplicate active `targetDate` values inside one scenario return HTTP `409`.
 - Soft-deleted organisation states do not reserve historical `targetDate`
   values.
 - The default organisation state uses description `Initial state of reality`
   and target date `2020-01-01`.
 - A graph may belong to one organisation state through Organisation Twin Structure Domain.
 - Organisation state CRUD does not create graph data or synchronise graph dates.
+- Scenario copy copies active organisation states that belong to the source
+  scenario and are within the selected source organisation state's `targetDate`
+  boundary.
+- Scenario copy gives copied organisation states generated `org_state_key`
+  values while preserving `name`, `description`, `targetDate` and `version`.
 
 ---
 
@@ -129,17 +135,17 @@ When implementing Organisation State features:
 - read `docs/domains/ORG_STATES.md`
 - preserve required `name`
 - preserve scenario-local active key uniqueness
-- preserve scenario-local active non-null target-date uniqueness
+- preserve scenario-local active target-date uniqueness
 - coordinate graph behavior through Organisation Twin Structure Domain
 
 Avoid:
 
 - creating graph data unless the task explicitly includes graph behavior
 - modifying organisation rows directly
-- documenting graph-date synchronisation unless implemented by the task
+- implementing graph-date synchronisation unless a task explicitly defines it
 
 ---
 
 # Open Questions
 
-- snapshot copy behavior
+- organisation state lifecycle states beyond active and deleted

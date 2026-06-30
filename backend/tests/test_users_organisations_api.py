@@ -455,6 +455,296 @@ def test_protected_scenario_patch_and_delete_return_409(client: TestClient) -> N
     assert delete_response.status_code == 409
 
 
+def test_scenario_copy_copies_bounded_org_states_and_graph_snapshots(
+    client: TestClient,
+    session_factory: sessionmaker[Session],
+) -> None:
+    organisation_key = _create_organisation(client)
+    source_response = client.post(
+        f"/api/v1/organisations/{organisation_key}/scenarios",
+        json={"name": "Source scenario", "description": "Source"},
+    )
+    assert source_response.status_code == 201
+    source_scenario_key_value = cast(dict[str, object], source_response.json())["id"]
+    assert isinstance(source_scenario_key_value, str)
+    source_scenario_key = source_scenario_key_value
+
+    deleted_state_response = client.post(
+        f"/api/v1/organisations/{organisation_key}/scenarios/"
+        f"{source_scenario_key}/org-states",
+        json={"name": "Deleted state", "targetDate": "2029-01-01"},
+    )
+    first_state_response = client.post(
+        f"/api/v1/organisations/{organisation_key}/scenarios/"
+        f"{source_scenario_key}/org-states",
+        json={"name": "First state", "targetDate": "2030-01-01"},
+    )
+    boundary_state_response = client.post(
+        f"/api/v1/organisations/{organisation_key}/scenarios/"
+        f"{source_scenario_key}/org-states",
+        json={"name": "Boundary state", "targetDate": "2030-02-01"},
+    )
+    later_state_response = client.post(
+        f"/api/v1/organisations/{organisation_key}/scenarios/"
+        f"{source_scenario_key}/org-states",
+        json={"name": "Later state", "targetDate": "2030-03-01"},
+    )
+    assert deleted_state_response.status_code == 201
+    assert first_state_response.status_code == 201
+    assert boundary_state_response.status_code == 201
+    assert later_state_response.status_code == 201
+
+    deleted_state_key_value = cast(dict[str, object], deleted_state_response.json())[
+        "id"
+    ]
+    first_state_key_value = cast(dict[str, object], first_state_response.json())["id"]
+    boundary_state_key_value = cast(
+        dict[str, object],
+        boundary_state_response.json(),
+    )["id"]
+    assert isinstance(deleted_state_key_value, str)
+    assert isinstance(first_state_key_value, str)
+    assert isinstance(boundary_state_key_value, str)
+    deleted_state_key = deleted_state_key_value
+    first_state_key = first_state_key_value
+    boundary_state_key = boundary_state_key_value
+    assert (
+        client.delete(
+            f"/api/v1/organisations/{organisation_key}/scenarios/"
+            f"{source_scenario_key}/org-states/{deleted_state_key}",
+        ).status_code
+        == 204
+    )
+
+    with session_factory() as session:
+        organisation = _get_organisation(session, organisation_key)
+        source_scenario = _get_scenario(session, organisation, source_scenario_key)
+        first_state = _get_org_state(session, source_scenario, first_state_key)
+        boundary_state = _get_org_state(
+            session,
+            source_scenario,
+            boundary_state_key,
+        )
+        node_type = session.scalar(
+            select(NodeType)
+            .where(NodeType.node_type_key == "nt_person")
+            .order_by(NodeType.metamodel_id.desc()),
+        )
+        edge_type = session.scalar(
+            select(EdgeType)
+            .where(EdgeType.edge_type_key == "et_reports_to")
+            .order_by(EdgeType.metamodel_id.desc()),
+        )
+        assert node_type is not None
+        assert edge_type is not None
+        timeserie = Timeserie(
+            scenario_id=source_scenario.scenario_id,
+            timeserie_key="source_timeserie",
+            name="Source timeserie",
+            time_unit="year",
+            value_unit="number",
+        )
+        session.add(timeserie)
+        session.flush()
+        _add_graph_snapshot(
+            session,
+            first_state,
+            node_type.node_type_id,
+            edge_type.edge_type_id,
+            graph_name="First graph",
+            node_key="node_first",
+        )
+        _add_graph_snapshot(
+            session,
+            boundary_state,
+            node_type.node_type_id,
+            edge_type.edge_type_id,
+            graph_name="Boundary graph",
+            node_key="node_boundary",
+            timeserie_id=timeserie.timeserie_id,
+        )
+        session.commit()
+
+    copy_response = client.post(
+        f"/api/v1/organisations/{organisation_key}/scenarios/copy",
+        json={
+            "sourceScenarioId": source_scenario_key,
+            "sourceOrgStateId": boundary_state_key,
+            "name": "Copied scenario",
+            "description": "Copied",
+        },
+    )
+
+    assert copy_response.status_code == 201
+    copied_payload = cast(dict[str, object], copy_response.json())
+    copied_key_value = copied_payload["id"]
+    assert isinstance(copied_key_value, str)
+    copied_key = copied_key_value
+    assert copied_key.startswith("scenario_")
+    assert copied_payload == {
+        "id": copied_key,
+        "name": "Copied scenario",
+        "description": "Copied",
+        "protected": False,
+    }
+
+    with session_factory() as session:
+        organisation = _get_organisation(session, organisation_key)
+        source_scenario = _get_scenario(session, organisation, source_scenario_key)
+        copied_scenario = _get_scenario(session, organisation, copied_key)
+        copied_org_states = session.scalars(
+            select(OrgState)
+            .where(
+                OrgState.scenario_id == copied_scenario.scenario_id,
+                OrgState.deleted_time.is_(None),
+            )
+            .order_by(OrgState.target_date),
+        ).all()
+        copied_names = [org_state.name for org_state in copied_org_states]
+
+        assert copied_scenario.source_scenario_id == source_scenario.scenario_id
+        assert copied_scenario.protected is False
+        assert copied_names == ["First state", "Boundary state"]
+        copied_boundary_state = copied_org_states[1]
+        assert copied_scenario.initial_state_id == copied_boundary_state.org_state_id
+
+        source_names = [
+            org_state.name
+            for org_state in session.scalars(
+                select(OrgState)
+                .where(
+                    OrgState.scenario_id == source_scenario.scenario_id,
+                    OrgState.deleted_time.is_(None),
+                )
+                .order_by(OrgState.target_date),
+            ).all()
+        ]
+        assert source_names == ["First state", "Boundary state", "Later state"]
+
+        copied_graphs = session.scalars(
+            select(Graph)
+            .where(
+                Graph.org_state_id.in_(
+                    [org_state.org_state_id for org_state in copied_org_states],
+                ),
+                Graph.deleted_time.is_(None),
+            )
+            .order_by(Graph.name),
+        ).all()
+        assert [graph.name for graph in copied_graphs] == [
+            "Boundary graph",
+            "First graph",
+        ]
+
+        copied_boundary_graph = next(
+            graph for graph in copied_graphs if graph.name == "Boundary graph"
+        )
+        copied_node = session.scalar(
+            select(GraphNode).where(
+                GraphNode.graph_id == copied_boundary_graph.graph_id,
+            ),
+        )
+        copied_edge = session.scalar(
+            select(GraphEdge).where(
+                GraphEdge.graph_id == copied_boundary_graph.graph_id,
+            ),
+        )
+        assert copied_node is not None
+        assert copied_node.node_key == "node_boundary"
+        assert copied_node.attributes == {"name": "node_boundary"}
+        assert copied_node.timeserie_id is None
+        assert copied_node.timeserie_secondary_id is None
+        assert copied_edge is not None
+        assert copied_edge.edge_key == "edge_node_boundary"
+        assert copied_edge.attributes == {"weight": 1}
+
+
+def test_scenario_copy_allows_protected_source_scenarios(
+    client: TestClient,
+    session_factory: sessionmaker[Session],
+) -> None:
+    organisation_key = _create_organisation(client)
+
+    copy_response = client.post(
+        f"/api/v1/organisations/{organisation_key}/scenarios/copy",
+        json={
+            "sourceScenarioId": "reality",
+            "sourceOrgStateId": "initial_state",
+            "name": "Reality copy",
+            "description": "Editable copy",
+        },
+    )
+
+    assert copy_response.status_code == 201
+    copied_key_value = cast(dict[str, object], copy_response.json())["id"]
+    assert isinstance(copied_key_value, str)
+    copied_key = copied_key_value
+
+    with session_factory() as session:
+        organisation = _get_organisation(session, organisation_key)
+        source_scenario = _get_scenario(session, organisation, "reality")
+        copied_scenario = _get_scenario(session, organisation, copied_key)
+
+        assert source_scenario.protected is True
+        assert copied_scenario.source_scenario_id == source_scenario.scenario_id
+        assert copied_scenario.protected is False
+
+
+def test_scenario_copy_returns_404_for_missing_source_resources(
+    client: TestClient,
+) -> None:
+    organisation_key = _create_organisation(client)
+
+    missing_scenario_response = client.post(
+        f"/api/v1/organisations/{organisation_key}/scenarios/copy",
+        json={
+            "sourceScenarioId": "missing",
+            "sourceOrgStateId": "initial_state",
+            "name": "Copy",
+        },
+    )
+    assert missing_scenario_response.status_code == 404
+
+    missing_org_state_response = client.post(
+        f"/api/v1/organisations/{organisation_key}/scenarios/copy",
+        json={
+            "sourceScenarioId": "reality",
+            "sourceOrgStateId": "missing",
+            "name": "Copy",
+        },
+    )
+    assert missing_org_state_response.status_code == 404
+
+
+def test_scenario_copy_requires_source_org_state_to_belong_to_source_scenario(
+    client: TestClient,
+) -> None:
+    organisation_key = _create_organisation(client)
+    other_scenario_response = client.post(
+        f"/api/v1/organisations/{organisation_key}/scenarios",
+        json={"name": "Other"},
+    )
+    assert other_scenario_response.status_code == 201
+    other_scenario_key = other_scenario_response.json()["id"]
+    other_org_state_response = client.post(
+        f"/api/v1/organisations/{organisation_key}/scenarios/"
+        f"{other_scenario_key}/org-states",
+        json={"name": "Other state", "targetDate": "2031-01-01"},
+    )
+    assert other_org_state_response.status_code == 201
+
+    response = client.post(
+        f"/api/v1/organisations/{organisation_key}/scenarios/copy",
+        json={
+            "sourceScenarioId": "reality",
+            "sourceOrgStateId": other_org_state_response.json()["id"],
+            "name": "Invalid copy",
+        },
+    )
+
+    assert response.status_code == 404
+
+
 def test_org_state_crud_uses_stable_keys_and_excludes_soft_deleted_rows(
     client: TestClient,
 ) -> None:
@@ -537,12 +827,25 @@ def test_org_state_create_and_patch_validate_blank_names(client: TestClient) -> 
     )
     assert create_response.status_code == 422
 
+    missing_target_date_response = client.post(
+        f"/api/v1/organisations/{organisation_key}/scenarios/reality/org-states",
+        json={"name": "Missing target date"},
+    )
+    assert missing_target_date_response.status_code == 422
+
     patch_response = client.patch(
         f"/api/v1/organisations/{organisation_key}/scenarios/reality/"
         "org-states/initial_state",
         json={"name": "   "},
     )
     assert patch_response.status_code == 422
+
+    null_target_date_response = client.patch(
+        f"/api/v1/organisations/{organisation_key}/scenarios/reality/"
+        "org-states/initial_state",
+        json={"targetDate": None},
+    )
+    assert null_target_date_response.status_code == 422
 
 
 def test_org_state_duplicate_active_target_date_returns_409_and_deleted_date_reuses(
@@ -793,3 +1096,43 @@ def _get_org_state_including_deleted(
     )
     assert org_state is not None
     return org_state
+
+
+def _add_graph_snapshot(
+    session: Session,
+    org_state: OrgState,
+    node_type_id: int,
+    edge_type_id: int,
+    *,
+    graph_name: str,
+    node_key: str,
+    timeserie_id: int | None = None,
+) -> None:
+    graph = Graph(
+        org_state_id=org_state.org_state_id,
+        name=graph_name,
+    )
+    session.add(graph)
+    session.flush()
+    graph_node = GraphNode(
+        graph_id=graph.graph_id,
+        node_key=node_key,
+        node_type_id=node_type_id,
+        create_date=org_state.target_date,
+        attributes={"name": node_key},
+        timeserie_id=timeserie_id,
+        timeserie_secondary_id=timeserie_id,
+    )
+    session.add(graph_node)
+    session.flush()
+    session.add(
+        GraphEdge(
+            graph_id=graph.graph_id,
+            edge_key=f"edge_{node_key}",
+            edge_type_id=edge_type_id,
+            source_graph_node_id=graph_node.graph_node_id,
+            target_graph_node_id=graph_node.graph_node_id,
+            create_date=org_state.target_date,
+            attributes={"weight": 1},
+        ),
+    )

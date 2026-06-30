@@ -8,6 +8,7 @@ from app.api.v1.org_states.schemas import (
     OrgStateCreateRequest,
     OrgStatePatchRequest,
     OrgStateResponse,
+    ScenarioCopyRequest,
     ScenarioCreateRequest,
     ScenarioPatchRequest,
     ScenarioResponse,
@@ -37,6 +38,19 @@ def create_scenario(
     session: SessionDependency,
 ) -> ScenarioResponse:
     return org_states_service.create_scenario(session, organisation_key, payload)
+
+
+@router.post(
+    "/{organisation_key}/scenarios/copy",
+    response_model=ScenarioResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def copy_scenario(
+    organisation_key: str,
+    payload: ScenarioCopyRequest,
+    session: SessionDependency,
+) -> ScenarioResponse:
+    return org_states_service.copy_scenario(session, organisation_key, payload)
 
 
 @router.get(

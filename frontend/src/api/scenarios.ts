@@ -300,6 +300,20 @@ export async function fetchScenarios(
   );
 }
 
+export async function fetchScenario(
+  orgId: string,
+  scenarioId: string,
+  signal?: AbortSignal
+): Promise<ScenarioDto> {
+  return normalizeScenario(
+    await requestJson<unknown>(
+      scenarioPath(orgId, scenarioId),
+      { method: "GET" },
+      signal
+    )
+  );
+}
+
 export async function updateScenario(
   orgId: string,
   scenarioId: string,
@@ -408,19 +422,5 @@ export async function deleteOrgState(
     orgStatePath(orgId, scenarioId, orgStateId),
     { method: "DELETE" },
     signal
-  );
-}
-
-export async function synchroniseOrgStatesToGraphDates(
-  orgId: string,
-  scenarioId: string,
-  signal?: AbortSignal
-): Promise<OrgStateDto[]> {
-  return normalizeOrgStates(
-    await requestJson<unknown>(
-      `${orgStatesPath(orgId, scenarioId)}/synchronise-graph-dates`,
-      { method: "POST" },
-      signal
-    )
   );
 }

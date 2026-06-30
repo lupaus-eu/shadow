@@ -68,6 +68,17 @@ Only one active graph may exist for an organisation state.
 
 Graph nodes and graph edges belong to a graph snapshot.
 
+## Graph Snapshot Copy
+
+When Organisation States Domain copies a scenario, Organisation Twin Structure
+Domain provides the service boundary for copying active graph snapshots from
+source organisation states to their copied organisation states.
+
+Graph snapshot copy preserves graph names, descriptions, node and edge stable
+keys, type references, create dates, positions and dynamic attributes. Graph
+node timeseries references are cleared because scenario-owned timeseries are not
+copied by scenario copy.
+
 ---
 
 # Database Ownership
@@ -146,6 +157,17 @@ Flow:
 2. Validate relevant metamodel rules.
 3. Create one active graph for the organisation state.
 4. Create graph nodes and graph edges.
+
+## Copy Graph Snapshot For Scenario Copy
+
+Flow:
+
+1. Receive source organisation state to copied organisation state id mappings
+   from Organisation States Domain.
+2. Load active graphs for the source organisation states.
+3. Create copied graph rows for copied organisation states.
+4. Copy active graph nodes, clearing timeseries references.
+5. Copy active graph edges to reference the copied graph nodes.
 
 ---
 

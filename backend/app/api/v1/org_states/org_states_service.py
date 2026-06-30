@@ -17,6 +17,7 @@ from app.api.v1.org_states.schemas import (
     OrgStateCreateRequest,
     OrgStatePatchRequest,
     OrgStateResponse,
+    ScenarioCopyRequest,
     ScenarioCreateRequest,
     ScenarioPatchRequest,
     ScenarioResponse,
@@ -114,6 +115,87 @@ def create_scenario(
     session.refresh(scenario)
 
     return to_scenario_response(scenario)
+
+
+def copy_scenario(
+    session: Session,
+    organisation_key: str,
+    payload: ScenarioCopyRequest,
+) -> ScenarioResponse:
+    organisation = _get_active_organisation(session, organisation_key)
+    source_scenario = _get_active_scenario(
+        session,
+        organisation,
+        payload.source_scenario_id,
+    )
+    source_boundary_org_state = _get_active_org_state(
+        session,
+        source_scenario,
+        payload.source_org_state_id,
+    )
+
+    if source_boundary_org_state.target_date is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Source organisation state must have a target date.",
+        )
+
+    copied_scenario = Scenario(
+        organisation_id=organisation.organisation_id,
+        scenario_key=_generate_scenario_key(),
+        name=payload.name,
+        description=payload.description,
+        protected=False,
+        source_scenario_id=source_scenario.scenario_id,
+    )
+    session.add(copied_scenario)
+    session.flush()
+
+    source_org_states = session.scalars(
+        select(OrgState)
+        .where(
+            OrgState.scenario_id == source_scenario.scenario_id,
+            OrgState.deleted_time.is_(None),
+            OrgState.target_date <= source_boundary_org_state.target_date,
+        )
+        .order_by(OrgState.target_date, OrgState.org_state_id),
+    ).all()
+
+    copied_org_state_id_by_source_id: dict[int, int] = {}
+    for source_org_state in source_org_states:
+        copied_org_state = OrgState(
+            scenario_id=copied_scenario.scenario_id,
+            org_state_key=_generate_org_state_key(),
+            name=source_org_state.name,
+            version=source_org_state.version,
+            description=source_org_state.description,
+            target_date=source_org_state.target_date,
+        )
+        session.add(copied_org_state)
+        session.flush()
+        copied_org_state_id_by_source_id[source_org_state.org_state_id] = (
+            copied_org_state.org_state_id
+        )
+
+    copied_initial_state_id = copied_org_state_id_by_source_id.get(
+        source_boundary_org_state.org_state_id,
+    )
+    if copied_initial_state_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Copied source organisation state was not created.",
+        )
+    copied_scenario.initial_state_id = copied_initial_state_id
+
+    org_twin_structure_service.copy_graph_snapshots_for_org_states(
+        session,
+        copied_org_state_id_by_source_id,
+    )
+
+    session.commit()
+    session.refresh(copied_scenario)
+
+    return to_scenario_response(copied_scenario)
 
 
 def patch_scenario(
@@ -260,6 +342,11 @@ def patch_org_state(
     update_data = payload.model_dump(exclude_unset=True, by_alias=False)
 
     if "target_date" in update_data:
+        if payload.target_date is None:
+            raise HTTPException(
+                status_code=422,
+                detail="Organisation state target date is required.",
+            )
         _ensure_target_date_is_available(
             session,
             scenario,
