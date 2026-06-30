@@ -57,6 +57,7 @@ A Scenario is a versioned planning or analysis context within one Organisation.
 - Scenario must always have `name`.
 - Active scenario keys are unique within an organisation.
 - Normal scenario deletion is soft delete.
+- Protected scenarios cannot be patched or deleted through the backend CRUD API.
 
 ---
 
@@ -74,6 +75,9 @@ active -> deleted
 ```
 
 When a scenario is soft-deleted, owned organisation states, events, graphs, timeseries and timeserie values must be soft-deleted by application or service logic.
+
+The default `Reality` scenario is protected and cannot be patched or deleted
+through normal backend CRUD flows.
 
 ---
 
@@ -94,7 +98,11 @@ Related Tables:
 
 Related APIs:
 
-- `/scenarios`
+- `GET /api/v1/organisations/{organisation_key}/scenarios`
+- `POST /api/v1/organisations/{organisation_key}/scenarios`
+- `GET /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}`
+- `PATCH /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}`
+- `DELETE /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}`
 
 ---
 
@@ -103,6 +111,11 @@ Related APIs:
 - A scenario may reference a source scenario.
 - A scenario may reference an initial organisation state.
 - Physical database cascades are hard-delete cleanup/safety behavior only.
+- Scenario create generates `scenario_key` server-side.
+- Scenario responses use stable `scenario_key` as `id`.
+- Scenario patch accepts `name` and `description`.
+- Scenario patch and delete for protected scenarios return HTTP `409`.
+- Scenario CRUD does not implement copy or branching behavior.
 
 ---
 
@@ -112,16 +125,17 @@ When implementing Scenario features:
 
 - read `docs/domains/ORG_STATES.md`
 - preserve soft-delete propagation rules
+- preserve protected scenario mutation rules
 - update data and diagram docs when relationships change
 
 Avoid:
 
 - treating physical cascade deletes as the normal deletion path
 - adding metamodel copy behavior unless task scope requires it
+- documenting scenario copy or branching behavior unless implemented by the task
 
 ---
 
 # Open Questions
 
-- protected scenario behavior
 - scenario copy and branching behavior
