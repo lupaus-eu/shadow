@@ -118,6 +118,34 @@ function mockSchattenApi(options?: {
     }
 
     if (
+      url.endsWith("/api/v1/organisations/acme/scenarios/reality") &&
+      method === "PATCH"
+    ) {
+      return Promise.resolve(
+        jsonResponse({
+          scenario_id: "reality",
+          scenario_name: "Reality updated",
+          scenario_description: "Updated current baseline",
+          is_protected: true
+        })
+      );
+    }
+
+    if (
+      url.endsWith("/api/v1/organisations/acme/scenarios/reality") &&
+      method === "GET"
+    ) {
+      return Promise.resolve(
+        jsonResponse({
+          scenario_id: "reality",
+          scenario_name: "Reality",
+          scenario_description: "Current baseline",
+          is_protected: true
+        })
+      );
+    }
+
+    if (
       url.endsWith("/api/v1/organisations/acme/scenarios/future") &&
       method === "GET"
     ) {
@@ -208,6 +236,31 @@ function mockSchattenApi(options?: {
           target_date: "2026-09-01"
         })
       );
+    }
+
+    if (
+      url.endsWith(
+        "/api/v1/organisations/acme/scenarios/future/org-states/draft"
+      ) &&
+      method === "PATCH"
+    ) {
+      return Promise.resolve(
+        jsonResponse({
+          org_state_id: "draft",
+          org_state_name: "Draft state updated",
+          org_state_description: "Draft updated",
+          target_date: "2026-06-01"
+        })
+      );
+    }
+
+    if (
+      url.endsWith(
+        "/api/v1/organisations/acme/scenarios/future/org-states/draft"
+      ) &&
+      method === "DELETE"
+    ) {
+      return Promise.resolve(noContentResponse());
     }
 
     if (
@@ -337,14 +390,19 @@ describe("Schatten UI shell", () => {
     renderAt("/schatten/acme/org-states");
 
     expect(await screen.findByText("2 scenario(s)")).toBeInTheDocument();
+    await screen.findByRole("button", { name: /Today/ });
     fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
 
     await waitFor(() => {
       expect(
-        fetchMock.mock.calls.filter(([input]) =>
-          String(input).endsWith("/api/v1/organisations/acme/scenarios")
-        )
-      ).toHaveLength(2);
+        fetchMock.mock.calls.some(([input, init]) => {
+          const url = String(input);
+          return (
+            url.endsWith("/api/v1/organisations/acme/scenarios/reality") &&
+            (init?.method ?? "GET") === "GET"
+          );
+        })
+      ).toBe(true);
     });
   });
 
@@ -440,21 +498,54 @@ describe("Schatten UI shell", () => {
     expect(screen.getByTitle("Org state: None")).toBeInTheDocument();
   });
 
-  it("shows protected scenarios and blocks protected edit and delete actions", async () => {
-    mockSchattenApi();
+  it("shows protected scenarios, allows Reality editing, and blocks deletion", async () => {
+    const fetchMock = mockSchattenApi();
 
     renderAt("/schatten/acme/org-states");
 
     fireEvent.click(await screen.findByRole("button", { name: /Reality/ }));
 
     expect(screen.getAllByText("Protected")).not.toHaveLength(0);
-    expect(screen.getByRole("button", { name: "Save scenario" })).toBeDisabled();
     expect(
       screen.getByText("Protected scenario cannot be deleted.")
     ).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "Delete scenario" })
     ).not.toBeInTheDocument();
+
+    const selectedScenarioPanel = screen.getByRole("region", {
+      name: "Selected scenario"
+    });
+    const nameInput = within(selectedScenarioPanel).getByLabelText("Name");
+    const descriptionInput =
+      within(selectedScenarioPanel).getByLabelText("Description");
+    const saveButton = within(selectedScenarioPanel).getByRole("button", {
+      name: "Save scenario"
+    });
+
+    expect(nameInput).toHaveValue("Reality");
+    expect(descriptionInput).toHaveValue("Current baseline");
+    expect(nameInput).not.toBeDisabled();
+    expect(descriptionInput).not.toBeDisabled();
+    expect(saveButton).toBeDisabled();
+
+    fireEvent.change(descriptionInput, {
+      target: { value: "Updated current baseline" }
+    });
+    expect(saveButton).not.toBeDisabled();
+    fireEvent.click(saveButton);
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(([input, init]) => {
+          const url = String(input);
+          return (
+            url.endsWith("/api/v1/organisations/acme/scenarios/reality") &&
+            init?.method === "PATCH"
+          );
+        })
+      ).toBe(true);
+    });
   });
 
   it("disables clean states until an editable scenario is selected", async () => {
@@ -610,6 +701,102 @@ describe("Schatten UI shell", () => {
     });
   });
 
+  it("auto-selects the first scenario and first state on initial load", async () => {
+    mockSchattenApi();
+
+    renderAt("/schatten/acme/org-states");
+
+    await screen.findByRole("button", { name: /Reality/ });
+    await screen.findByRole("button", { name: /Today/ });
+
+    expect(screen.getByTitle("Scenario: Reality")).toBeInTheDocument();
+    expect(
+      screen.getByTitle("Org state: Today (2026-06-23)")
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Structure" })).toHaveAttribute(
+      "href",
+      "/schatten/acme/graph"
+    );
+    expect(screen.getByRole("link", { name: "Events" })).toHaveAttribute(
+      "href",
+      "/schatten/acme/events"
+    );
+  });
+
+  it("renders the selected scenario group without sidebar descriptions", async () => {
+    mockSchattenApi();
+
+    renderAt("/schatten/acme/org-states");
+
+    fireEvent.click(await screen.findByRole("button", { name: /Future plan/ }));
+    await screen.findByRole("button", { name: /Draft state/ });
+
+    const scenarioList = screen.getByLabelText("Scenario list");
+    const selectedScenarioButton = within(scenarioList).getByRole("button", {
+      name: /Future plan/
+    });
+    const selectedScenarioGroup = selectedScenarioButton.closest(
+      ".scenario-list-item"
+    );
+
+    expect(selectedScenarioGroup).toHaveClass("scenario-list-item--selected");
+    expect(selectedScenarioButton).toHaveClass("entity-row--selected");
+    expect(within(scenarioList).getByText("STATES")).toBeInTheDocument();
+    expect(within(scenarioList).queryByText("A possible future")).not.toBeInTheDocument();
+    expect(within(scenarioList).queryByText("Draft")).not.toBeInTheDocument();
+    expect(
+      within(scenarioList).getByRole("button", { name: /Draft state/ })
+    ).toHaveClass("entity-row--selected");
+  });
+
+  it("chooses a fork source state without changing the active org-state view", async () => {
+    const fetchMock = mockSchattenApi();
+
+    renderAt("/schatten/acme/org-states");
+
+    fireEvent.click(await screen.findByRole("button", { name: /Future plan/ }));
+    await screen.findByRole("button", { name: /Draft state/ });
+
+    expect(
+      screen.getByTitle("Org state: Draft state (2026-06-01)")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Selected scenario" })
+    ).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Source state"), {
+      target: { value: "launch" }
+    });
+
+    expect(
+      screen.getByTitle("Org state: Draft state (2026-06-01)")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Selected scenario" })
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Fork scenario" }));
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(([input, init]) => {
+          const url = String(input);
+          return (
+            url.endsWith("/api/v1/organisations/acme/scenarios/copy") &&
+            init?.method === "POST" &&
+            init.body ===
+              JSON.stringify({
+                sourceScenarioId: "future",
+                sourceOrgStateId: "launch",
+                name: "Fork of Future plan",
+                description: "A possible future"
+              })
+          );
+        })
+      ).toBe(true);
+    });
+  });
+
   it("shows states under the selected scenario and auto-selects the first state", async () => {
     mockSchattenApi();
 
@@ -646,6 +833,100 @@ describe("Schatten UI shell", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("edits the selected org state immediately and saves only after changes", async () => {
+    const fetchMock = mockSchattenApi();
+
+    renderAt("/schatten/acme/org-states");
+
+    fireEvent.click(await screen.findByRole("button", { name: /Future plan/ }));
+    await screen.findByRole("button", { name: /Draft state/ });
+    fireEvent.click(screen.getByRole("button", { name: "State" }));
+
+    expect(
+      screen.queryByRole("button", { name: "Edit state" })
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("State ID")).not.toBeInTheDocument();
+
+    const selectedStatePanel = screen.getByRole("region", {
+      name: "Draft state"
+    });
+    const nameInput = within(selectedStatePanel).getByLabelText("Name");
+    const descriptionInput =
+      within(selectedStatePanel).getByLabelText("Description");
+    const saveButton = within(selectedStatePanel).getByRole("button", {
+      name: "Save state"
+    });
+
+    expect(nameInput).toHaveValue("Draft state");
+    expect(descriptionInput).toHaveValue("Draft");
+    expect(saveButton).toBeDisabled();
+
+    fireEvent.change(descriptionInput, { target: { value: "Draft updated" } });
+    expect(saveButton).not.toBeDisabled();
+    fireEvent.click(saveButton);
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(([input, init]) => {
+          const url = String(input);
+          return (
+            url.endsWith(
+              "/api/v1/organisations/acme/scenarios/future/org-states/draft"
+            ) &&
+            init?.method === "PATCH" &&
+            init.body ===
+              JSON.stringify({
+                name: "Draft state",
+                description: "Draft updated",
+                targetDate: "2026-06-01"
+              })
+          );
+        })
+      ).toBe(true);
+    });
+  });
+
+  it("requires exact DELETE before org-state deletion can be submitted", async () => {
+    const fetchMock = mockSchattenApi();
+
+    renderAt("/schatten/acme/org-states");
+
+    fireEvent.click(await screen.findByRole("button", { name: /Future plan/ }));
+    await screen.findByRole("button", { name: /Draft state/ });
+    fireEvent.click(screen.getByRole("button", { name: "State" }));
+
+    const selectedStatePanel = screen.getByRole("region", {
+      name: "Draft state"
+    });
+    const confirmInput =
+      within(selectedStatePanel).getByPlaceholderText("Type DELETE to confirm");
+    const deleteButton = within(selectedStatePanel).getByRole("button", {
+      name: "Delete state"
+    });
+
+    expect(deleteButton).toBeDisabled();
+
+    fireEvent.change(confirmInput, { target: { value: "delete" } });
+    expect(deleteButton).toBeDisabled();
+
+    fireEvent.change(confirmInput, { target: { value: "DELETE" } });
+    expect(deleteButton).not.toBeDisabled();
+    fireEvent.click(deleteButton);
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(([input, init]) => {
+          const url = String(input);
+          return (
+            url.endsWith(
+              "/api/v1/organisations/acme/scenarios/future/org-states/draft"
+            ) && init?.method === "DELETE"
+          );
+        })
+      ).toBe(true);
+    });
+  });
+
   it("blocks duplicate org-state target dates before submitting", async () => {
     const fetchMock = mockSchattenApi();
 
@@ -654,13 +935,18 @@ describe("Schatten UI shell", () => {
     fireEvent.click(await screen.findByRole("button", { name: /Future plan/ }));
     await screen.findByRole("button", { name: /Planned launch/ });
     fireEvent.click(screen.getByRole("button", { name: "State" }));
-    fireEvent.change(screen.getByLabelText("Name"), {
+    const createStatePanel = screen.getByRole("form", {
+      name: "Create state"
+    });
+    fireEvent.change(within(createStatePanel).getByLabelText("Name"), {
       target: { value: "Duplicate date state" }
     });
-    fireEvent.change(screen.getByLabelText("Target date"), {
+    fireEvent.change(within(createStatePanel).getByLabelText("Target date"), {
       target: { value: "2026-07-01" }
     });
-    fireEvent.click(screen.getByRole("button", { name: "Create state" }));
+    fireEvent.click(
+      within(createStatePanel).getByRole("button", { name: "Create state" })
+    );
 
     expect(
       await screen.findByText("Target date must be unique within the scenario.")

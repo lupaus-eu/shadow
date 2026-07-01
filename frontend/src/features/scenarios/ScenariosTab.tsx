@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import {
   ApiError,
@@ -21,7 +21,6 @@ import {
 
 type DetailMode = "scenario" | "state";
 type ScenarioAction = "edit" | "delete" | null;
-type OrgStateAction = "edit" | "delete" | null;
 
 function sortOrgStates(items: OrgStateDto[]): OrgStateDto[] {
   return [...items].sort((a, b) => a.targetDate.localeCompare(b.targetDate));
@@ -74,6 +73,9 @@ export default function ScenariosTab(props: { orgId: string }) {
     selectedOrgState,
     setSelectedOrgState
   } = useWorkspaceSelection();
+  const selectedScenarioIdRef = useRef<string | null>(
+    selectedScenario?.id ?? null
+  );
 
   const [scenarios, setScenarios] = useState<ScenarioDto[]>([]);
   const [orgStates, setOrgStates] = useState<OrgStateDto[]>([]);
@@ -85,7 +87,6 @@ export default function ScenariosTab(props: { orgId: string }) {
 
   const [detailMode, setDetailMode] = useState<DetailMode>("scenario");
   const [scenarioAction, setScenarioAction] = useState<ScenarioAction>(null);
-  const [orgStateAction, setOrgStateAction] = useState<OrgStateAction>(null);
 
   const [scenarioEditName, setScenarioEditName] = useState("");
   const [scenarioEditDescription, setScenarioEditDescription] = useState("");
@@ -95,6 +96,7 @@ export default function ScenariosTab(props: { orgId: string }) {
 
   const [forkName, setForkName] = useState("");
   const [forkDescription, setForkDescription] = useState("");
+  const [forkSourceOrgStateId, setForkSourceOrgStateId] = useState("");
   const [forkError, setForkError] = useState("");
 
   const [stateCreateName, setStateCreateName] = useState("");
@@ -126,6 +128,29 @@ export default function ScenariosTab(props: { orgId: string }) {
       null,
     [orgStates, selectedOrgState?.id]
   );
+  const forkSourceOrgStateDto = useMemo(
+    () =>
+      orgStates.find((orgState) => orgState.id === forkSourceOrgStateId) ??
+      null,
+    [forkSourceOrgStateId, orgStates]
+  );
+
+  useEffect(() => {
+    selectedScenarioIdRef.current = selectedScenario?.id ?? null;
+  }, [selectedScenario?.id]);
+
+  const applySelectedOrgState = useCallback(
+    (orgState: OrgStateDto | null) => {
+      setSelectedOrgState(orgState ? orgStateSummary(orgState) : null);
+      setStateEditName(orgState?.name ?? "");
+      setStateEditDescription(orgState?.description ?? "");
+      setStateEditTargetDate(orgState?.targetDate ?? "");
+      setForkSourceOrgStateId(orgState?.id ?? "");
+      setOrgStateActionError("");
+      setOrgStateDeleteConfirmation("");
+    },
+    [setSelectedOrgState]
+  );
 
   const loadScenarios = useCallback(
     async (signal?: AbortSignal) => {
@@ -134,6 +159,30 @@ export default function ScenariosTab(props: { orgId: string }) {
         setScenarioError("");
         const items = await fetchScenarios(props.orgId, signal);
         setScenarios(items);
+        if (!selectedScenarioIdRef.current && items[0]) {
+          const firstScenario = items[0];
+          selectedScenarioIdRef.current = firstScenario.id;
+          setSelectedScenario({
+            id: firstScenario.id,
+            name: firstScenario.name
+          });
+          applySelectedOrgState(null);
+          setDetailMode("scenario");
+          setScenarioEditName(firstScenario.name);
+          setScenarioEditDescription(firstScenario.description);
+          setForkName(`Fork of ${firstScenario.name}`);
+          setForkDescription(firstScenario.description);
+          setScenarioAction(null);
+          setScenarioActionError("");
+          setScenarioDeleteConfirmation("");
+          setOrgStateActionError("");
+          setOrgStateDeleteConfirmation("");
+          setForkError("");
+          setStateCreateError("");
+          setCleanConfirming(false);
+          setCleanMessage("");
+          setCleanError("");
+        }
       } catch (error) {
         const err = error as { name?: string };
         if (err.name === "AbortError") return;
@@ -142,7 +191,11 @@ export default function ScenariosTab(props: { orgId: string }) {
         setLoadingScenarios(false);
       }
     },
-    [props.orgId]
+    [
+      applySelectedOrgState,
+      props.orgId,
+      setSelectedScenario
+    ]
   );
 
   useEffect(() => {
@@ -156,6 +209,30 @@ export default function ScenariosTab(props: { orgId: string }) {
         const items = await fetchScenarios(props.orgId, ac.signal);
         if (ignore) return;
         setScenarios(items);
+        if (!selectedScenarioIdRef.current && items[0]) {
+          const firstScenario = items[0];
+          selectedScenarioIdRef.current = firstScenario.id;
+          setSelectedScenario({
+            id: firstScenario.id,
+            name: firstScenario.name
+          });
+          applySelectedOrgState(null);
+          setDetailMode("scenario");
+          setScenarioEditName(firstScenario.name);
+          setScenarioEditDescription(firstScenario.description);
+          setForkName(`Fork of ${firstScenario.name}`);
+          setForkDescription(firstScenario.description);
+          setScenarioAction(null);
+          setScenarioActionError("");
+          setScenarioDeleteConfirmation("");
+          setOrgStateActionError("");
+          setOrgStateDeleteConfirmation("");
+          setForkError("");
+          setStateCreateError("");
+          setCleanConfirming(false);
+          setCleanMessage("");
+          setCleanError("");
+        }
       } catch (error) {
         const err = error as { name?: string };
         if (ignore || err.name === "AbortError") return;
@@ -171,7 +248,11 @@ export default function ScenariosTab(props: { orgId: string }) {
       ignore = true;
       ac.abort();
     };
-  }, [props.orgId]);
+  }, [
+    applySelectedOrgState,
+    props.orgId,
+    setSelectedScenario
+  ]);
 
   useEffect(() => {
     const scenarioId = selectedScenario?.id;
@@ -193,9 +274,7 @@ export default function ScenariosTab(props: { orgId: string }) {
         if (ignore) return;
         setOrgStates(items);
         const firstOrgState = items[0] ?? null;
-        setSelectedOrgState(
-          firstOrgState ? orgStateSummary(firstOrgState) : null
-        );
+        applySelectedOrgState(firstOrgState);
       } catch (error) {
         const err = error as { name?: string };
         if (ignore || err.name === "AbortError") return;
@@ -211,7 +290,12 @@ export default function ScenariosTab(props: { orgId: string }) {
       ignore = true;
       ac.abort();
     };
-  }, [props.orgId, selectedScenario?.id, setSelectedOrgState]);
+  }, [
+    applySelectedOrgState,
+    props.orgId,
+    selectedScenario?.id,
+    setSelectedOrgState
+  ]);
 
   function resetScenarioActionState() {
     setScenarioAction(null);
@@ -220,21 +304,24 @@ export default function ScenariosTab(props: { orgId: string }) {
   }
 
   function resetOrgStateActionState() {
-    setOrgStateAction(null);
     setOrgStateActionError("");
     setOrgStateDeleteConfirmation("");
   }
 
   function selectScenario(scenario: ScenarioDto) {
+    selectedScenarioIdRef.current = scenario.id;
     setSelectedScenario({ id: scenario.id, name: scenario.name });
-    setSelectedOrgState(null);
+    applySelectedOrgState(null);
     setDetailMode("scenario");
     setScenarioEditName(scenario.name);
     setScenarioEditDescription(scenario.description);
     setForkName(`Fork of ${scenario.name}`);
     setForkDescription(scenario.description);
-    resetScenarioActionState();
-    resetOrgStateActionState();
+    setScenarioAction(null);
+    setScenarioActionError("");
+    setScenarioDeleteConfirmation("");
+    setOrgStateActionError("");
+    setOrgStateDeleteConfirmation("");
     setForkError("");
     setStateCreateError("");
     setCleanConfirming(false);
@@ -243,14 +330,13 @@ export default function ScenariosTab(props: { orgId: string }) {
   }
 
   function selectOrgState(orgState: OrgStateDto) {
-    setSelectedOrgState(orgStateSummary(orgState));
+    applySelectedOrgState(orgState);
     setDetailMode("state");
-    resetOrgStateActionState();
     setStateCreateError("");
   }
 
   function openScenarioEdit() {
-    if (!selectedScenarioDto || selectedScenarioDto.protected) return;
+    if (!selectedScenarioDto) return;
     setScenarioAction("edit");
     setScenarioEditName(selectedScenarioDto.name);
     setScenarioEditDescription(selectedScenarioDto.description);
@@ -263,23 +349,6 @@ export default function ScenariosTab(props: { orgId: string }) {
     setScenarioAction("delete");
     setScenarioActionError("");
     setScenarioDeleteConfirmation("");
-  }
-
-  function openOrgStateEdit() {
-    if (!selectedOrgStateDto) return;
-    setOrgStateAction("edit");
-    setStateEditName(selectedOrgStateDto.name);
-    setStateEditDescription(selectedOrgStateDto.description);
-    setStateEditTargetDate(selectedOrgStateDto.targetDate);
-    setOrgStateActionError("");
-    setOrgStateDeleteConfirmation("");
-  }
-
-  function openOrgStateDelete() {
-    if (!selectedOrgStateDto) return;
-    setOrgStateAction("delete");
-    setOrgStateActionError("");
-    setOrgStateDeleteConfirmation("");
   }
 
   function hasDuplicateTargetDate(targetDate: string, currentId?: string) {
@@ -323,9 +392,7 @@ export default function ScenariosTab(props: { orgId: string }) {
         (orgState) => orgState.id === selectedOrgState?.id
       );
       const nextOrgState = stillSelected ?? sortedOrgStates[0] ?? null;
-      setSelectedOrgState(
-        nextOrgState ? orgStateSummary(nextOrgState) : null
-      );
+      applySelectedOrgState(nextOrgState);
     } catch (error) {
       const message = messageFromError(error);
       setScenarioError(message);
@@ -338,7 +405,7 @@ export default function ScenariosTab(props: { orgId: string }) {
 
   async function onScenarioEditSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!selectedScenarioDto || selectedScenarioDto.protected) return;
+    if (!selectedScenarioDto) return;
     const name = scenarioEditName.trim();
     if (!name) {
       setScenarioActionError("Scenario name is required.");
@@ -373,7 +440,7 @@ export default function ScenariosTab(props: { orgId: string }) {
   async function onForkSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selectedScenarioDto) return;
-    if (!selectedOrgStateDto) {
+    if (!forkSourceOrgStateDto) {
       setForkError("Select an org state to choose the fork target date.");
       return;
     }
@@ -389,7 +456,7 @@ export default function ScenariosTab(props: { orgId: string }) {
       setForkError("");
       const created = await copyScenario(props.orgId, {
         sourceScenarioId: selectedScenarioDto.id,
-        sourceOrgStateId: selectedOrgStateDto.id,
+        sourceOrgStateId: forkSourceOrgStateDto.id,
         name,
         description: forkDescription.trim()
       });
@@ -400,6 +467,7 @@ export default function ScenariosTab(props: { orgId: string }) {
       setScenarioEditDescription(created.description);
       setForkName(`Fork of ${created.name}`);
       setForkDescription(created.description);
+      setForkSourceOrgStateId("");
       setDetailMode("scenario");
     } catch (error) {
       setForkError(messageFromError(error));
@@ -425,6 +493,7 @@ export default function ScenariosTab(props: { orgId: string }) {
       setScenarios((current) =>
         current.filter((scenario) => scenario.id !== selectedScenarioDto.id)
       );
+      selectedScenarioIdRef.current = null;
       setSelectedScenario(null);
       setSelectedOrgState(null);
       setOrgStates([]);
@@ -432,6 +501,7 @@ export default function ScenariosTab(props: { orgId: string }) {
       setScenarioEditDescription("");
       setForkName("");
       setForkDescription("");
+      setForkSourceOrgStateId("");
       setScenarioAction(null);
     } catch (error) {
       setScenarioActionError(messageFromError(error));
@@ -515,7 +585,6 @@ export default function ScenariosTab(props: { orgId: string }) {
         )
       );
       selectOrgState(updated);
-      setOrgStateAction(null);
     } catch (error) {
       setOrgStateActionError(messageFromError(error));
     } finally {
@@ -545,10 +614,7 @@ export default function ScenariosTab(props: { orgId: string }) {
         (orgState) => orgState.id !== selectedOrgStateDto.id
       );
       setOrgStates(remainingOrgStates);
-      setSelectedOrgState(
-        remainingOrgStates[0] ? orgStateSummary(remainingOrgStates[0]) : null
-      );
-      setOrgStateAction(null);
+      applySelectedOrgState(remainingOrgStates[0] ?? null);
     } catch (error) {
       setOrgStateActionError(messageFromError(error));
     } finally {
@@ -635,7 +701,9 @@ export default function ScenariosTab(props: { orgId: string }) {
                 return (
                   <div
                     key={scenarioRowKey(scenario, index)}
-                    className="scenario-list-item"
+                    className={`scenario-list-item${
+                      isSelected ? " scenario-list-item--selected" : ""
+                    }`}
                   >
                     <button
                       className={`entity-row${
@@ -652,11 +720,6 @@ export default function ScenariosTab(props: { orgId: string }) {
                         <ScenarioProtectionBadge
                           protected={scenario.protected}
                         />
-                        {scenario.description ? (
-                          <span className="entity-row__description">
-                            {scenario.description}
-                          </span>
-                        ) : null}
                       </span>
                     </button>
                     {isSelected ? (
@@ -750,14 +813,16 @@ export default function ScenariosTab(props: { orgId: string }) {
                 scenarios={scenarios}
                 orgStates={orgStates}
                 scenario={selectedScenarioDto}
-                orgState={selectedOrgStateDto}
+                orgState={forkSourceOrgStateDto}
                 name={forkName}
                 description={forkDescription}
                 error={forkError}
                 saving={saving}
                 loadingOrgStates={loadingOrgStates}
                 onSourceScenarioChange={selectScenario}
-                onSourceOrgStateChange={selectOrgState}
+                onSourceOrgStateChange={(orgState) =>
+                  setForkSourceOrgStateId(orgState.id)
+                }
                 onNameChange={setForkName}
                 onDescriptionChange={setForkDescription}
                 onSubmit={onForkSubmit}
@@ -768,7 +833,6 @@ export default function ScenariosTab(props: { orgId: string }) {
               <OrgStateDetail
                 scenario={selectedScenarioDto}
                 orgState={selectedOrgStateDto}
-                action={orgStateAction}
                 editName={stateEditName}
                 editDescription={stateEditDescription}
                 editTargetDate={stateEditTargetDate}
@@ -779,8 +843,6 @@ export default function ScenariosTab(props: { orgId: string }) {
                 onEditDescriptionChange={setStateEditDescription}
                 onEditTargetDateChange={setStateEditTargetDate}
                 onDeleteConfirmationChange={setOrgStateDeleteConfirmation}
-                onOpenEdit={openOrgStateEdit}
-                onOpenDelete={openOrgStateDelete}
                 onCancel={resetOrgStateActionState}
                 onEditSubmit={onOrgStateEditSubmit}
                 onDeleteSubmit={onOrgStateDeleteSubmit}
@@ -863,6 +925,7 @@ function InlineOrgStateList(props: {
 }) {
   return (
     <div className="scenario-inline-states">
+      <p className="eyebrow scenario-inline-states__heading">STATES</p>
       {props.loading ? <p className="muted">Loading org states...</p> : null}
       {props.error ? (
         <div className="alert alert--danger" role="alert">
@@ -890,11 +953,6 @@ function InlineOrgStateList(props: {
             >
               <span className="entity-row__main">
                 <span className="entity-row__title">{orgState.name}</span>
-                {orgState.description ? (
-                  <span className="entity-row__description">
-                    {orgState.description}
-                  </span>
-                ) : null}
               </span>
               <span className="entity-row__date">{orgState.targetDate}</span>
             </button>
@@ -929,7 +987,7 @@ function ScenarioDetail(props: {
       editedScenarioDescription !== props.scenario.description
     : false;
   const saveScenarioDisabled =
-    props.scenario?.protected || !editedScenarioName || !scenarioHasChanges;
+    !props.scenario || !editedScenarioName || !scenarioHasChanges;
 
   return (
     <section className="detail-card" aria-labelledby="selected-scenario-title">
@@ -950,7 +1008,6 @@ function ScenarioDetail(props: {
               description={props.editDescription}
               onNameChange={props.onEditNameChange}
               onDescriptionChange={props.onEditDescriptionChange}
-              disabled={props.scenario.protected}
             />
             <ActionError message={props.error} />
             <ActionButtons
@@ -1110,7 +1167,6 @@ function ForkScenarioForm(props: {
 function OrgStateDetail(props: {
   scenario: ScenarioDto | null;
   orgState: OrgStateDto | null;
-  action: OrgStateAction;
   editName: string;
   editDescription: string;
   editTargetDate: string;
@@ -1121,12 +1177,23 @@ function OrgStateDetail(props: {
   onEditDescriptionChange: (value: string) => void;
   onEditTargetDateChange: (value: string) => void;
   onDeleteConfirmationChange: (value: string) => void;
-  onOpenEdit: () => void;
-  onOpenDelete: () => void;
   onCancel: () => void;
   onEditSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onDeleteSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
+  const editedOrgStateName = props.editName.trim();
+  const editedOrgStateDescription = props.editDescription.trim();
+  const orgStateHasChanges = props.orgState
+    ? editedOrgStateName !== props.orgState.name ||
+      editedOrgStateDescription !== props.orgState.description ||
+      props.editTargetDate !== props.orgState.targetDate
+    : false;
+  const saveOrgStateDisabled =
+    !props.orgState ||
+    !editedOrgStateName ||
+    !props.editTargetDate ||
+    !orgStateHasChanges;
+
   return (
     <section className="detail-card" aria-labelledby="selected-state-title">
       <div className="detail-card__header">
@@ -1142,87 +1209,50 @@ function OrgStateDetail(props: {
         <p className="muted">Select a state in the side panel.</p>
       ) : (
         <>
-          <p className="detail-description">
-            {props.orgState.description || "No description."}
-          </p>
-          <dl className="detail-meta">
-            <div className="detail-meta__row">
-              <dt>Target date</dt>
-              <dd>{props.orgState.targetDate}</dd>
+          <form onSubmit={props.onEditSubmit}>
+            <OrgStateFields
+              idPrefix="org-state-edit"
+              name={props.editName}
+              description={props.editDescription}
+              targetDate={props.editTargetDate}
+              onNameChange={props.onEditNameChange}
+              onDescriptionChange={props.onEditDescriptionChange}
+              onTargetDateChange={props.onEditTargetDateChange}
+            />
+            <ActionError message={props.error} />
+            <ActionButtons
+              submitLabel="Save state"
+              saving={props.saving}
+              onCancel={props.onCancel}
+              disabled={saveOrgStateDisabled}
+            />
+          </form>
+          <form className="state-delete-form" onSubmit={props.onDeleteSubmit}>
+            <label className="form-label" htmlFor="org-state-delete-confirm">
+              Confirmation
+            </label>
+            <input
+              id="org-state-delete-confirm"
+              className="input"
+              placeholder="Type DELETE to confirm"
+              value={props.deleteConfirmation}
+              onChange={(event) =>
+                props.onDeleteConfirmationChange(event.target.value)
+              }
+              autoComplete="off"
+            />
+            <div className="form-actions">
+              <button
+                className="btn btn--danger"
+                type="submit"
+                disabled={props.saving || props.deleteConfirmation !== "DELETE"}
+              >
+                {props.saving ? "Deleting..." : "Delete state"}
+              </button>
             </div>
-            <div className="detail-meta__row">
-              <dt>State ID</dt>
-              <dd>{props.orgState.id}</dd>
-            </div>
-          </dl>
-
-          <div className="panel-actions">
-            <button
-              className="btn btn--secondary"
-              type="button"
-              onClick={props.onOpenEdit}
-            >
-              Edit state
-            </button>
-            <button
-              className="btn btn--secondary"
-              type="button"
-              onClick={props.onOpenDelete}
-            >
-              Delete state
-            </button>
-          </div>
+          </form>
         </>
       )}
-      {props.action === "edit" && props.orgState ? (
-        <form className="action-panel" onSubmit={props.onEditSubmit}>
-          <h3 className="section-title">Edit org state</h3>
-          <OrgStateFields
-            idPrefix="org-state-edit"
-            name={props.editName}
-            description={props.editDescription}
-            targetDate={props.editTargetDate}
-            onNameChange={props.onEditNameChange}
-            onDescriptionChange={props.onEditDescriptionChange}
-            onTargetDateChange={props.onEditTargetDateChange}
-          />
-          <ActionError message={props.error} />
-          <ActionButtons
-            submitLabel="Save org state"
-            saving={props.saving}
-            onCancel={props.onCancel}
-          />
-        </form>
-      ) : null}
-
-      {props.action === "delete" && props.orgState ? (
-        <form className="action-panel" onSubmit={props.onDeleteSubmit}>
-          <h3 className="section-title">Delete org state</h3>
-          <p className="muted">Type DELETE to delete {props.orgState.name}.</p>
-          <label className="form-label" htmlFor="org-state-delete-confirm">
-            Confirmation
-          </label>
-          <input
-            id="org-state-delete-confirm"
-            className="input"
-            value={props.deleteConfirmation}
-            onChange={(event) =>
-              props.onDeleteConfirmationChange(event.target.value)
-            }
-            autoComplete="off"
-          />
-          <ActionError message={props.error} />
-          <div className="form-actions">
-            <button
-              className="btn btn--danger"
-              type="submit"
-              disabled={props.saving || props.deleteConfirmation !== "DELETE"}
-            >
-              {props.saving ? "Deleting..." : "Delete org state"}
-            </button>
-          </div>
-        </form>
-      ) : null}
     </section>
   );
 }
