@@ -32,6 +32,20 @@ export type OrgStateCreateRequest = {
 
 export type OrgStateUpdateRequest = OrgStateCreateRequest;
 
+export type CleanOrgStatesResponse = {
+  cleaned: number;
+};
+
+export class ApiError extends Error {
+  status: number;
+
+  constructor(status: number, detail: string) {
+    super(detail ? `API request failed (${status}). ${detail}` : `API request failed (${status}).`);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
 const API_BASE_URL =
   (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim() ?? "";
 
@@ -57,7 +71,7 @@ async function requestJson<T>(
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(`API request failed (${res.status}). ${text}`);
+    throw new ApiError(res.status, text);
   }
 
   if (res.status === 204) {
@@ -275,6 +289,15 @@ function normalizeOrgStates(payload: unknown): OrgStateDto[] {
   );
 }
 
+function normalizeCleanOrgStatesResponse(payload: unknown): CleanOrgStatesResponse {
+  const item = asRecord(payload);
+  const cleaned = item.cleaned;
+
+  return {
+    cleaned: typeof cleaned === "number" && Number.isFinite(cleaned) ? cleaned : 0
+  };
+}
+
 function orgPath(orgId: string) {
   return `/api/v1/organisations/${encodeURIComponent(orgId)}/scenarios`;
 }
@@ -422,5 +445,19 @@ export async function deleteOrgState(
     orgStatePath(orgId, scenarioId, orgStateId),
     { method: "DELETE" },
     signal
+  );
+}
+
+export async function cleanOrgStates(
+  orgId: string,
+  scenarioId: string,
+  signal?: AbortSignal
+): Promise<CleanOrgStatesResponse> {
+  return normalizeCleanOrgStatesResponse(
+    await requestJson<unknown>(
+      `${orgStatesPath(orgId, scenarioId)}/clean`,
+      { method: "POST" },
+      signal
+    )
   );
 }

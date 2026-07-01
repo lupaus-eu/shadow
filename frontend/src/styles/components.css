@@ -205,10 +205,19 @@
   background: var(--color-danger-50);
 }
 
+.alert--info {
+  border-left-color: var(--color-info-500);
+  background: var(--color-info-50);
+}
+
 .alert__title {
   margin-bottom: var(--space-1);
   color: var(--color-danger-500);
   font-weight: 600;
+}
+
+.alert--info .alert__title {
+  color: var(--color-info-500);
 }
 
 .alert__text {

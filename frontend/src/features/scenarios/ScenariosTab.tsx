@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import {
+  ApiError,
+  cleanOrgStates,
   copyScenario,
   createOrgState,
   deleteOrgState,
@@ -49,6 +51,22 @@ function scenarioCountText(count: number): string {
   return `${count} scenario(s)`;
 }
 
+function cleanOrgStatesErrorMessage(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (error.status === 404) {
+      return "The selected scenario could not be found. Refresh scenarios and try again.";
+    }
+    if (error.status === 409) {
+      return "Protected scenarios cannot be cleaned.";
+    }
+    if (error.status >= 500) {
+      return "The server could not clean states right now. Try again later.";
+    }
+  }
+
+  return "Could not clean states. Try again.";
+}
+
 export default function ScenariosTab(props: { orgId: string }) {
   const {
     selectedScenario,
@@ -90,6 +108,11 @@ export default function ScenariosTab(props: { orgId: string }) {
   const [orgStateDeleteConfirmation, setOrgStateDeleteConfirmation] =
     useState("");
   const [orgStateActionError, setOrgStateActionError] = useState("");
+
+  const [cleanConfirming, setCleanConfirming] = useState(false);
+  const [cleaningStates, setCleaningStates] = useState(false);
+  const [cleanMessage, setCleanMessage] = useState("");
+  const [cleanError, setCleanError] = useState("");
 
   const selectedScenarioDto = useMemo(
     () =>
@@ -214,6 +237,9 @@ export default function ScenariosTab(props: { orgId: string }) {
     resetOrgStateActionState();
     setForkError("");
     setStateCreateError("");
+    setCleanConfirming(false);
+    setCleanMessage("");
+    setCleanError("");
   }
 
   function selectOrgState(orgState: OrgStateDto) {
@@ -530,7 +556,38 @@ export default function ScenariosTab(props: { orgId: string }) {
     }
   }
 
+  function openCleanConfirmation() {
+    if (!selectedScenarioDto || selectedScenarioDto.protected || cleaningStates) {
+      return;
+    }
+    setCleanConfirming(true);
+    setCleanMessage("");
+    setCleanError("");
+  }
+
+  async function onCleanStatesConfirm() {
+    if (!selectedScenarioDto || selectedScenarioDto.protected || cleaningStates) {
+      return;
+    }
+
+    try {
+      setCleaningStates(true);
+      setCleanError("");
+      setCleanMessage("");
+      const response = await cleanOrgStates(props.orgId, selectedScenarioDto.id);
+      await refreshScenariosAndStates();
+      setCleanMessage(`Cleaned ${response.cleaned} state(s).`);
+      setCleanConfirming(false);
+    } catch (error) {
+      setCleanError(cleanOrgStatesErrorMessage(error));
+    } finally {
+      setCleaningStates(false);
+    }
+  }
+
   const refreshDisabled = loadingScenarios || loadingOrgStates;
+  const cleanDisabled =
+    !selectedScenarioDto || selectedScenarioDto.protected || cleaningStates;
 
   return (
     <div className="scenarios-tab">
@@ -650,7 +707,25 @@ export default function ScenariosTab(props: { orgId: string }) {
                 State
               </button>
             </div>
+            <button
+              className="btn btn--secondary detail-mode-switch-panel__action"
+              type="button"
+              onClick={openCleanConfirmation}
+              disabled={cleanDisabled}
+            >
+              {cleaningStates ? "Cleaning..." : "Clean states"}
+            </button>
           </div>
+
+          <CleanStatesFeedback
+            scenario={selectedScenarioDto}
+            confirming={cleanConfirming}
+            cleaning={cleaningStates}
+            message={cleanMessage}
+            error={cleanError}
+            onConfirm={() => void onCleanStatesConfirm()}
+            onCancel={() => setCleanConfirming(false)}
+          />
 
           {detailMode === "scenario" ? (
             <div className="scenario-detail-grid">
@@ -726,6 +801,55 @@ export default function ScenariosTab(props: { orgId: string }) {
           )}
         </section>
       </div>
+    </div>
+  );
+}
+
+function CleanStatesFeedback(props: {
+  scenario: ScenarioDto | null;
+  confirming: boolean;
+  cleaning: boolean;
+  message: string;
+  error: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  if (!props.confirming && !props.message && !props.error) return null;
+
+  return (
+    <div className="clean-states-panel">
+      {props.confirming ? (
+        <div className="action-panel" role="group" aria-label="Clean states confirmation">
+          <p className="muted">
+            Clean organisation states for {props.scenario?.name ?? "the selected scenario"}?
+          </p>
+          <div className="form-actions">
+            <button
+              className="btn btn--danger"
+              type="button"
+              onClick={props.onConfirm}
+              disabled={props.cleaning}
+            >
+              {props.cleaning ? "Cleaning..." : "Confirm clean states"}
+            </button>
+            <button
+              className="btn btn--secondary"
+              type="button"
+              onClick={props.onCancel}
+              disabled={props.cleaning}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : null}
+      {props.message ? (
+        <div className="alert alert--info" role="status">
+          <p className="alert__title">States cleaned</p>
+          <p className="alert__text">{props.message}</p>
+        </div>
+      ) : null}
+      <ActionError message={props.error} />
     </div>
   );
 }

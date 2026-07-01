@@ -23,7 +23,22 @@ function noContentResponse() {
   return new Response(null, { status: 204 });
 }
 
-function mockSchattenApi(options?: { duplicateCreate?: boolean }) {
+function deferredResponse() {
+  let resolve!: (response: Response) => void;
+  const promise = new Promise<Response>((resolver) => {
+    resolve = resolver;
+  });
+
+  return { promise, resolve };
+}
+
+function mockSchattenApi(options?: {
+  duplicateCreate?: boolean;
+  cleanStatus?: number;
+  cleanResponse?: Promise<Response>;
+}) {
+  let cleanedFutureStates = false;
+
   const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const method = init?.method ?? "GET";
@@ -120,6 +135,21 @@ function mockSchattenApi(options?: { duplicateCreate?: boolean }) {
       url.endsWith("/api/v1/organisations/acme/scenarios/future/org-states") &&
       method === "GET"
     ) {
+      if (cleanedFutureStates) {
+        return Promise.resolve(
+          jsonResponse([
+            {
+              org_state_id: "launch",
+              org_state: {
+                name: "Planned launch",
+                description: "Launch state",
+                target_date: "2026-07-01"
+              }
+            }
+          ])
+        );
+      }
+
       return Promise.resolve(
         jsonResponse([
           {
@@ -138,6 +168,32 @@ function mockSchattenApi(options?: { duplicateCreate?: boolean }) {
           }
         ])
       );
+    }
+
+    if (
+      url.endsWith(
+        "/api/v1/organisations/acme/scenarios/future/org-states/clean"
+      ) &&
+      method === "POST"
+    ) {
+      if (options?.cleanResponse) {
+        return options.cleanResponse.then((response) => {
+          if (response.ok) cleanedFutureStates = true;
+          return response;
+        });
+      }
+
+      if (options?.cleanStatus) {
+        return Promise.resolve(
+          jsonResponse(
+            { detail: "Clean states failed." },
+            { status: options.cleanStatus }
+          )
+        );
+      }
+
+      cleanedFutureStates = true;
+      return Promise.resolve(jsonResponse({ cleaned: 1 }));
     }
 
     if (
@@ -399,6 +455,113 @@ describe("Schatten UI shell", () => {
     expect(
       screen.queryByRole("button", { name: "Delete scenario" })
     ).not.toBeInTheDocument();
+  });
+
+  it("disables clean states until an editable scenario is selected", async () => {
+    mockSchattenApi();
+
+    renderAt("/schatten/acme/org-states");
+
+    expect(await screen.findByText("2 scenario(s)")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Clean states" })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: /Reality/ }));
+    expect(screen.getByRole("button", { name: "Clean states" })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: /Future plan/ }));
+    await screen.findByRole("button", { name: /Draft state/ });
+    expect(
+      screen.getByRole("button", { name: "Clean states" })
+    ).not.toBeDisabled();
+  });
+
+  it("confirms before cleaning states and refreshes the selected scenario states", async () => {
+    const fetchMock = mockSchattenApi();
+
+    renderAt("/schatten/acme/org-states");
+
+    fireEvent.click(await screen.findByRole("button", { name: /Future plan/ }));
+    await screen.findByRole("button", { name: /Draft state/ });
+
+    fireEvent.click(screen.getByRole("button", { name: "Clean states" }));
+    expect(
+      screen.getByRole("button", { name: "Confirm clean states" })
+    ).toBeVisible();
+    expect(
+      fetchMock.mock.calls.some(([input, init]) => {
+        return (
+          String(input).endsWith(
+            "/api/v1/organisations/acme/scenarios/future/org-states/clean"
+          ) && init?.method === "POST"
+        );
+      })
+    ).toBe(false);
+
+    fireEvent.click(screen.getByRole("button", { name: "Confirm clean states" }));
+
+    expect(await screen.findByText("Cleaned 1 state(s).")).toBeInTheDocument();
+    expect(
+      fetchMock.mock.calls.some(([input, init]) => {
+        return (
+          String(input).endsWith(
+            "/api/v1/organisations/acme/scenarios/future/org-states/clean"
+          ) && init?.method === "POST"
+        );
+      })
+    ).toBe(true);
+    expect(
+      fetchMock.mock.calls.some(([input, init]) => {
+        const url = String(input);
+        return (
+          url.endsWith("/api/v1/organisations/acme/scenarios/future") &&
+          (init?.method ?? "GET") === "GET"
+        );
+      })
+    ).toBe(true);
+    expect(
+      screen.queryByRole("button", { name: /Draft state/ })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByTitle("Org state: Planned launch (2026-07-01)")
+    ).toBeInTheDocument();
+  });
+
+  it("shows a busy clean states state while cleanup is in progress", async () => {
+    const cleanDeferred = deferredResponse();
+    mockSchattenApi({ cleanResponse: cleanDeferred.promise });
+
+    renderAt("/schatten/acme/org-states");
+
+    fireEvent.click(await screen.findByRole("button", { name: /Future plan/ }));
+    await screen.findByRole("button", { name: /Draft state/ });
+    fireEvent.click(screen.getByRole("button", { name: "Clean states" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm clean states" }));
+
+    const cleaningButtons = screen.getAllByRole("button", {
+      name: "Cleaning..."
+    });
+    expect(cleaningButtons).toHaveLength(2);
+    cleaningButtons.forEach((button) => expect(button).toBeDisabled());
+    cleanDeferred.resolve(jsonResponse({ cleaned: 1 }));
+
+    expect(await screen.findByText("Cleaned 1 state(s).")).toBeInTheDocument();
+  });
+
+  it.each([
+    [404, "The selected scenario could not be found. Refresh scenarios and try again."],
+    [409, "Protected scenarios cannot be cleaned."],
+    [500, "The server could not clean states right now. Try again later."]
+  ])("shows a friendly clean states error for %i responses", async (status, message) => {
+    mockSchattenApi({ cleanStatus: status });
+
+    renderAt("/schatten/acme/org-states");
+
+    fireEvent.click(await screen.findByRole("button", { name: /Future plan/ }));
+    await screen.findByRole("button", { name: /Draft state/ });
+    fireEvent.click(screen.getByRole("button", { name: "Clean states" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm clean states" }));
+
+    expect(await screen.findByText(message)).toBeInTheDocument();
   });
 
   it("disables scenario save until editable fields change", async () => {
