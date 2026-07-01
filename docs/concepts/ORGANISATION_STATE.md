@@ -80,6 +80,11 @@ Organisation states can also be soft-deleted through the backend CRUD API.
 When the deleted organisation state is the scenario initial state, the parent
 scenario's `initial_state_id` is cleared.
 
+Organisation states can be cleaned in bulk for a non-protected scenario through
+the backend cleanup endpoint. Cleanup soft-deletes active organisation states,
+returns the number of cleaned active states and clears the parent scenario's
+`initial_state_id` when it points to a cleaned state.
+
 ---
 
 # Relationships
@@ -98,6 +103,7 @@ Related Tables:
 Related APIs:
 
 - `GET /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/org-states`
+- `POST /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/org-states/clean`
 - `POST /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/org-states`
 - `GET /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/org-states/{org_state_key}`
 - `PATCH /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/org-states/{org_state_key}`
@@ -116,6 +122,11 @@ Related APIs:
 - Duplicate active `targetDate` values inside one scenario return HTTP `409`.
 - Soft-deleted organisation states do not reserve historical `targetDate`
   values.
+- Organisation state cleanup uses soft-delete semantics and returns
+  `{ "cleaned": n }`.
+- Cleanup for protected scenarios returns HTTP `409`.
+- Cleanup against a scenario with no active organisation states returns
+  `{ "cleaned": 0 }`.
 - The default organisation state uses description `Initial state of reality`
   and target date `2020-01-01`.
 - A graph may belong to one organisation state through Organisation Twin Structure Domain.

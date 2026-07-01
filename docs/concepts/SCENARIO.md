@@ -58,6 +58,8 @@ A Scenario is a versioned planning or analysis context within one Organisation.
 - Active scenario keys are unique within an organisation.
 - Normal scenario deletion is soft delete.
 - Protected scenarios cannot be patched or deleted through the backend CRUD API.
+- Protected scenarios cannot be cleaned through the backend organisation-state
+  cleanup flow.
 
 ---
 
@@ -78,6 +80,9 @@ When a scenario is soft-deleted, owned organisation states, events, graphs, time
 
 The default `Reality` scenario is protected and cannot be patched or deleted
 through normal backend CRUD flows.
+
+The default `Reality` scenario and other protected scenarios also reject
+organisation-state cleanup through normal backend flows.
 
 ---
 
@@ -104,6 +109,7 @@ Related APIs:
 - `GET /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}`
 - `PATCH /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}`
 - `DELETE /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}`
+- `POST /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/org-states/clean`
 
 ---
 
@@ -116,6 +122,9 @@ Related APIs:
 - Scenario responses use stable `scenario_key` as `id`.
 - Scenario patch accepts `name` and `description`.
 - Scenario patch and delete for protected scenarios return HTTP `409`.
+- Organisation-state cleanup for protected scenarios returns HTTP `409`.
+- Organisation-state cleanup clears `initial_state_id` when the referenced
+  initial organisation state is cleaned.
 - Scenario CRUD does not implement copy or branching behavior.
 - Scenario copy creates an unprotected scenario with request `name` and
   `description`.

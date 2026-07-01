@@ -147,10 +147,11 @@ PATCH /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}
 DELETE /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}
 ```
 
-Organisation state CRUD endpoints:
+Organisation state endpoints:
 
 ```text
 GET /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/org-states
+POST /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/org-states/clean
 POST /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/org-states
 GET /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/org-states/{org_state_key}
 PATCH /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/org-states/{org_state_key}
@@ -185,17 +186,31 @@ Organisation state responses use:
 }
 ```
 
+Organisation state clean responses use:
+
+```json
+{
+  "cleaned": 2
+}
+```
+
 Create endpoints return HTTP `201`. Delete endpoints return HTTP `204`.
 Missing active organisations, scenarios or organisation states return HTTP
 `404`.
 
-Protected scenario patch and delete return HTTP `409`.
+Protected scenario patch, delete and organisation-state cleanup return HTTP
+`409`.
 
 Duplicate active organisation state target dates inside one scenario return
 HTTP `409`.
 
 Scenario copy returns HTTP `201`. Missing active source scenarios or source
 organisation states return HTTP `404`.
+
+Organisation state cleanup returns HTTP `200` and soft-deletes all active
+organisation states in the selected non-protected scenario. Already
+soft-deleted organisation states are not counted. A cleanup call against a
+scenario with no active organisation states returns `{ "cleaned": 0 }`.
 
 Organisation state graph-date synchronisation is not implemented. The frontend
 Refresh action reloads selected scenario and organisation state data through
@@ -260,6 +275,24 @@ Flow:
 6. Create organisation state row.
 
 Organisation state CRUD does not create graph data or synchronise graph dates.
+
+## Clean Organisation States
+
+Flow:
+
+1. Validate organisation exists and is active.
+2. Validate scenario exists and is active.
+3. Reject protected scenarios.
+4. Load active organisation states owned by the scenario.
+5. Clear `scenarios.initial_state_id` if it points to one of the cleaned
+   organisation states.
+6. Soft-delete active owned graphs through Organisation Twin Structure Domain.
+7. Soft-delete the active organisation states.
+8. Return the number of cleaned organisation states as `{ "cleaned": n }`.
+
+Cleanup uses the same soft-delete semantics as other normal application flows.
+It does not hard-delete organisation states and does not mutate already
+soft-deleted organisation states.
 
 ## Patch Scenario
 

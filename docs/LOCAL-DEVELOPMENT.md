@@ -279,6 +279,31 @@ pnpm build
 
 Kun frontendin typecheck-scripti on lisätty, aja myös se ennen PR:ää.
 
+## Manual QA: Clean Organisation States
+
+Use this checklist when reviewing the organisation-state cleanup flow:
+
+- Start the database, backend and frontend locally.
+- Select or create a non-protected scenario with at least one active
+  organisation state.
+- In the Scenarios tab, choose the scenario, click `Clean states`, confirm the
+  action and verify the success message shows the cleaned count.
+- Verify the selected scenario's organisation state list refreshes to empty.
+- Repeat cleanup for the same non-protected scenario and verify the no-op
+  result reports `Cleaned 0 state(s).`
+- Select the protected `Reality` scenario and verify the cleanup action is not
+  available in the UI.
+- Optionally verify the backend guard directly:
+
+```bash
+curl -i -X POST \
+  http://localhost:8000/api/v1/organisations/{organisation_key}/scenarios/reality/org-states/clean
+```
+
+Expected result for the protected scenario backend guard is HTTP `409`.
+No authentication or authorization behavior is implemented as part of this
+cleanup flow.
+
 ---
 
 # Update Branch Before PR
