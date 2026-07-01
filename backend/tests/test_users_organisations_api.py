@@ -1,3 +1,4 @@
+import logging
 from collections.abc import Iterator
 from datetime import date
 from typing import cast
@@ -7,6 +8,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import StaticPool, create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.api.v1.org_states import org_states_service
 from app.api.v1.org_states.models import (
     Event,
     OrgState,
@@ -889,6 +891,272 @@ def test_org_state_delete_clears_scenario_initial_state(
         organisation = _get_organisation(session, organisation_key)
         scenario = _get_scenario(session, organisation, "reality")
         assert scenario.initial_state_id is None
+
+
+def test_clean_org_states_service_soft_deletes_active_states_and_clears_initial_state(
+    client: TestClient,
+    session_factory: sessionmaker[Session],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    organisation_key = _create_organisation(client)
+    scenario_response = client.post(
+        f"/api/v1/organisations/{organisation_key}/scenarios",
+        json={"name": "Cleanup scenario", "description": "Cleanup"},
+    )
+    assert scenario_response.status_code == 201
+    scenario_key = cast(str, scenario_response.json()["id"])
+
+    first_state_response = client.post(
+        f"/api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/"
+        "org-states",
+        json={"name": "First state", "targetDate": "2032-01-01"},
+    )
+    second_state_response = client.post(
+        f"/api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/"
+        "org-states",
+        json={"name": "Second state", "targetDate": "2032-02-01"},
+    )
+    deleted_state_response = client.post(
+        f"/api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/"
+        "org-states",
+        json={"name": "Deleted state", "targetDate": "2032-03-01"},
+    )
+    assert first_state_response.status_code == 201
+    assert second_state_response.status_code == 201
+    assert deleted_state_response.status_code == 201
+
+    first_state_key = cast(str, first_state_response.json()["id"])
+    second_state_key = cast(str, second_state_response.json()["id"])
+    deleted_state_key = cast(str, deleted_state_response.json()["id"])
+
+    with session_factory() as session:
+        organisation = _get_organisation(session, organisation_key)
+        scenario = _get_scenario(session, organisation, scenario_key)
+        first_state = _get_org_state(session, scenario, first_state_key)
+        second_state = _get_org_state(session, scenario, second_state_key)
+        deleted_state = _get_org_state(session, scenario, deleted_state_key)
+        scenario.initial_state_id = first_state.org_state_id
+        node_type = session.scalar(
+            select(NodeType)
+            .where(NodeType.node_type_key == "nt_person")
+            .order_by(NodeType.metamodel_id.desc()),
+        )
+        edge_type = session.scalar(
+            select(EdgeType)
+            .where(EdgeType.edge_type_key == "et_reports_to")
+            .order_by(EdgeType.metamodel_id.desc()),
+        )
+        assert node_type is not None
+        assert edge_type is not None
+        _add_graph_snapshot(
+            session,
+            first_state,
+            node_type.node_type_id,
+            edge_type.edge_type_id,
+            graph_name="First cleanup graph",
+            node_key="node_cleanup_first",
+        )
+        _add_graph_snapshot(
+            session,
+            second_state,
+            node_type.node_type_id,
+            edge_type.edge_type_id,
+            graph_name="Second cleanup graph",
+            node_key="node_cleanup_second",
+        )
+        _add_graph_snapshot(
+            session,
+            deleted_state,
+            node_type.node_type_id,
+            edge_type.edge_type_id,
+            graph_name="Deleted cleanup graph",
+            node_key="node_cleanup_deleted",
+        )
+        session.commit()
+
+    deleted_response = client.delete(
+        f"/api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/"
+        f"org-states/{deleted_state_key}",
+    )
+    assert deleted_response.status_code == 204
+
+    with caplog.at_level(logging.INFO, logger=org_states_service.__name__):
+        with session_factory() as session:
+            cleaned_count = org_states_service.clean_org_states(
+                session,
+                organisation_key,
+                scenario_key,
+            )
+
+    assert cleaned_count == 2
+    assert (
+        "Cleaned 2 organisation states "
+        f"for organisation_key={organisation_key} scenario_key={scenario_key}"
+        in caplog.text
+    )
+
+    with session_factory() as session:
+        organisation = _get_organisation(session, organisation_key)
+        scenario = _get_scenario(session, organisation, scenario_key)
+        cleaned_first_state = _get_org_state_including_deleted(
+            session,
+            scenario,
+            first_state_key,
+        )
+        cleaned_second_state = _get_org_state_including_deleted(
+            session,
+            scenario,
+            second_state_key,
+        )
+        previously_deleted_state = _get_org_state_including_deleted(
+            session,
+            scenario,
+            deleted_state_key,
+        )
+        active_org_states = session.scalars(
+            select(OrgState).where(
+                OrgState.scenario_id == scenario.scenario_id,
+                OrgState.deleted_time.is_(None),
+            ),
+        ).all()
+        cleaned_graphs = session.scalars(
+            select(Graph)
+            .where(
+                Graph.org_state_id.in_(
+                    [
+                        cleaned_first_state.org_state_id,
+                        cleaned_second_state.org_state_id,
+                    ],
+                ),
+            )
+            .order_by(Graph.name),
+        ).all()
+        deleted_graph = session.scalar(
+            select(Graph).where(
+                Graph.org_state_id == previously_deleted_state.org_state_id,
+            ),
+        )
+
+        assert scenario.initial_state_id is None
+        assert cleaned_first_state.deleted_time is not None
+        assert cleaned_second_state.deleted_time is not None
+        assert previously_deleted_state.deleted_time is not None
+        assert active_org_states == []
+        assert [graph.deleted_time is not None for graph in cleaned_graphs] == [
+            True,
+            True,
+        ]
+        assert deleted_graph is not None
+        assert deleted_graph.deleted_time is not None
+
+
+def test_clean_org_states_service_returns_zero_when_no_active_states(
+    client: TestClient,
+    session_factory: sessionmaker[Session],
+) -> None:
+    organisation_key = _create_organisation(client)
+    scenario_response = client.post(
+        f"/api/v1/organisations/{organisation_key}/scenarios",
+        json={"name": "Empty cleanup scenario"},
+    )
+    assert scenario_response.status_code == 201
+    scenario_key = cast(str, scenario_response.json()["id"])
+
+    with session_factory() as session:
+        cleaned_count = org_states_service.clean_org_states(
+            session,
+            organisation_key,
+            scenario_key,
+        )
+
+    assert cleaned_count == 0
+
+
+def test_org_states_clean_endpoint_returns_404_for_missing_resources(
+    client: TestClient,
+) -> None:
+    organisation_key = _create_organisation(client)
+
+    missing_org_response = client.post(
+        "/api/v1/organisations/missing/scenarios/reality/org-states/clean",
+    )
+    assert missing_org_response.status_code == 404
+
+    missing_scenario_response = client.post(
+        f"/api/v1/organisations/{organisation_key}/scenarios/missing/org-states/clean",
+    )
+    assert missing_scenario_response.status_code == 404
+
+
+def test_protected_scenario_clean_returns_409(client: TestClient) -> None:
+    organisation_key = _create_organisation(client)
+
+    response = client.post(
+        f"/api/v1/organisations/{organisation_key}/scenarios/reality/org-states/clean",
+    )
+
+    assert response.status_code == 409
+
+
+def test_org_states_clean_endpoint_returns_count_and_refreshable_state(
+    client: TestClient,
+    session_factory: sessionmaker[Session],
+) -> None:
+    organisation_key = _create_organisation(client)
+    scenario_response = client.post(
+        f"/api/v1/organisations/{organisation_key}/scenarios",
+        json={"name": "Endpoint cleanup scenario"},
+    )
+    assert scenario_response.status_code == 201
+    scenario_key = cast(str, scenario_response.json()["id"])
+
+    first_state_response = client.post(
+        f"/api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/"
+        "org-states",
+        json={"name": "State one", "targetDate": "2033-01-01"},
+    )
+    second_state_response = client.post(
+        f"/api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/"
+        "org-states",
+        json={"name": "State two", "targetDate": "2033-02-01"},
+    )
+    assert first_state_response.status_code == 201
+    assert second_state_response.status_code == 201
+
+    first_state_key = cast(str, first_state_response.json()["id"])
+
+    with session_factory() as session:
+        organisation = _get_organisation(session, organisation_key)
+        scenario = _get_scenario(session, organisation, scenario_key)
+        first_state = _get_org_state(session, scenario, first_state_key)
+        scenario.initial_state_id = first_state.org_state_id
+        session.commit()
+
+    response = client.post(
+        f"/api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/org-states/clean",
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"cleaned": 2}
+    assert (
+        client.get(
+            f"/api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/org-states",
+        ).json()
+        == []
+    )
+
+    with session_factory() as session:
+        organisation = _get_organisation(session, organisation_key)
+        scenario = _get_scenario(session, organisation, scenario_key)
+        deleted_org_states = session.scalars(
+            select(OrgState).where(OrgState.scenario_id == scenario.scenario_id),
+        ).all()
+
+        assert scenario.initial_state_id is None
+        assert len(deleted_org_states) == 2
+        assert all(
+            org_state.deleted_time is not None for org_state in deleted_org_states
+        )
 
 
 def test_scenario_soft_delete_propagates_to_active_owned_rows(

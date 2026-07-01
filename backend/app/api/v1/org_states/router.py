@@ -8,6 +8,7 @@ from app.api.v1.org_states.schemas import (
     OrgStateCreateRequest,
     OrgStatePatchRequest,
     OrgStateResponse,
+    OrgStatesCleanResponse,
     ScenarioCopyRequest,
     ScenarioCreateRequest,
     ScenarioPatchRequest,
@@ -110,6 +111,23 @@ def list_organisation_scenario_org_states(
         organisation_key,
         scenario_key,
     )
+
+
+@router.post(
+    "/{organisation_key}/scenarios/{scenario_key}/org-states/clean",
+    response_model=OrgStatesCleanResponse,
+)
+def clean_org_states(
+    organisation_key: str,
+    scenario_key: str,
+    session: SessionDependency,
+) -> OrgStatesCleanResponse:
+    cleaned = org_states_service.clean_org_states(
+        session,
+        organisation_key,
+        scenario_key,
+    )
+    return OrgStatesCleanResponse(cleaned=cleaned)
 
 
 @router.post(

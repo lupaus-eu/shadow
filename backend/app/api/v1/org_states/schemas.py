@@ -133,3 +133,7 @@ class OrgStateResponse(StrictBaseModel):
         alias="targetDate",
         description="Organisation state target date.",
     )
+
+
+class OrgStatesCleanResponse(StrictBaseModel):
+    cleaned: int = Field(ge=0, description="Number of cleaned organisation states.")

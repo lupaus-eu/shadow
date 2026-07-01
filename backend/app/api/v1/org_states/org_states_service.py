@@ -1,3 +1,4 @@
+import logging
 from datetime import UTC, datetime
 from datetime import date as dt_date
 from uuid import uuid4
@@ -31,6 +32,7 @@ DEFAULT_SCENARIO_PROTECTED = True
 DEFAULT_ORG_STATE_NAME = "Initial state"
 DEFAULT_ORG_STATE_DESCRIPTION = "Initial state of reality"
 DEFAULT_ORG_STATE_TARGET_DATE = dt_date(2020, 1, 1)
+logger = logging.getLogger(__name__)
 
 
 def create_default_scenario(session: Session, organisation: Organisation) -> Scenario:
@@ -275,6 +277,70 @@ def list_organisation_scenario_org_states(
 ) -> list[OrgStateResponse]:
     organisation = _get_active_organisation(session, organisation_key)
     return list_org_states(session, organisation, scenario_key)
+
+
+def clean_org_states(
+    session: Session,
+    organisation_key: str,
+    scenario_key: str,
+) -> int:
+    try:
+        organisation = _get_active_organisation(session, organisation_key)
+        scenario = _get_active_scenario(
+            session,
+            organisation,
+            scenario_key,
+            for_update=True,
+        )
+        _ensure_scenario_is_mutable(scenario)
+
+        now = datetime.now(UTC)
+        active_org_states = session.scalars(
+            select(OrgState).where(
+                OrgState.scenario_id == scenario.scenario_id,
+                OrgState.deleted_time.is_(None),
+            ),
+        ).all()
+        cleaned_org_state_ids = [
+            org_state.org_state_id for org_state in active_org_states
+        ]
+
+        if scenario.initial_state_id in cleaned_org_state_ids:
+            scenario.initial_state_id = None
+            scenario.modified_time = now
+
+        org_twin_structure_service.soft_delete_graphs_for_org_states(
+            session,
+            cleaned_org_state_ids,
+            now,
+        )
+
+        for org_state in active_org_states:
+            org_state.deleted_time = now
+            org_state.modified_time = now
+
+        session.commit()
+    except HTTPException:
+        session.rollback()
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception(
+            "Failed to clean organisation states for organisation_key=%s "
+            "scenario_key=%s",
+            organisation_key,
+            scenario_key,
+        )
+        raise
+
+    cleaned_count = len(active_org_states)
+    logger.info(
+        "Cleaned %s organisation states for organisation_key=%s scenario_key=%s",
+        cleaned_count,
+        organisation_key,
+        scenario_key,
+    )
+    return cleaned_count
 
 
 def get_org_state(
