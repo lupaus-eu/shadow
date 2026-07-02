@@ -93,6 +93,14 @@ Active organisation states inside the same scenario cannot share the same
 
 Soft-deleted organisation states do not reserve their historical target dates.
 
+## Event Target Dates
+
+Every active event has a `target_date`.
+
+Events inside the same scenario may share the same `target_date`.
+
+Soft-deleted events are excluded from normal event reads.
+
 ## Scenario Copy
 
 Scenario copy creates an editable scenario branch from a selected source
@@ -162,11 +170,22 @@ PATCH /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/org-stat
 DELETE /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/org-states/{org_state_key}
 ```
 
+Event endpoints:
+
+```text
+GET /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/events
+POST /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/events
+GET /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/events/{event_key}
+PATCH /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/events/{event_key}
+DELETE /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/events/{event_key}
+```
+
 The API uses stable text keys in paths and response `id` fields:
 
 - `organisation_key`
 - `scenario_key`
 - `org_state_key`
+- `event_key`
 
 Scenario responses use:
 
@@ -198,8 +217,19 @@ Organisation state clean responses use:
 }
 ```
 
+Event responses use:
+
+```json
+{
+  "id": "event_abc123",
+  "name": "Market launch",
+  "targetDate": "2030-01-01",
+  "eventDetails": "Launch in the northern region"
+}
+```
+
 Create endpoints return HTTP `201`. Delete endpoints return HTTP `204`.
-Missing active organisations, scenarios or organisation states return HTTP
+Missing active organisations, scenarios, organisation states or events return HTTP
 `404`.
 
 Protected scenario patch returns HTTP `200` for valid `name` and `description`
@@ -217,6 +247,10 @@ Organisation state cleanup returns HTTP `200` and soft-deletes all active
 organisation states in the selected non-protected scenario. Already
 soft-deleted organisation states are not counted. A cleanup call against a
 scenario with no active organisation states returns `{ "cleaned": 0 }`.
+
+Event create requires `name` and `targetDate`. Event patch may update `name`,
+`targetDate` and `eventDetails`. If `targetDate` is supplied in an event patch,
+it cannot be `null`.
 
 Organisation state graph-date synchronisation is not implemented. The frontend
 Refresh action reloads selected scenario and organisation state data through
@@ -282,6 +316,19 @@ Flow:
 
 Organisation state CRUD does not create graph data or synchronise graph dates.
 
+## Create Event
+
+Flow:
+
+1. Validate organisation exists and is active.
+2. Validate scenario exists and is active.
+3. Validate required `name`.
+4. Validate required `target_date`.
+5. Generate a server-side `event_key`.
+6. Create event row.
+
+Event CRUD does not create graph data, timeseries data or organisation states.
+
 ## Clean Organisation States
 
 Flow:
@@ -323,6 +370,18 @@ Flow:
 7. Update only supplied `name`, `description` and `target_date` fields.
 8. Update `modified_time`.
 
+## Patch Event
+
+Flow:
+
+1. Validate organisation exists and is active.
+2. Validate scenario exists and is active.
+3. Validate event exists and is active.
+4. Validate supplied `name`.
+5. Validate supplied `target_date` is not null when the field is patched.
+6. Update only supplied `name`, `event_details` and `target_date` fields.
+7. Update `modified_time`.
+
 ## Delete Scenario
 
 Flow:
@@ -347,6 +406,15 @@ Flow:
 5. Soft-delete active owned graphs through Organisation Twin Structure Domain.
 6. Soft-delete the organisation state.
 
+## Delete Event
+
+Flow:
+
+1. Validate organisation exists and is active.
+2. Validate scenario exists and is active.
+3. Validate event exists and is active.
+4. Soft-delete the event.
+
 ## Create Organisation Defaults
 
 Flow:
@@ -361,7 +429,7 @@ Flow:
 
 # AI Agent Guidance
 
-When implementing scenario or organisation state features:
+When implementing scenario, organisation state, event or timeseries features:
 
 - read this document before changing scenario, org state, event or timeseries data
 - preserve soft-delete behavior

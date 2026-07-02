@@ -137,3 +137,66 @@ class OrgStateResponse(StrictBaseModel):
 
 class OrgStatesCleanResponse(StrictBaseModel):
     cleaned: int = Field(ge=0, description="Number of cleaned organisation states.")
+
+
+class EventCreateRequest(StrictBaseModel):
+    name: str = Field(min_length=1, description="Event display name.")
+    target_date: date = Field(
+        alias="targetDate",
+        description="Event target date.",
+    )
+    event_details: str | None = Field(
+        default=None,
+        alias="eventDetails",
+        description="Event details.",
+    )
+
+    @field_validator("name")
+    @classmethod
+    def name_must_not_be_blank(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("Event name must not be blank.")
+        return stripped
+
+
+class EventPatchRequest(StrictBaseModel):
+    name: str | None = Field(
+        default=None,
+        min_length=1,
+        description="Event display name.",
+    )
+    target_date: date | None = Field(
+        default=None,
+        alias="targetDate",
+        description="Event target date.",
+    )
+    event_details: str | None = Field(
+        default=None,
+        alias="eventDetails",
+        description="Event details.",
+    )
+
+    @field_validator("name")
+    @classmethod
+    def name_must_not_be_blank(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("Event name must not be blank.")
+        return stripped
+
+
+class EventResponse(StrictBaseModel):
+    id: str = Field(description="Stable event key.")
+    name: str = Field(description="Event display name.")
+    target_date: date = Field(
+        alias="targetDate",
+        description="Event target date.",
+    )
+    event_details: str = Field(
+        alias="eventDetails",
+        description="Event details.",
+    )

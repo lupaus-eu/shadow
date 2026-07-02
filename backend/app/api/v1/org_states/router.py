@@ -5,6 +5,9 @@ from sqlalchemy.orm import Session
 
 from app.api.v1.org_states import org_states_service
 from app.api.v1.org_states.schemas import (
+    EventCreateRequest,
+    EventPatchRequest,
+    EventResponse,
     OrgStateCreateRequest,
     OrgStatePatchRequest,
     OrgStateResponse,
@@ -202,5 +205,97 @@ def delete_org_state(
         organisation_key,
         scenario_key,
         org_state_key,
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get(
+    "/{organisation_key}/scenarios/{scenario_key}/events",
+    response_model=list[EventResponse],
+)
+def list_scenario_events(
+    organisation_key: str,
+    scenario_key: str,
+    session: SessionDependency,
+) -> list[EventResponse]:
+    return org_states_service.list_scenario_events(
+        session,
+        organisation_key,
+        scenario_key,
+    )
+
+
+@router.post(
+    "/{organisation_key}/scenarios/{scenario_key}/events",
+    response_model=EventResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_event(
+    organisation_key: str,
+    scenario_key: str,
+    payload: EventCreateRequest,
+    session: SessionDependency,
+) -> EventResponse:
+    return org_states_service.create_event(
+        session,
+        organisation_key,
+        scenario_key,
+        payload,
+    )
+
+
+@router.get(
+    "/{organisation_key}/scenarios/{scenario_key}/events/{event_id}",
+    response_model=EventResponse,
+)
+def get_event(
+    organisation_key: str,
+    scenario_key: str,
+    event_id: str,
+    session: SessionDependency,
+) -> EventResponse:
+    return org_states_service.get_event(
+        session,
+        organisation_key,
+        scenario_key,
+        event_id,
+    )
+
+
+@router.patch(
+    "/{organisation_key}/scenarios/{scenario_key}/events/{event_id}",
+    response_model=EventResponse,
+)
+def patch_event(
+    organisation_key: str,
+    scenario_key: str,
+    event_id: str,
+    payload: EventPatchRequest,
+    session: SessionDependency,
+) -> EventResponse:
+    return org_states_service.patch_event(
+        session,
+        organisation_key,
+        scenario_key,
+        event_id,
+        payload,
+    )
+
+
+@router.delete(
+    "/{organisation_key}/scenarios/{scenario_key}/events/{event_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_event(
+    organisation_key: str,
+    scenario_key: str,
+    event_id: str,
+    session: SessionDependency,
+) -> Response:
+    org_states_service.soft_delete_event(
+        session,
+        organisation_key,
+        scenario_key,
+        event_id,
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)

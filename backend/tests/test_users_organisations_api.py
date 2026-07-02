@@ -910,6 +910,175 @@ def test_org_state_delete_clears_scenario_initial_state(
         assert scenario.initial_state_id is None
 
 
+def test_event_crud_uses_stable_keys_and_excludes_soft_deleted_rows(
+    client: TestClient,
+    session_factory: sessionmaker[Session],
+) -> None:
+    organisation_key = _create_organisation(client)
+
+    create_response = client.post(
+        f"/api/v1/organisations/{organisation_key}/scenarios/reality/events",
+        json={
+            "name": "  Market launch  ",
+            "targetDate": "2030-01-01",
+            "eventDetails": "Initial launch",
+        },
+    )
+    assert create_response.status_code == 201
+    created_event = create_response.json()
+    assert created_event["id"].startswith("event_")
+    assert created_event == {
+        "id": created_event["id"],
+        "name": "Market launch",
+        "targetDate": "2030-01-01",
+        "eventDetails": "Initial launch",
+    }
+
+    event_key = created_event["id"]
+    assert (
+        client.get(
+            f"/api/v1/organisations/{organisation_key}/scenarios/reality/"
+            f"events/{event_key}",
+        ).json()
+        == created_event
+    )
+    assert created_event in client.get(
+        f"/api/v1/organisations/{organisation_key}/scenarios/reality/events",
+    ).json()
+
+    patch_response = client.patch(
+        f"/api/v1/organisations/{organisation_key}/scenarios/reality/"
+        f"events/{event_key}",
+        json={
+            "name": "Updated launch",
+            "targetDate": "2030-02-01",
+            "eventDetails": "Updated details",
+        },
+    )
+    assert patch_response.status_code == 200
+    assert patch_response.json() == {
+        "id": event_key,
+        "name": "Updated launch",
+        "targetDate": "2030-02-01",
+        "eventDetails": "Updated details",
+    }
+
+    delete_response = client.delete(
+        f"/api/v1/organisations/{organisation_key}/scenarios/reality/"
+        f"events/{event_key}",
+    )
+    assert delete_response.status_code == 204
+    assert (
+        client.get(
+            f"/api/v1/organisations/{organisation_key}/scenarios/reality/"
+            f"events/{event_key}",
+        ).status_code
+        == 404
+    )
+    listed_ids = [
+        item["id"]
+        for item in client.get(
+            f"/api/v1/organisations/{organisation_key}/scenarios/reality/events",
+        ).json()
+    ]
+    assert event_key not in listed_ids
+
+    with session_factory() as session:
+        organisation = _get_organisation(session, organisation_key)
+        scenario = _get_scenario(session, organisation, "reality")
+        event = _get_event_including_deleted(session, scenario, event_key)
+        assert event.deleted_time is not None
+
+
+def test_event_endpoints_return_404_for_missing_parents_and_resources(
+    client: TestClient,
+) -> None:
+    assert (
+        client.get(
+            "/api/v1/organisations/missing/scenarios/reality/events",
+        ).status_code
+        == 404
+    )
+
+    organisation_key = _create_organisation(client)
+    assert (
+        client.get(
+            f"/api/v1/organisations/{organisation_key}/scenarios/missing/events",
+        ).status_code
+        == 404
+    )
+    assert (
+        client.get(
+            f"/api/v1/organisations/{organisation_key}/scenarios/reality/"
+            "events/missing",
+        ).status_code
+        == 404
+    )
+
+
+def test_event_create_and_patch_validate_required_fields(
+    client: TestClient,
+) -> None:
+    organisation_key = _create_organisation(client)
+
+    blank_name_response = client.post(
+        f"/api/v1/organisations/{organisation_key}/scenarios/reality/events",
+        json={"name": "   ", "targetDate": "2030-01-01"},
+    )
+    assert blank_name_response.status_code == 422
+
+    missing_target_date_response = client.post(
+        f"/api/v1/organisations/{organisation_key}/scenarios/reality/events",
+        json={"name": "Missing target date"},
+    )
+    assert missing_target_date_response.status_code == 422
+
+    create_response = client.post(
+        f"/api/v1/organisations/{organisation_key}/scenarios/reality/events",
+        json={"name": "Launch", "targetDate": "2030-01-01"},
+    )
+    assert create_response.status_code == 201
+    event_key = cast(str, create_response.json()["id"])
+
+    blank_patch_name_response = client.patch(
+        f"/api/v1/organisations/{organisation_key}/scenarios/reality/"
+        f"events/{event_key}",
+        json={"name": "   "},
+    )
+    assert blank_patch_name_response.status_code == 422
+
+    null_target_date_response = client.patch(
+        f"/api/v1/organisations/{organisation_key}/scenarios/reality/"
+        f"events/{event_key}",
+        json={"targetDate": None},
+    )
+    assert null_target_date_response.status_code == 422
+
+
+def test_event_duplicate_target_dates_are_allowed_inside_scenario(
+    client: TestClient,
+) -> None:
+    organisation_key = _create_organisation(client)
+    path = f"/api/v1/organisations/{organisation_key}/scenarios/reality/events"
+
+    first_response = client.post(
+        path,
+        json={"name": "First launch", "targetDate": "2030-01-01"},
+    )
+    second_response = client.post(
+        path,
+        json={"name": "Second launch", "targetDate": "2030-01-01"},
+    )
+
+    assert first_response.status_code == 201
+    assert second_response.status_code == 201
+    listed_events = client.get(path).json()
+    assert [item["targetDate"] for item in listed_events] == [
+        "2030-01-01",
+        "2030-01-01",
+    ]
+
+
 def test_clean_org_states_service_soft_deletes_active_states_and_clears_initial_state(
     client: TestClient,
     session_factory: sessionmaker[Session],
@@ -1381,6 +1550,21 @@ def _get_org_state_including_deleted(
     )
     assert org_state is not None
     return org_state
+
+
+def _get_event_including_deleted(
+    session: Session,
+    scenario: Scenario,
+    event_key: str,
+) -> Event:
+    event = session.scalar(
+        select(Event).where(
+            Event.scenario_id == scenario.scenario_id,
+            Event.event_key == event_key,
+        ),
+    )
+    assert event is not None
+    return event
 
 
 def _add_graph_snapshot(

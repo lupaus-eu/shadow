@@ -15,6 +15,9 @@ from app.api.v1.org_states.models import (
     TimeserieValue,
 )
 from app.api.v1.org_states.schemas import (
+    EventCreateRequest,
+    EventPatchRequest,
+    EventResponse,
     OrgStateCreateRequest,
     OrgStatePatchRequest,
     OrgStateResponse,
@@ -450,6 +453,107 @@ def soft_delete_org_state(
     session.commit()
 
 
+def list_scenario_events(
+    session: Session,
+    organisation_key: str,
+    scenario_key: str,
+) -> list[EventResponse]:
+    organisation = _get_active_organisation(session, organisation_key)
+    scenario = _get_active_scenario(session, organisation, scenario_key)
+    events = session.scalars(
+        select(Event)
+        .where(
+            Event.scenario_id == scenario.scenario_id,
+            Event.deleted_time.is_(None),
+        )
+        .order_by(Event.target_date, Event.event_id),
+    ).all()
+
+    return [to_event_response(event) for event in events]
+
+
+def get_event(
+    session: Session,
+    organisation_key: str,
+    scenario_key: str,
+    event_key: str,
+) -> EventResponse:
+    organisation = _get_active_organisation(session, organisation_key)
+    scenario = _get_active_scenario(session, organisation, scenario_key)
+    event = _get_active_event(session, scenario, event_key)
+    return to_event_response(event)
+
+
+def create_event(
+    session: Session,
+    organisation_key: str,
+    scenario_key: str,
+    payload: EventCreateRequest,
+) -> EventResponse:
+    organisation = _get_active_organisation(session, organisation_key)
+    scenario = _get_active_scenario(session, organisation, scenario_key)
+
+    event = Event(
+        scenario_id=scenario.scenario_id,
+        event_key=_generate_event_key(),
+        name=payload.name,
+        target_date=payload.target_date,
+        event_details=payload.event_details,
+    )
+    session.add(event)
+    session.commit()
+    session.refresh(event)
+
+    return to_event_response(event)
+
+
+def patch_event(
+    session: Session,
+    organisation_key: str,
+    scenario_key: str,
+    event_key: str,
+    payload: EventPatchRequest,
+) -> EventResponse:
+    organisation = _get_active_organisation(session, organisation_key)
+    scenario = _get_active_scenario(session, organisation, scenario_key)
+    event = _get_active_event(session, scenario, event_key)
+    update_data = payload.model_dump(exclude_unset=True, by_alias=False)
+
+    if "target_date" in update_data:
+        if payload.target_date is None:
+            raise HTTPException(
+                status_code=422,
+                detail="Event target date is required.",
+            )
+        event.target_date = payload.target_date
+    if "name" in update_data and payload.name is not None:
+        event.name = payload.name
+    if "event_details" in update_data:
+        event.event_details = payload.event_details
+
+    event.modified_time = datetime.now(UTC)
+    session.commit()
+    session.refresh(event)
+
+    return to_event_response(event)
+
+
+def soft_delete_event(
+    session: Session,
+    organisation_key: str,
+    scenario_key: str,
+    event_key: str,
+) -> None:
+    organisation = _get_active_organisation(session, organisation_key)
+    scenario = _get_active_scenario(session, organisation, scenario_key)
+    event = _get_active_event(session, scenario, event_key)
+    now = datetime.now(UTC)
+
+    event.deleted_time = now
+    event.modified_time = now
+    session.commit()
+
+
 def to_scenario_response(scenario: Scenario) -> ScenarioResponse:
     return ScenarioResponse(
         id=scenario.scenario_key,
@@ -465,6 +569,15 @@ def to_org_state_response(org_state: OrgState) -> OrgStateResponse:
         name=org_state.name,
         description=org_state.description or "",
         targetDate=org_state.target_date,
+    )
+
+
+def to_event_response(event: Event) -> EventResponse:
+    return EventResponse(
+        id=event.event_key,
+        name=event.name,
+        targetDate=event.target_date,
+        eventDetails=event.event_details or "",
     )
 
 
@@ -520,6 +633,28 @@ def _get_active_org_state(
         )
 
     return org_state
+
+
+def _get_active_event(
+    session: Session,
+    scenario: Scenario,
+    event_key: str,
+) -> Event:
+    event = session.scalar(
+        select(Event).where(
+            Event.scenario_id == scenario.scenario_id,
+            Event.event_key == event_key,
+            Event.deleted_time.is_(None),
+        ),
+    )
+
+    if event is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Event not found.",
+        )
+
+    return event
 
 
 def _soft_delete_events(
@@ -608,3 +743,7 @@ def _generate_scenario_key() -> str:
 
 def _generate_org_state_key() -> str:
     return f"org_state_{uuid4().hex}"
+
+
+def _generate_event_key() -> str:
+    return f"event_{uuid4().hex}"
