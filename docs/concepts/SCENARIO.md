@@ -57,7 +57,8 @@ A Scenario is a versioned planning or analysis context within one Organisation.
 - Scenario must always have `name`.
 - Active scenario keys are unique within an organisation.
 - Normal scenario deletion is soft delete.
-- Protected scenarios cannot be patched or deleted through the backend CRUD API.
+- Protected scenarios can be patched for `name` and `description`.
+- Protected scenarios cannot be deleted through the backend CRUD API.
 - Protected scenarios cannot be cleaned through the backend organisation-state
   cleanup flow.
 
@@ -76,10 +77,13 @@ Transitions:
 active -> deleted
 ```
 
-When a scenario is soft-deleted, owned organisation states, events, graphs, timeseries and timeserie values must be soft-deleted by application or service logic.
+When a scenario is soft-deleted, owned organisation states, events, graphs,
+timeseries and timeserie values must be soft-deleted by application or service
+logic.
 
-The default `Reality` scenario is protected and cannot be patched or deleted
-through normal backend CRUD flows.
+The default `Reality` scenario is protected. It can be renamed and redescribed
+through normal backend PATCH flow, but it cannot be deleted through normal
+backend CRUD flows.
 
 The default `Reality` scenario and other protected scenarios also reject
 organisation-state cleanup through normal backend flows.
@@ -121,7 +125,8 @@ Related APIs:
 - Scenario create generates `scenario_key` server-side.
 - Scenario responses use stable `scenario_key` as `id`.
 - Scenario patch accepts `name` and `description`.
-- Scenario patch and delete for protected scenarios return HTTP `409`.
+- Scenario patch accepts `name` and `description` for protected scenarios.
+- Scenario delete for protected scenarios returns HTTP `409`.
 - Organisation-state cleanup for protected scenarios returns HTTP `409`.
 - Organisation-state cleanup clears `initial_state_id` when the referenced
   initial organisation state is cleaned.
@@ -146,7 +151,7 @@ When implementing Scenario features:
 
 - read `docs/domains/ORG_STATES.md`
 - preserve soft-delete propagation rules
-- preserve protected scenario mutation rules
+- preserve protected scenario destructive-action guards
 - update data and diagram docs when relationships change
 
 Avoid:

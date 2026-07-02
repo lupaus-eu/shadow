@@ -76,7 +76,11 @@ Physical database cascades are hard-delete cleanup/safety behavior only.
 
 ## Protected Scenarios
 
-Protected scenarios cannot be patched or deleted through the backend CRUD API.
+Protected scenarios can be patched for `name` and `description` through the
+backend CRUD API.
+
+Protected scenarios cannot be deleted through the backend CRUD API and cannot be
+cleaned through the backend organisation-state cleanup flow.
 
 The default `Reality` scenario is protected.
 
@@ -198,8 +202,10 @@ Create endpoints return HTTP `201`. Delete endpoints return HTTP `204`.
 Missing active organisations, scenarios or organisation states return HTTP
 `404`.
 
-Protected scenario patch, delete and organisation-state cleanup return HTTP
-`409`.
+Protected scenario patch returns HTTP `200` for valid `name` and `description`
+updates.
+
+Protected scenario delete and organisation-state cleanup return HTTP `409`.
 
 Duplicate active organisation state target dates inside one scenario return
 HTTP `409`.
@@ -300,9 +306,9 @@ Flow:
 
 1. Validate organisation exists and is active.
 2. Validate scenario exists and is active.
-3. Reject protected scenarios.
-4. Update only supplied `name` and `description` fields.
-5. Update `modified_time`.
+3. Update only supplied `name` and `description` fields, including for protected
+   scenarios.
+4. Update `modified_time`.
 
 ## Patch Organisation State
 

@@ -202,7 +202,6 @@ def patch_scenario(
 ) -> ScenarioResponse:
     organisation = _get_active_organisation(session, organisation_key)
     scenario = _get_active_scenario(session, organisation, scenario_key)
-    _ensure_scenario_is_mutable(scenario)
 
     update_data = payload.model_dump(exclude_unset=True)
     if "name" in update_data and payload.name is not None:
@@ -224,7 +223,7 @@ def soft_delete_scenario(
 ) -> None:
     organisation = _get_active_organisation(session, organisation_key)
     scenario = _get_active_scenario(session, organisation, scenario_key)
-    _ensure_scenario_is_mutable(scenario)
+    _ensure_scenario_allows_destructive_action(scenario)
 
     now = datetime.now(UTC)
     active_org_states = session.scalars(
@@ -292,7 +291,7 @@ def clean_org_states(
             scenario_key,
             for_update=True,
         )
-        _ensure_scenario_is_mutable(scenario)
+        _ensure_scenario_allows_destructive_action(scenario)
 
         now = datetime.now(UTC)
         active_org_states = session.scalars(
@@ -595,11 +594,11 @@ def _ensure_target_date_is_available(
         )
 
 
-def _ensure_scenario_is_mutable(scenario: Scenario) -> None:
+def _ensure_scenario_allows_destructive_action(scenario: Scenario) -> None:
     if scenario.protected:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Protected scenarios cannot be changed.",
+            detail="Protected scenarios cannot be deleted or cleaned.",
         )
 
 

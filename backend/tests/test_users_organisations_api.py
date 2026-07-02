@@ -442,14 +442,31 @@ def test_scenario_create_and_patch_validate_blank_names(client: TestClient) -> N
     assert patch_response.status_code == 422
 
 
-def test_protected_scenario_patch_and_delete_return_409(client: TestClient) -> None:
+def test_protected_scenario_patch_persists_and_delete_returns_409(
+    client: TestClient,
+) -> None:
     organisation_key = _create_organisation(client)
 
     patch_response = client.patch(
         f"/api/v1/organisations/{organisation_key}/scenarios/reality",
-        json={"name": "Reality edited"},
+        json={
+            "name": "Reality edited",
+            "description": "Protected scenario remains editable",
+        },
     )
-    assert patch_response.status_code == 409
+    assert patch_response.status_code == 200
+    assert patch_response.json() == {
+        "id": "reality",
+        "name": "Reality edited",
+        "description": "Protected scenario remains editable",
+        "protected": True,
+    }
+    assert (
+        client.get(
+            f"/api/v1/organisations/{organisation_key}/scenarios/reality",
+        ).json()
+        == patch_response.json()
+    )
 
     delete_response = client.delete(
         f"/api/v1/organisations/{organisation_key}/scenarios/reality",
