@@ -36,8 +36,24 @@ function mockSchattenApi(options?: {
   duplicateCreate?: boolean;
   cleanStatus?: number;
   cleanResponse?: Promise<Response>;
+  eventsStatus?: number;
+  eventMutationStatus?: number;
 }) {
   let cleanedFutureStates = false;
+  let futureEvents = [
+    {
+      id: "kickoff",
+      name: "Kickoff",
+      targetDate: "2026-06-15",
+      eventDetails: "Internal kickoff"
+    },
+    {
+      id: "launch-event",
+      name: "Launch event",
+      targetDate: "2026-07-01",
+      eventDetails: "Public launch"
+    }
+  ];
 
   const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
@@ -74,6 +90,86 @@ function mockSchattenApi(options?: {
           is_protected: false
         })
       );
+    }
+
+    if (
+      url.endsWith("/api/v1/organisations/acme/scenarios/future/events") &&
+      method === "GET"
+    ) {
+      if (options?.eventsStatus) {
+        return Promise.resolve(
+          jsonResponse(
+            { detail: "Events unavailable." },
+            { status: options.eventsStatus }
+          )
+        );
+      }
+      return Promise.resolve(jsonResponse(futureEvents));
+    }
+
+    if (
+      url.endsWith("/api/v1/organisations/acme/scenarios/reality/events") &&
+      method === "GET"
+    ) {
+      return Promise.resolve(jsonResponse([]));
+    }
+
+    if (
+      url.endsWith("/api/v1/organisations/acme/scenarios/future/events") &&
+      method === "POST"
+    ) {
+      if (options?.eventMutationStatus) {
+        return Promise.resolve(
+          jsonResponse(
+            { detail: "Event mutation failed." },
+            { status: options.eventMutationStatus }
+          )
+        );
+      }
+      const payload = JSON.parse(String(init?.body ?? "{}")) as {
+        name: string;
+        targetDate: string;
+        eventDetails: string;
+      };
+      const created = { id: "new-event", ...payload };
+      futureEvents = [...futureEvents, created];
+      return Promise.resolve(jsonResponse(created, { status: 201 }));
+    }
+
+    if (
+      url.endsWith(
+        "/api/v1/organisations/acme/scenarios/future/events/kickoff"
+      ) &&
+      method === "PATCH"
+    ) {
+      if (options?.eventMutationStatus) {
+        return Promise.resolve(
+          jsonResponse(
+            { detail: "Event mutation failed." },
+            { status: options.eventMutationStatus }
+          )
+        );
+      }
+      const payload = JSON.parse(String(init?.body ?? "{}")) as {
+        name: string;
+        targetDate: string;
+        eventDetails: string;
+      };
+      const updated = { id: "kickoff", ...payload };
+      futureEvents = futureEvents.map((event) =>
+        event.id === "kickoff" ? updated : event
+      );
+      return Promise.resolve(jsonResponse(updated));
+    }
+
+    if (
+      url.endsWith(
+        "/api/v1/organisations/acme/scenarios/future/events/kickoff"
+      ) &&
+      method === "DELETE"
+    ) {
+      futureEvents = futureEvents.filter((event) => event.id !== "kickoff");
+      return Promise.resolve(noContentResponse());
     }
 
     if (url.endsWith("/api/v1/organisations/acme/scenarios")) {
@@ -994,5 +1090,233 @@ describe("Schatten UI shell", () => {
         })
       ).toBe(true);
     });
+  });
+
+  it("keeps Events gated on direct route until scenario and state are selected", () => {
+    mockSchattenApi();
+
+    renderAt("/schatten/acme/events");
+
+    expect(
+      screen.getByText("Select a scenario and org state in Scenarios to activate this tab.")
+    ).toBeInTheDocument();
+  });
+
+  it("loads events for the selected scenario and auto-selects the first event", async () => {
+    const fetchMock = mockSchattenApi();
+
+    renderAt("/schatten/acme/org-states");
+
+    fireEvent.click(await screen.findByRole("button", { name: /Future plan/ }));
+    await screen.findByRole("button", { name: /Draft state/ });
+    fireEvent.click(screen.getByRole("link", { name: "Events" }));
+
+    expect(
+      await screen.findByRole("heading", { name: "Events", level: 1 })
+    ).toBeInTheDocument();
+    expect(await screen.findByText("2 event(s)")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Kickoff/ })).toHaveClass(
+      "entity-row--selected"
+    );
+    expect(
+      screen.getByRole("heading", { name: "Kickoff" })
+    ).toBeInTheDocument();
+    expect(
+      fetchMock.mock.calls.some(([input, init]) => {
+        const url = String(input);
+        return (
+          url.endsWith("/api/v1/organisations/acme/scenarios/future/events") &&
+          (init?.method ?? "GET") === "GET"
+        );
+      })
+    ).toBe(true);
+  });
+
+  it("shows an empty Events state for a selected scenario without events", async () => {
+    mockSchattenApi();
+
+    renderAt("/schatten/acme/org-states");
+
+    await screen.findByRole("button", { name: /Today/ });
+    fireEvent.click(screen.getByRole("link", { name: "Events" }));
+
+    expect(await screen.findByText("No events available.")).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "No event selected" })
+    ).toBeInTheDocument();
+  });
+
+  it("creates an event and refreshes the event list selection", async () => {
+    const fetchMock = mockSchattenApi();
+
+    renderAt("/schatten/acme/org-states");
+
+    fireEvent.click(await screen.findByRole("button", { name: /Future plan/ }));
+    await screen.findByRole("button", { name: /Draft state/ });
+    fireEvent.click(screen.getByRole("link", { name: "Events" }));
+    await screen.findByRole("button", { name: /Kickoff/ });
+
+    const createEventForm = screen.getByRole("form", { name: "Create event" });
+    fireEvent.change(within(createEventForm).getByLabelText("Name"), {
+      target: { value: "Board review" }
+    });
+    fireEvent.change(within(createEventForm).getByLabelText("Target date"), {
+      target: { value: "2026-08-01" }
+    });
+    fireEvent.change(within(createEventForm).getByLabelText("Event details"), {
+      target: { value: "Review growth plan" }
+    });
+    fireEvent.click(
+      within(createEventForm).getByRole("button", { name: "Create event" })
+    );
+
+    expect(await screen.findByRole("button", { name: /Board review/ })).toHaveClass(
+      "entity-row--selected"
+    );
+    expect(
+      screen.getByRole("heading", { name: "Board review" })
+    ).toBeInTheDocument();
+    expect(
+      fetchMock.mock.calls.some(([input, init]) => {
+        const url = String(input);
+        return (
+          url.endsWith("/api/v1/organisations/acme/scenarios/future/events") &&
+          init?.method === "POST" &&
+          init.body ===
+            JSON.stringify({
+              name: "Board review",
+              targetDate: "2026-08-01",
+              eventDetails: "Review growth plan"
+            })
+        );
+      })
+    ).toBe(true);
+  });
+
+  it("edits the selected event and refreshes the selected detail", async () => {
+    const fetchMock = mockSchattenApi();
+
+    renderAt("/schatten/acme/org-states");
+
+    fireEvent.click(await screen.findByRole("button", { name: /Future plan/ }));
+    await screen.findByRole("button", { name: /Draft state/ });
+    fireEvent.click(screen.getByRole("link", { name: "Events" }));
+
+    await screen.findByRole("button", { name: /Kickoff/ });
+    const selectedEventPanel = screen.getByRole("region", { name: "Kickoff" });
+    const detailsInput = within(selectedEventPanel).getByLabelText("Event details");
+    const saveButton = within(selectedEventPanel).getByRole("button", {
+      name: "Save event"
+    });
+
+    expect(detailsInput).toHaveValue("Internal kickoff");
+    expect(saveButton).toBeDisabled();
+
+    fireEvent.change(detailsInput, { target: { value: "Updated kickoff" } });
+    expect(saveButton).not.toBeDisabled();
+    fireEvent.click(saveButton);
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(([input, init]) => {
+          const url = String(input);
+          return (
+            url.endsWith(
+              "/api/v1/organisations/acme/scenarios/future/events/kickoff"
+            ) &&
+            init?.method === "PATCH" &&
+            init.body ===
+              JSON.stringify({
+                name: "Kickoff",
+                targetDate: "2026-06-15",
+                eventDetails: "Updated kickoff"
+              })
+          );
+        })
+      ).toBe(true);
+    });
+    expect(await screen.findByDisplayValue("Updated kickoff")).toBeInTheDocument();
+  });
+
+  it("requires DELETE before event deletion can be submitted", async () => {
+    const fetchMock = mockSchattenApi();
+
+    renderAt("/schatten/acme/org-states");
+
+    fireEvent.click(await screen.findByRole("button", { name: /Future plan/ }));
+    await screen.findByRole("button", { name: /Draft state/ });
+    fireEvent.click(screen.getByRole("link", { name: "Events" }));
+
+    await screen.findByRole("button", { name: /Kickoff/ });
+    const selectedEventPanel = screen.getByRole("region", { name: "Kickoff" });
+    const confirmInput =
+      within(selectedEventPanel).getByPlaceholderText("Type DELETE to confirm");
+    const deleteButton = within(selectedEventPanel).getByRole("button", {
+      name: "Delete event"
+    });
+
+    expect(deleteButton).toBeDisabled();
+    fireEvent.change(confirmInput, { target: { value: "delete" } });
+    expect(deleteButton).toBeDisabled();
+    fireEvent.change(confirmInput, { target: { value: "DELETE" } });
+    expect(deleteButton).not.toBeDisabled();
+    fireEvent.click(deleteButton);
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(([input, init]) => {
+          const url = String(input);
+          return (
+            url.endsWith(
+              "/api/v1/organisations/acme/scenarios/future/events/kickoff"
+            ) && init?.method === "DELETE"
+          );
+        })
+      ).toBe(true);
+    });
+    expect(
+      screen.queryByRole("button", { name: /Kickoff/ })
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Launch event/ })).toHaveClass(
+      "entity-row--selected"
+    );
+  });
+
+  it("shows event load and mutation errors", async () => {
+    mockSchattenApi({ eventsStatus: 500 });
+
+    renderAt("/schatten/acme/org-states");
+
+    fireEvent.click(await screen.findByRole("button", { name: /Future plan/ }));
+    await screen.findByRole("button", { name: /Draft state/ });
+    fireEvent.click(screen.getByRole("link", { name: "Events" }));
+
+    expect(await screen.findByText("Event API error")).toBeInTheDocument();
+    expect(screen.getByText(/API request failed \(500\)/)).toBeInTheDocument();
+  });
+
+  it("shows event mutation errors", async () => {
+    mockSchattenApi({ eventMutationStatus: 500 });
+
+    renderAt("/schatten/acme/org-states");
+
+    fireEvent.click(await screen.findByRole("button", { name: /Future plan/ }));
+    await screen.findByRole("button", { name: /Draft state/ });
+    fireEvent.click(screen.getByRole("link", { name: "Events" }));
+    await screen.findByRole("button", { name: /Kickoff/ });
+
+    const createEventForm = screen.getByRole("form", { name: "Create event" });
+    fireEvent.change(within(createEventForm).getByLabelText("Name"), {
+      target: { value: "Blocked event" }
+    });
+    fireEvent.change(within(createEventForm).getByLabelText("Target date"), {
+      target: { value: "2026-08-01" }
+    });
+    fireEvent.click(
+      within(createEventForm).getByRole("button", { name: "Create event" })
+    );
+
+    expect(await screen.findByText("Action error")).toBeInTheDocument();
+    expect(screen.getByText(/API request failed \(500\)/)).toBeInTheDocument();
   });
 });

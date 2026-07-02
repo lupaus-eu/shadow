@@ -8,6 +8,7 @@ import {
   useParams
 } from "react-router-dom";
 import EmptyTab from "../components/EmptyTab";
+import EventsTab from "../features/events/EventsTab";
 import ScenariosTab from "../features/scenarios/ScenariosTab";
 import { useWorkspaceSelection } from "../workspace/WorkspaceSelectionContext";
 import WorkspaceSelectionProvider from "../workspace/WorkspaceSelectionProvider";
@@ -174,6 +175,10 @@ function WorkspaceTabContent(props: { tab: WorkspaceTab; orgId: string }) {
         description="Select a scenario and org state in Scenarios to activate this tab."
       />
     );
+  }
+
+  if (props.tab.signature === "events") {
+    return <EventsTab orgId={props.orgId} />;
   }
 
   return <EmptyTab title={props.tab.label} description={props.tab.emptyText} />;
