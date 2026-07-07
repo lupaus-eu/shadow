@@ -13,6 +13,7 @@ from app.api.v1.org_twin_structure.schemas import (
     GraphNodePatchRequest,
     GraphNodeResponse,
     GraphResponse,
+    TypeCatalogResponse,
 )
 from app.core.database import get_db_session
 
@@ -31,6 +32,25 @@ def get_graph(
     session: SessionDependency,
 ) -> GraphResponse:
     return org_twin_structure_service.get_graph(
+        session,
+        organisation_key,
+        scenario_key,
+        org_state_key,
+    )
+
+
+@router.get(
+    "/{organisation_key}/scenarios/{scenario_key}/org-states/{org_state_key}"
+    "/graph/types",
+    response_model=TypeCatalogResponse,
+)
+def get_graph_type_catalog(
+    organisation_key: str,
+    scenario_key: str,
+    org_state_key: str,
+    session: SessionDependency,
+) -> TypeCatalogResponse:
+    return org_twin_structure_service.get_graph_type_catalog(
         session,
         organisation_key,
         scenario_key,

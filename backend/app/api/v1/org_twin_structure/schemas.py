@@ -209,6 +209,46 @@ class GraphResponse(StrictBaseModel):
     edges: list[GraphEdgeResponse] = Field(description="Active graph edges.")
 
 
+class NodeTypeMetadataResponse(StrictBaseModel):
+    id: str = Field(description="Stable node type key.")
+    name: str | None = Field(description="Node type technical name.")
+    display_name: str = Field(
+        alias="displayName",
+        description="User-friendly node type display name.",
+    )
+    color: str | None = Field(description="Node UI color.")
+    shape: str | None = Field(description="Node UI shape.")
+
+
+class EdgeTypeMetadataResponse(StrictBaseModel):
+    id: str = Field(description="Stable edge type key.")
+    name: str | None = Field(description="Edge type technical name.")
+    display_name: str = Field(
+        alias="displayName",
+        description="User-friendly edge type display name.",
+    )
+    style: str | None = Field(description="Edge UI line style.")
+    source_end: str | None = Field(
+        alias="sourceEnd",
+        description="Edge source ending.",
+    )
+    target_end: str | None = Field(
+        alias="targetEnd",
+        description="Edge target ending.",
+    )
+
+
+class TypeCatalogResponse(StrictBaseModel):
+    node_types: list[NodeTypeMetadataResponse] = Field(
+        alias="nodeTypes",
+        description="Active node type metadata for the active metamodel.",
+    )
+    edge_types: list[EdgeTypeMetadataResponse] = Field(
+        alias="edgeTypes",
+        description="Active edge type metadata for the active metamodel.",
+    )
+
+
 def _stripped_non_blank(value: str, message: str) -> str:
     stripped = value.strip()
     if not stripped:

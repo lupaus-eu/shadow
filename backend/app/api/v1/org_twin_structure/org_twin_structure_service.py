@@ -17,6 +17,7 @@ from app.api.v1.org_twin_structure.models import (
 )
 from app.api.v1.org_twin_structure.schemas import (
     BulkPositionUpdate,
+    EdgeTypeMetadataResponse,
     GraphEdgeCreateRequest,
     GraphEdgePatchRequest,
     GraphEdgeResponse,
@@ -24,7 +25,9 @@ from app.api.v1.org_twin_structure.schemas import (
     GraphNodePatchRequest,
     GraphNodeResponse,
     GraphResponse,
+    NodeTypeMetadataResponse,
     Position,
+    TypeCatalogResponse,
 )
 from app.api.v1.organisations.models import Organisation
 from app.api.v1.organisations.service import get_active_organisation
@@ -62,6 +65,47 @@ def get_graph(
         org_state_key,
     )
     return to_graph_response(session, organisation, scenario, org_state)
+
+
+def get_graph_type_catalog(
+    session: Session,
+    organisation_key: str,
+    scenario_key: str,
+    org_state_key: str,
+) -> TypeCatalogResponse:
+    organisation, _, _ = _get_active_context(
+        session,
+        organisation_key,
+        scenario_key,
+        org_state_key,
+    )
+    metamodel = _get_active_organisation_metamodel(session, organisation)
+
+    node_types = session.scalars(
+        select(NodeType)
+        .where(
+            NodeType.metamodel_id == metamodel.metamodel_id,
+            NodeType.deleted_time.is_(None),
+        )
+        .order_by(NodeType.node_type_id),
+    ).all()
+    edge_types = session.scalars(
+        select(EdgeType)
+        .where(
+            EdgeType.metamodel_id == metamodel.metamodel_id,
+            EdgeType.deleted_time.is_(None),
+        )
+        .order_by(EdgeType.edge_type_id),
+    ).all()
+
+    return TypeCatalogResponse(
+        nodeTypes=[
+            to_node_type_metadata_response(node_type) for node_type in node_types
+        ],
+        edgeTypes=[
+            to_edge_type_metadata_response(edge_type) for edge_type in edge_types
+        ],
+    )
 
 
 def create_graph_node(
@@ -654,6 +698,31 @@ def to_graph_edge_response(session: Session, edge: GraphEdge) -> GraphEdgeRespon
         targetNodeId=target_node.node_key,
         createDate=edge.create_date,
         attributes=edge.attributes,
+    )
+
+
+def to_node_type_metadata_response(
+    node_type: NodeType,
+) -> NodeTypeMetadataResponse:
+    return NodeTypeMetadataResponse(
+        id=node_type.node_type_key,
+        name=node_type.name,
+        displayName=node_type.display_name,
+        color=node_type.ui_color,
+        shape=node_type.ui_shape,
+    )
+
+
+def to_edge_type_metadata_response(
+    edge_type: EdgeType,
+) -> EdgeTypeMetadataResponse:
+    return EdgeTypeMetadataResponse(
+        id=edge_type.edge_type_key,
+        name=edge_type.name,
+        displayName=edge_type.display_name,
+        style=edge_type.ui_style,
+        sourceEnd=edge_type.ui_source_end,
+        targetEnd=edge_type.ui_target_end,
     )
 
 

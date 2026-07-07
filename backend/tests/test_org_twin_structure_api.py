@@ -1,8 +1,9 @@
 from collections.abc import Iterator
+from datetime import UTC, datetime
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import StaticPool, create_engine
+from sqlalchemy import StaticPool, create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.api.v1.org_twin_structure.models import (
@@ -11,6 +12,7 @@ from app.api.v1.org_twin_structure.models import (
     Metamodel,
     NodeType,
 )
+from app.api.v1.organisations.models import Organisation
 from app.core.database import get_db_session
 from app.core.models import Base
 from app.main import create_app
@@ -111,6 +113,147 @@ def test_graph_read_filters_nodes_and_edges_by_selected_org_state_date(
         "node_later",
     ]
     assert [edge["id"] for edge in later_graph["edges"]] == ["edge_later"]
+
+
+def test_type_catalog_returns_active_organisation_metamodel_metadata(
+    client: TestClient,
+    session_factory: sessionmaker[Session],
+) -> None:
+    organisation_key = _create_organisation(client)
+
+    with session_factory() as session:
+        organisation = session.scalar(
+            select(Organisation).where(
+                Organisation.organisation_key == organisation_key,
+            ),
+        )
+        assert organisation is not None
+        metamodel = session.scalar(
+            select(Metamodel).where(
+                Metamodel.organisation_id == organisation.organisation_id,
+                Metamodel.deleted_time.is_(None),
+            ),
+        )
+        assert metamodel is not None
+        person_type = session.scalar(
+            select(NodeType).where(
+                NodeType.metamodel_id == metamodel.metamodel_id,
+                NodeType.node_type_key == "nt_person",
+            ),
+        )
+        assert person_type is not None
+        person_type.display_name = "Organisation person"
+        person_type.ui_color = "#ABCDEF"
+
+        inactive_node_type = NodeType(
+            metamodel_id=metamodel.metamodel_id,
+            node_type_key="nt_inactive",
+            name="Inactive",
+            display_name="Inactive",
+            ui_color="#000000",
+            ui_shape="rectangle",
+            deleted_time=datetime.now(UTC),
+        )
+        inactive_edge_type = EdgeType(
+            metamodel_id=metamodel.metamodel_id,
+            edge_type_key="et_inactive",
+            name="Inactive edge",
+            display_name="Inactive edge",
+            ui_style="dashed",
+            ui_source_end="none",
+            ui_target_end="arrow",
+            deleted_time=datetime.now(UTC),
+        )
+        session.add_all([inactive_node_type, inactive_edge_type])
+        session.commit()
+
+    response = client.get(f"{_graph_path(organisation_key, 'initial_state')}/types")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "nodeTypes": [
+            {
+                "id": "nt_person",
+                "name": "Person",
+                "displayName": "Organisation person",
+                "color": "#ABCDEF",
+                "shape": "rectangle",
+            },
+            {
+                "id": "nt_team",
+                "name": "Team",
+                "displayName": "Team",
+                "color": "#D9F99D",
+                "shape": "ellipse",
+            },
+        ],
+        "edgeTypes": [
+            {
+                "id": "et_reports_to",
+                "name": "Reports to",
+                "displayName": "Reports to",
+                "style": "solid",
+                "sourceEnd": "none",
+                "targetEnd": "arrow",
+            },
+        ],
+    }
+
+
+def test_type_catalog_validates_missing_parent_resources(
+    client: TestClient,
+) -> None:
+    organisation_key = _create_organisation(client)
+
+    missing_org_response = client.get(
+        f"{_graph_path('missing', 'initial_state')}/types",
+    )
+    assert missing_org_response.status_code == 404
+    assert (
+        client.get(
+            (
+                f"/api/v1/organisations/{organisation_key}/scenarios/missing/"
+                "org-states/initial_state/graph/types"
+            ),
+        ).status_code
+        == 404
+    )
+    missing_state_response = client.get(
+        f"{_graph_path(organisation_key, 'missing')}/types",
+    )
+    assert missing_state_response.status_code == 404
+
+
+def test_type_catalog_uses_existing_missing_metamodel_error_behavior(
+    client: TestClient,
+    session_factory: sessionmaker[Session],
+) -> None:
+    organisation_key = _create_organisation(client)
+
+    with session_factory() as session:
+        organisation = session.scalar(
+            select(Organisation).where(
+                Organisation.organisation_key == organisation_key,
+            ),
+        )
+        assert organisation is not None
+        metamodel = session.scalar(
+            select(Metamodel).where(
+                Metamodel.organisation_id == organisation.organisation_id,
+                Metamodel.deleted_time.is_(None),
+            ),
+        )
+        assert metamodel is not None
+        metamodel.deleted_time = datetime.now(UTC)
+        session.commit()
+
+    response = client.get(f"{_graph_path(organisation_key, 'initial_state')}/types")
+
+    assert response.status_code == 500
+    assert (
+        response.json()["detail"]
+        == "Active organisation metamodel is not configured."
+    )
 
 
 def test_node_edge_crud_and_bulk_position_update(client: TestClient) -> None:
