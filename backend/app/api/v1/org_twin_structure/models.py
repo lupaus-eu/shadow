@@ -272,49 +272,6 @@ class AllowedConnection(Base):
     )
 
 
-class Graph(Base):
-    __tablename__ = "graphs"
-
-    graph_id: Mapped[int] = mapped_column(
-        BigIntPrimaryKey,
-        primary_key=True,
-        autoincrement=True,
-    )
-    org_state_id: Mapped[int] = mapped_column(
-        BigInteger,
-        ForeignKey("org_states.org_state_id", ondelete="CASCADE"),
-    )
-    name: Mapped[str] = mapped_column(Text)
-    description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_by: Mapped[int | None] = mapped_column(
-        BigInteger,
-        ForeignKey("users.user_id"),
-        nullable=True,
-    )
-    created_time: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-    )
-    modified_by: Mapped[int | None] = mapped_column(
-        BigInteger,
-        ForeignKey("users.user_id"),
-        nullable=True,
-    )
-    modified_time: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-    )
-    deleted_by: Mapped[int | None] = mapped_column(
-        BigInteger,
-        ForeignKey("users.user_id"),
-        nullable=True,
-    )
-    deleted_time: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True,
-    )
-
-
 class GraphNode(Base):
     __tablename__ = "graph_nodes"
 
@@ -323,16 +280,18 @@ class GraphNode(Base):
         primary_key=True,
         autoincrement=True,
     )
-    graph_id: Mapped[int] = mapped_column(
+    scenario_id: Mapped[int] = mapped_column(
         BigInteger,
-        ForeignKey("graphs.graph_id", ondelete="CASCADE"),
+        ForeignKey("scenarios.scenario_id", ondelete="CASCADE"),
     )
     node_key: Mapped[str] = mapped_column(Text)
+    name: Mapped[str] = mapped_column(Text)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
     node_type_id: Mapped[int] = mapped_column(
         BigInteger,
         ForeignKey("node_types.node_type_id"),
     )
-    create_date: Mapped[dt_date | None] = mapped_column(Date, nullable=True)
+    create_date: Mapped[dt_date] = mapped_column(Date, nullable=False)
     position_x: Mapped[float | None] = mapped_column(Float, nullable=True)
     position_y: Mapped[float | None] = mapped_column(Float, nullable=True)
     attributes: Mapped[dict[str, object]] = mapped_column(JSON, default=dict)
@@ -383,11 +342,13 @@ class GraphEdge(Base):
         primary_key=True,
         autoincrement=True,
     )
-    graph_id: Mapped[int] = mapped_column(
+    scenario_id: Mapped[int] = mapped_column(
         BigInteger,
-        ForeignKey("graphs.graph_id", ondelete="CASCADE"),
+        ForeignKey("scenarios.scenario_id", ondelete="CASCADE"),
     )
     edge_key: Mapped[str] = mapped_column(Text)
+    name: Mapped[str] = mapped_column(Text)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
     edge_type_id: Mapped[int] = mapped_column(
         BigInteger,
         ForeignKey("edge_types.edge_type_id"),
@@ -400,7 +361,7 @@ class GraphEdge(Base):
         BigInteger,
         ForeignKey("graph_nodes.graph_node_id", ondelete="CASCADE"),
     )
-    create_date: Mapped[dt_date | None] = mapped_column(Date, nullable=True)
+    create_date: Mapped[dt_date] = mapped_column(Date, nullable=False)
     attributes: Mapped[dict[str, object]] = mapped_column(JSON, default=dict)
     created_by: Mapped[int | None] = mapped_column(
         BigInteger,

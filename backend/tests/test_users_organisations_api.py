@@ -19,7 +19,6 @@ from app.api.v1.org_states.models import (
 from app.api.v1.org_twin_structure.models import (
     AllowedConnection,
     EdgeType,
-    Graph,
     GraphEdge,
     GraphNode,
     Metamodel,
@@ -640,41 +639,34 @@ def test_scenario_copy_copies_bounded_org_states_and_graph_snapshots(
         ]
         assert source_names == ["First state", "Boundary state", "Later state"]
 
-        copied_graphs = session.scalars(
-            select(Graph)
+        copied_nodes = session.scalars(
+            select(GraphNode)
             .where(
-                Graph.org_state_id.in_(
-                    [org_state.org_state_id for org_state in copied_org_states],
-                ),
-                Graph.deleted_time.is_(None),
+                GraphNode.scenario_id == copied_scenario.scenario_id,
+                GraphNode.deleted_time.is_(None),
             )
-            .order_by(Graph.name),
+            .order_by(GraphNode.create_date, GraphNode.node_key),
         ).all()
-        assert [graph.name for graph in copied_graphs] == [
-            "Boundary graph",
-            "First graph",
+        assert [node.node_key for node in copied_nodes] == [
+            "node_first",
+            "node_boundary",
         ]
 
-        copied_boundary_graph = next(
-            graph for graph in copied_graphs if graph.name == "Boundary graph"
-        )
-        copied_node = session.scalar(
-            select(GraphNode).where(
-                GraphNode.graph_id == copied_boundary_graph.graph_id,
-            ),
+        copied_boundary_node = next(
+            node for node in copied_nodes if node.node_key == "node_boundary"
         )
         copied_edge = session.scalar(
             select(GraphEdge).where(
-                GraphEdge.graph_id == copied_boundary_graph.graph_id,
+                GraphEdge.scenario_id == copied_scenario.scenario_id,
+                GraphEdge.edge_key == "edge_node_boundary",
             ),
         )
-        assert copied_node is not None
-        assert copied_node.node_key == "node_boundary"
-        assert copied_node.attributes == {"name": "node_boundary"}
-        assert copied_node.timeserie_id is None
-        assert copied_node.timeserie_secondary_id is None
+        assert copied_boundary_node.attributes == {"name": "node_boundary"}
+        assert copied_boundary_node.timeserie_id is None
+        assert copied_boundary_node.timeserie_secondary_id is None
         assert copied_edge is not None
-        assert copied_edge.edge_key == "edge_node_boundary"
+        assert copied_edge.source_graph_node_id == copied_boundary_node.graph_node_id
+        assert copied_edge.target_graph_node_id == copied_boundary_node.graph_node_id
         assert copied_edge.attributes == {"weight": 1}
 
 
@@ -1205,35 +1197,34 @@ def test_clean_org_states_service_soft_deletes_active_states_and_clears_initial_
                 OrgState.deleted_time.is_(None),
             ),
         ).all()
-        cleaned_graphs = session.scalars(
-            select(Graph)
-            .where(
-                Graph.org_state_id.in_(
-                    [
-                        cleaned_first_state.org_state_id,
-                        cleaned_second_state.org_state_id,
-                    ],
-                ),
-            )
-            .order_by(Graph.name),
+        graph_nodes = session.scalars(
+            select(GraphNode)
+            .where(GraphNode.scenario_id == scenario.scenario_id)
+            .order_by(GraphNode.node_key),
         ).all()
-        deleted_graph = session.scalar(
-            select(Graph).where(
-                Graph.org_state_id == previously_deleted_state.org_state_id,
-            ),
-        )
+        graph_edges = session.scalars(
+            select(GraphEdge)
+            .where(GraphEdge.scenario_id == scenario.scenario_id)
+            .order_by(GraphEdge.edge_key),
+        ).all()
 
         assert scenario.initial_state_id is None
         assert cleaned_first_state.deleted_time is not None
         assert cleaned_second_state.deleted_time is not None
         assert previously_deleted_state.deleted_time is not None
         assert active_org_states == []
-        assert [graph.deleted_time is not None for graph in cleaned_graphs] == [
-            True,
-            True,
+        assert [node.node_key for node in graph_nodes] == [
+            "node_cleanup_deleted",
+            "node_cleanup_first",
+            "node_cleanup_second",
         ]
-        assert deleted_graph is not None
-        assert deleted_graph.deleted_time is not None
+        assert all(node.deleted_time is not None for node in graph_nodes)
+        assert [edge.edge_key for edge in graph_edges] == [
+            "edge_node_cleanup_deleted",
+            "edge_node_cleanup_first",
+            "edge_node_cleanup_second",
+        ]
+        assert all(edge.deleted_time is not None for edge in graph_edges)
 
 
 def test_clean_org_states_service_returns_zero_when_no_active_states(
@@ -1386,11 +1377,7 @@ def test_scenario_soft_delete_propagates_to_active_owned_rows(
             time_unit="year",
             value_unit="number",
         )
-        graph = Graph(
-            org_state_id=org_state.org_state_id,
-            name="Graph",
-        )
-        session.add_all([event, timeserie, graph])
+        session.add_all([event, timeserie])
         session.flush()
         node_type = session.scalar(
             select(NodeType)
@@ -1405,19 +1392,23 @@ def test_scenario_soft_delete_propagates_to_active_owned_rows(
         assert node_type is not None
         assert edge_type is not None
         graph_node = GraphNode(
-            graph_id=graph.graph_id,
+            scenario_id=scenario.scenario_id,
             node_key="node_1",
+            name="Node",
             node_type_id=node_type.node_type_id,
+            create_date=org_state.target_date,
             attributes={"name": "Node"},
         )
         session.add(graph_node)
         session.flush()
         graph_edge = GraphEdge(
-            graph_id=graph.graph_id,
+            scenario_id=scenario.scenario_id,
             edge_key="edge_1",
+            name="Edge",
             edge_type_id=edge_type.edge_type_id,
             source_graph_node_id=graph_node.graph_node_id,
             target_graph_node_id=graph_node.graph_node_id,
+            create_date=org_state.target_date,
             attributes={},
         )
         timeserie_value = TimeserieValue(
@@ -1449,15 +1440,11 @@ def test_scenario_soft_delete_propagates_to_active_owned_rows(
                 TimeserieValue.timeserie_id == timeserie.timeserie_id,
             ),
         )
-        graph = session.scalar(
-            select(Graph).where(Graph.org_state_id == org_state.org_state_id),
-        )
-        assert graph is not None
         graph_node = session.scalar(
-            select(GraphNode).where(GraphNode.graph_id == graph.graph_id),
+            select(GraphNode).where(GraphNode.scenario_id == scenario.scenario_id),
         )
         graph_edge = session.scalar(
-            select(GraphEdge).where(GraphEdge.graph_id == graph.graph_id),
+            select(GraphEdge).where(GraphEdge.scenario_id == scenario.scenario_id),
         )
 
         assert scenario.deleted_time is not None
@@ -1467,7 +1454,6 @@ def test_scenario_soft_delete_propagates_to_active_owned_rows(
         assert timeserie.deleted_time is not None
         assert timeserie_value is not None
         assert timeserie_value.deleted_time is not None
-        assert graph.deleted_time is not None
         assert graph_node is not None
         assert graph_node.deleted_time is not None
         assert graph_edge is not None
@@ -1577,15 +1563,10 @@ def _add_graph_snapshot(
     node_key: str,
     timeserie_id: int | None = None,
 ) -> None:
-    graph = Graph(
-        org_state_id=org_state.org_state_id,
-        name=graph_name,
-    )
-    session.add(graph)
-    session.flush()
     graph_node = GraphNode(
-        graph_id=graph.graph_id,
+        scenario_id=org_state.scenario_id,
         node_key=node_key,
+        name=graph_name,
         node_type_id=node_type_id,
         create_date=org_state.target_date,
         attributes={"name": node_key},
@@ -1596,8 +1577,9 @@ def _add_graph_snapshot(
     session.flush()
     session.add(
         GraphEdge(
-            graph_id=graph.graph_id,
+            scenario_id=org_state.scenario_id,
             edge_key=f"edge_{node_key}",
+            name=f"Edge {node_key}",
             edge_type_id=edge_type_id,
             source_graph_node_id=graph_node.graph_node_id,
             target_graph_node_id=graph_node.graph_node_id,

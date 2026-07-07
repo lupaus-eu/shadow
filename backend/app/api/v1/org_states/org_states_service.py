@@ -235,13 +235,12 @@ def soft_delete_scenario(
             OrgState.deleted_time.is_(None),
         ),
     ).all()
-    org_state_ids = [org_state.org_state_id for org_state in active_org_states]
 
     _soft_delete_timeseries(session, scenario, now)
     _soft_delete_events(session, scenario, now)
-    org_twin_structure_service.soft_delete_graphs_for_org_states(
+    org_twin_structure_service.soft_delete_graph_structure_for_scenario(
         session,
-        org_state_ids,
+        scenario.scenario_id,
         now,
     )
 
