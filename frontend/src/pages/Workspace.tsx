@@ -10,6 +10,7 @@ import {
 import EmptyTab from "../components/EmptyTab";
 import EventsTab from "../features/events/EventsTab";
 import ScenariosTab from "../features/scenarios/ScenariosTab";
+import StructureTab from "../features/structure/StructureTab";
 import { useWorkspaceSelection } from "../workspace/WorkspaceSelectionContext";
 import WorkspaceSelectionProvider from "../workspace/WorkspaceSelectionProvider";
 import { WORKSPACE_TABS, type WorkspaceTab } from "../workspace/workspaceTabs";
@@ -179,6 +180,10 @@ function WorkspaceTabContent(props: { tab: WorkspaceTab; orgId: string }) {
 
   if (props.tab.signature === "events") {
     return <EventsTab orgId={props.orgId} />;
+  }
+
+  if (props.tab.signature === "graph") {
+    return <StructureTab orgId={props.orgId} />;
   }
 
   return <EmptyTab title={props.tab.label} description={props.tab.emptyText} />;

@@ -100,7 +100,7 @@
 .workspace-content {
   flex: 1 1 auto;
   min-height: 0;
-  overflow: auto;
+  overflow: hidden;
   padding: var(--space-4);
   background: var(--color-bg-canvas);
 }
@@ -252,6 +252,316 @@
   background: var(--color-bg-surface);
   color: var(--color-text-link);
   box-shadow: var(--shadow-xs);
+}
+
+.structure-tab {
+  display: grid;
+  height: 100%;
+  min-height: 100%;
+  overflow: hidden;
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+
+.structure-toolbar {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+}
+
+.structure-toolbar__title,
+.structure-toolbar__actions {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.structure-workspace {
+  display: grid;
+  height: 100%;
+  min-height: 0;
+  gap: 0;
+  grid-template-columns: minmax(260px, 320px) minmax(420px, 1fr) minmax(300px, 380px);
+  overflow: hidden;
+}
+
+.structure-side-panel,
+.structure-editor-panel {
+  align-self: stretch;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--color-border-subtle);
+  background: var(--color-bg-surface);
+}
+
+.structure-side-panel {
+  padding: var(--space-4);
+  border-right: 0;
+}
+
+.structure-editor-panel {
+  display: grid;
+  align-content: start;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  border-left: 0;
+}
+
+.structure-editor-mode {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.structure-editor-stack {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.structure-filter-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.structure-node-groups {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.structure-node-group {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.structure-node-group__header {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--space-2);
+}
+
+.structure-type-create {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  font-size: 1.05rem;
+  line-height: 1;
+  padding: 0;
+}
+
+.structure-type-create:hover {
+  border-color: var(--color-border-strong);
+  background: var(--color-bg-subtle);
+}
+
+.structure-type-create__icon {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+}
+
+.structure-type-tag {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 3px var(--space-2);
+  border: 1px solid color-mix(in srgb, var(--color-border-strong) 50%, transparent);
+  border-radius: var(--radius-sm);
+}
+
+.structure-type-toggle {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.structure-type-toggle__label {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-text-primary);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.structure-node-group__empty {
+  margin-left: calc(24px + var(--space-2));
+}
+
+.structure-node-group__list {
+  margin-left: calc(28px + var(--space-2));
+}
+
+.structure-type-count {
+  flex: 0 0 auto;
+  color: var(--color-text-secondary);
+  font-size: var(--text-meta-size);
+}
+
+.structure-type-caret {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.structure-type-caret span {
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.structure-type-caret--collapsed span {
+  transform: rotate(-90deg);
+}
+
+.structure-type-caret:hover {
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+}
+
+.graph-viewer {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid var(--color-border-subtle);
+  background: var(--color-bg-inset);
+}
+
+.graph-viewer__controls {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--color-border-subtle);
+  background: var(--color-bg-surface);
+}
+
+.graph-viewer__canvas-shell {
+  position: relative;
+  min-height: 0;
+}
+
+.graph-viewer__canvas {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: 0 var(--space-3) var(--space-3);
+}
+
+.graph-viewer__popover {
+  position: absolute;
+  z-index: 1;
+  width: fit-content;
+  max-width: min(240px, calc(100% - (2 * var(--space-3))));
+  padding: var(--space-3);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-surface);
+  box-shadow: var(--shadow-sm);
+  color: var(--color-text-primary);
+  font-size: var(--text-meta-size);
+  line-height: var(--text-meta-lh);
+  pointer-events: none;
+}
+
+.graph-viewer__popover p {
+  margin: 0;
+}
+
+.graph-viewer__popover-title {
+  margin-bottom: var(--space-1);
+  font-weight: 600;
+}
+
+.graph-viewer__popover-description {
+  display: -webkit-box;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+}
+
+.graph-viewer__empty {
+  position: absolute;
+  inset: 56px 0 0;
+  display: grid;
+  pointer-events: none;
+  place-items: center;
+}
+
+.structure-coordinate-grid {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-3);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.textarea--code {
+  min-height: 120px;
+  font-family: var(--font-mono);
+  font-size: var(--text-meta-size);
+  line-height: var(--text-meta-lh);
+}
+
+@media (max-width: 1180px) {
+  .structure-workspace {
+    grid-template-columns: minmax(240px, 300px) minmax(360px, 1fr);
+  }
+
+  .structure-editor-panel {
+    grid-column: 1 / -1;
+    border-left: 1px solid var(--color-border-subtle);
+    border-top: 0;
+  }
+}
+
+@media (max-width: 820px) {
+  .structure-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .structure-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .structure-side-panel {
+    border-right: 1px solid var(--color-border-subtle);
+    border-bottom: 0;
+  }
+
+  .graph-viewer {
+    min-height: 0;
+  }
 }
 
 .scenario-detail-grid {
