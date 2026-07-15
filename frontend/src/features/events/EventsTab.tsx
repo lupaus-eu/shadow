@@ -29,6 +29,18 @@ function eventCountText(count: number): string {
   return `${count} event(s)`;
 }
 
+function todayDateValue(): string {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, "0");
+  const day = String(today.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function eventStatus(targetDate: string, today: string): "past" | "upcoming" {
+  return targetDate < today ? "past" : "upcoming";
+}
+
 export default function EventsTab(props: { orgId: string }) {
   const { selectedScenario } = useWorkspaceSelection();
   const [events, setEvents] = useState<EventDto[]>([]);
@@ -38,14 +50,13 @@ export default function EventsTab(props: { orgId: string }) {
   const [saving, setSaving] = useState(false);
 
   const [createName, setCreateName] = useState("");
-  const [createTargetDate, setCreateTargetDate] = useState("");
+  const [createTargetDate, setCreateTargetDate] = useState(todayDateValue);
   const [createDetails, setCreateDetails] = useState("");
   const [createError, setCreateError] = useState("");
 
   const [editName, setEditName] = useState("");
   const [editTargetDate, setEditTargetDate] = useState("");
   const [editDetails, setEditDetails] = useState("");
-  const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const [actionError, setActionError] = useState("");
 
   const selectedEvent = useMemo(
@@ -58,7 +69,6 @@ export default function EventsTab(props: { orgId: string }) {
     setEditName(event?.name ?? "");
     setEditTargetDate(event?.targetDate ?? "");
     setEditDetails(event?.eventDetails ?? "");
-    setDeleteConfirmation("");
     setActionError("");
   }, []);
 
@@ -162,7 +172,7 @@ export default function EventsTab(props: { orgId: string }) {
         eventDetails: createDetails.trim()
       });
       setCreateName("");
-      setCreateTargetDate("");
+      setCreateTargetDate(todayDateValue());
       setCreateDetails("");
       await loadEvents(created.id);
     } catch (error) {
@@ -207,11 +217,8 @@ export default function EventsTab(props: { orgId: string }) {
     }
   }
 
-  async function onDeleteSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!selectedScenario || !selectedEvent || deleteConfirmation !== "DELETE") {
-      return;
-    }
+  async function onDeleteEvent() {
+    if (!selectedScenario || !selectedEvent) return;
 
     try {
       setSaving(true);
@@ -226,6 +233,7 @@ export default function EventsTab(props: { orgId: string }) {
   }
 
   const refreshDisabled = loadingEvents || !selectedScenario;
+  const today = todayDateValue();
 
   return (
     <div className="scenarios-tab">
@@ -268,25 +276,33 @@ export default function EventsTab(props: { orgId: string }) {
             <div className="entity-list" aria-label="Event list">
               {events.map((event, index) => {
                 const isSelected = event.id === selectedEventId;
+                const status = eventStatus(event.targetDate, today);
                 return (
                   <button
                     key={eventRowKey(event, index)}
-                    className={`entity-row${
+                    className={`entity-row event-row${
                       isSelected ? " entity-row--selected" : ""
                     }`}
                     type="button"
                     onClick={() => selectEvent(event)}
                     aria-pressed={isSelected}
                   >
-                    <span className="entity-row__main">
-                      <span className="entity-row__title">{event.name}</span>
-                      {event.eventDetails ? (
-                        <span className="entity-row__description">
-                          {event.eventDetails}
-                        </span>
-                      ) : null}
+                    <span className="event-row__meta">
+                      <span
+                        className={`event-status event-status--${status}`}
+                      >
+                        {status === "past" ? "Past" : "Upcoming"}
+                      </span>
+                      <span className="entity-row__date">
+                        {event.targetDate}
+                      </span>
                     </span>
-                    <span className="entity-row__date">{event.targetDate}</span>
+                    <span className="entity-row__title event-row__title">
+                      {event.name}
+                    </span>
+                    <span className="entity-row__description event-row__description">
+                      {event.eventDetails || "No details"}
+                    </span>
                   </button>
                 );
               })}
@@ -302,15 +318,13 @@ export default function EventsTab(props: { orgId: string }) {
               editName={editName}
               editTargetDate={editTargetDate}
               editDetails={editDetails}
-              deleteConfirmation={deleteConfirmation}
               error={actionError}
               saving={saving}
               onEditNameChange={setEditName}
               onEditTargetDateChange={setEditTargetDate}
               onEditDetailsChange={setEditDetails}
-              onDeleteConfirmationChange={setDeleteConfirmation}
               onEditSubmit={onEditSubmit}
-              onDeleteSubmit={onDeleteSubmit}
+              onDelete={onDeleteEvent}
             />
             <CreateEventForm
               scenarioName={selectedScenario?.name ?? ""}
@@ -338,16 +352,15 @@ function EventDetail(props: {
   editName: string;
   editTargetDate: string;
   editDetails: string;
-  deleteConfirmation: string;
   error: string;
   saving: boolean;
   onEditNameChange: (value: string) => void;
   onEditTargetDateChange: (value: string) => void;
   onEditDetailsChange: (value: string) => void;
-  onDeleteConfirmationChange: (value: string) => void;
   onEditSubmit: (event: FormEvent<HTMLFormElement>) => void;
-  onDeleteSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onDelete: () => Promise<void>;
 }) {
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const editedEventName = props.editName.trim();
   const editedEventDetails = props.editDetails.trim();
   const eventHasChanges = props.event
@@ -357,6 +370,11 @@ function EventDetail(props: {
     : false;
   const saveDisabled =
     !props.event || !editedEventName || !props.editTargetDate || !eventHasChanges;
+
+  async function confirmDelete() {
+    await props.onDelete();
+    setConfirmingDelete(false);
+  }
 
   return (
     <section
@@ -397,31 +415,43 @@ function EventDetail(props: {
               </button>
             </div>
           </form>
-          <form className="state-delete-form" onSubmit={props.onDeleteSubmit}>
-            <label className="form-label" htmlFor="event-delete-confirm">
-              Confirmation
-            </label>
-            <input
-              id="event-delete-confirm"
-              className="input"
-              placeholder="Type DELETE to confirm"
-              value={props.deleteConfirmation}
-              onChange={(event) =>
-                props.onDeleteConfirmationChange(event.target.value)
-              }
-              autoComplete="off"
-            />
-            <ActionError message={props.error} />
+          <section className="state-delete-form" aria-label="Event deletion">
             <div className="form-actions">
-              <button
-                className="btn btn--danger"
-                type="submit"
-                disabled={props.saving || props.deleteConfirmation !== "DELETE"}
-              >
-                {props.saving ? "Deleting..." : "Delete event"}
-              </button>
+              {!confirmingDelete ? (
+                <button
+                  className="btn btn--danger"
+                  type="button"
+                  disabled={props.saving}
+                  onClick={() => setConfirmingDelete(true)}
+                >
+                  Delete event
+                </button>
+              ) : null}
             </div>
-          </form>
+            {confirmingDelete ? (
+              <div className="delete-confirmation" role="alertdialog">
+                <p>Are you sure you want to delete the selected event?</p>
+                <div className="form-actions">
+                  <button
+                    className="btn btn--danger"
+                    type="button"
+                    disabled={props.saving}
+                    onClick={() => void confirmDelete()}
+                  >
+                    {props.saving ? "Deleting..." : "Yes"}
+                  </button>
+                  <button
+                    className="btn btn--secondary"
+                    type="button"
+                    disabled={props.saving}
+                    onClick={() => setConfirmingDelete(false)}
+                  >
+                    No
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </section>
         </>
       )}
     </section>
@@ -472,7 +502,7 @@ function CreateEventForm(props: {
         <button
           className="btn btn--primary"
           type="submit"
-          disabled={props.disabled || props.saving}
+          disabled={props.disabled || props.saving || !props.name.trim() || !props.targetDate}
         >
           {props.saving ? "Saving..." : "Create event"}
         </button>
@@ -497,7 +527,7 @@ function EventFields(props: {
 
   return (
     <>
-      <label className="form-label" htmlFor={nameId}>
+      <label className="form-label form-label--required" htmlFor={nameId}>
         Name
       </label>
       <input
@@ -507,7 +537,10 @@ function EventFields(props: {
         onChange={(event) => props.onNameChange(event.target.value)}
         disabled={props.disabled}
       />
-      <label className="form-label" htmlFor={targetDateId}>
+      <label
+        className="form-label form-label--required"
+        htmlFor={targetDateId}
+      >
         Target date
       </label>
       <input

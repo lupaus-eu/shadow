@@ -51,7 +51,7 @@ function mockSchattenApi(options?: {
       id: "launch-event",
       name: "Launch event",
       targetDate: "2026-07-01",
-      eventDetails: "Public launch"
+      eventDetails: ""
     }
   ];
 
@@ -400,6 +400,14 @@ function renderAt(initialEntry: string | { pathname: string; state?: unknown }) 
   );
 }
 
+function todayDateValue(): string {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, "0");
+  const day = String(today.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 describe("Schatten UI shell", () => {
   beforeEach(() => {
     sessionStorage.clear();
@@ -620,6 +628,9 @@ describe("Schatten UI shell", () => {
     });
 
     expect(nameInput).toHaveValue("Reality");
+    expect(
+      selectedScenarioPanel.querySelector("label[for='scenario-edit-name']")
+    ).toHaveClass("form-label--required");
     expect(descriptionInput).toHaveValue("Current baseline");
     expect(nameInput).not.toBeDisabled();
     expect(descriptionInput).not.toBeDisabled();
@@ -929,6 +940,36 @@ describe("Schatten UI shell", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("preserves the selected org state when returning to Scenarios", async () => {
+    mockSchattenApi();
+
+    renderAt("/schatten/acme/org-states");
+
+    fireEvent.click(await screen.findByRole("button", { name: /Future plan/ }));
+    await screen.findByRole("button", { name: /Draft state/ });
+    fireEvent.click(screen.getByRole("button", { name: /Planned launch/ }));
+
+    expect(
+      screen.getByTitle("Org state: Planned launch (2026-07-01)")
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("link", { name: "Events" }));
+    expect(
+      await screen.findByRole("heading", { name: "Events", level: 1 })
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("link", { name: "Scenarios" }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByTitle("Org state: Planned launch (2026-07-01)")
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /Planned launch/ })
+      ).toHaveClass("entity-row--selected");
+    });
+  });
+
   it("edits the selected org state immediately and saves only after changes", async () => {
     const fetchMock = mockSchattenApi();
 
@@ -1034,6 +1075,9 @@ describe("Schatten UI shell", () => {
     const createStatePanel = screen.getByRole("form", {
       name: "Create state"
     });
+    expect(within(createStatePanel).getByLabelText("Target date")).toHaveValue(
+      todayDateValue()
+    );
     fireEvent.change(within(createStatePanel).getByLabelText("Name"), {
       target: { value: "Duplicate date state" }
     });
@@ -1118,6 +1162,12 @@ describe("Schatten UI shell", () => {
     expect(screen.getByRole("button", { name: /Kickoff/ })).toHaveClass(
       "entity-row--selected"
     );
+    expect(screen.getByRole("button", { name: /Kickoff/ })).toHaveTextContent(
+      /Past\s*2026-06-15\s*Kickoff\s*Internal kickoff/
+    );
+    expect(
+      screen.getByRole("button", { name: /Launch event/ })
+    ).toHaveTextContent("No details");
     expect(
       screen.getByRole("heading", { name: "Kickoff" })
     ).toBeInTheDocument();
@@ -1157,11 +1207,14 @@ describe("Schatten UI shell", () => {
     await screen.findByRole("button", { name: /Kickoff/ });
 
     const createEventForm = screen.getByRole("form", { name: "Create event" });
+    expect(
+      createEventForm.querySelector("label[for='event-create-name']")
+    ).toHaveClass("form-label--required");
+    expect(within(createEventForm).getByLabelText("Target date")).toHaveValue(
+      todayDateValue()
+    );
     fireEvent.change(within(createEventForm).getByLabelText("Name"), {
       target: { value: "Board review" }
-    });
-    fireEvent.change(within(createEventForm).getByLabelText("Target date"), {
-      target: { value: "2026-08-01" }
     });
     fireEvent.change(within(createEventForm).getByLabelText("Event details"), {
       target: { value: "Review growth plan" }
@@ -1170,8 +1223,14 @@ describe("Schatten UI shell", () => {
       within(createEventForm).getByRole("button", { name: "Create event" })
     );
 
-    expect(await screen.findByRole("button", { name: /Board review/ })).toHaveClass(
-      "entity-row--selected"
+    const createdEventRow = await screen.findByRole("button", {
+      name: /Board review/
+    });
+    expect(createdEventRow).toHaveClass("entity-row--selected");
+    expect(createdEventRow).toHaveTextContent(
+      new RegExp(
+        `Upcoming\\s*${todayDateValue()}\\s*Board review\\s*Review growth plan`
+      )
     );
     expect(
       screen.getByRole("heading", { name: "Board review" })
@@ -1185,7 +1244,7 @@ describe("Schatten UI shell", () => {
           init.body ===
             JSON.stringify({
               name: "Board review",
-              targetDate: "2026-08-01",
+              targetDate: todayDateValue(),
               eventDetails: "Review growth plan"
             })
         );
@@ -1238,7 +1297,7 @@ describe("Schatten UI shell", () => {
     expect(await screen.findByDisplayValue("Updated kickoff")).toBeInTheDocument();
   });
 
-  it("requires DELETE before event deletion can be submitted", async () => {
+  it("confirms event deletion with yes and no buttons", async () => {
     const fetchMock = mockSchattenApi();
 
     renderAt("/schatten/acme/org-states");
@@ -1249,18 +1308,37 @@ describe("Schatten UI shell", () => {
 
     await screen.findByRole("button", { name: /Kickoff/ });
     const selectedEventPanel = screen.getByRole("region", { name: "Kickoff" });
-    const confirmInput =
-      within(selectedEventPanel).getByPlaceholderText("Type DELETE to confirm");
-    const deleteButton = within(selectedEventPanel).getByRole("button", {
-      name: "Delete event"
-    });
 
-    expect(deleteButton).toBeDisabled();
-    fireEvent.change(confirmInput, { target: { value: "delete" } });
-    expect(deleteButton).toBeDisabled();
-    fireEvent.change(confirmInput, { target: { value: "DELETE" } });
-    expect(deleteButton).not.toBeDisabled();
-    fireEvent.click(deleteButton);
+    fireEvent.click(within(selectedEventPanel).getByRole("button", {
+      name: "Delete event"
+    }));
+    expect(
+      within(selectedEventPanel).getByText(
+        "Are you sure you want to delete the selected event?"
+      )
+    ).toBeInTheDocument();
+
+    fireEvent.click(within(selectedEventPanel).getByRole("button", { name: "No" }));
+    expect(
+      within(selectedEventPanel).queryByText(
+        "Are you sure you want to delete the selected event?"
+      )
+    ).not.toBeInTheDocument();
+    expect(
+      fetchMock.mock.calls.some(([input, init]) => {
+        const url = String(input);
+        return (
+          url.endsWith(
+            "/api/v1/organisations/acme/scenarios/future/events/kickoff"
+          ) && init?.method === "DELETE"
+        );
+      })
+    ).toBe(false);
+
+    fireEvent.click(within(selectedEventPanel).getByRole("button", {
+      name: "Delete event"
+    }));
+    fireEvent.click(within(selectedEventPanel).getByRole("button", { name: "Yes" }));
 
     await waitFor(() => {
       expect(

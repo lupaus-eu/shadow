@@ -107,6 +107,7 @@
 
 .secondary__title {
   display: flex;
+  margin: 0 0 var(--space-1);
   min-width: 0;
   flex-wrap: wrap;
   align-items: baseline;
@@ -126,7 +127,7 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--space-4);
-  padding: var(--space-3) var(--space-4);
+  padding: var(--space-2) var(--space-4) var(--space-3);
 }
 
 .scenarios-toolbar__title {
@@ -164,6 +165,7 @@
   align-content: start;
   gap: var(--space-4);
   min-height: 100%;
+  padding: var(--space-3) var(--space-4) var(--space-4);
   border-radius: 0;
   background: var(--color-bg-surface);
 }
@@ -198,6 +200,8 @@
   min-width: 0;
   align-content: start;
   gap: 0;
+  border: solid var(--color-border-subtle);
+  border-width: 1px 0px 0px 0px;
 }
 
 .detail-mode-switch-panel {
@@ -209,7 +213,7 @@
   gap: var(--space-3);
   padding: var(--space-3) var(--space-4);
   border: solid var(--color-border-subtle);
-  border-width: 1px 0px 1px 0px;
+  border-width: 0px 0px 1px 0px;
   background: var(--color-bg-surface);
 }
 
@@ -268,7 +272,7 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--space-4);
-  padding: var(--space-3) var(--space-4);
+  padding: var(--space-2) var(--space-4) var(--space-3);
 }
 
 .structure-toolbar__title,
@@ -301,7 +305,7 @@
 }
 
 .structure-side-panel {
-  padding: var(--space-4);
+  padding: var(--space-3) var(--space-4) var(--space-4);
   border-right: 0;
 }
 

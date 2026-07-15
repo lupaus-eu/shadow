@@ -66,6 +66,14 @@ function cleanOrgStatesErrorMessage(error: unknown): string {
   return "Could not clean states. Try again.";
 }
 
+function todayDateValue(): string {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, "0");
+  const day = String(today.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 export default function ScenariosTab(props: { orgId: string }) {
   const {
     selectedScenario,
@@ -75,6 +83,9 @@ export default function ScenariosTab(props: { orgId: string }) {
   } = useWorkspaceSelection();
   const selectedScenarioIdRef = useRef<string | null>(
     selectedScenario?.id ?? null
+  );
+  const selectedOrgStateIdRef = useRef<string | null>(
+    selectedOrgState?.id ?? null
   );
 
   const [scenarios, setScenarios] = useState<ScenarioDto[]>([]);
@@ -101,7 +112,8 @@ export default function ScenariosTab(props: { orgId: string }) {
 
   const [stateCreateName, setStateCreateName] = useState("");
   const [stateCreateDescription, setStateCreateDescription] = useState("");
-  const [stateCreateTargetDate, setStateCreateTargetDate] = useState("");
+  const [stateCreateTargetDate, setStateCreateTargetDate] =
+    useState(todayDateValue);
   const [stateCreateError, setStateCreateError] = useState("");
 
   const [stateEditName, setStateEditName] = useState("");
@@ -139,8 +151,13 @@ export default function ScenariosTab(props: { orgId: string }) {
     selectedScenarioIdRef.current = selectedScenario?.id ?? null;
   }, [selectedScenario?.id]);
 
+  useEffect(() => {
+    selectedOrgStateIdRef.current = selectedOrgState?.id ?? null;
+  }, [selectedOrgState?.id]);
+
   const applySelectedOrgState = useCallback(
     (orgState: OrgStateDto | null) => {
+      selectedOrgStateIdRef.current = orgState?.id ?? null;
       setSelectedOrgState(orgState ? orgStateSummary(orgState) : null);
       setStateEditName(orgState?.name ?? "");
       setStateEditDescription(orgState?.description ?? "");
@@ -267,14 +284,17 @@ export default function ScenariosTab(props: { orgId: string }) {
         setLoadingOrgStates(true);
         setOrgStateError("");
         setOrgStates([]);
-        setSelectedOrgState(null);
         const items = sortOrgStates(
           await fetchOrgStates(props.orgId, activeScenarioId, ac.signal)
         );
         if (ignore) return;
         setOrgStates(items);
-        const firstOrgState = items[0] ?? null;
-        applySelectedOrgState(firstOrgState);
+        const selectedOrgStateId = selectedOrgStateIdRef.current;
+        const stillSelected = selectedOrgStateId
+          ? items.find((orgState) => orgState.id === selectedOrgStateId)
+          : null;
+        const nextOrgState = stillSelected ?? items[0] ?? null;
+        applySelectedOrgState(nextOrgState);
       } catch (error) {
         const err = error as { name?: string };
         if (ignore || err.name === "AbortError") return;
@@ -293,8 +313,7 @@ export default function ScenariosTab(props: { orgId: string }) {
   }, [
     applySelectedOrgState,
     props.orgId,
-    selectedScenario?.id,
-    setSelectedOrgState
+    selectedScenario?.id
   ]);
 
   function resetScenarioActionState() {
@@ -539,7 +558,7 @@ export default function ScenariosTab(props: { orgId: string }) {
       selectOrgState(created);
       setStateCreateName("");
       setStateCreateDescription("");
-      setStateCreateTargetDate("");
+      setStateCreateTargetDate(todayDateValue());
     } catch (error) {
       setStateCreateError(messageFromError(error));
     } finally {
@@ -1097,7 +1116,10 @@ function ForkScenarioForm(props: {
           Fork from existing
         </h2>
       </div>
-      <label className="form-label" htmlFor="fork-source-scenario">
+      <label
+        className="form-label form-label--required"
+        htmlFor="fork-source-scenario"
+      >
         Source scenario
       </label>
       <select
@@ -1121,7 +1143,10 @@ function ForkScenarioForm(props: {
           </option>
         ))}
       </select>
-      <label className="form-label" htmlFor="fork-source-state">
+      <label
+        className="form-label form-label--required"
+        htmlFor="fork-source-state"
+      >
         Source state
       </label>
       <select
@@ -1300,7 +1325,12 @@ function CreateOrgStateForm(props: {
         <button
           className="btn btn--primary"
           type="submit"
-          disabled={!props.scenario || props.saving}
+          disabled={
+            !props.scenario ||
+            !props.name.trim() ||
+            !props.targetDate ||
+            props.saving
+          }
         >
           {props.saving ? "Saving..." : "Create state"}
         </button>
@@ -1323,7 +1353,12 @@ function ScenarioFields(props: {
 
   return (
     <>
-      <label className="form-label" htmlFor={nameId}>
+      <label
+        className={`form-label${
+          props.optionalLabels ? "" : " form-label--required"
+        }`}
+        htmlFor={nameId}
+      >
         Name
         {props.optionalLabels ? (
           <span className="form-label__hint">(optional)</span>
@@ -1369,7 +1404,7 @@ function OrgStateFields(props: {
 
   return (
     <>
-      <label className="form-label" htmlFor={nameId}>
+      <label className="form-label form-label--required" htmlFor={nameId}>
         Name
       </label>
       <input
@@ -1379,7 +1414,10 @@ function OrgStateFields(props: {
         onChange={(event) => props.onNameChange(event.target.value)}
         disabled={props.disabled}
       />
-      <label className="form-label" htmlFor={targetDateId}>
+      <label
+        className="form-label form-label--required"
+        htmlFor={targetDateId}
+      >
         Target date
       </label>
       <input
