@@ -238,6 +238,21 @@ class EdgeTypeMetadataResponse(StrictBaseModel):
     )
 
 
+class AllowedConnectionMetadataResponse(StrictBaseModel):
+    edge_type_id: str = Field(
+        alias="edgeTypeId",
+        description="Stable edge type key allowed for the node type pair.",
+    )
+    source_node_type_id: str = Field(
+        alias="sourceNodeTypeId",
+        description="Stable source node type key.",
+    )
+    target_node_type_id: str = Field(
+        alias="targetNodeTypeId",
+        description="Stable target node type key.",
+    )
+
+
 class TypeCatalogResponse(StrictBaseModel):
     node_types: list[NodeTypeMetadataResponse] = Field(
         alias="nodeTypes",
@@ -246,6 +261,10 @@ class TypeCatalogResponse(StrictBaseModel):
     edge_types: list[EdgeTypeMetadataResponse] = Field(
         alias="edgeTypes",
         description="Active edge type metadata for the active metamodel.",
+    )
+    allowed_connections: list[AllowedConnectionMetadataResponse] = Field(
+        alias="allowedConnections",
+        description="Allowed source/target node type pairs for active edge types.",
     )
 
 

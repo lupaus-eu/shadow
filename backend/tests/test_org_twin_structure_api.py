@@ -165,6 +165,23 @@ def test_type_catalog_returns_active_organisation_metamodel_metadata(
             deleted_time=datetime.now(UTC),
         )
         session.add_all([inactive_node_type, inactive_edge_type])
+        session.flush()
+        reports_to_type = session.scalar(
+            select(EdgeType).where(
+                EdgeType.metamodel_id == metamodel.metamodel_id,
+                EdgeType.edge_type_key == "et_reports_to",
+            ),
+        )
+        assert reports_to_type is not None
+        session.add(
+            AllowedConnection(
+                metamodel_id=metamodel.metamodel_id,
+                edge_type_id=reports_to_type.edge_type_id,
+                source_node_type_id=person_type.node_type_id,
+                target_node_type_id=person_type.node_type_id,
+                deleted_time=datetime.now(UTC),
+            ),
+        )
         session.commit()
 
     response = client.get(f"{_graph_path(organisation_key, 'initial_state')}/types")
@@ -197,7 +214,72 @@ def test_type_catalog_returns_active_organisation_metamodel_metadata(
                 "targetEnd": "arrow",
             },
         ],
+        "allowedConnections": [
+            {
+                "edgeTypeId": "et_reports_to",
+                "sourceNodeTypeId": "nt_person",
+                "targetNodeTypeId": "nt_person",
+            }
+        ],
     }
+
+
+def test_type_catalog_rejects_allowed_connection_referencing_inactive_type(
+    client: TestClient,
+    session_factory: sessionmaker[Session],
+) -> None:
+    organisation_key = _create_organisation(client)
+
+    with session_factory() as session:
+        organisation = session.scalar(
+            select(Organisation).where(
+                Organisation.organisation_key == organisation_key,
+            ),
+        )
+        assert organisation is not None
+        metamodel = session.scalar(
+            select(Metamodel).where(
+                Metamodel.organisation_id == organisation.organisation_id,
+                Metamodel.deleted_time.is_(None),
+            ),
+        )
+        assert metamodel is not None
+        person_type = session.scalar(
+            select(NodeType).where(
+                NodeType.metamodel_id == metamodel.metamodel_id,
+                NodeType.node_type_key == "nt_person",
+            ),
+        )
+        assert person_type is not None
+        inactive_edge_type = EdgeType(
+            metamodel_id=metamodel.metamodel_id,
+            edge_type_key="et_inactive",
+            name="Inactive edge",
+            display_name="Inactive edge",
+            ui_style="solid",
+            ui_source_end="none",
+            ui_target_end="arrow",
+            deleted_time=datetime.now(UTC),
+        )
+        session.add(inactive_edge_type)
+        session.flush()
+        session.add(
+            AllowedConnection(
+                metamodel_id=metamodel.metamodel_id,
+                edge_type_id=inactive_edge_type.edge_type_id,
+                source_node_type_id=person_type.node_type_id,
+                target_node_type_id=person_type.node_type_id,
+            ),
+        )
+        session.commit()
+
+    response = client.get(f"{_graph_path(organisation_key, 'initial_state')}/types")
+
+    assert response.status_code == 500
+    assert (
+        response.json()["detail"]
+        == "Allowed connection references a missing active type."
+    )
 
 
 def test_type_catalog_validates_missing_parent_resources(

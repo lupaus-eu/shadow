@@ -16,6 +16,7 @@ from app.api.v1.org_twin_structure.models import (
     TypeAttribute,
 )
 from app.api.v1.org_twin_structure.schemas import (
+    AllowedConnectionMetadataResponse,
     BulkPositionUpdate,
     EdgeTypeMetadataResponse,
     GraphEdgeCreateRequest,
@@ -97,6 +98,20 @@ def get_graph_type_catalog(
         )
         .order_by(EdgeType.edge_type_id),
     ).all()
+    allowed_connections = session.scalars(
+        select(AllowedConnection)
+        .where(
+            AllowedConnection.metamodel_id == metamodel.metamodel_id,
+            AllowedConnection.deleted_time.is_(None),
+        )
+        .order_by(AllowedConnection.allowed_connection_id),
+    ).all()
+    node_type_keys_by_id = {
+        node_type.node_type_id: node_type.node_type_key for node_type in node_types
+    }
+    edge_type_keys_by_id = {
+        edge_type.edge_type_id: edge_type.edge_type_key for edge_type in edge_types
+    }
 
     return TypeCatalogResponse(
         nodeTypes=[
@@ -104,6 +119,14 @@ def get_graph_type_catalog(
         ],
         edgeTypes=[
             to_edge_type_metadata_response(edge_type) for edge_type in edge_types
+        ],
+        allowedConnections=[
+            to_allowed_connection_metadata_response(
+                allowed_connection,
+                edge_type_keys_by_id=edge_type_keys_by_id,
+                node_type_keys_by_id=node_type_keys_by_id,
+            )
+            for allowed_connection in allowed_connections
         ],
     )
 
@@ -723,6 +746,35 @@ def to_edge_type_metadata_response(
         style=edge_type.ui_style,
         sourceEnd=edge_type.ui_source_end,
         targetEnd=edge_type.ui_target_end,
+    )
+
+
+def to_allowed_connection_metadata_response(
+    allowed_connection: AllowedConnection,
+    *,
+    edge_type_keys_by_id: dict[int, str],
+    node_type_keys_by_id: dict[int, str],
+) -> AllowedConnectionMetadataResponse:
+    edge_type_key = edge_type_keys_by_id.get(allowed_connection.edge_type_id)
+    source_node_type_key = node_type_keys_by_id.get(
+        allowed_connection.source_node_type_id
+    )
+    target_node_type_key = node_type_keys_by_id.get(
+        allowed_connection.target_node_type_id
+    )
+    if (
+        edge_type_key is None
+        or source_node_type_key is None
+        or target_node_type_key is None
+    ):
+        raise _invalid_graph_exception(
+            "Allowed connection references a missing active type."
+        )
+
+    return AllowedConnectionMetadataResponse(
+        edgeTypeId=edge_type_key,
+        sourceNodeTypeId=source_node_type_key,
+        targetNodeTypeId=target_node_type_key,
     )
 
 
