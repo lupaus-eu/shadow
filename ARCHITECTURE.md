@@ -244,6 +244,77 @@ Alustava virheformaattisuositus:
 
 ---
 
+# Org Twin Structure
+
+Status: implemented baseline
+
+Org Twin Structure kuvaa organisaatiotilan graph-rakenteen. Domain omistaa
+metamodelit, node- ja edge-tyypit, allowed connection -säännöt sekä graph
+snapshotit, nodet ja edget. Tarkempi domain-omistajuus on dokumentissa
+`docs/domains/ORG_TWIN_STRUCTURE.md`.
+
+Backend toteutus sijaitsee hakemistossa:
+
+```text
+backend/app/api/v1/org_twin_structure/
+```
+
+Keskeiset backend-komponentit:
+
+- `router.py` julkaisee versionoidut HTTP/JSON endpointit.
+- `schemas.py` määrittää Pydantic request- ja response-mallit.
+- `org_twin_structure_service.py` sisältää graph-, node-, edge- ja
+  type catalog -operaatioiden palvelulogiikan.
+- `models.py` sisältää SQLAlchemy-mallit domainin omistamille tauluille.
+
+Endpointit ovat organisaatio-, skenaario- ja organisaatiotila-kontekstissa:
+
+```text
+GET    /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/org-states/{org_state_key}/graph
+GET    /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/org-states/{org_state_key}/graph/types
+POST   /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/org-states/{org_state_key}/graph/nodes
+PATCH  /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/org-states/{org_state_key}/graph/nodes/{node_key}
+DELETE /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/org-states/{org_state_key}/graph/nodes/{node_key}
+POST   /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/org-states/{org_state_key}/graph/edges
+PATCH  /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/org-states/{org_state_key}/graph/edges/{edge_key}
+DELETE /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/org-states/{org_state_key}/graph/edges/{edge_key}
+PATCH  /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/org-states/{org_state_key}/graph/positions
+```
+
+Frontend Structure UI sijaitsee hakemistossa:
+
+```text
+frontend/src/features/structure/
+```
+
+Keskeiset frontend-komponentit:
+
+- `StructureTab.tsx` lataa graphin ja type catalogin valitulle skenaariolle ja
+  organisaatiotilalle, hallitsee paikallisen UI-tilan ja kutsuu API-clientia.
+- `GraphViewer.tsx` renderoi graphin Cytoscape.js:lla ja käsittelee valinnan,
+  zoomauksen, panoroinnin, keskittämisen ja node-dragit.
+- `GraphEditorToolbar.tsx`, `NodeForm.tsx` ja `EdgeForm.tsx` tarjoavat create-,
+  show/edit- ja AI Assistant -moodien kontrollit ja editointilomakkeet.
+- `NodeList.tsx` näyttää nodet tyyppiryhmittäin, tyyppikohtaiset laskurit,
+  näkyvyysfiltterit ja nodeen fokusoinnin.
+- `frontend/src/api/orgTwinStructure.ts` sisältää typed fetch -wrapperit
+  graphin, type catalogin, nodejen, edgejen ja position bulk updatejen käyttöön.
+
+Workspace-liitos:
+
+- `frontend/src/workspace/workspaceTabs.ts` määrittää `"graph"`-tabin labeliksi
+  `Structure`.
+- Structure-tab säilyttää skenaario- ja organisaatiotilavalinnan vaatimuksen.
+
+Authorization:
+
+- TASK-025A ja TASK-025B toteuttivat Structure API:n ja UI:n ilman
+  permission enforcementia.
+- Backend authorization on edelleen järjestelmän turvallisuusraja ja lisätään
+  erillisessä follow-up taskissa.
+
+---
+
 # Domain Architecture
 
 Status: initial candidate model

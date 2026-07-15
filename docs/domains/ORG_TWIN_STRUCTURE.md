@@ -105,10 +105,30 @@ Other domains may reference these tables but may not modify them directly unless
 Endpoints:
 
 ```text
-TBD
+GET    /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/org-states/{org_state_key}/graph
+GET    /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/org-states/{org_state_key}/graph/types
+POST   /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/org-states/{org_state_key}/graph/nodes
+PATCH  /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/org-states/{org_state_key}/graph/nodes/{node_key}
+DELETE /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/org-states/{org_state_key}/graph/nodes/{node_key}
+POST   /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/org-states/{org_state_key}/graph/edges
+PATCH  /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/org-states/{org_state_key}/graph/edges/{edge_key}
+DELETE /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/org-states/{org_state_key}/graph/edges/{edge_key}
+PATCH  /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/org-states/{org_state_key}/graph/positions
 ```
 
-Exact HTTP operations and versioned paths are defined in backend implementation tasks.
+Backend implementation:
+
+- `backend/app/api/v1/org_twin_structure/router.py`
+- `backend/app/api/v1/org_twin_structure/schemas.py`
+- `backend/app/api/v1/org_twin_structure/org_twin_structure_service.py`
+
+Frontend API client:
+
+- `frontend/src/api/orgTwinStructure.ts`
+
+Authorization and permission enforcement are not implemented in the Structure
+baseline. They must be added through a separate task before these endpoints are
+treated as a production authorization boundary.
 
 ---
 
@@ -157,6 +177,30 @@ Flow:
 2. Validate relevant metamodel rules.
 3. Create one active graph for the organisation state.
 4. Create graph nodes and graph edges.
+
+## Edit Graph From Structure Tab
+
+Flow:
+
+1. Frontend loads graph data and type catalog for the selected organisation,
+   scenario and organisation state.
+2. User creates, edits or deletes graph nodes and graph edges.
+3. Backend validates graph context, stable keys, type references and allowed
+   connections.
+4. Backend persists the mutation through Organisation Twin Structure Domain
+   tables.
+5. Frontend updates the graph view from the returned response.
+
+## Persist Node Positions
+
+Flow:
+
+1. User drags one or more nodes in the Structure graph viewer.
+2. Frontend updates positions optimistically.
+3. Frontend sends a debounced bulk position update to the graph positions
+   endpoint.
+4. Backend validates node references and persists position values.
+5. Frontend merges the persisted position response back into graph state.
 
 ## Copy Graph Snapshot For Scenario Copy
 

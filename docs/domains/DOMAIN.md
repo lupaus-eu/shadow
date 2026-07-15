@@ -186,7 +186,11 @@ Depends On:
 
 Primary APIs:
 
-- TBD
+- `/organisations/{organisation_key}/scenarios/{scenario_key}/org-states/{org_state_key}/graph`
+- `/organisations/{organisation_key}/scenarios/{scenario_key}/org-states/{org_state_key}/graph/types`
+- `/organisations/{organisation_key}/scenarios/{scenario_key}/org-states/{org_state_key}/graph/nodes`
+- `/organisations/{organisation_key}/scenarios/{scenario_key}/org-states/{org_state_key}/graph/edges`
+- `/organisations/{organisation_key}/scenarios/{scenario_key}/org-states/{org_state_key}/graph/positions`
 
 Related Documents:
 

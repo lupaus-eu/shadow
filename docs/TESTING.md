@@ -103,6 +103,60 @@ Examples:
 
 ---
 
+# Testing Structure Feature
+
+Structure feature changes may touch both backend graph APIs and frontend graph
+editing UI. Choose checks based on the changed layer.
+
+Backend Structure API checks:
+
+```bash
+cd backend
+uv run ruff check .
+uv run pytest tests/test_org_twin_structure_api.py -v
+uv run pyright
+```
+
+Run the full backend pytest suite when shared service behavior, database models
+or scenario/org-state interactions change:
+
+```bash
+cd backend
+uv run pytest
+```
+
+Frontend Structure UI checks:
+
+```bash
+cd frontend
+pnpm lint
+pnpm test -- StructureTab GraphViewer
+pnpm build
+```
+
+Run the full frontend test suite when shared API client, workspace selection or
+tab rendering behavior changes:
+
+```bash
+cd frontend
+pnpm test
+```
+
+Manual QA:
+
+- Use `docs/qa/STRUCTURE-QA-CHECKLIST.md` for end-to-end graph, node, edge,
+  filtering, zoom and position update verification.
+- Record manual QA results in the PR when visual graph behavior or drag
+  interactions are changed.
+
+Authorization note:
+
+- Structure authorization and permission enforcement are out of scope for the
+  TASK-025A/TASK-025B baseline and should be tested with the dedicated
+  authorization follow-up task.
+
+---
+
 # Test Levels
 
 Use the lightest useful test level.
