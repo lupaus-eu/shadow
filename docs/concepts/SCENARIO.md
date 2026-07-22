@@ -131,14 +131,12 @@ Related APIs:
 - Organisation-state cleanup clears `initial_state_id` when the referenced
   initial organisation state is cleaned.
 - Scenario CRUD does not implement copy or branching behavior.
-- Scenario copy creates an unprotected scenario with request `name` and
-  `description`.
+- Scenario copy creates an unprotected scenario with request `description` and
+  either request `name` or generated default `Fork of {source scenario name}`.
 - Scenario copy sets `source_scenario_id` to the selected source scenario.
 - Scenario copy sets `initial_state_id` to the copied version of the selected
   source organisation state.
-- Scenario copy copies active source organisation states that belong to the
-  source scenario and are within the selected source organisation state's
-  `target_date` boundary.
+- Scenario copy copies only the selected active source organisation state.
 - Scenario copy delegates graph snapshot copying to Organisation Twin Structure
   Domain.
 - Scenario copy does not copy scenario-owned timeseries or timeserie values.

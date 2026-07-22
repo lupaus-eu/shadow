@@ -13,7 +13,7 @@ export type ScenarioUpdateRequest = {
 export type ScenarioCopyRequest = {
   sourceScenarioId: string;
   sourceOrgStateId: string;
-  name: string;
+  name?: string;
   description: string;
 };
 

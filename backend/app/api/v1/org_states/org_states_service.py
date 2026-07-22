@@ -133,7 +133,7 @@ def copy_scenario(
         organisation,
         payload.source_scenario_id,
     )
-    source_boundary_org_state = _get_active_org_state(
+    source_org_state = _get_active_org_state(
         session,
         source_scenario,
         payload.source_org_state_id,
@@ -142,7 +142,7 @@ def copy_scenario(
     copied_scenario = Scenario(
         organisation_id=organisation.organisation_id,
         scenario_key=_generate_scenario_key(),
-        name=payload.name,
+        name=payload.name or f"Fork of {source_scenario.name}",
         description=payload.description,
         protected=False,
         source_scenario_id=source_scenario.scenario_id,
@@ -150,45 +150,21 @@ def copy_scenario(
     session.add(copied_scenario)
     session.flush()
 
-    source_org_states = session.scalars(
-        select(OrgState)
-        .where(
-            OrgState.scenario_id == source_scenario.scenario_id,
-            OrgState.deleted_time.is_(None),
-            OrgState.target_date <= source_boundary_org_state.target_date,
-        )
-        .order_by(OrgState.target_date, OrgState.org_state_id),
-    ).all()
-
-    copied_org_state_id_by_source_id: dict[int, int] = {}
-    for source_org_state in source_org_states:
-        copied_org_state = OrgState(
-            scenario_id=copied_scenario.scenario_id,
-            org_state_key=_generate_org_state_key(),
-            name=source_org_state.name,
-            version=source_org_state.version,
-            description=source_org_state.description,
-            target_date=source_org_state.target_date,
-        )
-        session.add(copied_org_state)
-        session.flush()
-        copied_org_state_id_by_source_id[source_org_state.org_state_id] = (
-            copied_org_state.org_state_id
-        )
-
-    copied_initial_state_id = copied_org_state_id_by_source_id.get(
-        source_boundary_org_state.org_state_id,
+    copied_org_state = OrgState(
+        scenario_id=copied_scenario.scenario_id,
+        org_state_key=_generate_org_state_key(),
+        name=source_org_state.name,
+        version=source_org_state.version,
+        description=source_org_state.description,
+        target_date=source_org_state.target_date,
     )
-    if copied_initial_state_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Copied source organisation state was not created.",
-        )
-    copied_scenario.initial_state_id = copied_initial_state_id
+    session.add(copied_org_state)
+    session.flush()
+    copied_scenario.initial_state_id = copied_org_state.org_state_id
 
     org_twin_structure_service.copy_graph_snapshots_for_org_states(
         session,
-        copied_org_state_id_by_source_id,
+        {source_org_state.org_state_id: copied_org_state.org_state_id},
     )
 
     session.commit()

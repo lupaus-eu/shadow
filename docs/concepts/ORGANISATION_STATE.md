@@ -131,11 +131,9 @@ Related APIs:
   and target date `2020-01-01`.
 - A graph may belong to one organisation state through Organisation Twin Structure Domain.
 - Organisation state CRUD does not create graph data or synchronise graph dates.
-- Scenario copy copies active organisation states that belong to the source
-  scenario and are within the selected source organisation state's `targetDate`
-  boundary.
-- Scenario copy gives copied organisation states generated `org_state_key`
-  values while preserving `name`, `description`, `targetDate` and `version`.
+- Scenario copy copies only the selected active source organisation state.
+- Scenario copy gives the copied organisation state a generated `org_state_key`
+  while preserving `name`, `description`, `targetDate` and `version`.
 
 ---
 

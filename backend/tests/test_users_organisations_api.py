@@ -473,7 +473,7 @@ def test_protected_scenario_patch_persists_and_delete_returns_409(
     assert delete_response.status_code == 409
 
 
-def test_scenario_copy_copies_bounded_org_states_and_graph_snapshots(
+def test_scenario_copy_copies_selected_org_state_and_graph_snapshot(
     client: TestClient,
     session_factory: sessionmaker[Session],
 ) -> None:
@@ -622,8 +622,10 @@ def test_scenario_copy_copies_bounded_org_states_and_graph_snapshots(
 
         assert copied_scenario.source_scenario_id == source_scenario.scenario_id
         assert copied_scenario.protected is False
-        assert copied_names == ["First state", "Boundary state"]
-        copied_boundary_state = copied_org_states[1]
+        assert copied_names == ["Boundary state"]
+        copied_boundary_state = copied_org_states[0]
+        assert copied_boundary_state.org_state_key != boundary_state_key
+        assert copied_boundary_state.target_date.isoformat() == "2030-02-01"
         assert copied_scenario.initial_state_id == copied_boundary_state.org_state_id
 
         source_names = [
@@ -668,6 +670,28 @@ def test_scenario_copy_copies_bounded_org_states_and_graph_snapshots(
         assert copied_edge.source_graph_node_id == copied_boundary_node.graph_node_id
         assert copied_edge.target_graph_node_id == copied_boundary_node.graph_node_id
         assert copied_edge.attributes == {"weight": 1}
+
+
+@pytest.mark.parametrize("name_payload", [{}, {"name": "  "}])
+def test_scenario_copy_defaults_blank_or_missing_name(
+    client: TestClient,
+    name_payload: dict[str, str],
+) -> None:
+    organisation_key = _create_organisation(client)
+
+    copy_response = client.post(
+        f"/api/v1/organisations/{organisation_key}/scenarios/copy",
+        json={
+            "sourceScenarioId": "reality",
+            "sourceOrgStateId": "initial_state",
+            "description": "Generated name",
+            **name_payload,
+        },
+    )
+
+    assert copy_response.status_code == 201
+    copied_payload = cast(dict[str, object], copy_response.json())
+    assert copied_payload["name"] == "Fork of Reality"
 
 
 def test_scenario_copy_allows_protected_source_scenarios(

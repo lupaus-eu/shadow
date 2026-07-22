@@ -874,6 +874,10 @@ describe("Schatten UI shell", () => {
     fireEvent.change(screen.getByLabelText("Source state"), {
       target: { value: "launch" }
     });
+    const forkForm = screen.getByRole("form", { name: "Fork from existing" });
+    fireEvent.change(within(forkForm).getByLabelText(/Name/), {
+      target: { value: "" }
+    });
 
     expect(
       screen.getByTitle("Org state: Draft state (2026-06-01)")
@@ -895,7 +899,6 @@ describe("Schatten UI shell", () => {
               JSON.stringify({
                 sourceScenarioId: "future",
                 sourceOrgStateId: "launch",
-                name: "Fork of Future plan",
                 description: "A possible future"
               })
           );

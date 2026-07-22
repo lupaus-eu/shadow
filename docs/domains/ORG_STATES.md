@@ -111,17 +111,18 @@ Copy rules:
 - the source scenario must be active and belong to the requested organisation
 - the source organisation state must be active and belong to the source scenario
 - the copied scenario receives a generated `scenario_key`
-- request `name` and `description` become the copied scenario fields
+- request `description` becomes the copied scenario description
+- request `name` becomes the copied scenario name when provided and non-blank
+- missing or blank request `name` defaults to `Fork of {source scenario name}`
 - copied scenarios are always `protected=false`
 - copied `source_scenario_id` references the selected source scenario
-- all active source organisation states that belong to the source scenario and
-  have `target_date <= sourceOrgStateId.target_date` are copied
-- copied organisation states receive generated `org_state_key` values and
-  preserve `name`, `description`, `target_date` and `version`
+- only the selected active source organisation state is copied
+- the copied organisation state receives a generated `org_state_key` value and
+  preserves `name`, `description`, `target_date` and `version`
 - copied `initial_state_id` points to the copied version of the selected source
   organisation state
-- active graph snapshots for copied organisation states are copied through the
-  Organisation Twin Structure Domain service boundary
+- active graph snapshot data for the copied organisation state pair is copied
+  through the Organisation Twin Structure Domain service boundary
 - scenario-owned timeseries and timeserie values are not copied
 - source scenario, source organisation states and source graphs are not mutated
 
@@ -292,15 +293,14 @@ Flow:
 2. Validate source scenario exists, is active and belongs to the organisation.
 3. Validate source organisation state exists, is active and belongs to the
    source scenario.
-4. Create an unprotected scenario with generated `scenario_key`, request fields
-   and `source_scenario_id`.
-5. Copy active source organisation states in the source scenario whose
-   `target_date` is less than or equal to the selected source organisation
-   state's `target_date`.
+4. Create an unprotected scenario with generated `scenario_key`,
+   `source_scenario_id`, request `description` and either request `name` or
+   generated default `Fork of {source scenario name}`.
+5. Copy only the selected source organisation state.
 6. Set the copied scenario `initial_state_id` to the copied selected source
    organisation state.
-7. Ask Organisation Twin Structure Domain to copy active graph snapshots for the
-   copied organisation state pairs.
+7. Ask Organisation Twin Structure Domain to copy active graph snapshot data for
+   the copied organisation state pair.
 8. Return copied scenario data.
 
 ## Create Organisation State

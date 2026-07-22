@@ -465,18 +465,13 @@ export default function ScenariosTab(props: { orgId: string }) {
     }
 
     const name = forkName.trim();
-    if (!name) {
-      setForkError("Scenario name is required.");
-      return;
-    }
-
     try {
       setSaving(true);
       setForkError("");
       const created = await copyScenario(props.orgId, {
         sourceScenarioId: selectedScenarioDto.id,
         sourceOrgStateId: forkSourceOrgStateDto.id,
-        name,
+        ...(name ? { name } : {}),
         description: forkDescription.trim()
       });
       setScenarios((current) => [...current, created]);

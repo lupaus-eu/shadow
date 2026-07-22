@@ -53,21 +53,36 @@ class ScenarioCopyRequest(StrictBaseModel):
     source_org_state_id: str = Field(
         min_length=1,
         alias="sourceOrgStateId",
-        description="Stable organisation state key that defines the copy boundary.",
+        description="Stable organisation state key to copy into the new scenario.",
     )
-    name: str = Field(min_length=1, description="Copied scenario display name.")
+    name: str | None = Field(
+        default=None,
+        description=(
+            "Copied scenario display name. Defaults to 'Fork of ' plus the "
+            "source scenario name when omitted or blank."
+        ),
+    )
     description: str | None = Field(
         default=None,
         description="Copied scenario description.",
     )
 
-    @field_validator("source_scenario_id", "source_org_state_id", "name")
+    @field_validator("source_scenario_id", "source_org_state_id")
     @classmethod
-    def text_fields_must_not_be_blank(cls, value: str) -> str:
+    def required_text_fields_must_not_be_blank(cls, value: str) -> str:
         stripped = value.strip()
         if not stripped:
             raise ValueError("Value must not be blank.")
         return stripped
+
+    @field_validator("name")
+    @classmethod
+    def blank_name_defaults_to_none(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+
+        stripped = value.strip()
+        return stripped or None
 
 
 class ScenarioResponse(StrictBaseModel):
