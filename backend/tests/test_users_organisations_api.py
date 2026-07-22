@@ -1095,6 +1095,170 @@ def test_event_duplicate_target_dates_are_allowed_inside_scenario(
     ]
 
 
+def test_timeserie_crud_uses_stable_keys_and_validates_units(
+    client: TestClient,
+) -> None:
+    organisation_key = _create_organisation(client)
+    path = f"/api/v1/organisations/{organisation_key}/scenarios/reality/timeseries"
+
+    create_response = client.post(
+        path,
+        json={
+            "id": "revenue",
+            "name": "  Revenue  ",
+            "description": "  Monthly revenue  ",
+            "unit": "  EUR  ",
+            "timeUnit": "month",
+            "valueUnit": "number",
+        },
+    )
+
+    assert create_response.status_code == 201
+    assert create_response.json() == {
+        "id": "revenue",
+        "name": "Revenue",
+        "description": "Monthly revenue",
+        "unit": "EUR",
+        "timeUnit": "month",
+        "valueUnit": "number",
+    }
+    assert client.get(f"{path}/revenue").json() == create_response.json()
+    assert client.get(f"{path}/revenue/exists").json() == {
+        "id": "revenue",
+        "exists": True,
+    }
+    assert client.get(f"{path}/missing/exists").json() == {
+        "id": "missing",
+        "exists": False,
+    }
+    assert client.get(f"{path}/missing").status_code == 404
+    assert (
+        client.post(
+            path,
+            json={
+                "id": "revenue",
+                "name": "Duplicate",
+                "timeUnit": "month",
+                "valueUnit": "number",
+            },
+        ).status_code
+        == 409
+    )
+    assert (
+        client.post(
+            path,
+            json={
+                "id": "bad_unit",
+                "name": "Bad unit",
+                "timeUnit": "quarter",
+                "valueUnit": "number",
+            },
+        ).status_code
+        == 422
+    )
+    assert (
+        client.post(
+            path,
+            json={
+                "id": "  ",
+                "name": "Blank id",
+                "timeUnit": "month",
+                "valueUnit": "number",
+            },
+        ).status_code
+        == 422
+    )
+
+
+def test_timeserie_delete_soft_deletes_values_and_clears_graph_node_links(
+    client: TestClient,
+    session_factory: sessionmaker[Session],
+) -> None:
+    organisation_key = _create_organisation(client)
+    path = f"/api/v1/organisations/{organisation_key}/scenarios/reality/timeseries"
+
+    create_response = client.post(
+        path,
+        json={
+            "id": "capacity",
+            "name": "Capacity",
+            "timeUnit": "week",
+            "valueUnit": "number",
+        },
+    )
+    assert create_response.status_code == 201
+
+    with session_factory() as session:
+        organisation = _get_organisation(session, organisation_key)
+        scenario = _get_scenario(session, organisation, "reality")
+        org_state = _get_org_state(session, scenario, "initial_state")
+        timeserie = session.scalar(
+            select(Timeserie).where(
+                Timeserie.scenario_id == scenario.scenario_id,
+                Timeserie.timeserie_key == "capacity",
+            ),
+        )
+        node_type = session.scalar(
+            select(NodeType)
+            .where(NodeType.node_type_key == "nt_person")
+            .order_by(NodeType.metamodel_id.desc()),
+        )
+        assert timeserie is not None
+        assert node_type is not None
+        node = GraphNode(
+            scenario_id=scenario.scenario_id,
+            node_key="node_capacity",
+            name="Capacity node",
+            node_type_id=node_type.node_type_id,
+            create_date=org_state.target_date,
+            attributes={},
+            timeserie_id=timeserie.timeserie_id,
+            timeserie_secondary_id=timeserie.timeserie_id,
+        )
+        value = TimeserieValue(
+            timeserie_id=timeserie.timeserie_id,
+            date=date(2026, 1, 1),
+            value={"value": 10},
+        )
+        session.add_all([node, value])
+        session.commit()
+
+    delete_response = client.delete(f"{path}/capacity")
+
+    assert delete_response.status_code == 204
+    assert client.get(f"{path}/capacity").status_code == 404
+    assert client.get(f"{path}/capacity/exists").json() == {
+        "id": "capacity",
+        "exists": False,
+    }
+
+    with session_factory() as session:
+        organisation = _get_organisation(session, organisation_key)
+        scenario = _get_scenario(session, organisation, "reality")
+        timeserie = session.scalar(
+            select(Timeserie).where(
+                Timeserie.scenario_id == scenario.scenario_id,
+                Timeserie.timeserie_key == "capacity",
+            ),
+        )
+        assert timeserie is not None
+        value = session.scalar(
+            select(TimeserieValue).where(
+                TimeserieValue.timeserie_id == timeserie.timeserie_id,
+            ),
+        )
+        node = session.scalar(
+            select(GraphNode).where(GraphNode.scenario_id == scenario.scenario_id),
+        )
+
+        assert timeserie.deleted_time is not None
+        assert value is not None
+        assert value.deleted_time is not None
+        assert node is not None
+        assert node.timeserie_id is None
+        assert node.timeserie_secondary_id is None
+
+
 def test_clean_org_states_service_soft_deletes_active_states_and_clears_initial_state(
     client: TestClient,
     session_factory: sessionmaker[Session],

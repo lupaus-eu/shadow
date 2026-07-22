@@ -147,7 +147,9 @@ const graph: GraphDto = {
       nodeTypeId: "nt_person",
       createDate: null,
       position: { x: 10, y: 20 },
-      attributes: {}
+      attributes: {},
+      timeserieId: null,
+      timeserieSecondaryId: null
     },
     {
       id: "node_hidden",
@@ -156,7 +158,9 @@ const graph: GraphDto = {
       nodeTypeId: "nt_hidden",
       createDate: null,
       position: { x: 100, y: 120 },
-      attributes: {}
+      attributes: {},
+      timeserieId: null,
+      timeserieSecondaryId: null
     }
   ],
   edges: [
@@ -190,7 +194,10 @@ const catalog: GraphTypeCatalogDto = {
       name: "person",
       displayName: "Person",
       color: "#dbeafe",
-      shape: "rectangle"
+      shape: "rectangle",
+      timeserieId: null,
+      timeserieSecondaryId: null,
+      timeserieIdRule: null
     }
   ],
   edgeTypes: [

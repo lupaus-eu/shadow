@@ -15,9 +15,11 @@ import type {
   GraphDto,
   GraphEdgeCreateRequest,
   GraphEdgeUpdateRequest,
+  GraphNodeDto,
   GraphNodeUpdateRequest,
   GraphPosition,
-  GraphTypeCatalogDto
+  GraphTypeCatalogDto,
+  NodeTypeMetadataDto
 } from "../../api/orgTwinStructure";
 import { useWorkspaceSelection } from "../../workspace/WorkspaceSelectionContext";
 import EdgeForm from "./EdgeForm";
@@ -29,6 +31,7 @@ import type { GraphCenterRequest, GraphSelection } from "./GraphViewer";
 import NodeForm from "./NodeForm";
 import type { NodeFormCreatePayload } from "./NodeForm";
 import NodeList from "./NodeList";
+import TimeseriePanel from "./TimeseriePanel";
 
 type PendingPosition = BulkPositionUpdateRequest["positions"][number];
 type CreateEdgeDraft = {
@@ -165,6 +168,42 @@ function edgeTypesForCreateSelection(
   return edgeTypes.filter((edgeType) => allowedEdgeTypeIds.has(edgeType.id));
 }
 
+function trimmed(value: string | null | undefined): string {
+  return value?.trim() ?? "";
+}
+
+function nodeTypeHasTimeserieMetadata(
+  nodeType: NodeTypeMetadataDto | undefined
+): boolean {
+  if (!nodeType) return false;
+  return Boolean(
+    trimmed(nodeType.timeserieId) ||
+      trimmed(nodeType.timeserieSecondaryId) ||
+      trimmed(nodeType.timeserieIdRule)
+  );
+}
+
+function isMetricNodeType(nodeType: NodeTypeMetadataDto | undefined, fallbackId: string) {
+  const values = [fallbackId, nodeType?.id, nodeType?.name, nodeType?.displayName]
+    .map((value) => trimmed(value).toLowerCase())
+    .filter(Boolean);
+
+  return values.some((value) => value.includes("metric"));
+}
+
+function nodeSupportsTimeserie(
+  node: GraphNodeDto | null,
+  nodeType: NodeTypeMetadataDto | undefined
+): boolean {
+  if (!node) return false;
+  return Boolean(
+    trimmed(node.timeserieId) ||
+      trimmed(node.timeserieSecondaryId) ||
+      nodeTypeHasTimeserieMetadata(nodeType) ||
+      isMetricNodeType(nodeType, node.nodeTypeId)
+  );
+}
+
 export default function StructureTab(props: { orgId: string }) {
   const { selectedScenario, selectedOrgState } = useWorkspaceSelection();
   const [mode, setMode] = useState<StructureMode>("create");
@@ -221,6 +260,16 @@ export default function StructureTab(props: { orgId: string }) {
         : null,
     [graph, selected]
   );
+  const selectedNodeType = useMemo(
+    () =>
+      selectedNode
+        ? catalog?.nodeTypes.find(
+            (nodeType) => nodeType.id === selectedNode.nodeTypeId
+          )
+        : undefined,
+    [catalog, selectedNode]
+  );
+  const canUseTimeserieMode = nodeSupportsTimeserie(selectedNode, selectedNodeType);
 
   const clearPendingPositionCommit = useCallback(() => {
     pendingPositionsRef.current.clear();
@@ -436,6 +485,25 @@ export default function StructureTab(props: { orgId: string }) {
     }
   }
 
+  function clearDeletedTimeserieLinks(timeserieId: string) {
+    setGraph((current) =>
+      current
+        ? {
+            ...current,
+            nodes: current.nodes.map((node) => ({
+              ...node,
+              timeserieId:
+                node.timeserieId === timeserieId ? null : node.timeserieId,
+              timeserieSecondaryId:
+                node.timeserieSecondaryId === timeserieId
+                  ? null
+                  : node.timeserieSecondaryId
+            }))
+          }
+        : current
+    );
+  }
+
   async function removeNode() {
     if (!selectedScenario || !selectedOrgState || !selectedNode) return;
     try {
@@ -597,6 +665,18 @@ export default function StructureTab(props: { orgId: string }) {
 
   function handleGraphSelection(selection: GraphSelection | null) {
     setSelected(selection);
+    if (mode === "timeserie") {
+      const nextNode =
+        selection?.kind === "node"
+          ? graph?.nodes.find((node) => node.id === selection.id) ?? null
+          : null;
+      const nextNodeType = nextNode
+        ? catalog?.nodeTypes.find((nodeType) => nodeType.id === nextNode.nodeTypeId)
+        : undefined;
+      if (!nodeSupportsTimeserie(nextNode, nextNodeType)) {
+        setMode("edit");
+      }
+    }
     if (mode === "create" && selection?.kind === "node") {
       updateCreateEdgeSelectionFromNode(selection.id);
     }
@@ -671,7 +751,11 @@ export default function StructureTab(props: { orgId: string }) {
             <h2 id="structure-editor-mode-title" className="section-title">
               Editor mode
             </h2>
-            <EditorModeSelector mode={mode} onModeChange={setMode} />
+            <EditorModeSelector
+              mode={mode}
+              showTimeserie={canUseTimeserieMode}
+              onModeChange={setMode}
+            />
           </section>
 
           {mode === "assistant" ? (
@@ -721,6 +805,22 @@ export default function StructureTab(props: { orgId: string }) {
                 onCreate={createEdge}
               />
             </div>
+          ) : mode === "timeserie" && canUseTimeserieMode && selectedNode ? (
+            <TimeseriePanel
+              key={
+                `timeserie-node:${selectedNode.id}:` +
+                `${selectedNode.timeserieId ?? ""}:` +
+                `${selectedNode.timeserieSecondaryId ?? ""}`
+              }
+              orgId={props.orgId}
+              scenarioId={selectedScenario?.id ?? ""}
+              node={selectedNode}
+              nodeType={selectedNodeType}
+              saving={isMutatingEntity}
+              disabled={loading || !selectedScenario}
+              onUpdateLinks={updateNode}
+              onTimeserieDeleted={clearDeletedTimeserieLinks}
+            />
           ) : selectedNode ? (
             <NodeForm
               key={`edit-node:${selectedNode.id}`}

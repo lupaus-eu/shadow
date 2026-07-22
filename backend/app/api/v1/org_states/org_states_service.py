@@ -1,6 +1,7 @@
 import logging
 from datetime import UTC, datetime
 from datetime import date as dt_date
+from typing import cast
 from uuid import uuid4
 
 from fastapi import HTTPException, status
@@ -25,6 +26,11 @@ from app.api.v1.org_states.schemas import (
     ScenarioCreateRequest,
     ScenarioPatchRequest,
     ScenarioResponse,
+    TimeserieCreateRequest,
+    TimeserieExistsResponse,
+    TimeserieResponse,
+    TimeserieTimeUnit,
+    TimeserieValueUnit,
 )
 from app.api.v1.org_twin_structure import org_twin_structure_service
 from app.api.v1.organisations.models import Organisation
@@ -529,6 +535,100 @@ def soft_delete_event(
     session.commit()
 
 
+def get_timeserie(
+    session: Session,
+    organisation_key: str,
+    scenario_key: str,
+    timeserie_key: str,
+) -> TimeserieResponse:
+    organisation = _get_active_organisation(session, organisation_key)
+    scenario = _get_active_scenario(session, organisation, scenario_key)
+    timeserie = _get_active_timeserie(
+        session,
+        scenario,
+        _normalise_stable_key(timeserie_key, "Timeserie id must not be blank."),
+    )
+
+    return to_timeserie_response(timeserie)
+
+
+def timeserie_exists(
+    session: Session,
+    organisation_key: str,
+    scenario_key: str,
+    timeserie_key: str,
+) -> TimeserieExistsResponse:
+    organisation = _get_active_organisation(session, organisation_key)
+    scenario = _get_active_scenario(session, organisation, scenario_key)
+    normalised_key = _normalise_stable_key(
+        timeserie_key,
+        "Timeserie id must not be blank.",
+    )
+
+    timeserie_id = session.scalar(
+        select(Timeserie.timeserie_id).where(
+            Timeserie.scenario_id == scenario.scenario_id,
+            Timeserie.timeserie_key == normalised_key,
+            Timeserie.deleted_time.is_(None),
+        ),
+    )
+
+    return TimeserieExistsResponse(id=normalised_key, exists=timeserie_id is not None)
+
+
+def create_timeserie(
+    session: Session,
+    organisation_key: str,
+    scenario_key: str,
+    payload: TimeserieCreateRequest,
+) -> TimeserieResponse:
+    organisation = _get_active_organisation(session, organisation_key)
+    scenario = _get_active_scenario(session, organisation, scenario_key)
+    _ensure_timeserie_key_available(session, scenario, payload.id)
+
+    timeserie = Timeserie(
+        scenario_id=scenario.scenario_id,
+        timeserie_key=payload.id,
+        name=payload.name,
+        description=payload.description,
+        unit=payload.unit,
+        time_unit=payload.time_unit,
+        value_unit=payload.value_unit,
+    )
+    session.add(timeserie)
+    session.commit()
+    session.refresh(timeserie)
+
+    return to_timeserie_response(timeserie)
+
+
+def soft_delete_timeserie(
+    session: Session,
+    organisation_key: str,
+    scenario_key: str,
+    timeserie_key: str,
+) -> None:
+    organisation = _get_active_organisation(session, organisation_key)
+    scenario = _get_active_scenario(session, organisation, scenario_key)
+    timeserie = _get_active_timeserie(
+        session,
+        scenario,
+        _normalise_stable_key(timeserie_key, "Timeserie id must not be blank."),
+    )
+    now = datetime.now(UTC)
+
+    org_twin_structure_service.clear_timeserie_references(
+        session,
+        scenario.scenario_id,
+        timeserie.timeserie_id,
+        now,
+    )
+    _soft_delete_timeserie_values(session, timeserie, now)
+    timeserie.deleted_time = now
+    timeserie.modified_time = now
+    session.commit()
+
+
 def to_scenario_response(scenario: Scenario) -> ScenarioResponse:
     return ScenarioResponse(
         id=scenario.scenario_key,
@@ -553,6 +653,17 @@ def to_event_response(event: Event) -> EventResponse:
         name=event.name,
         targetDate=event.target_date,
         eventDetails=event.event_details or "",
+    )
+
+
+def to_timeserie_response(timeserie: Timeserie) -> TimeserieResponse:
+    return TimeserieResponse(
+        id=timeserie.timeserie_key,
+        name=timeserie.name,
+        description=timeserie.description or "",
+        unit=timeserie.unit or "",
+        timeUnit=cast(TimeserieTimeUnit, timeserie.time_unit),
+        valueUnit=cast(TimeserieValueUnit, timeserie.value_unit),
     )
 
 
@@ -632,6 +743,28 @@ def _get_active_event(
     return event
 
 
+def _get_active_timeserie(
+    session: Session,
+    scenario: Scenario,
+    timeserie_key: str,
+) -> Timeserie:
+    timeserie = session.scalar(
+        select(Timeserie).where(
+            Timeserie.scenario_id == scenario.scenario_id,
+            Timeserie.timeserie_key == timeserie_key,
+            Timeserie.deleted_time.is_(None),
+        ),
+    )
+
+    if timeserie is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Timeserie not found.",
+        )
+
+    return timeserie
+
+
 def _soft_delete_events(
     session: Session,
     scenario: Scenario,
@@ -679,6 +812,23 @@ def _soft_delete_timeseries(
         timeserie.modified_time = deleted_time
 
 
+def _soft_delete_timeserie_values(
+    session: Session,
+    timeserie: Timeserie,
+    deleted_time: datetime,
+) -> None:
+    values = session.scalars(
+        select(TimeserieValue).where(
+            TimeserieValue.timeserie_id == timeserie.timeserie_id,
+            TimeserieValue.deleted_time.is_(None),
+        ),
+    ).all()
+
+    for value in values:
+        value.deleted_time = deleted_time
+        value.modified_time = deleted_time
+
+
 def _ensure_target_date_is_available(
     session: Session,
     scenario: Scenario,
@@ -704,12 +854,41 @@ def _ensure_target_date_is_available(
         )
 
 
+def _ensure_timeserie_key_available(
+    session: Session,
+    scenario: Scenario,
+    timeserie_key: str,
+) -> None:
+    timeserie_id = session.scalar(
+        select(Timeserie.timeserie_id).where(
+            Timeserie.scenario_id == scenario.scenario_id,
+            Timeserie.timeserie_key == timeserie_key,
+            Timeserie.deleted_time.is_(None),
+        ),
+    )
+    if timeserie_id is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="An active timeserie with this id already exists.",
+        )
+
+
 def _ensure_scenario_allows_destructive_action(scenario: Scenario) -> None:
     if scenario.protected:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Protected scenarios cannot be deleted or cleaned.",
         )
+
+
+def _normalise_stable_key(value: str, blank_message: str) -> str:
+    stripped = value.strip()
+    if not stripped:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=blank_message,
+        )
+    return stripped
 
 
 def _generate_scenario_key() -> str:

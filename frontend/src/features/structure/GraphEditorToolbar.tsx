@@ -1,4 +1,4 @@
-export type StructureMode = "edit" | "create" | "assistant";
+export type StructureMode = "edit" | "create" | "timeserie" | "assistant";
 
 type ModeOption = {
   mode: StructureMode;
@@ -8,6 +8,7 @@ type ModeOption = {
 const MODE_OPTIONS: ModeOption[] = [
   { mode: "create", label: "Create" },
   { mode: "edit", label: "Show & Edit" },
+  { mode: "timeserie", label: "Timeserie" },
   { mode: "assistant", label: "AI Assistant" }
 ];
 
@@ -42,11 +43,16 @@ export default function GraphEditorToolbar(props: {
 
 export function EditorModeSelector(props: {
   mode: StructureMode;
+  showTimeserie: boolean;
   onModeChange: (mode: StructureMode) => void;
 }) {
+  const options = MODE_OPTIONS.filter(
+    (option) => option.mode !== "timeserie" || props.showTimeserie
+  );
+
   return (
     <div className="detail-mode-switch" role="group" aria-label="Structure mode">
-      {MODE_OPTIONS.map((option) => (
+      {options.map((option) => (
         <button
           key={option.mode}
           className={`detail-mode-switch__button${

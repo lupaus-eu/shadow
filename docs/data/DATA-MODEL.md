@@ -68,6 +68,8 @@ Lue nämä yhdessä datamallin kanssa:
 - A graph owns graph nodes and graph edges.
 - Graph edges reference source and target graph nodes.
 - A timeserie belongs to one scenario and owns dated values.
+- Graph nodes may reference primary and secondary timeseries owned by the same
+  scenario.
 
 ---
 

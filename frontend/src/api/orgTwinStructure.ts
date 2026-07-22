@@ -13,6 +13,8 @@ export type GraphNodeDto = {
   createDate: string | null;
   position: GraphPosition | null;
   attributes: JsonObject;
+  timeserieId: string | null;
+  timeserieSecondaryId: string | null;
 };
 
 export type GraphEdgeDto = {
@@ -40,6 +42,9 @@ export type NodeTypeMetadataDto = {
   displayName: string;
   color: string | null;
   shape: string | null;
+  timeserieId: string | null;
+  timeserieSecondaryId: string | null;
+  timeserieIdRule: string | null;
 };
 
 export type EdgeTypeMetadataDto = {
@@ -78,6 +83,8 @@ export type GraphNodeUpdateRequest = {
   nodeTypeId?: string;
   position?: GraphPosition | null;
   attributes?: JsonObject;
+  timeserieId?: string | null;
+  timeserieSecondaryId?: string | null;
 };
 
 export type GraphEdgeCreateRequest = {

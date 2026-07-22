@@ -1,8 +1,12 @@
 from datetime import date
+from typing import Literal
 
 from pydantic import Field, field_validator
 
 from app.core.schemas import StrictBaseModel
+
+type TimeserieTimeUnit = Literal["day", "week", "month", "year"]
+type TimeserieValueUnit = Literal["number", "string", "boolean"]
 
 
 class ScenarioCreateRequest(StrictBaseModel):
@@ -215,3 +219,61 @@ class EventResponse(StrictBaseModel):
         alias="eventDetails",
         description="Event details.",
     )
+
+
+class TimeserieCreateRequest(StrictBaseModel):
+    id: str = Field(min_length=1, description="Stable timeserie key.")
+    name: str = Field(min_length=1, description="Timeserie display name.")
+    description: str | None = Field(
+        default=None,
+        description="Timeserie description.",
+    )
+    unit: str | None = Field(
+        default=None,
+        description="Human-readable unit label.",
+    )
+    time_unit: TimeserieTimeUnit = Field(
+        alias="timeUnit",
+        description="Timeserie time grain.",
+    )
+    value_unit: TimeserieValueUnit = Field(
+        alias="valueUnit",
+        description="Timeserie value type.",
+    )
+
+    @field_validator("id", "name")
+    @classmethod
+    def required_text_fields_must_not_be_blank(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("Value must not be blank.")
+        return stripped
+
+    @field_validator("description", "unit")
+    @classmethod
+    def optional_text_fields_are_trimmed(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+
+        stripped = value.strip()
+        return stripped or None
+
+
+class TimeserieResponse(StrictBaseModel):
+    id: str = Field(description="Stable timeserie key.")
+    name: str = Field(description="Timeserie display name.")
+    description: str = Field(description="Timeserie description.")
+    unit: str = Field(description="Human-readable unit label.")
+    time_unit: TimeserieTimeUnit = Field(
+        alias="timeUnit",
+        description="Timeserie time grain.",
+    )
+    value_unit: TimeserieValueUnit = Field(
+        alias="valueUnit",
+        description="Timeserie value type.",
+    )
+
+
+class TimeserieExistsResponse(StrictBaseModel):
+    id: str = Field(description="Stable timeserie key.")
+    exists: bool = Field(description="Whether an active timeserie exists.")

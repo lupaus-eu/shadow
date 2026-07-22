@@ -64,7 +64,7 @@ db/migrations/003_alter_scenario_target_dates_not_null.sql
 | `type_attributes` | Attribute definitions owned by node or edge types | Exactly one owner FK is allowed according to `owner_kind`. |
 | `allowed_connections` | Allowed source/target node type pairs for edge types | One row per edge/source/target combination. |
 | `graphs` | Graph snapshot for an organisation state | One active graph per org state. |
-| `graph_nodes` | Nodes in a graph snapshot | Dynamic attributes are stored as `JSONB`. |
+| `graph_nodes` | Nodes in a graph snapshot | Dynamic attributes are stored as `JSONB`; primary and secondary timeserie references are nullable FKs. |
 | `graph_edges` | Edges in a graph snapshot | References source and target graph nodes. |
 | `timeseries` | Scenario-specific timeseries definitions | Supports `day`, `week`, `month`, `year` time units. |
 | `timeserie_values` | Timeseries values by date | No `name` column; value is stored as `JSONB`. |

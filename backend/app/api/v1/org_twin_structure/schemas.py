@@ -85,8 +85,20 @@ class GraphNodePatchRequest(StrictBaseModel):
         default=None,
         description="Dynamic node attributes.",
     )
+    timeserie_id: str | None = Field(
+        default=None,
+        min_length=1,
+        alias="timeserieId",
+        description="Stable primary timeserie key, or null to clear.",
+    )
+    timeserie_secondary_id: str | None = Field(
+        default=None,
+        min_length=1,
+        alias="timeserieSecondaryId",
+        description="Stable secondary timeserie key, or null to clear.",
+    )
 
-    @field_validator("name", "node_type_id")
+    @field_validator("name", "node_type_id", "timeserie_id", "timeserie_secondary_id")
     @classmethod
     def text_fields_must_not_be_blank(cls, value: str | None) -> str | None:
         if value is None:
@@ -179,6 +191,14 @@ class GraphNodeResponse(StrictBaseModel):
     )
     position: Position | None = Field(description="Node position.")
     attributes: JsonObject = Field(description="Dynamic node attributes.")
+    timeserie_id: str | None = Field(
+        alias="timeserieId",
+        description="Stable primary timeserie key linked to this node.",
+    )
+    timeserie_secondary_id: str | None = Field(
+        alias="timeserieSecondaryId",
+        description="Stable secondary timeserie key linked to this node.",
+    )
 
 
 class GraphEdgeResponse(StrictBaseModel):
@@ -218,6 +238,18 @@ class NodeTypeMetadataResponse(StrictBaseModel):
     )
     color: str | None = Field(description="Node UI color.")
     shape: str | None = Field(description="Node UI shape.")
+    timeserie_id: str | None = Field(
+        alias="timeserieId",
+        description="Default primary timeserie key metadata.",
+    )
+    timeserie_secondary_id: str | None = Field(
+        alias="timeserieSecondaryId",
+        description="Default secondary timeserie key metadata.",
+    )
+    timeserie_id_rule: str | None = Field(
+        alias="timeserieIdRule",
+        description="Timeserie id derivation rule metadata.",
+    )
 
 
 class EdgeTypeMetadataResponse(StrictBaseModel):

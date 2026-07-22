@@ -181,6 +181,15 @@ PATCH /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/events/{
 DELETE /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/events/{event_key}
 ```
 
+Timeserie endpoints:
+
+```text
+POST /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/timeseries
+GET /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/timeseries/{timeserie_key}
+GET /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/timeseries/{timeserie_key}/exists
+DELETE /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/timeseries/{timeserie_key}
+```
+
 The API uses stable text keys in paths and response `id` fields:
 
 - `organisation_key`
@@ -229,6 +238,28 @@ Event responses use:
 }
 ```
 
+Timeserie responses use:
+
+```json
+{
+  "id": "revenue",
+  "name": "Revenue",
+  "description": "Monthly revenue",
+  "unit": "EUR",
+  "timeUnit": "month",
+  "valueUnit": "number"
+}
+```
+
+Timeserie exists responses use:
+
+```json
+{
+  "id": "revenue",
+  "exists": true
+}
+```
+
 Create endpoints return HTTP `201`. Delete endpoints return HTTP `204`.
 Missing active organisations, scenarios, organisation states or events return HTTP
 `404`.
@@ -252,6 +283,14 @@ scenario with no active organisation states returns `{ "cleaned": 0 }`.
 Event create requires `name` and `targetDate`. Event patch may update `name`,
 `targetDate` and `eventDetails`. If `targetDate` is supplied in an event patch,
 it cannot be `null`.
+
+Timeserie create requires stable `id`, `name`, `timeUnit` and `valueUnit`.
+Supported `timeUnit` values are `day`, `week`, `month` and `year`. Supported
+`valueUnit` values are `number`, `string` and `boolean`. Duplicate active
+timeserie ids inside one scenario return HTTP `409`. Timeserie delete is a soft
+delete and also soft-deletes active owned values. Active graph node links to the
+deleted timeserie are cleared through the Organisation Twin Structure Domain
+service boundary.
 
 Organisation state graph-date synchronisation is not implemented. The frontend
 Refresh action reloads selected scenario and organisation state data through
@@ -328,6 +367,29 @@ Flow:
 6. Create event row.
 
 Event CRUD does not create graph data, timeseries data or organisation states.
+
+## Create Timeserie
+
+Flow:
+
+1. Validate organisation exists and is active.
+2. Validate scenario exists and is active.
+3. Validate stable `timeserie_key`, `name`, `time_unit` and `value_unit`.
+4. Validate active `timeserie_key` uniqueness inside the scenario.
+5. Create timeserie row.
+
+Timeserie CRUD does not create timeserie values.
+
+## Check Timeserie Existence
+
+Flow:
+
+1. Validate organisation exists and is active.
+2. Validate scenario exists and is active.
+3. Return whether an active timeserie with the requested stable key exists.
+
+Missing timeseries return `{ "exists": false }` from the exists endpoint and
+HTTP `404` from the get endpoint.
 
 ## Clean Organisation States
 
@@ -414,6 +476,18 @@ Flow:
 2. Validate scenario exists and is active.
 3. Validate event exists and is active.
 4. Soft-delete the event.
+
+## Delete Timeserie
+
+Flow:
+
+1. Validate organisation exists and is active.
+2. Validate scenario exists and is active.
+3. Validate timeserie exists and is active.
+4. Clear active graph node links to the timeserie through Organisation Twin
+   Structure Domain.
+5. Soft-delete active owned timeserie values.
+6. Soft-delete the timeserie.
 
 ## Create Organisation Defaults
 

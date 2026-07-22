@@ -10,6 +10,7 @@ import type { ContextType } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as structureApi from "../../api/orgTwinStructure";
 import type { GraphDto, GraphTypeCatalogDto } from "../../api/orgTwinStructure";
+import * as timeseriesApi from "../../api/timeseries";
 import {
   WorkspaceSelectionContext
 } from "../../workspace/WorkspaceSelectionContext";
@@ -28,6 +29,17 @@ vi.mock("../../api/orgTwinStructure", async (importOriginal) => {
     updateGraphEdge: vi.fn(),
     deleteGraphEdge: vi.fn(),
     bulkUpdatePositions: vi.fn()
+  };
+});
+
+vi.mock("../../api/timeseries", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../api/timeseries")>();
+  return {
+    ...actual,
+    createTimeserie: vi.fn(),
+    fetchTimeserie: vi.fn(),
+    fetchTimeserieExists: vi.fn(),
+    deleteTimeserie: vi.fn()
   };
 });
 
@@ -76,6 +88,12 @@ vi.mock("./GraphViewer", () => ({
       </button>
       <button
         type="button"
+        onClick={() => props.onSelect({ kind: "node", id: "node_revenue" })}
+      >
+        Select revenue node in graph
+      </button>
+      <button
+        type="button"
         onClick={() => props.onSelect({ kind: "edge", id: "edge_reports" })}
       >
         Select reports edge
@@ -96,7 +114,9 @@ const graph: GraphDto = {
       nodeTypeId: "nt_person",
       createDate: null,
       position: { x: 10, y: 20 },
-      attributes: { level: 1 }
+      attributes: { level: 1 },
+      timeserieId: null,
+      timeserieSecondaryId: null
     },
     {
       id: "node_sales",
@@ -105,7 +125,9 @@ const graph: GraphDto = {
       nodeTypeId: "nt_team",
       createDate: null,
       position: { x: 120, y: 20 },
-      attributes: {}
+      attributes: {},
+      timeserieId: null,
+      timeserieSecondaryId: null
     },
     {
       id: "node_cfo",
@@ -114,7 +136,20 @@ const graph: GraphDto = {
       nodeTypeId: "nt_person",
       createDate: null,
       position: { x: 200, y: 20 },
-      attributes: {}
+      attributes: {},
+      timeserieId: null,
+      timeserieSecondaryId: null
+    },
+    {
+      id: "node_revenue",
+      name: "Revenue",
+      description: "Monthly revenue",
+      nodeTypeId: "nt_metric",
+      createDate: null,
+      position: { x: 320, y: 20 },
+      attributes: {},
+      timeserieId: null,
+      timeserieSecondaryId: null
     }
   ],
   edges: [
@@ -138,21 +173,40 @@ const catalog: GraphTypeCatalogDto = {
       name: "person",
       displayName: "Person",
       color: "#dbeafe",
-      shape: "roundrectangle"
+      shape: "roundrectangle",
+      timeserieId: null,
+      timeserieSecondaryId: null,
+      timeserieIdRule: null
     },
     {
       id: "nt_team",
       name: "team",
       displayName: "Team",
       color: "#dcfce7",
-      shape: "rectangle"
+      shape: "rectangle",
+      timeserieId: null,
+      timeserieSecondaryId: null,
+      timeserieIdRule: null
     },
     {
       id: "nt_vendor",
       name: "vendor",
       displayName: "Vendor",
       color: "#fef3c7",
-      shape: "rectangle"
+      shape: "rectangle",
+      timeserieId: null,
+      timeserieSecondaryId: null,
+      timeserieIdRule: null
+    },
+    {
+      id: "nt_metric",
+      name: "metric",
+      displayName: "Metric",
+      color: "#fbcfe8",
+      shape: "rectangle",
+      timeserieId: "id1",
+      timeserieSecondaryId: "id2",
+      timeserieIdRule: "MEASURED_BY from Goal"
     }
   ],
   edgeTypes: [
@@ -226,8 +280,29 @@ describe("StructureTab", () => {
       nodeTypeId: "nt_team",
       createDate: null,
       position: { x: 0, y: 0 },
-      attributes: {}
+      attributes: {},
+      timeserieId: null,
+      timeserieSecondaryId: null
     });
+    vi.mocked(structureApi.updateGraphNode).mockImplementation(
+      async (_orgId, _scenarioId, _orgStateId, nodeId, payload) => {
+        const node = graph.nodes.find((item) => item.id === nodeId) ?? graph.nodes[0];
+        return {
+          ...node,
+          name: payload.name ?? node.name,
+          description: payload.description ?? node.description,
+          nodeTypeId: payload.nodeTypeId ?? node.nodeTypeId,
+          position: payload.position ?? node.position,
+          attributes: payload.attributes ?? node.attributes,
+          timeserieId:
+            payload.timeserieId === undefined ? node.timeserieId : payload.timeserieId,
+          timeserieSecondaryId:
+            payload.timeserieSecondaryId === undefined
+              ? node.timeserieSecondaryId
+              : payload.timeserieSecondaryId
+        };
+      }
+    );
     vi.mocked(structureApi.deleteGraphNode).mockResolvedValue(undefined);
     vi.mocked(structureApi.deleteGraphEdge).mockResolvedValue(undefined);
     vi.mocked(structureApi.bulkUpdatePositions).mockResolvedValue({
@@ -236,6 +311,23 @@ describe("StructureTab", () => {
         node.id === "node_ceo" ? { ...node, position: { x: 44, y: 55 } } : node
       )
     });
+    vi.mocked(timeseriesApi.fetchTimeserieExists).mockImplementation(
+      async (_orgId, _scenarioId, timeserieId) => ({
+        id: timeserieId,
+        exists: timeserieId === "id1"
+      })
+    );
+    vi.mocked(timeseriesApi.createTimeserie).mockImplementation(
+      async (_orgId, _scenarioId, payload) => ({
+        id: payload.id,
+        name: payload.name,
+        description: payload.description ?? "",
+        unit: payload.unit ?? "",
+        timeUnit: payload.timeUnit,
+        valueUnit: payload.valueUnit
+      })
+    );
+    vi.mocked(timeseriesApi.deleteTimeserie).mockResolvedValue(undefined);
   });
 
   it("loads graph data and renders grouped node types", async () => {
@@ -437,6 +529,204 @@ describe("StructureTab", () => {
     const options = within(typeSelect).getAllByRole("option");
     expect(options.map((option) => option.textContent)).toEqual(["Reports to"]);
     expect(typeSelect).toHaveValue("et_reports_to");
+  });
+
+  it("shows timeserie mode only for selected timeseries-capable nodes", async () => {
+    renderStructureTab();
+    await screen.findByRole("region", { name: "Person nodes" });
+
+    const modeGroup = screen.getByRole("group", { name: "Structure mode" });
+    expect(
+      within(modeGroup)
+        .getAllByRole("button")
+        .map((button) => button.textContent)
+    ).toEqual(["Create", "Show & Edit", "AI Assistant"]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Select CEO node in graph" }));
+    expect(within(modeGroup).queryByRole("button", { name: "Timeserie" })).toBeNull();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Select revenue node in graph" })
+    );
+    expect(
+      within(modeGroup)
+        .getAllByRole("button")
+        .map((button) => button.textContent)
+    ).toEqual(["Create", "Show & Edit", "Timeserie", "AI Assistant"]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Select reports edge" }));
+    expect(within(modeGroup).queryByRole("button", { name: "Timeserie" })).toBeNull();
+  });
+
+  it("falls back to edit mode after leaving a timeseries-capable node", async () => {
+    renderStructureTab();
+    await screen.findByRole("region", { name: "Person nodes" });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Select revenue node in graph" })
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Timeserie" }));
+    expect(screen.getByRole("heading", { name: "Timeserie" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Select reports edge" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Edit edge" })).toBeInTheDocument();
+    });
+    expect(screen.getByRole("button", { name: "Show & Edit" })).toHaveAttribute(
+      "aria-pressed",
+      "true"
+    );
+  });
+
+  it("saves and clears selected node timeserie links", async () => {
+    renderStructureTab();
+    await screen.findByRole("region", { name: "Person nodes" });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Select revenue node in graph" })
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Timeserie" }));
+
+    const panel = screen.getByRole("region", { name: "Timeserie" });
+    fireEvent.change(within(panel).getByLabelText("Primary link"), {
+      target: { value: "id1" }
+    });
+    fireEvent.change(within(panel).getByLabelText("Secondary link"), {
+      target: { value: "id2" }
+    });
+    fireEvent.click(within(panel).getByRole("button", { name: "Save links" }));
+
+    await waitFor(() => {
+      expect(structureApi.updateGraphNode).toHaveBeenCalledWith(
+        "acme",
+        "future",
+        "draft",
+        "node_revenue",
+        { timeserieId: "id1", timeserieSecondaryId: "id2" }
+      );
+    });
+
+    vi.mocked(structureApi.updateGraphNode).mockClear();
+    await waitFor(() => {
+      expect(
+        within(screen.getByRole("region", { name: "Timeserie" })).getByLabelText(
+          "Primary link"
+        )
+      ).toHaveValue("id1");
+      expect(
+        within(screen.getByRole("region", { name: "Timeserie" })).getByLabelText(
+          "Secondary link"
+        )
+      ).toHaveValue("id2");
+    });
+    const updatedPanel = screen.getByRole("region", { name: "Timeserie" });
+    fireEvent.change(within(updatedPanel).getByLabelText("Primary link"), {
+      target: { value: "" }
+    });
+    fireEvent.change(within(updatedPanel).getByLabelText("Secondary link"), {
+      target: { value: "" }
+    });
+    fireEvent.click(within(updatedPanel).getByRole("button", { name: "Save links" }));
+
+    await waitFor(() => {
+      expect(structureApi.updateGraphNode).toHaveBeenCalledWith(
+        "acme",
+        "future",
+        "draft",
+        "node_revenue",
+        { timeserieId: null, timeserieSecondaryId: null }
+      );
+    });
+  });
+
+  it("shows effective timeserie states and creates a missing record", async () => {
+    renderStructureTab();
+    await screen.findByRole("region", { name: "Person nodes" });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Select revenue node in graph" })
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Timeserie" }));
+
+    const panel = screen.getByRole("region", { name: "Timeserie" });
+    const primary = within(panel).getByRole("region", { name: "Primary timeserie" });
+    const secondary = within(panel).getByRole("region", {
+      name: "Secondary timeserie"
+    });
+
+    await waitFor(() => {
+      expect(within(primary).getByText("Exists")).toBeInTheDocument();
+      expect(within(secondary).getByText("Missing")).toBeInTheDocument();
+    });
+
+    fireEvent.change(within(secondary).getByLabelText("Name"), {
+      target: { value: "Revenue secondary" }
+    });
+    fireEvent.change(within(secondary).getByLabelText("Unit"), {
+      target: { value: "%" }
+    });
+    fireEvent.change(within(secondary).getByLabelText("Time unit"), {
+      target: { value: "year" }
+    });
+    fireEvent.change(within(secondary).getByLabelText("Value unit"), {
+      target: { value: "boolean" }
+    });
+    fireEvent.click(
+      within(secondary).getByRole("button", { name: "Create timeserie" })
+    );
+
+    await waitFor(() => {
+      expect(timeseriesApi.createTimeserie).toHaveBeenCalledWith(
+        "acme",
+        "future",
+        {
+          id: "id2",
+          name: "Revenue secondary",
+          description: null,
+          unit: "%",
+          timeUnit: "year",
+          valueUnit: "boolean"
+        }
+      );
+      expect(within(secondary).getByText("Exists")).toBeInTheDocument();
+    });
+  });
+
+  it("deletes existing timeseries only after confirmation", async () => {
+    renderStructureTab();
+    await screen.findByRole("region", { name: "Person nodes" });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Select revenue node in graph" })
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Timeserie" }));
+
+    const panel = screen.getByRole("region", { name: "Timeserie" });
+    const primary = within(panel).getByRole("region", { name: "Primary timeserie" });
+    await waitFor(() => {
+      expect(within(primary).getByText("Exists")).toBeInTheDocument();
+    });
+
+    fireEvent.click(within(primary).getByRole("button", { name: "Delete timeserie" }));
+    expect(
+      within(primary).getByText("Are you sure you want to delete this timeserie?")
+    ).toBeInTheDocument();
+
+    fireEvent.click(within(primary).getByRole("button", { name: "No" }));
+    expect(timeseriesApi.deleteTimeserie).not.toHaveBeenCalled();
+
+    fireEvent.click(within(primary).getByRole("button", { name: "Delete timeserie" }));
+    fireEvent.click(within(primary).getByRole("button", { name: "Yes" }));
+
+    await waitFor(() => {
+      expect(timeseriesApi.deleteTimeserie).toHaveBeenCalledWith(
+        "acme",
+        "future",
+        "id1"
+      );
+      expect(within(primary).getByText("Missing")).toBeInTheDocument();
+    });
   });
 
   it("blocks self-referencing create edges and shows the hint on the submit control", async () => {

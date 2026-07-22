@@ -126,6 +126,16 @@ Frontend API client:
 
 - `frontend/src/api/orgTwinStructure.ts`
 
+Graph node responses expose stable primary and secondary timeserie keys as
+`timeserieId` and `timeserieSecondaryId`. Graph node patch requests may update
+these links by stable scenario-owned timeserie key or clear them with `null`.
+The backend resolves these stable keys to internal ids and rejects missing,
+soft-deleted or cross-scenario timeseries.
+
+Type catalog node type metadata exposes `timeserieId`,
+`timeserieSecondaryId` and `timeserieIdRule` so the Structure UI can identify
+timeseries-capable node types and display inherited timeserie metadata.
+
 Authorization and permission enforcement are not implemented in the Structure
 baseline. They must be added through a separate task before these endpoints are
 treated as a production authorization boundary.
@@ -185,8 +195,8 @@ Flow:
 1. Frontend loads graph data and type catalog for the selected organisation,
    scenario and organisation state.
 2. User creates, edits or deletes graph nodes and graph edges.
-3. Backend validates graph context, stable keys, type references and allowed
-   connections.
+3. Backend validates graph context, stable keys, type references, timeserie
+   references and allowed connections.
 4. Backend persists the mutation through Organisation Twin Structure Domain
    tables.
 5. Frontend updates the graph view from the returned response.

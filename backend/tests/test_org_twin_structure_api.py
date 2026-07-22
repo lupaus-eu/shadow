@@ -144,6 +144,9 @@ def test_type_catalog_returns_active_organisation_metamodel_metadata(
         assert person_type is not None
         person_type.display_name = "Organisation person"
         person_type.ui_color = "#ABCDEF"
+        person_type.timeserie_id = "id1"
+        person_type.timeserie_secondary_id = "id2"
+        person_type.timeserie_id_rule = "MEASURED_BY from Goal"
 
         inactive_node_type = NodeType(
             metamodel_id=metamodel.metamodel_id,
@@ -195,6 +198,9 @@ def test_type_catalog_returns_active_organisation_metamodel_metadata(
                 "displayName": "Organisation person",
                 "color": "#ABCDEF",
                 "shape": "rectangle",
+                "timeserieId": "id1",
+                "timeserieSecondaryId": "id2",
+                "timeserieIdRule": "MEASURED_BY from Goal",
             },
             {
                 "id": "nt_team",
@@ -202,6 +208,9 @@ def test_type_catalog_returns_active_organisation_metamodel_metadata(
                 "displayName": "Team",
                 "color": "#D9F99D",
                 "shape": "ellipse",
+                "timeserieId": None,
+                "timeserieSecondaryId": None,
+                "timeserieIdRule": None,
             },
         ],
         "edgeTypes": [
@@ -372,6 +381,8 @@ def test_node_edge_crud_and_bulk_position_update(client: TestClient) -> None:
         "createDate": "2020-01-01",
         "position": {"x": 10.5, "y": 20.25},
         "attributes": {"name": "CEO"},
+        "timeserieId": None,
+        "timeserieSecondaryId": None,
     }
 
     edge_response = client.post(
@@ -438,6 +449,74 @@ def test_node_edge_crud_and_bulk_position_update(client: TestClient) -> None:
     assert graph_response.status_code == 200
     assert [node["id"] for node in graph_response.json()["nodes"]] == ["node_ceo"]
     assert graph_response.json()["edges"] == []
+
+
+def test_graph_node_patch_updates_timeserie_links_by_stable_keys(
+    client: TestClient,
+) -> None:
+    organisation_key = _create_organisation(client)
+    graph_path = _graph_path(organisation_key, "initial_state")
+    timeseries_path = (
+        f"/api/v1/organisations/{organisation_key}/scenarios/reality/timeseries"
+    )
+
+    for timeserie_id in ["metric_primary", "metric_secondary"]:
+        response = client.post(
+            timeseries_path,
+            json={
+                "id": timeserie_id,
+                "name": timeserie_id,
+                "timeUnit": "month",
+                "valueUnit": "number",
+            },
+        )
+        assert response.status_code == 201
+
+    assert (
+        client.post(
+            f"{graph_path}/nodes",
+            json={"id": "node_metric", "name": "Metric", "nodeTypeId": "nt_person"},
+        ).status_code
+        == 201
+    )
+
+    link_response = client.patch(
+        f"{graph_path}/nodes/node_metric",
+        json={
+            "timeserieId": "metric_primary",
+            "timeserieSecondaryId": "metric_secondary",
+        },
+    )
+
+    assert link_response.status_code == 200
+    assert link_response.json()["timeserieId"] == "metric_primary"
+    assert link_response.json()["timeserieSecondaryId"] == "metric_secondary"
+    graph_response = client.get(graph_path)
+    assert graph_response.status_code == 200
+    assert graph_response.json()["nodes"][0]["timeserieId"] == "metric_primary"
+
+    clear_response = client.patch(
+        f"{graph_path}/nodes/node_metric",
+        json={"timeserieId": None, "timeserieSecondaryId": None},
+    )
+
+    assert clear_response.status_code == 200
+    assert clear_response.json()["timeserieId"] is None
+    assert clear_response.json()["timeserieSecondaryId"] is None
+    assert (
+        client.patch(
+            f"{graph_path}/nodes/node_metric",
+            json={"timeserieId": "missing"},
+        ).status_code
+        == 404
+    )
+    assert (
+        client.patch(
+            f"{graph_path}/nodes/node_metric",
+            json={"timeserieId": "  "},
+        ).status_code
+        == 422
+    )
 
 
 def test_structure_endpoints_validate_conflicts_and_missing_resources(

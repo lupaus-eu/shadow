@@ -5,7 +5,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from app.api.v1.org_states.models import OrgState, Scenario
+from app.api.v1.org_states.models import OrgState, Scenario, Timeserie
 from app.api.v1.org_twin_structure.models import (
     AllowedConnection,
     EdgeType,
@@ -202,6 +202,18 @@ def patch_graph_node(
         _apply_position(node, payload.position)
     if "attributes" in update_data and payload.attributes is not None:
         node.attributes = payload.attributes
+    if "timeserie_id" in update_data:
+        node.timeserie_id = _resolve_optional_timeserie_id(
+            session,
+            scenario,
+            payload.timeserie_id,
+        )
+    if "timeserie_secondary_id" in update_data:
+        node.timeserie_secondary_id = _resolve_optional_timeserie_id(
+            session,
+            scenario,
+            payload.timeserie_secondary_id,
+        )
 
     node.modified_time = datetime.now(UTC)
     session.commit()
@@ -641,6 +653,31 @@ def copy_graph_snapshots_for_org_states(
     session.flush()
 
 
+def clear_timeserie_references(
+    session: Session,
+    scenario_id: int,
+    timeserie_id: int,
+    modified_time: datetime,
+) -> None:
+    nodes = session.scalars(
+        select(GraphNode).where(
+            GraphNode.scenario_id == scenario_id,
+            GraphNode.deleted_time.is_(None),
+            or_(
+                GraphNode.timeserie_id == timeserie_id,
+                GraphNode.timeserie_secondary_id == timeserie_id,
+            ),
+        ),
+    ).all()
+
+    for node in nodes:
+        if node.timeserie_id == timeserie_id:
+            node.timeserie_id = None
+        if node.timeserie_secondary_id == timeserie_id:
+            node.timeserie_secondary_id = None
+        node.modified_time = modified_time
+
+
 def to_graph_response(
     session: Session,
     organisation: Organisation,
@@ -700,6 +737,11 @@ def to_graph_node_response(session: Session, node: GraphNode) -> GraphNodeRespon
         createDate=node.create_date,
         position=position,
         attributes=node.attributes,
+        timeserieId=_active_timeserie_key_by_id(session, node.timeserie_id),
+        timeserieSecondaryId=_active_timeserie_key_by_id(
+            session,
+            node.timeserie_secondary_id,
+        ),
     )
 
 
@@ -733,6 +775,9 @@ def to_node_type_metadata_response(
         displayName=node_type.display_name,
         color=node_type.ui_color,
         shape=node_type.ui_shape,
+        timeserieId=node_type.timeserie_id,
+        timeserieSecondaryId=node_type.timeserie_secondary_id,
+        timeserieIdRule=node_type.timeserie_id_rule,
     )
 
 
@@ -891,6 +936,45 @@ def _get_visible_graph_edge(
         edge_target_key(session, edge),
     )
     return edge
+
+
+def _resolve_optional_timeserie_id(
+    session: Session,
+    scenario: Scenario,
+    timeserie_key: str | None,
+) -> int | None:
+    if timeserie_key is None:
+        return None
+
+    timeserie_id = session.scalar(
+        select(Timeserie.timeserie_id).where(
+            Timeserie.scenario_id == scenario.scenario_id,
+            Timeserie.timeserie_key == timeserie_key,
+            Timeserie.deleted_time.is_(None),
+        ),
+    )
+    if timeserie_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Timeserie not found.",
+        )
+
+    return timeserie_id
+
+
+def _active_timeserie_key_by_id(
+    session: Session,
+    timeserie_id: int | None,
+) -> str | None:
+    if timeserie_id is None:
+        return None
+
+    return session.scalar(
+        select(Timeserie.timeserie_key).where(
+            Timeserie.timeserie_id == timeserie_id,
+            Timeserie.deleted_time.is_(None),
+        ),
+    )
 
 
 def edge_source_key(session: Session, edge: GraphEdge) -> str:

@@ -16,6 +16,9 @@ from app.api.v1.org_states.schemas import (
     ScenarioCreateRequest,
     ScenarioPatchRequest,
     ScenarioResponse,
+    TimeserieCreateRequest,
+    TimeserieExistsResponse,
+    TimeserieResponse,
 )
 from app.core.database import get_db_session
 
@@ -97,6 +100,80 @@ def delete_scenario(
     session: SessionDependency,
 ) -> Response:
     org_states_service.soft_delete_scenario(session, organisation_key, scenario_key)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post(
+    "/{organisation_key}/scenarios/{scenario_key}/timeseries",
+    response_model=TimeserieResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_timeserie(
+    organisation_key: str,
+    scenario_key: str,
+    payload: TimeserieCreateRequest,
+    session: SessionDependency,
+) -> TimeserieResponse:
+    return org_states_service.create_timeserie(
+        session,
+        organisation_key,
+        scenario_key,
+        payload,
+    )
+
+
+@router.get(
+    "/{organisation_key}/scenarios/{scenario_key}/timeseries/{timeserie_key}",
+    response_model=TimeserieResponse,
+)
+def get_timeserie(
+    organisation_key: str,
+    scenario_key: str,
+    timeserie_key: str,
+    session: SessionDependency,
+) -> TimeserieResponse:
+    return org_states_service.get_timeserie(
+        session,
+        organisation_key,
+        scenario_key,
+        timeserie_key,
+    )
+
+
+@router.get(
+    "/{organisation_key}/scenarios/{scenario_key}/timeseries/{timeserie_key}/exists",
+    response_model=TimeserieExistsResponse,
+)
+def timeserie_exists(
+    organisation_key: str,
+    scenario_key: str,
+    timeserie_key: str,
+    session: SessionDependency,
+) -> TimeserieExistsResponse:
+    return org_states_service.timeserie_exists(
+        session,
+        organisation_key,
+        scenario_key,
+        timeserie_key,
+    )
+
+
+@router.delete(
+    "/{organisation_key}/scenarios/{scenario_key}/timeseries/{timeserie_key}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_timeserie(
+    organisation_key: str,
+    scenario_key: str,
+    timeserie_key: str,
+    session: SessionDependency,
+) -> Response:
+    org_states_service.soft_delete_timeserie(
+        session,
+        organisation_key,
+        scenario_key,
+        timeserie_key,
+    )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
