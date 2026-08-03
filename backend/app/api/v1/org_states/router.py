@@ -19,6 +19,7 @@ from app.api.v1.org_states.schemas import (
     TimeserieCreateRequest,
     TimeserieExistsResponse,
     TimeserieResponse,
+    TimeserieValuesPatchRequest,
 )
 from app.core.database import get_db_session
 
@@ -123,6 +124,22 @@ def create_timeserie(
 
 
 @router.get(
+    "/{organisation_key}/scenarios/{scenario_key}/timeseries",
+    response_model=list[TimeserieResponse],
+)
+def list_scenario_timeseries(
+    organisation_key: str,
+    scenario_key: str,
+    session: SessionDependency,
+) -> list[TimeserieResponse]:
+    return org_states_service.list_scenario_timeseries(
+        session,
+        organisation_key,
+        scenario_key,
+    )
+
+
+@router.get(
     "/{organisation_key}/scenarios/{scenario_key}/timeseries/{timeserie_key}",
     response_model=TimeserieResponse,
 )
@@ -155,6 +172,26 @@ def timeserie_exists(
         organisation_key,
         scenario_key,
         timeserie_key,
+    )
+
+
+@router.patch(
+    "/{organisation_key}/scenarios/{scenario_key}/timeseries/{timeserie_key}/values",
+    response_model=TimeserieResponse,
+)
+def replace_timeserie_values(
+    organisation_key: str,
+    scenario_key: str,
+    timeserie_key: str,
+    payload: TimeserieValuesPatchRequest,
+    session: SessionDependency,
+) -> TimeserieResponse:
+    return org_states_service.replace_timeserie_values(
+        session,
+        organisation_key,
+        scenario_key,
+        timeserie_key,
+        payload,
     )
 
 

@@ -1,4 +1,5 @@
-from datetime import date
+import math
+from datetime import date as dt_date
 from typing import Literal
 
 from pydantic import Field, field_validator
@@ -7,6 +8,7 @@ from app.core.schemas import StrictBaseModel
 
 type TimeserieTimeUnit = Literal["day", "week", "month", "year"]
 type TimeserieValueUnit = Literal["number", "string", "boolean"]
+type TimeserieCellValue = int | float | str | bool
 
 
 class ScenarioCreateRequest(StrictBaseModel):
@@ -102,7 +104,7 @@ class OrgStateCreateRequest(StrictBaseModel):
         default=None,
         description="Organisation state description.",
     )
-    target_date: date = Field(
+    target_date: dt_date = Field(
         alias="targetDate",
         description="Organisation state target date.",
     )
@@ -126,7 +128,7 @@ class OrgStatePatchRequest(StrictBaseModel):
         default=None,
         description="Organisation state description.",
     )
-    target_date: date | None = Field(
+    target_date: dt_date | None = Field(
         default=None,
         alias="targetDate",
         description="Organisation state target date.",
@@ -148,7 +150,7 @@ class OrgStateResponse(StrictBaseModel):
     id: str = Field(description="Stable organisation state key.")
     name: str = Field(description="Organisation state display name.")
     description: str = Field(description="Organisation state description.")
-    target_date: date = Field(
+    target_date: dt_date = Field(
         alias="targetDate",
         description="Organisation state target date.",
     )
@@ -160,7 +162,7 @@ class OrgStatesCleanResponse(StrictBaseModel):
 
 class EventCreateRequest(StrictBaseModel):
     name: str = Field(min_length=1, description="Event display name.")
-    target_date: date = Field(
+    target_date: dt_date = Field(
         alias="targetDate",
         description="Event target date.",
     )
@@ -185,7 +187,7 @@ class EventPatchRequest(StrictBaseModel):
         min_length=1,
         description="Event display name.",
     )
-    target_date: date | None = Field(
+    target_date: dt_date | None = Field(
         default=None,
         alias="targetDate",
         description="Event target date.",
@@ -211,7 +213,7 @@ class EventPatchRequest(StrictBaseModel):
 class EventResponse(StrictBaseModel):
     id: str = Field(description="Stable event key.")
     name: str = Field(description="Event display name.")
-    target_date: date = Field(
+    target_date: dt_date = Field(
         alias="targetDate",
         description="Event target date.",
     )
@@ -259,6 +261,37 @@ class TimeserieCreateRequest(StrictBaseModel):
         return stripped or None
 
 
+class TimeserieValueRequest(StrictBaseModel):
+    date: dt_date = Field(description="Value start date.")
+    value: TimeserieCellValue = Field(description="Typed cell value.")
+
+    @field_validator("value")
+    @classmethod
+    def numeric_values_must_be_finite(
+        cls,
+        value: TimeserieCellValue,
+    ) -> TimeserieCellValue:
+        if isinstance(value, float) and not math.isfinite(value):
+            raise ValueError("Number value must be finite.")
+        return value
+
+
+def _empty_timeserie_values() -> list[TimeserieValueRequest]:
+    return []
+
+
+class TimeserieValuesPatchRequest(StrictBaseModel):
+    values: list[TimeserieValueRequest] = Field(
+        default_factory=_empty_timeserie_values,
+        description="Replacement set of active values for the timeserie.",
+    )
+
+
+class TimeserieValueResponse(StrictBaseModel):
+    date: dt_date = Field(description="Value start date.")
+    value: TimeserieCellValue = Field(description="Typed cell value.")
+
+
 class TimeserieResponse(StrictBaseModel):
     id: str = Field(description="Stable timeserie key.")
     name: str = Field(description="Timeserie display name.")
@@ -271,6 +304,9 @@ class TimeserieResponse(StrictBaseModel):
     value_unit: TimeserieValueUnit = Field(
         alias="valueUnit",
         description="Timeserie value type.",
+    )
+    values: list[TimeserieValueResponse] = Field(
+        description="Active values sorted by start date.",
     )
 
 

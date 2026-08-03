@@ -67,7 +67,7 @@ db/migrations/003_alter_scenario_target_dates_not_null.sql
 | `graph_nodes` | Nodes in a graph snapshot | Dynamic attributes are stored as `JSONB`; primary and secondary timeserie references are nullable FKs. |
 | `graph_edges` | Edges in a graph snapshot | References source and target graph nodes. |
 | `timeseries` | Scenario-specific timeseries definitions | Supports `day`, `week`, `month`, `year` time units. |
-| `timeserie_values` | Timeseries values by date | No `name` column; value is stored as `JSONB`. |
+| `timeserie_values` | Timeseries values by date | No `name` column; value is stored as `JSONB` with the public scalar under `value`. |
 
 ---
 
@@ -98,6 +98,9 @@ Primary key names follow table-specific singular names, for example `scenario_id
 - `graph_nodes` timeserie references use `ON DELETE SET NULL`.
 - `timeseries.time_unit` is constrained to `day`, `week`, `month` or `year`.
 - `timeseries.value_unit` is constrained to `number`, `string` or `boolean`.
+- Timeserie value replacement is application-level behavior: active omitted
+  values are soft-deleted, submitted dates can reactivate soft-deleted rows and
+  the service validates value type plus time-unit start date.
 - `type_attributes` enforces exactly one owner reference matching `owner_kind`.
 
 Soft-delete propagation is not automatic in PostgreSQL. Application or service logic must set `deleted_time` on scenario-owned rows when a scenario is soft-deleted.

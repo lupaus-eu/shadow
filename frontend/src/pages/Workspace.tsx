@@ -9,6 +9,7 @@ import {
 } from "react-router-dom";
 import EmptyTab from "../components/EmptyTab";
 import EventsTab from "../features/events/EventsTab";
+import MetricsTab from "../features/metrics/MetricsTab";
 import ScenariosTab from "../features/scenarios/ScenariosTab";
 import StructureTab from "../features/structure/StructureTab";
 import { useWorkspaceSelection } from "../workspace/WorkspaceSelectionContext";
@@ -180,6 +181,10 @@ function WorkspaceTabContent(props: { tab: WorkspaceTab; orgId: string }) {
 
   if (props.tab.signature === "events") {
     return <EventsTab orgId={props.orgId} />;
+  }
+
+  if (props.tab.signature === "metrics") {
+    return <MetricsTab orgId={props.orgId} />;
   }
 
   if (props.tab.signature === "graph") {

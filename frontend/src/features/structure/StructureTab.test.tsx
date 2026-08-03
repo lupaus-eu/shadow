@@ -324,7 +324,8 @@ describe("StructureTab", () => {
         description: payload.description ?? "",
         unit: payload.unit ?? "",
         timeUnit: payload.timeUnit,
-        valueUnit: payload.valueUnit
+        valueUnit: payload.valueUnit,
+        values: []
       })
     );
     vi.mocked(timeseriesApi.deleteTimeserie).mockResolvedValue(undefined);

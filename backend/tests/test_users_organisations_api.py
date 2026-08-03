@@ -1,6 +1,6 @@
 import logging
 from collections.abc import Iterator
-from datetime import date
+from datetime import UTC, date, datetime
 from typing import cast
 
 import pytest
@@ -1121,6 +1121,7 @@ def test_timeserie_crud_uses_stable_keys_and_validates_units(
         "unit": "EUR",
         "timeUnit": "month",
         "valueUnit": "number",
+        "values": [],
     }
     assert client.get(f"{path}/revenue").json() == create_response.json()
     assert client.get(f"{path}/revenue/exists").json() == {
@@ -1165,6 +1166,291 @@ def test_timeserie_crud_uses_stable_keys_and_validates_units(
                 "timeUnit": "month",
                 "valueUnit": "number",
             },
+        ).status_code
+        == 422
+    )
+
+
+def test_timeseries_list_returns_sorted_rows_and_active_sorted_values(
+    client: TestClient,
+    session_factory: sessionmaker[Session],
+) -> None:
+    organisation_key = _create_organisation(client)
+    path = f"/api/v1/organisations/{organisation_key}/scenarios/reality/timeseries"
+    assert (
+        client.post(
+            path,
+            json={
+                "id": "revenue",
+                "name": "Revenue",
+                "timeUnit": "month",
+                "valueUnit": "number",
+            },
+        ).status_code
+        == 201
+    )
+    assert (
+        client.post(
+            path,
+            json={
+                "id": "capacity",
+                "name": "Capacity",
+                "timeUnit": "week",
+                "valueUnit": "boolean",
+            },
+        ).status_code
+        == 201
+    )
+
+    with session_factory() as session:
+        organisation = _get_organisation(session, organisation_key)
+        scenario = _get_scenario(session, organisation, "reality")
+        revenue = session.scalar(
+            select(Timeserie).where(
+                Timeserie.scenario_id == scenario.scenario_id,
+                Timeserie.timeserie_key == "revenue",
+            ),
+        )
+        capacity = session.scalar(
+            select(Timeserie).where(
+                Timeserie.scenario_id == scenario.scenario_id,
+                Timeserie.timeserie_key == "capacity",
+            ),
+        )
+        assert revenue is not None
+        assert capacity is not None
+        deleted_time = datetime.now(UTC)
+        session.add_all(
+            [
+                TimeserieValue(
+                    timeserie_id=revenue.timeserie_id,
+                    date=date(2030, 2, 1),
+                    value={"value": 2000},
+                ),
+                TimeserieValue(
+                    timeserie_id=revenue.timeserie_id,
+                    date=date(2030, 1, 1),
+                    value={"value": 1000},
+                ),
+                TimeserieValue(
+                    timeserie_id=revenue.timeserie_id,
+                    date=date(2030, 3, 1),
+                    value={"value": 3000},
+                    deleted_time=deleted_time,
+                ),
+                TimeserieValue(
+                    timeserie_id=capacity.timeserie_id,
+                    date=date(2030, 1, 7),
+                    value={"value": True},
+                ),
+            ],
+        )
+        session.commit()
+
+    list_response = client.get(path)
+
+    assert list_response.status_code == 200
+    assert [item["id"] for item in list_response.json()] == ["capacity", "revenue"]
+    assert list_response.json()[0]["values"] == [
+        {"date": "2030-01-07", "value": True},
+    ]
+    assert list_response.json()[1]["values"] == [
+        {"date": "2030-01-01", "value": 1000},
+        {"date": "2030-02-01", "value": 2000},
+    ]
+    assert client.get(f"{path}/revenue").json()["values"] == [
+        {"date": "2030-01-01", "value": 1000},
+        {"date": "2030-02-01", "value": 2000},
+    ]
+
+
+def test_timeserie_values_replace_number_values_and_soft_delete_omissions(
+    client: TestClient,
+    session_factory: sessionmaker[Session],
+) -> None:
+    organisation_key = _create_organisation(client)
+    path = f"/api/v1/organisations/{organisation_key}/scenarios/reality/timeseries"
+    assert (
+        client.post(
+            path,
+            json={
+                "id": "revenue",
+                "name": "Revenue",
+                "timeUnit": "month",
+                "valueUnit": "number",
+            },
+        ).status_code
+        == 201
+    )
+
+    replace_response = client.patch(
+        f"{path}/revenue/values",
+        json={
+            "values": [
+                {"date": "2030-02-01", "value": 2000},
+                {"date": "2030-01-01", "value": 1000},
+                {"date": "2030-01-01", "value": 1250.5},
+            ],
+        },
+    )
+
+    assert replace_response.status_code == 200
+    assert replace_response.json()["values"] == [
+        {"date": "2030-01-01", "value": 1250.5},
+        {"date": "2030-02-01", "value": 2000},
+    ]
+
+    omit_response = client.patch(
+        f"{path}/revenue/values",
+        json={"values": [{"date": "2030-02-01", "value": 2100}]},
+    )
+
+    assert omit_response.status_code == 200
+    assert omit_response.json()["values"] == [
+        {"date": "2030-02-01", "value": 2100},
+    ]
+
+    with session_factory() as session:
+        organisation = _get_organisation(session, organisation_key)
+        scenario = _get_scenario(session, organisation, "reality")
+        revenue = session.scalar(
+            select(Timeserie).where(
+                Timeserie.scenario_id == scenario.scenario_id,
+                Timeserie.timeserie_key == "revenue",
+            ),
+        )
+        assert revenue is not None
+        january = session.scalar(
+            select(TimeserieValue).where(
+                TimeserieValue.timeserie_id == revenue.timeserie_id,
+                TimeserieValue.date == date(2030, 1, 1),
+            ),
+        )
+        february = session.scalar(
+            select(TimeserieValue).where(
+                TimeserieValue.timeserie_id == revenue.timeserie_id,
+                TimeserieValue.date == date(2030, 2, 1),
+            ),
+        )
+
+        assert january is not None
+        assert january.deleted_time is not None
+        assert february is not None
+        assert february.deleted_time is None
+        assert february.value == {"value": 2100}
+
+
+def test_timeserie_values_replace_string_and_boolean_values(
+    client: TestClient,
+) -> None:
+    organisation_key = _create_organisation(client)
+    path = f"/api/v1/organisations/{organisation_key}/scenarios/reality/timeseries"
+    assert (
+        client.post(
+            path,
+            json={
+                "id": "status",
+                "name": "Status",
+                "timeUnit": "day",
+                "valueUnit": "string",
+            },
+        ).status_code
+        == 201
+    )
+    assert (
+        client.post(
+            path,
+            json={
+                "id": "open",
+                "name": "Open",
+                "timeUnit": "year",
+                "valueUnit": "boolean",
+            },
+        ).status_code
+        == 201
+    )
+
+    string_response = client.patch(
+        f"{path}/status/values",
+        json={"values": [{"date": "2030-01-02", "value": "ready"}]},
+    )
+    boolean_response = client.patch(
+        f"{path}/open/values",
+        json={"values": [{"date": "2030-01-01", "value": False}]},
+    )
+
+    assert string_response.status_code == 200
+    assert string_response.json()["values"] == [
+        {"date": "2030-01-02", "value": "ready"},
+    ]
+    assert boolean_response.status_code == 200
+    assert boolean_response.json()["values"] == [
+        {"date": "2030-01-01", "value": False},
+    ]
+
+
+def test_timeserie_values_reject_invalid_value_types_and_start_dates(
+    client: TestClient,
+) -> None:
+    organisation_key = _create_organisation(client)
+    path = f"/api/v1/organisations/{organisation_key}/scenarios/reality/timeseries"
+    assert (
+        client.post(
+            path,
+            json={
+                "id": "revenue",
+                "name": "Revenue",
+                "timeUnit": "month",
+                "valueUnit": "number",
+            },
+        ).status_code
+        == 201
+    )
+    assert (
+        client.post(
+            path,
+            json={
+                "id": "capacity",
+                "name": "Capacity",
+                "timeUnit": "week",
+                "valueUnit": "boolean",
+            },
+        ).status_code
+        == 201
+    )
+
+    assert (
+        client.patch(
+            f"{path}/revenue/values",
+            json={"values": [{"date": "2030-01-01", "value": "1000"}]},
+        ).status_code
+        == 422
+    )
+    assert (
+        client.patch(
+            f"{path}/revenue/values",
+            json={"values": [{"date": "2030-01-01", "value": 10**400}]},
+        ).status_code
+        == 422
+    )
+    assert (
+        client.patch(
+            f"{path}/revenue/values",
+            json={"values": [{"date": "2030-01-02", "value": 1000}]},
+        ).status_code
+        == 422
+    )
+    assert (
+        client.patch(
+            f"{path}/capacity/values",
+            json={"values": [{"date": "2030-01-08", "value": True}]},
+        ).status_code
+        == 422
+    )
+    assert (
+        client.patch(
+            f"{path}/capacity/values",
+            json={"values": [{"date": "2030-01-07", "value": 1}]},
         ).status_code
         == 422
     )

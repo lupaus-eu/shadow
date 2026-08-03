@@ -1,0 +1,524 @@
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within
+} from "@testing-library/react";
+import type { ContextType } from "react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import * as timeseriesApi from "../../api/timeseries";
+import type { TimeserieDto } from "../../api/timeseries";
+import {
+  WorkspaceSelectionContext
+} from "../../workspace/WorkspaceSelectionContext";
+import MetricsTab from "./MetricsTab";
+
+vi.mock("../../api/timeseries", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../api/timeseries")>();
+  return {
+    ...actual,
+    fetchTimeseries: vi.fn(),
+    updateTimeserieValues: vi.fn()
+  };
+});
+
+const baseTimeseries: TimeserieDto[] = [
+  {
+    id: "revenue",
+    name: "Revenue",
+    description: "Monthly revenue",
+    unit: "EUR",
+    timeUnit: "month",
+    valueUnit: "number",
+    values: [
+      { date: "2030-01-01", value: 1000 },
+      { date: "2030-02-01", value: 2000 }
+    ]
+  },
+  {
+    id: "capacity",
+    name: "Capacity",
+    description: "",
+    unit: "",
+    timeUnit: "week",
+    valueUnit: "boolean",
+    values: [{ date: "2030-01-07", value: true }]
+  },
+  {
+    id: "status",
+    name: "Status",
+    description: "",
+    unit: "",
+    timeUnit: "day",
+    valueUnit: "string",
+    values: [{ date: "2030-01-01", value: "ready" }]
+  }
+];
+
+const sortableTimeseries: TimeserieDto[] = [
+  {
+    id: "col-c",
+    name: "Alpha",
+    description: "Gamma",
+    unit: "USD",
+    timeUnit: "year",
+    valueUnit: "string",
+    values: []
+  },
+  {
+    id: "col-a",
+    name: "Charlie",
+    description: "Alpha",
+    unit: "kg",
+    timeUnit: "day",
+    valueUnit: "boolean",
+    values: []
+  },
+  {
+    id: "col-b",
+    name: "Bravo",
+    description: "Beta",
+    unit: "EUR",
+    timeUnit: "month",
+    valueUnit: "number",
+    values: []
+  }
+];
+
+function renderMetricsTab(options?: {
+  scenario?: { id: string; name: string } | null;
+}) {
+  const context: ContextType<typeof WorkspaceSelectionContext> = {
+    selectedScenario:
+      options?.scenario === undefined
+        ? { id: "future", name: "Future plan" }
+        : options.scenario,
+    setSelectedScenario: vi.fn(),
+    selectedOrgState: null,
+    setSelectedOrgState: vi.fn()
+  };
+
+  return render(
+    <WorkspaceSelectionContext.Provider value={context}>
+      <MetricsTab orgId="acme" />
+    </WorkspaceSelectionContext.Provider>
+  );
+}
+
+function mockUpdateWithPayloadValues(sourceRows = baseTimeseries) {
+  vi.mocked(timeseriesApi.updateTimeserieValues).mockImplementation(
+    async (_orgId, _scenarioId, timeserieId, payload) => {
+      const source = sourceRows.find((row) => row.id === timeserieId);
+      if (!source) throw new Error("Missing mock row.");
+      return { ...source, values: payload.values };
+    }
+  );
+}
+
+describe("MetricsTab", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(timeseriesApi.fetchTimeseries).mockResolvedValue(baseTimeseries);
+    mockUpdateWithPayloadValues();
+  });
+
+  it("shows an empty state and does not fetch without a selected scenario", () => {
+    renderMetricsTab({ scenario: null });
+
+    expect(
+      screen.getByText("Select a scenario in Scenarios to activate this tab.")
+    ).toBeInTheDocument();
+    expect(timeseriesApi.fetchTimeseries).not.toHaveBeenCalled();
+  });
+
+  it("shows loading, empty and error states", async () => {
+    let resolveLoad!: (rows: TimeserieDto[]) => void;
+    vi.mocked(timeseriesApi.fetchTimeseries).mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveLoad = resolve;
+      })
+    );
+
+    renderMetricsTab();
+
+    expect(screen.getByText("Loading metrics...")).toBeInTheDocument();
+    resolveLoad([]);
+    expect(await screen.findByText("No metrics available.")).toBeInTheDocument();
+
+    vi.mocked(timeseriesApi.fetchTimeseries).mockRejectedValueOnce(
+      new Error("Metrics unavailable")
+    );
+    renderMetricsTab();
+
+    expect(await screen.findByText("Metrics API error")).toBeInTheDocument();
+    expect(
+      screen.getByText("Could not load metrics. Metrics unavailable")
+    ).toBeInTheDocument();
+  });
+
+  it("fetches timeseries for the selected scenario and renders typed cells", async () => {
+    renderMetricsTab();
+
+    expect(
+      await screen.findByRole("heading", { name: "Metrics", level: 1 })
+    ).toBeInTheDocument();
+    expect(timeseriesApi.fetchTimeseries).toHaveBeenCalledWith(
+      "acme",
+      "future",
+      expect.any(AbortSignal)
+    );
+    expect(screen.getByText("3 timeserie(s)")).toBeInTheDocument();
+    expect(screen.getByLabelText("Revenue 2030-01-01")).toHaveValue(1000);
+    expect(screen.getByLabelText("Status 2030-01-01")).toHaveValue("ready");
+    expect(screen.getByLabelText("Capacity 2030-01-07")).toHaveValue("true");
+    expect(
+      screen.getByLabelText("Revenue 2030-01-07 read-only")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Capacity 2030-01-01 read-only")
+    ).toBeInTheDocument();
+  });
+
+  it("sorts metric rows by every toolbar option", async () => {
+    vi.mocked(timeseriesApi.fetchTimeseries).mockResolvedValueOnce(
+      sortableTimeseries
+    );
+    renderMetricsTab();
+
+    const sortSelect = await screen.findByRole("combobox", {
+      name: "Sort metrics"
+    });
+    expect(
+      within(sortSelect).getAllByRole("option").map((option) => option.textContent)
+    ).toEqual([
+      "Sort by:",
+      "Timeserie name, asc.",
+      "Timeserie name, desc.",
+      "Col name, asc.",
+      "Col name, desc.",
+      "Description, asc.",
+      "Description, desc.",
+      "Unit, asc.",
+      "Unit, desc.",
+      "Time unit, asc.",
+      "Time unit, desc.",
+      "Value unit, asc.",
+      "Value unit, desc."
+    ]);
+
+    const rowNames = () =>
+      screen
+        .getAllByRole("rowheader")
+        .map((cell) => cell.querySelector("strong")?.textContent);
+    const expectations: Array<[string, string[]]> = [
+      ["name-asc", ["Alpha", "Bravo", "Charlie"]],
+      ["name-desc", ["Charlie", "Bravo", "Alpha"]],
+      ["id-asc", ["Charlie", "Bravo", "Alpha"]],
+      ["id-desc", ["Alpha", "Bravo", "Charlie"]],
+      ["description-asc", ["Charlie", "Bravo", "Alpha"]],
+      ["description-desc", ["Alpha", "Bravo", "Charlie"]],
+      ["unit-asc", ["Bravo", "Charlie", "Alpha"]],
+      ["unit-desc", ["Alpha", "Charlie", "Bravo"]],
+      ["time-unit-asc", ["Charlie", "Bravo", "Alpha"]],
+      ["time-unit-desc", ["Alpha", "Bravo", "Charlie"]],
+      ["value-unit-asc", ["Charlie", "Bravo", "Alpha"]],
+      ["value-unit-desc", ["Alpha", "Bravo", "Charlie"]]
+    ];
+
+    for (const [value, expectedNames] of expectations) {
+      fireEvent.change(sortSelect, { target: { value } });
+      expect(rowNames()).toEqual(expectedNames);
+    }
+  });
+
+  it("sorts time units in day, week, month, year order", async () => {
+    renderMetricsTab();
+
+    const sortSelect = await screen.findByRole("combobox", {
+      name: "Sort metrics"
+    });
+    const rowNames = () =>
+      screen
+        .getAllByRole("rowheader")
+        .map((cell) => cell.querySelector("strong")?.textContent);
+
+    fireEvent.change(sortSelect, { target: { value: "time-unit-asc" } });
+    expect(rowNames()).toEqual(["Status", "Capacity", "Revenue"]);
+
+    fireEvent.change(sortSelect, { target: { value: "time-unit-desc" } });
+    expect(rowNames()).toEqual(["Revenue", "Capacity", "Status"]);
+  });
+
+  it("adds manual columns and the next valid date for one row", async () => {
+    renderMetricsTab();
+
+    await screen.findByLabelText("Revenue 2030-01-01");
+    fireEvent.change(screen.getByLabelText("Date column"), {
+      target: { value: "2030-03-01" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add date" }));
+
+    expect(screen.getByLabelText("Revenue 2030-03-01")).toBeInTheDocument();
+
+    const revenueRow = screen.getByText("Revenue").closest("tr");
+    expect(revenueRow).not.toBeNull();
+    fireEvent.click(
+      within(revenueRow as HTMLElement).getByRole("button", {
+        name: "Add next date"
+      })
+    );
+
+    expect(screen.getByLabelText("Revenue 2030-04-01")).toBeInTheDocument();
+  });
+
+  it("saves one dirty row and omits blank cells from the payload", async () => {
+    renderMetricsTab();
+
+    const revenueRow = (await screen.findByText("Revenue")).closest("tr");
+    expect(revenueRow).not.toBeNull();
+    fireEvent.change(screen.getByLabelText("Revenue 2030-01-01"), {
+      target: { value: "1250" }
+    });
+    fireEvent.change(screen.getByLabelText("Revenue 2030-02-01"), {
+      target: { value: "" }
+    });
+
+    expect(within(revenueRow as HTMLElement).getByText("Changed")).toBeInTheDocument();
+    fireEvent.click(
+      within(revenueRow as HTMLElement).getByRole("button", { name: "Save row" })
+    );
+
+    await waitFor(() => {
+      expect(timeseriesApi.updateTimeserieValues).toHaveBeenCalledWith(
+        "acme",
+        "future",
+        "revenue",
+        { values: [{ date: "2030-01-01", value: 1250 }] }
+      );
+    });
+    expect(await screen.findByText("Saved Revenue.")).toBeInTheDocument();
+    const savedNotice = screen.getByRole("status");
+    fireEvent.click(
+      within(savedNotice).getByRole("button", {
+        name: "Dismiss Metrics saved notice"
+      })
+    );
+    expect(screen.queryByText("Saved Revenue.")).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByText("Changed")).not.toBeInTheDocument();
+    });
+  });
+
+  it("locks editing controls and shows a spinner while a row save is pending", async () => {
+    let resolveSave!: () => void;
+    vi.mocked(timeseriesApi.updateTimeserieValues).mockImplementationOnce(
+      async (_orgId, _scenarioId, _timeserieId, payload) =>
+        new Promise<void>((resolve) => {
+          resolveSave = resolve;
+        }).then(() => ({ ...baseTimeseries[0], values: payload.values }))
+    );
+    renderMetricsTab();
+
+    const revenueInput = await screen.findByLabelText("Revenue 2030-01-01");
+    fireEvent.change(revenueInput, { target: { value: "1250" } });
+    const revenueRow = screen.getByText("Revenue").closest("tr");
+    expect(revenueRow).not.toBeNull();
+    fireEvent.click(
+      within(revenueRow as HTMLElement).getByRole("button", { name: "Save row" })
+    );
+
+    const savingButton = within(revenueRow as HTMLElement).getByRole("button", {
+      name: "Saving..."
+    });
+    expect(savingButton).toHaveAttribute("aria-busy", "true");
+    expect(savingButton.querySelector(".metrics-saving-spinner")).toBeInTheDocument();
+    expect(revenueInput).toBeDisabled();
+    expect(screen.getByLabelText("Status 2030-01-01")).toBeDisabled();
+    expect(screen.getByLabelText("Date column")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Refresh" })).toBeDisabled();
+    expect(
+      within(revenueRow as HTMLElement).getByLabelText("CSV import for Revenue")
+    ).toBeDisabled();
+    expect(
+      within(revenueRow as HTMLElement).getByRole("button", {
+        name: "Add next date"
+      })
+    ).toBeDisabled();
+
+    resolveSave();
+    expect(await screen.findByText("Saved Revenue.")).toBeInTheDocument();
+    expect(revenueInput).toBeEnabled();
+  });
+
+  it("shows a save error, keeps the row dirty and unlocks editing", async () => {
+    vi.mocked(timeseriesApi.updateTimeserieValues).mockRejectedValueOnce(
+      new Error("Write unavailable")
+    );
+    renderMetricsTab();
+
+    const revenueInput = await screen.findByLabelText("Revenue 2030-01-01");
+    fireEvent.change(revenueInput, { target: { value: "1250" } });
+    const revenueRow = screen.getByText("Revenue").closest("tr");
+    expect(revenueRow).not.toBeNull();
+    fireEvent.click(
+      within(revenueRow as HTMLElement).getByRole("button", { name: "Save row" })
+    );
+
+    expect(
+      await screen.findByText("Could not save metrics. Write unavailable")
+    ).toBeInTheDocument();
+    expect(within(revenueRow as HTMLElement).getByText("Changed")).toBeInTheDocument();
+    expect(revenueInput).toBeEnabled();
+  });
+
+  it("saves all dirty number, string and boolean rows", async () => {
+    renderMetricsTab();
+
+    await screen.findByLabelText("Revenue 2030-01-01");
+    fireEvent.change(screen.getByLabelText("Revenue 2030-01-01"), {
+      target: { value: "1500" }
+    });
+    fireEvent.change(screen.getByLabelText("Status 2030-01-01"), {
+      target: { value: "blocked" }
+    });
+    fireEvent.change(screen.getByLabelText("Capacity 2030-01-07"), {
+      target: { value: "false" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() => {
+      expect(timeseriesApi.updateTimeserieValues).toHaveBeenCalledTimes(3);
+    });
+    expect(timeseriesApi.updateTimeserieValues).toHaveBeenCalledWith(
+      "acme",
+      "future",
+      "revenue",
+      expect.objectContaining({
+        values: expect.arrayContaining([
+          { date: "2030-01-01", value: 1500 }
+        ])
+      })
+    );
+    expect(timeseriesApi.updateTimeserieValues).toHaveBeenCalledWith(
+      "acme",
+      "future",
+      "status",
+      expect.objectContaining({
+        values: [{ date: "2030-01-01", value: "blocked" }]
+      })
+    );
+    expect(timeseriesApi.updateTimeserieValues).toHaveBeenCalledWith(
+      "acme",
+      "future",
+      "capacity",
+      expect.objectContaining({
+        values: [{ date: "2030-01-07", value: false }]
+      })
+    );
+  });
+
+  it("applies successful rows and leaves failed rows dirty after a partial bulk save", async () => {
+    vi.mocked(timeseriesApi.updateTimeserieValues).mockImplementation(
+      async (_orgId, _scenarioId, timeserieId, payload) => {
+        if (timeserieId === "status") throw new Error("Status write unavailable");
+        const source = baseTimeseries.find((row) => row.id === timeserieId);
+        if (!source) throw new Error("Missing mock row.");
+        return { ...source, values: payload.values };
+      }
+    );
+    renderMetricsTab();
+
+    fireEvent.change(await screen.findByLabelText("Revenue 2030-01-01"), {
+      target: { value: "1500" }
+    });
+    fireEvent.change(screen.getByLabelText("Status 2030-01-01"), {
+      target: { value: "blocked" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    expect(
+      await screen.findByText(
+        "Could not save 1 of 2 row(s). Saved 1 row(s). Status write unavailable"
+      )
+    ).toBeInTheDocument();
+    const revenueRow = screen.getByText("Revenue").closest("tr");
+    const statusRow = screen.getByText("Status").closest("tr");
+    expect(revenueRow).not.toBeNull();
+    expect(statusRow).not.toBeNull();
+    expect(
+      within(revenueRow as HTMLElement).queryByText("Changed")
+    ).not.toBeInTheDocument();
+    expect(within(statusRow as HTMLElement).getByText("Changed")).toBeInTheDocument();
+    expect(screen.getByLabelText("Status 2030-01-01")).toBeEnabled();
+  });
+
+  it("imports CSV values into one row and validates imported dates", async () => {
+    renderMetricsTab();
+
+    const revenueRow = (await screen.findByText("Revenue")).closest("tr");
+    expect(revenueRow).not.toBeNull();
+    const csvInput = within(revenueRow as HTMLElement).getByLabelText(
+      "CSV import for Revenue"
+    );
+
+    fireEvent.change(csvInput, {
+      target: { value: "2030-03-01,3000\n2030-04-01;4000" }
+    });
+    fireEvent.click(
+      within(revenueRow as HTMLElement).getByRole("button", {
+        name: "Import CSV"
+      })
+    );
+
+    expect(screen.getByLabelText("Revenue 2030-03-01")).toHaveValue(3000);
+    expect(screen.getByLabelText("Revenue 2030-04-01")).toHaveValue(4000);
+
+    fireEvent.change(csvInput, {
+      target: { value: "2030-04-02,5000" }
+    });
+    fireEvent.click(
+      within(revenueRow as HTMLElement).getByRole("button", {
+        name: "Import CSV"
+      })
+    );
+
+    const validationMessage = await screen.findByText(
+      "2030-04-02 is not valid for Revenue month values."
+    );
+    const errorNotice = validationMessage.closest('[role="alert"]');
+    expect(errorNotice).not.toBeNull();
+    fireEvent.click(
+      within(errorNotice as HTMLElement).getByRole("button", {
+        name: "Dismiss Action error notice"
+      })
+    );
+    expect(validationMessage).not.toBeInTheDocument();
+
+    fireEvent.change(csvInput, {
+      target: { value: "2030-04-01,not-a-number" }
+    });
+    fireEvent.click(
+      within(revenueRow as HTMLElement).getByRole("button", {
+        name: "Import CSV"
+      })
+    );
+    expect(
+      await screen.findByText(
+        "Revenue has an invalid number CSV value for 2030-04-01."
+      )
+    ).toBeInTheDocument();
+
+    fireEvent.change(csvInput, {
+      target: { value: "2030-04-01,4000,unexpected" }
+    });
+    fireEvent.click(
+      within(revenueRow as HTMLElement).getByRole("button", {
+        name: "Import CSV"
+      })
+    );
+    expect(
+      await screen.findByText("CSV rows must contain date and value.")
+    ).toBeInTheDocument();
+  });
+});

@@ -1,4 +1,5 @@
 import logging
+import math
 from datetime import UTC, datetime
 from datetime import date as dt_date
 from typing import cast
@@ -26,10 +27,13 @@ from app.api.v1.org_states.schemas import (
     ScenarioCreateRequest,
     ScenarioPatchRequest,
     ScenarioResponse,
+    TimeserieCellValue,
     TimeserieCreateRequest,
     TimeserieExistsResponse,
     TimeserieResponse,
     TimeserieTimeUnit,
+    TimeserieValueResponse,
+    TimeserieValuesPatchRequest,
     TimeserieValueUnit,
 )
 from app.api.v1.org_twin_structure import org_twin_structure_service
@@ -549,7 +553,37 @@ def get_timeserie(
         _normalise_stable_key(timeserie_key, "Timeserie id must not be blank."),
     )
 
-    return to_timeserie_response(timeserie)
+    values = _active_timeserie_values(session, timeserie)
+    return to_timeserie_response(timeserie, values)
+
+
+def list_scenario_timeseries(
+    session: Session,
+    organisation_key: str,
+    scenario_key: str,
+) -> list[TimeserieResponse]:
+    organisation = _get_active_organisation(session, organisation_key)
+    scenario = _get_active_scenario(session, organisation, scenario_key)
+    timeseries = session.scalars(
+        select(Timeserie)
+        .where(
+            Timeserie.scenario_id == scenario.scenario_id,
+            Timeserie.deleted_time.is_(None),
+        )
+        .order_by(Timeserie.timeserie_key, Timeserie.timeserie_id),
+    ).all()
+    values_by_timeserie_id = _active_values_by_timeserie_id(
+        session,
+        [timeserie.timeserie_id for timeserie in timeseries],
+    )
+
+    return [
+        to_timeserie_response(
+            timeserie,
+            values_by_timeserie_id.get(timeserie.timeserie_id, []),
+        )
+        for timeserie in timeseries
+    ]
 
 
 def timeserie_exists(
@@ -600,6 +634,70 @@ def create_timeserie(
     session.refresh(timeserie)
 
     return to_timeserie_response(timeserie)
+
+
+def replace_timeserie_values(
+    session: Session,
+    organisation_key: str,
+    scenario_key: str,
+    timeserie_key: str,
+    payload: TimeserieValuesPatchRequest,
+) -> TimeserieResponse:
+    organisation = _get_active_organisation(session, organisation_key)
+    scenario = _get_active_scenario(session, organisation, scenario_key)
+    timeserie = _get_active_timeserie(
+        session,
+        scenario,
+        _normalise_stable_key(timeserie_key, "Timeserie id must not be blank."),
+        for_update=True,
+    )
+
+    replacement_values: dict[dt_date, TimeserieCellValue] = {}
+    time_unit = cast(TimeserieTimeUnit, timeserie.time_unit)
+    value_unit = cast(TimeserieValueUnit, timeserie.value_unit)
+    for item in payload.values:
+        _ensure_timeserie_value_date_is_valid(time_unit, item.date)
+        replacement_values[item.date] = _normalise_timeserie_cell_value(
+            value_unit,
+            item.value,
+        )
+
+    now = datetime.now(UTC)
+    existing_values = session.scalars(
+        select(TimeserieValue)
+        .where(TimeserieValue.timeserie_id == timeserie.timeserie_id)
+        .with_for_update(),
+    ).all()
+    existing_by_date = {value.date: value for value in existing_values}
+
+    for value in existing_values:
+        if value.deleted_time is None and value.date not in replacement_values:
+            value.deleted_time = now
+            value.modified_time = now
+
+    for value_date, cell_value in replacement_values.items():
+        stored_value: dict[str, object] = {"value": cell_value}
+        existing_value = existing_by_date.get(value_date)
+        if existing_value is None:
+            session.add(
+                TimeserieValue(
+                    timeserie_id=timeserie.timeserie_id,
+                    date=value_date,
+                    value=stored_value,
+                ),
+            )
+            continue
+
+        existing_value.value = stored_value
+        existing_value.deleted_time = None
+        existing_value.modified_time = now
+
+    timeserie.modified_time = now
+    session.commit()
+    session.refresh(timeserie)
+
+    values = _active_timeserie_values(session, timeserie)
+    return to_timeserie_response(timeserie, values)
 
 
 def soft_delete_timeserie(
@@ -656,7 +754,10 @@ def to_event_response(event: Event) -> EventResponse:
     )
 
 
-def to_timeserie_response(timeserie: Timeserie) -> TimeserieResponse:
+def to_timeserie_response(
+    timeserie: Timeserie,
+    values: list[TimeserieValue] | None = None,
+) -> TimeserieResponse:
     return TimeserieResponse(
         id=timeserie.timeserie_key,
         name=timeserie.name,
@@ -664,6 +765,13 @@ def to_timeserie_response(timeserie: Timeserie) -> TimeserieResponse:
         unit=timeserie.unit or "",
         timeUnit=cast(TimeserieTimeUnit, timeserie.time_unit),
         valueUnit=cast(TimeserieValueUnit, timeserie.value_unit),
+        values=[
+            TimeserieValueResponse(
+                date=value.date,
+                value=_timeserie_cell_value_from_storage(value.value),
+            )
+            for value in (values or [])
+        ],
     )
 
 
@@ -747,14 +855,18 @@ def _get_active_timeserie(
     session: Session,
     scenario: Scenario,
     timeserie_key: str,
+    *,
+    for_update: bool = False,
 ) -> Timeserie:
-    timeserie = session.scalar(
-        select(Timeserie).where(
-            Timeserie.scenario_id == scenario.scenario_id,
-            Timeserie.timeserie_key == timeserie_key,
-            Timeserie.deleted_time.is_(None),
-        ),
+    query = select(Timeserie).where(
+        Timeserie.scenario_id == scenario.scenario_id,
+        Timeserie.timeserie_key == timeserie_key,
+        Timeserie.deleted_time.is_(None),
     )
+    if for_update:
+        query = query.with_for_update()
+
+    timeserie = session.scalar(query)
 
     if timeserie is None:
         raise HTTPException(
@@ -763,6 +875,123 @@ def _get_active_timeserie(
         )
 
     return timeserie
+
+
+def _active_timeserie_values(
+    session: Session,
+    timeserie: Timeserie,
+) -> list[TimeserieValue]:
+    return list(
+        session.scalars(
+            select(TimeserieValue)
+            .where(
+                TimeserieValue.timeserie_id == timeserie.timeserie_id,
+                TimeserieValue.deleted_time.is_(None),
+            )
+            .order_by(TimeserieValue.date, TimeserieValue.timeserie_value_id),
+        ).all(),
+    )
+
+
+def _active_values_by_timeserie_id(
+    session: Session,
+    timeserie_ids: list[int],
+) -> dict[int, list[TimeserieValue]]:
+    if not timeserie_ids:
+        return {}
+
+    values = session.scalars(
+        select(TimeserieValue)
+        .where(
+            TimeserieValue.timeserie_id.in_(timeserie_ids),
+            TimeserieValue.deleted_time.is_(None),
+        )
+        .order_by(
+            TimeserieValue.timeserie_id,
+            TimeserieValue.date,
+            TimeserieValue.timeserie_value_id,
+        ),
+    ).all()
+    values_by_timeserie_id: dict[int, list[TimeserieValue]] = {
+        timeserie_id: [] for timeserie_id in timeserie_ids
+    }
+    for value in values:
+        values_by_timeserie_id.setdefault(value.timeserie_id, []).append(value)
+
+    return values_by_timeserie_id
+
+
+def _ensure_timeserie_value_date_is_valid(
+    time_unit: TimeserieTimeUnit,
+    value_date: dt_date,
+) -> None:
+    if time_unit == "day":
+        return
+
+    valid = (
+        value_date.weekday() == 0
+        if time_unit == "week"
+        else value_date.day == 1
+        if time_unit == "month"
+        else value_date.month == 1 and value_date.day == 1
+    )
+    if not valid:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"{value_date.isoformat()} is not a valid {time_unit} start date.",
+        )
+
+
+def _normalise_timeserie_cell_value(
+    value_unit: TimeserieValueUnit,
+    value: TimeserieCellValue,
+) -> TimeserieCellValue:
+    if value_unit == "number":
+        is_finite_number = False
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            try:
+                is_finite_number = math.isfinite(float(value))
+            except OverflowError:
+                is_finite_number = False
+
+        if not is_finite_number:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="Timeserie value must be a finite number.",
+            )
+        return value
+
+    if value_unit == "string":
+        if not isinstance(value, str):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="Timeserie value must be a string.",
+            )
+        return value
+
+    if not isinstance(value, bool):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Timeserie value must be a boolean.",
+        )
+
+    return value
+
+
+def _timeserie_cell_value_from_storage(
+    stored_value: dict[str, object],
+) -> TimeserieCellValue:
+    raw_value = stored_value.get("value")
+    if isinstance(raw_value, bool):
+        return raw_value
+    if isinstance(raw_value, str):
+        return raw_value
+    if isinstance(raw_value, int):
+        return raw_value
+    if isinstance(raw_value, float) and math.isfinite(raw_value):
+        return raw_value
+
+    return ""
 
 
 def _soft_delete_events(

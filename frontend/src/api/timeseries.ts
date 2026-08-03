@@ -1,5 +1,11 @@
 export type TimeserieTimeUnit = "day" | "week" | "month" | "year";
 export type TimeserieValueUnit = "number" | "string" | "boolean";
+export type TimeserieCellValue = number | string | boolean;
+
+export type TimeserieValueDto = {
+  date: string;
+  value: TimeserieCellValue;
+};
 
 export type TimeserieDto = {
   id: string;
@@ -8,6 +14,7 @@ export type TimeserieDto = {
   unit: string;
   timeUnit: TimeserieTimeUnit;
   valueUnit: TimeserieValueUnit;
+  values: TimeserieValueDto[];
 };
 
 export type TimeserieCreateRequest = {
@@ -22,6 +29,10 @@ export type TimeserieCreateRequest = {
 export type TimeserieExistsDto = {
   id: string;
   exists: boolean;
+};
+
+export type TimeserieValuesUpdateRequest = {
+  values: TimeserieValueDto[];
 };
 
 export class ApiError extends Error {
@@ -71,6 +82,98 @@ async function requestJson<T>(
   return (await res.json()) as T;
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+}
+
+function pickString(
+  item: Record<string, unknown>,
+  keys: string[],
+  fallback = ""
+): string {
+  for (const key of keys) {
+    const value = item[key];
+    if (typeof value === "string") return value;
+    if (typeof value === "number") return String(value);
+  }
+  return fallback;
+}
+
+function pickArray(payload: unknown, keys: string[]): unknown[] {
+  if (Array.isArray(payload)) return payload;
+
+  const item = asRecord(payload);
+  for (const key of keys) {
+    const value = item[key];
+    if (Array.isArray(value)) return value;
+  }
+
+  return [];
+}
+
+function normalizeTimeUnit(value: string): TimeserieTimeUnit {
+  if (value === "day" || value === "week" || value === "month" || value === "year") {
+    return value;
+  }
+  return "month";
+}
+
+function normalizeValueUnit(value: string): TimeserieValueUnit {
+  if (value === "number" || value === "string" || value === "boolean") {
+    return value;
+  }
+  return "number";
+}
+
+function normalizeCellValue(value: unknown): TimeserieCellValue {
+  if (typeof value === "boolean" || typeof value === "string") return value;
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  return "";
+}
+
+function normalizeTimeserieValue(payload: unknown): TimeserieValueDto {
+  const item = asRecord(payload);
+  return {
+    date: pickString(item, ["date", "targetDate", "target_date"]),
+    value: normalizeCellValue(item.value)
+  };
+}
+
+function normalizeTimeserie(payload: unknown, index = 0): TimeserieDto {
+  const item = asRecord(payload);
+  const id = pickString(item, [
+    "id",
+    "key",
+    "timeserieId",
+    "timeserie_id",
+    "timeserieKey",
+    "timeserie_key"
+  ]);
+  const name = pickString(
+    item,
+    ["name", "timeserieName", "timeserie_name", "title", "label"],
+    id || `Timeserie ${index + 1}`
+  );
+
+  return {
+    id: id || name,
+    name,
+    description: pickString(item, ["description", "details", "desc"]),
+    unit: pickString(item, ["unit", "valueLabel", "value_label"]),
+    timeUnit: normalizeTimeUnit(pickString(item, ["timeUnit", "time_unit"])),
+    valueUnit: normalizeValueUnit(pickString(item, ["valueUnit", "value_unit"])),
+    values: pickArray(item.values, ["values", "items", "data"]).map(
+      normalizeTimeserieValue
+    )
+  };
+}
+
+function normalizeTimeseries(payload: unknown): TimeserieDto[] {
+  return pickArray(payload, ["timeseries", "items", "data"]).map((item, index) =>
+    normalizeTimeserie(item, index)
+  );
+}
+
 function timeseriesPath(orgId: string, scenarioId: string) {
   return `/api/v1/organisations/${encodeURIComponent(orgId)}/scenarios/${encodeURIComponent(
     scenarioId
@@ -87,13 +190,29 @@ export async function createTimeserie(
   payload: TimeserieCreateRequest,
   signal?: AbortSignal
 ): Promise<TimeserieDto> {
-  return requestJson<TimeserieDto>(
-    timeseriesPath(orgId, scenarioId),
-    {
-      method: "POST",
-      body: JSON.stringify(payload)
-    },
-    signal
+  return normalizeTimeserie(
+    await requestJson<unknown>(
+      timeseriesPath(orgId, scenarioId),
+      {
+        method: "POST",
+        body: JSON.stringify(payload)
+      },
+      signal
+    )
+  );
+}
+
+export async function fetchTimeseries(
+  orgId: string,
+  scenarioId: string,
+  signal?: AbortSignal
+): Promise<TimeserieDto[]> {
+  return normalizeTimeseries(
+    await requestJson<unknown>(
+      timeseriesPath(orgId, scenarioId),
+      { method: "GET" },
+      signal
+    )
   );
 }
 
@@ -103,10 +222,12 @@ export async function fetchTimeserie(
   timeserieId: string,
   signal?: AbortSignal
 ): Promise<TimeserieDto> {
-  return requestJson<TimeserieDto>(
-    timeseriePath(orgId, scenarioId, timeserieId),
-    { method: "GET" },
-    signal
+  return normalizeTimeserie(
+    await requestJson<unknown>(
+      timeseriePath(orgId, scenarioId, timeserieId),
+      { method: "GET" },
+      signal
+    )
   );
 }
 
@@ -133,5 +254,24 @@ export async function deleteTimeserie(
     timeseriePath(orgId, scenarioId, timeserieId),
     { method: "DELETE" },
     signal
+  );
+}
+
+export async function updateTimeserieValues(
+  orgId: string,
+  scenarioId: string,
+  timeserieId: string,
+  payload: TimeserieValuesUpdateRequest,
+  signal?: AbortSignal
+): Promise<TimeserieDto> {
+  return normalizeTimeserie(
+    await requestJson<unknown>(
+      `${timeseriePath(orgId, scenarioId, timeserieId)}/values`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(payload)
+      },
+      signal
+    )
   );
 }

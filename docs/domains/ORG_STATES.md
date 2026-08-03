@@ -184,9 +184,11 @@ DELETE /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/events/
 Timeserie endpoints:
 
 ```text
+GET /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/timeseries
 POST /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/timeseries
 GET /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/timeseries/{timeserie_key}
 GET /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/timeseries/{timeserie_key}/exists
+PATCH /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/timeseries/{timeserie_key}/values
 DELETE /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/timeseries/{timeserie_key}
 ```
 
@@ -247,7 +249,10 @@ Timeserie responses use:
   "description": "Monthly revenue",
   "unit": "EUR",
   "timeUnit": "month",
-  "valueUnit": "number"
+  "valueUnit": "number",
+  "values": [
+    { "date": "2030-01-01", "value": 1000 }
+  ]
 }
 ```
 
@@ -291,6 +296,31 @@ timeserie ids inside one scenario return HTTP `409`. Timeserie delete is a soft
 delete and also soft-deletes active owned values. Active graph node links to the
 deleted timeserie are cleared through the Organisation Twin Structure Domain
 service boundary.
+
+Scenario timeseries list returns active timeseries sorted by stable timeserie
+id. Timeserie `values` contain active values sorted by `date`; soft-deleted
+values are excluded from list and get responses.
+
+Timeserie value replacement uses:
+
+```json
+{
+  "values": [
+    { "date": "2030-01-01", "value": 1000 }
+  ]
+}
+```
+
+The replacement payload becomes the full active value set for that timeserie.
+Duplicate submitted dates are accepted with the last submitted value winning.
+Active values omitted from the replacement payload are soft-deleted. A
+replacement may reactivate a previously soft-deleted value for the same date.
+
+Values must match the timeserie `valueUnit`: `number` requires a finite number,
+`string` requires a string and `boolean` requires a boolean. Value dates must be
+valid starts for the timeserie `timeUnit`: `day` accepts every date, `week`
+starts on Monday, `month` starts on day 1 and `year` starts on January 1.
+Invalid value types or invalid time-unit start dates return HTTP `422`.
 
 Organisation state graph-date synchronisation is not implemented. The frontend
 Refresh action reloads selected scenario and organisation state data through
