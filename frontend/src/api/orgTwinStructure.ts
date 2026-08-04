@@ -11,6 +11,7 @@ export type GraphNodeDto = {
   description: string;
   nodeTypeId: string;
   createDate: string | null;
+  deleteDate: string | null;
   position: GraphPosition | null;
   attributes: JsonObject;
   timeserieId: string | null;
@@ -25,6 +26,7 @@ export type GraphEdgeDto = {
   sourceNodeId: string;
   targetNodeId: string;
   createDate: string | null;
+  deleteDate: string | null;
   attributes: JsonObject;
 };
 
@@ -32,6 +34,11 @@ export type GraphDto = {
   id: string;
   name: string;
   description: string;
+  nodes: GraphNodeDto[];
+  edges: GraphEdgeDto[];
+};
+
+export type GraphHistoryDto = {
   nodes: GraphNodeDto[];
   edges: GraphEdgeDto[];
 };
@@ -163,6 +170,25 @@ function graphPath(orgId: string, scenarioId: string, orgStateId: string) {
   );
 }
 
+function scenarioGraphPath(orgId: string, scenarioId: string) {
+  return (
+    `/api/v1/organisations/${encodeURIComponent(orgId)}` +
+    `/scenarios/${encodeURIComponent(scenarioId)}/graph`
+  );
+}
+
+export async function fetchGraphHistory(
+  orgId: string,
+  scenarioId: string,
+  signal?: AbortSignal
+): Promise<GraphHistoryDto> {
+  return requestJson<GraphHistoryDto>(
+    `${scenarioGraphPath(orgId, scenarioId)}/history`,
+    { method: "GET" },
+    signal
+  );
+}
+
 export async function fetchGraph(
   orgId: string,
   scenarioId: string,
@@ -176,16 +202,30 @@ export async function fetchGraph(
   );
 }
 
-export async function fetchGraphTypeCatalog(
+export function fetchGraphTypeCatalog(
+  orgId: string,
+  scenarioId: string,
+  signal?: AbortSignal
+): Promise<GraphTypeCatalogDto>;
+export function fetchGraphTypeCatalog(
   orgId: string,
   scenarioId: string,
   orgStateId: string,
   signal?: AbortSignal
+): Promise<GraphTypeCatalogDto>;
+export async function fetchGraphTypeCatalog(
+  orgId: string,
+  scenarioId: string,
+  orgStateIdOrSignal?: string | AbortSignal,
+  signal?: AbortSignal
 ): Promise<GraphTypeCatalogDto> {
+  const scenarioLevel = typeof orgStateIdOrSignal !== "string";
   return requestJson<GraphTypeCatalogDto>(
-    `${graphPath(orgId, scenarioId, orgStateId)}/types`,
+    scenarioLevel
+      ? `${scenarioGraphPath(orgId, scenarioId)}/types`
+      : `${graphPath(orgId, scenarioId, orgStateIdOrSignal)}/types`,
     { method: "GET" },
-    signal
+    scenarioLevel ? orgStateIdOrSignal : signal
   );
 }
 

@@ -189,6 +189,10 @@ class GraphNodeResponse(StrictBaseModel):
         alias="createDate",
         description="Node creation/effective date.",
     )
+    delete_date: date | None = Field(
+        alias="deleteDate",
+        description="Node logical deletion/effective end date.",
+    )
     position: Position | None = Field(description="Node position.")
     attributes: JsonObject = Field(description="Dynamic node attributes.")
     timeserie_id: str | None = Field(
@@ -218,6 +222,10 @@ class GraphEdgeResponse(StrictBaseModel):
         alias="createDate",
         description="Edge creation/effective date.",
     )
+    delete_date: date | None = Field(
+        alias="deleteDate",
+        description="Edge logical deletion/effective end date.",
+    )
     attributes: JsonObject = Field(description="Dynamic edge attributes.")
 
 
@@ -227,6 +235,11 @@ class GraphResponse(StrictBaseModel):
     description: str = Field(description="Scenario description.")
     nodes: list[GraphNodeResponse] = Field(description="Active graph nodes.")
     edges: list[GraphEdgeResponse] = Field(description="Active graph edges.")
+
+
+class GraphHistoryResponse(StrictBaseModel):
+    nodes: list[GraphNodeResponse] = Field(description="Historical graph nodes.")
+    edges: list[GraphEdgeResponse] = Field(description="Historical graph edges.")
 
 
 class NodeTypeMetadataResponse(StrictBaseModel):

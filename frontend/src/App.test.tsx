@@ -589,6 +589,18 @@ describe("Schatten UI shell", () => {
     );
   });
 
+  it("renders the Summary route without requiring an organisation state", () => {
+    mockSchattenApi();
+
+    renderAt("/schatten/acme/summary");
+
+    expect(screen.getByRole("link", { name: "Summary" })).toHaveClass(
+      "tab-link--active"
+    );
+    expect(screen.getByRole("heading", { name: "Summary" })).toBeInTheDocument();
+    expect(screen.getByText(/Select a scenario/)).toBeInTheDocument();
+  });
+
   it("shows the organisation, scenario, and org state indicators", async () => {
     renderAt({
       pathname: "/schatten/acme/analysis",

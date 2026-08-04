@@ -86,7 +86,6 @@ Related Tables:
 - edge_types
 - type_attributes
 - allowed_connections
-- graphs
 - graph_nodes
 - graph_edges
 
@@ -104,7 +103,7 @@ Related APIs:
 - Organisation-specific metamodel creation copies the active default
   metamodel, node types, edge types, type attributes and allowed connections
   from database rows.
-- A graph snapshot should follow the relevant metamodel rules when graph validation is in scope.
+- Scenario graph elements should follow the relevant metamodel rules when graph validation is in scope.
 
 ---
 

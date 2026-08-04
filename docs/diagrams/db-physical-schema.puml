@@ -96,19 +96,15 @@ entity "allowed_connections" as allowed_connections {
   target_node_type_id : BIGINT
 }
 
-entity "graphs" as graphs {
-  * graph_id : BIGINT
-  --
-  org_state_id : BIGINT
-  name : TEXT
-}
-
 entity "graph_nodes" as graph_nodes {
   * graph_node_id : BIGINT
   --
-  graph_id : BIGINT
+  scenario_id : BIGINT
   node_key : TEXT
+  name : TEXT
   node_type_id : BIGINT
+  create_date : DATE NOT NULL
+  delete_date : DATE
   attributes : JSONB
   timeserie_id : BIGINT
   timeserie_secondary_id : BIGINT
@@ -117,11 +113,14 @@ entity "graph_nodes" as graph_nodes {
 entity "graph_edges" as graph_edges {
   * graph_edge_id : BIGINT
   --
-  graph_id : BIGINT
+  scenario_id : BIGINT
   edge_key : TEXT
+  name : TEXT
   edge_type_id : BIGINT
   source_graph_node_id : BIGINT
   target_graph_node_id : BIGINT
+  create_date : DATE NOT NULL
+  delete_date : DATE
   attributes : JSONB
 }
 
@@ -150,7 +149,6 @@ scenarios ||--o{ events
 scenarios ||--o{ timeseries
 scenarios ||--o{ scenarios : source
 scenarios }o--o| org_states : initial
-org_states ||--o{ graphs
 metamodels ||--o{ node_types
 metamodels ||--o{ edge_types
 metamodels ||--o{ type_attributes
@@ -160,8 +158,8 @@ edge_types ||--o{ type_attributes
 edge_types ||--o{ allowed_connections
 node_types ||--o{ allowed_connections : source
 node_types ||--o{ allowed_connections : target
-graphs ||--o{ graph_nodes
-graphs ||--o{ graph_edges
+scenarios ||--o{ graph_nodes
+scenarios ||--o{ graph_edges
 node_types ||--o{ graph_nodes
 edge_types ||--o{ graph_edges
 graph_nodes ||--o{ graph_edges : source

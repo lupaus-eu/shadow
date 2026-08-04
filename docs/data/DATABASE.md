@@ -49,6 +49,8 @@ Core schema is created and updated by:
 db/migrations/001_create_core_schema.sql
 db/migrations/002_add_org_state_name_and_org_name_unique_index.sql
 db/migrations/003_alter_scenario_target_dates_not_null.sql
+db/migrations/004_alter_graphs_to_scenarios.sql
+db/migrations/005_add_graph_logical_delete_dates.sql
 ```
 
 | Table | Purpose | Notes |
@@ -63,9 +65,8 @@ db/migrations/003_alter_scenario_target_dates_not_null.sql
 | `edge_types` | Edge type definitions for a metamodel | Preserves Varjo-style `edge_type_key`. |
 | `type_attributes` | Attribute definitions owned by node or edge types | Exactly one owner FK is allowed according to `owner_kind`. |
 | `allowed_connections` | Allowed source/target node type pairs for edge types | One row per edge/source/target combination. |
-| `graphs` | Graph snapshot for an organisation state | One active graph per org state. |
-| `graph_nodes` | Nodes in a graph snapshot | Dynamic attributes are stored as `JSONB`; primary and secondary timeserie references are nullable FKs. |
-| `graph_edges` | Edges in a graph snapshot | References source and target graph nodes. |
+| `graph_nodes` | Scenario graph nodes | `create_date` and nullable `delete_date` define the logical lifetime; dynamic attributes use `JSONB`; timeserie references are nullable FKs. |
+| `graph_edges` | Scenario graph edges | References source and target graph nodes and has a logical `create_date`/`delete_date` lifetime. |
 | `timeseries` | Scenario-specific timeseries definitions | Supports `day`, `week`, `month`, `year` time units. |
 | `timeserie_values` | Timeseries values by date | No `name` column; value is stored as `JSONB` with the public scalar under `value`. |
 
@@ -91,11 +92,16 @@ Primary key names follow table-specific singular names, for example `scenario_id
 - Active organisation names are unique case-insensitively through `lower(name)` where `deleted_time IS NULL`; soft-deleted historical names are reusable.
 - `org_states.target_date` and `events.target_date` are required with `NOT NULL` constraints.
 - `org_states.scenario_id` and `events.scenario_id` use `ON DELETE CASCADE` for physical hard-delete cleanup/safety behavior.
-- `graphs.org_state_id` uses `ON DELETE CASCADE` for physical hard-delete cleanup/safety behavior.
-- `graph_nodes.graph_id` and `graph_edges.graph_id` use `ON DELETE CASCADE`.
+- `graph_nodes.scenario_id` and `graph_edges.scenario_id` use `ON DELETE CASCADE`.
 - `graph_edges.source_graph_node_id` and `graph_edges.target_graph_node_id` use `ON DELETE CASCADE`.
 - `timeseries.scenario_id` and `timeserie_values.timeserie_id` use `ON DELETE CASCADE`.
 - `graph_nodes` timeserie references use `ON DELETE SET NULL`.
+- `graph_nodes` and `graph_edges` enforce `delete_date IS NULL OR delete_date >= create_date`.
+- Structure deletion sets `deleted_time` when the selected target date equals
+  the element's `create_date`; same-day node deletion does the same for its
+  connected edges.
+- Edge lifetime containment inside endpoint node lifetimes is enforced in the
+  Organisation Twin Structure service.
 - `timeseries.time_unit` is constrained to `day`, `week`, `month` or `year`.
 - `timeseries.value_unit` is constrained to `number`, `string` or `boolean`.
 - Timeserie value replacement is application-level behavior: active omitted
@@ -116,7 +122,8 @@ The migration defines:
 - one active default metamodel
 - one active metamodel per organisation
 - metamodel version uniqueness for both default and organisation-specific metamodels
-- one active graph per org state
+- scenario-local active stable-key uniqueness for graph nodes and graph edges
+- scenario/lifetime lookup indexes for persistence-active graph nodes and edges
 - one timeserie value per `(timeserie_id, date)`
 - graph traversal indexes for source and target graph node lookups
 - parent lookup indexes for common list views
@@ -208,7 +215,8 @@ The seed creates non-production bootstrap data only:
 
 The default metamodel uses `metamodels.organisation_id = NULL` and stores the JSON root `version` field in `metamodels.version`.
 
-The seed does not create organisations, scenarios, org states, events, graphs, graph nodes, graph edges, timeseries or timeserie values.
+The seed does not create organisations, scenarios, org states, events, graph
+nodes, graph edges, timeseries or timeserie values.
 
 ---
 

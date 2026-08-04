@@ -41,9 +41,8 @@ Lue nämä yhdessä datamallin kanssa:
 | Edge Type | Metamodel-owned type definition for graph edges. |
 | Type Attribute | Attribute definition owned by a node type or edge type. |
 | Allowed Connection | Rule allowing an edge type between a source node type and target node type. |
-| Graph | Organisation-state graph snapshot. |
-| Graph Node | Node instance inside one graph snapshot. |
-| Graph Edge | Edge instance inside one graph snapshot. |
+| Graph Node | Scenario-owned node with a logical creation date and optional logical deletion date. |
+| Graph Edge | Scenario-owned connection whose logical lifetime must remain inside both endpoint node lifetimes. |
 | Timeserie | Scenario-specific timeseries definition. |
 | Timeserie Value | Date-specific value for a timeserie. |
 
@@ -56,7 +55,9 @@ Lue nämä yhdessä datamallin kanssa:
 - A scenario owns many organisation states and events.
 - Organisation states and events have required `target_date` values.
 - Normal application-level scenario deletion is a soft delete using `deleted_time`.
-- When the application soft-deletes a scenario, it must also soft-delete owned organisation states, events, graphs, timeseries and timeserie values.
+- When the application soft-deletes a scenario, it must also soft-delete owned
+  organisation states, events, graph nodes, graph edges, timeseries and
+  timeserie values through `deleted_time`.
 - Physical database cascades exist only as hard-delete cleanup/safety behavior, not as the normal application deletion flow.
 - A scenario can reference a source scenario.
 - A scenario can reference one initial organisation state.
@@ -64,9 +65,18 @@ Lue nämä yhdessä datamallin kanssa:
 - An organisation can have one active organisation-specific metamodel.
 - A metamodel owns node types, edge types, type attributes and allowed connection rules.
 - Type attributes are owned by exactly one node type or edge type.
-- A graph belongs to one organisation state.
-- A graph owns graph nodes and graph edges.
+- A scenario owns graph nodes and graph edges.
+- Graph nodes and graph edges have logical lifetimes defined by `create_date`
+  and nullable `delete_date`, separate from persistence `deleted_time`.
+- An organisation-state graph projection includes an element when
+  `create_date <= target_date` and `delete_date` is null or
+  `delete_date >= target_date`.
+- Logical deletion dates cannot precede creation dates.
+- Deleting a graph node or edge on its `create_date` uses persistence
+  `deleted_time` instead of creating an inclusive zero-day logical lifetime.
+- Same-day node deletion also persistence-soft-deletes connected edges.
 - Graph edges reference source and target graph nodes.
+- A graph edge lifetime must remain inside both endpoint node lifetimes.
 - A timeserie belongs to one scenario and owns dated values.
 - Active timeserie values must use dates that are valid starts for the owning
   timeserie's time unit and typed values that match the owning timeserie's value

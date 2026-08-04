@@ -292,6 +292,7 @@ class GraphNode(Base):
         ForeignKey("node_types.node_type_id"),
     )
     create_date: Mapped[dt_date] = mapped_column(Date, nullable=False)
+    delete_date: Mapped[dt_date | None] = mapped_column(Date, nullable=True)
     position_x: Mapped[float | None] = mapped_column(Float, nullable=True)
     position_y: Mapped[float | None] = mapped_column(Float, nullable=True)
     attributes: Mapped[dict[str, object]] = mapped_column(JSON, default=dict)
@@ -362,6 +363,7 @@ class GraphEdge(Base):
         ForeignKey("graph_nodes.graph_node_id", ondelete="CASCADE"),
     )
     create_date: Mapped[dt_date] = mapped_column(Date, nullable=False)
+    delete_date: Mapped[dt_date | None] = mapped_column(Date, nullable=True)
     attributes: Mapped[dict[str, object]] = mapped_column(JSON, default=dict)
     created_by: Mapped[int | None] = mapped_column(
         BigInteger,

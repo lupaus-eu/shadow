@@ -9,6 +9,7 @@ from app.api.v1.org_twin_structure.schemas import (
     GraphEdgeCreateRequest,
     GraphEdgePatchRequest,
     GraphEdgeResponse,
+    GraphHistoryResponse,
     GraphNodeCreateRequest,
     GraphNodePatchRequest,
     GraphNodeResponse,
@@ -19,6 +20,38 @@ from app.core.database import get_db_session
 
 router = APIRouter(prefix="/organisations", tags=["org-twin-structure"])
 SessionDependency = Annotated[Session, Depends(get_db_session)]
+
+
+@router.get(
+    "/{organisation_key}/scenarios/{scenario_key}/graph/history",
+    response_model=GraphHistoryResponse,
+)
+def get_graph_history(
+    organisation_key: str,
+    scenario_key: str,
+    session: SessionDependency,
+) -> GraphHistoryResponse:
+    return org_twin_structure_service.get_graph_history(
+        session,
+        organisation_key,
+        scenario_key,
+    )
+
+
+@router.get(
+    "/{organisation_key}/scenarios/{scenario_key}/graph/types",
+    response_model=TypeCatalogResponse,
+)
+def get_scenario_graph_type_catalog(
+    organisation_key: str,
+    scenario_key: str,
+    session: SessionDependency,
+) -> TypeCatalogResponse:
+    return org_twin_structure_service.get_scenario_graph_type_catalog(
+        session,
+        organisation_key,
+        scenario_key,
+    )
 
 
 @router.get(

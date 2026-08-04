@@ -70,7 +70,9 @@ The default scenario references the created default organisation state as its
 
 Scenario deletion is a soft delete in normal application flows.
 
-When the application soft-deletes a scenario, it must also soft-delete owned organisation states, events, graphs, timeseries and timeserie values.
+When the application soft-deletes a scenario, it must also soft-delete owned
+organisation states, events, graph nodes, graph edges, timeseries and timeserie
+values.
 
 Physical database cascades are hard-delete cleanup/safety behavior only.
 
@@ -121,10 +123,12 @@ Copy rules:
   preserves `name`, `description`, `target_date` and `version`
 - copied `initial_state_id` points to the copied version of the selected source
   organisation state
-- active graph snapshot data for the copied organisation state pair is copied
-  through the Organisation Twin Structure Domain service boundary
+- graph elements visible at the selected source organisation state's target
+  date are copied through the Organisation Twin Structure Domain service
+  boundary
 - scenario-owned timeseries and timeserie values are not copied
-- source scenario, source organisation states and source graphs are not mutated
+- source scenario, source organisation states and source graph history are not
+  mutated
 
 ---
 
@@ -322,9 +326,11 @@ valid starts for the timeserie `timeUnit`: `day` accepts every date, `week`
 starts on Monday, `month` starts on day 1 and `year` starts on January 1.
 Invalid value types or invalid time-unit start dates return HTTP `422`.
 
-Organisation state graph-date synchronisation is not implemented. The frontend
-Refresh action reloads selected scenario and organisation state data through
-existing GET endpoints.
+Graph element creation and logical deletion use the selected organisation
+state's target date through Organisation Twin Structure Domain. Organisation
+state target-date edits do not rewrite existing graph lifetime dates. The
+frontend Refresh action reloads selected scenario and organisation state data
+through existing GET endpoints.
 
 ---
 
@@ -368,8 +374,8 @@ Flow:
 5. Copy only the selected source organisation state.
 6. Set the copied scenario `initial_state_id` to the copied selected source
    organisation state.
-7. Ask Organisation Twin Structure Domain to copy active graph snapshot data for
-   the copied organisation state pair.
+7. Ask Organisation Twin Structure Domain to copy graph elements visible at the
+   selected source target date.
 8. Return copied scenario data.
 
 ## Create Organisation State
@@ -431,7 +437,8 @@ Flow:
 4. Load active organisation states owned by the scenario.
 5. Clear `scenarios.initial_state_id` if it points to one of the cleaned
    organisation states.
-6. Soft-delete active owned graphs through Organisation Twin Structure Domain.
+6. Soft-delete persistence-active owned graph nodes and edges through
+   Organisation Twin Structure Domain.
 7. Soft-delete the active organisation states.
 8. Return the number of cleaned organisation states as `{ "cleaned": n }`.
 
@@ -483,7 +490,8 @@ Flow:
 3. Reject protected scenarios.
 4. Soft-delete active owned timeseries and timeserie values.
 5. Soft-delete active owned events.
-6. Soft-delete active owned graphs through Organisation Twin Structure Domain.
+6. Soft-delete persistence-active owned graph nodes and edges through
+   Organisation Twin Structure Domain.
 7. Soft-delete active owned organisation states.
 8. Soft-delete the scenario.
 
@@ -495,7 +503,8 @@ Flow:
 2. Validate scenario exists and is active.
 3. Validate organisation state exists and is active.
 4. Clear `scenarios.initial_state_id` if it points to the deleted organisation state.
-5. Soft-delete active owned graphs through Organisation Twin Structure Domain.
+5. Soft-delete persistence-active owned graph nodes and edges through
+   Organisation Twin Structure Domain.
 6. Soft-delete the organisation state.
 
 ## Delete Event

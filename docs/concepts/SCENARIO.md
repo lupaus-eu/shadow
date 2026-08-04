@@ -77,9 +77,9 @@ Transitions:
 active -> deleted
 ```
 
-When a scenario is soft-deleted, owned organisation states, events, graphs,
-timeseries and timeserie values must be soft-deleted by application or service
-logic.
+When a scenario is soft-deleted, owned organisation states, events, graph
+nodes, graph edges, timeseries and timeserie values must be soft-deleted by
+application or service logic.
 
 The default `Reality` scenario is protected. It can be renamed and redescribed
 through normal backend PATCH flow, but it cannot be deleted through normal
@@ -137,8 +137,8 @@ Related APIs:
 - Scenario copy sets `initial_state_id` to the copied version of the selected
   source organisation state.
 - Scenario copy copies only the selected active source organisation state.
-- Scenario copy delegates graph snapshot copying to Organisation Twin Structure
-  Domain.
+- Scenario copy delegates copying of graph elements visible at the selected
+  source organisation-state target date to Organisation Twin Structure Domain.
 - Scenario copy does not copy scenario-owned timeseries or timeserie values.
 
 ---

@@ -98,7 +98,7 @@ Related Tables:
 
 - org_states
 - scenarios
-- graphs
+- scenario-owned graph nodes and graph edges projected at `target_date`
 
 Related APIs:
 
@@ -129,7 +129,10 @@ Related APIs:
   `{ "cleaned": 0 }`.
 - The default organisation state uses description `Initial state of reality`
   and target date `2020-01-01`.
-- A graph may belong to one organisation state through Organisation Twin Structure Domain.
+- Organisation Twin Structure Domain projects scenario graph elements at the
+  organisation state's `target_date`.
+- Structure create and logical delete operations use the selected organisation
+  state's `target_date` as their effective date.
 - Organisation state CRUD does not create graph data or synchronise graph dates.
 - Scenario copy copies only the selected active source organisation state.
 - Scenario copy gives the copied organisation state a generated `org_state_key`

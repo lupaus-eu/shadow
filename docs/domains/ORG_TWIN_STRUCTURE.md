@@ -4,9 +4,11 @@ Status: core domain baseline
 
 ## Purpose
 
-Organisation Twin Structure Domain hallitsee metamodelit ja organisaatiotilan graph-rakenteen.
+Organisation Twin Structure Domain hallitsee metamodelit ja skenaariokohtaisen
+ajallisen graph-rakenteen.
 
-Metamodel maarittaa sallitut node- ja edge-tyypit. Graph kuvaa yhden organisaatiotilan snapshotin solmut ja yhteydet.
+Metamodel maarittaa sallitut node- ja edge-tyypit. Organisaatiotilan graph on
+skenaarion graph-historiasta sen target date -päivälle muodostettu projektio.
 
 ---
 
@@ -19,7 +21,6 @@ Owns:
 - edge types
 - type attributes
 - allowed connections
-- graphs
 - graph nodes
 - graph edges
 
@@ -27,7 +28,7 @@ Provides:
 
 - default metamodel
 - organisation-specific metamodels
-- graph snapshot structure for organisation states
+- scenario-level graph history and organisation-state projections
 - graph node and edge attribute storage
 
 Does NOT Own:
@@ -60,22 +61,36 @@ Metamodels own node types, edge types, type attributes and allowed connections.
 
 Type attributes must belong to exactly one node type or exactly one edge type.
 
-## Graph Scope
+## Graph Scope And Lifetimes
 
-A graph belongs to exactly one organisation state.
+Graph nodes and graph edges belong to exactly one scenario. Their stable keys
+are unique among persistence-active elements inside that scenario.
 
-Only one active graph may exist for an organisation state.
+`create_date` starts the logical lifetime and nullable `delete_date` ends it.
+An element is visible at an organisation-state target date when
+`create_date <= target_date` and `delete_date` is null or
+`delete_date >= target_date`. Malformed lifetimes are rejected: deletion may
+not precede creation, and an edge lifetime must remain inside both endpoint
+node lifetimes.
 
-Graph nodes and graph edges belong to a graph snapshot.
+Structure deletion normally records the selected organisation state's target
+date as the logical `delete_date`. Because the logical end date is inclusive,
+an element whose `create_date` equals the deletion date is instead
+persistence-soft-deleted through `deleted_time`; it would otherwise reappear
+in the same organisation-state projection. Same-day node deletion also
+persistence-soft-deletes its connected edges. For an earlier-created node,
+deletion applies a compatible logical end date to connected edges.
+Persistence `deleted_time` is also used for scenario deletion and cleanup
+propagation.
 
 ## Graph Snapshot Copy
 
 When Organisation States Domain copies a scenario, Organisation Twin Structure
-Domain provides the service boundary for copying active graph snapshots from
-source organisation states to their copied organisation states.
+Domain provides the service boundary for copying graph elements visible at the
+selected source organisation state's target date into the copied scenario.
 
-Graph snapshot copy preserves graph names, descriptions, node and edge stable
-keys, type references, create dates, positions and dynamic attributes. Graph
+Graph copy preserves node and edge stable keys, names, descriptions, type
+references, logical lifetime dates, positions and dynamic attributes. Graph
 node timeseries references are cleared because scenario-owned timeseries are not
 copied by scenario copy.
 
@@ -90,7 +105,6 @@ Tables:
 - edge_types
 - type_attributes
 - allowed_connections
-- graphs
 - graph_nodes
 - graph_edges
 
@@ -105,6 +119,8 @@ Other domains may reference these tables but may not modify them directly unless
 Endpoints:
 
 ```text
+GET    /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/graph/history
+GET    /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/graph/types
 GET    /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/org-states/{org_state_key}/graph
 GET    /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/org-states/{org_state_key}/graph/types
 POST   /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/org-states/{org_state_key}/graph/nodes
@@ -135,6 +151,10 @@ soft-deleted or cross-scenario timeseries.
 Type catalog node type metadata exposes `timeserieId`,
 `timeserieSecondaryId` and `timeserieIdRule` so the Structure UI can identify
 timeseries-capable node types and display inherited timeserie metadata.
+
+Scenario history responses expose stable node and edge keys plus `createDate`
+and nullable `deleteDate`. They include logical history but exclude rows with a
+persistence-level `deleted_time`.
 
 Authorization and permission enforcement are not implemented in the Structure
 baseline. They must be added through a separate task before these endpoints are
@@ -179,14 +199,15 @@ Flow:
 6. Copy allowed connections to the copied edge and node types.
 7. Commit only as part of the outer organisation creation transaction.
 
-## Create Graph Snapshot
+## Create And Project Graph Elements
 
 Flow:
 
 1. Validate organisation state exists and is active.
 2. Validate relevant metamodel rules.
-3. Create one active graph for the organisation state.
-4. Create graph nodes and graph edges.
+3. Create scenario-owned graph nodes and graph edges with the organisation
+   state's target date as `create_date`.
+4. Project visible elements using their logical lifetimes.
 
 ## Edit Graph From Structure Tab
 
@@ -218,10 +239,9 @@ Flow:
 
 1. Receive source organisation state to copied organisation state id mappings
    from Organisation States Domain.
-2. Load active graphs for the source organisation states.
-3. Create copied graph rows for copied organisation states.
-4. Copy active graph nodes, clearing timeseries references.
-5. Copy active graph edges to reference the copied graph nodes.
+2. Load graph elements visible at the selected source target date.
+3. Copy visible graph nodes, clearing timeseries references.
+4. Copy visible graph edges to reference the copied graph nodes.
 
 ---
 
@@ -230,7 +250,7 @@ Flow:
 When implementing organisation twin structure features:
 
 - read this document before changing metamodel, type or graph data
-- preserve one-active-graph-per-org-state behavior
+- preserve scenario ownership and logical lifetime invariants
 - preserve one-active-default-metamodel behavior
 - keep dynamic graph attributes in JSONB unless an ADR changes the data strategy
 

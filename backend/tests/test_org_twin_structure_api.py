@@ -1,5 +1,5 @@
 from collections.abc import Iterator
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 import pytest
 from fastapi.testclient import TestClient
@@ -9,6 +9,8 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.api.v1.org_twin_structure.models import (
     AllowedConnection,
     EdgeType,
+    GraphEdge,
+    GraphNode,
     Metamodel,
     NodeType,
 )
@@ -347,7 +349,10 @@ def test_type_catalog_uses_existing_missing_metamodel_error_behavior(
     )
 
 
-def test_node_edge_crud_and_bulk_position_update(client: TestClient) -> None:
+def test_node_edge_crud_and_bulk_position_update(
+    client: TestClient,
+    session_factory: sessionmaker[Session],
+) -> None:
     organisation_key = _create_organisation(client)
     graph_path = _graph_path(organisation_key, "initial_state")
 
@@ -379,6 +384,7 @@ def test_node_edge_crud_and_bulk_position_update(client: TestClient) -> None:
         "description": "",
         "nodeTypeId": "nt_person",
         "createDate": "2020-01-01",
+        "deleteDate": None,
         "position": {"x": 10.5, "y": 20.25},
         "attributes": {"name": "CEO"},
         "timeserieId": None,
@@ -405,6 +411,7 @@ def test_node_edge_crud_and_bulk_position_update(client: TestClient) -> None:
         "sourceNodeId": "node_report",
         "targetNodeId": "node_ceo",
         "createDate": "2020-01-01",
+        "deleteDate": None,
         "attributes": {"weight": 1},
     }
 
@@ -449,6 +456,258 @@ def test_node_edge_crud_and_bulk_position_update(client: TestClient) -> None:
     assert graph_response.status_code == 200
     assert [node["id"] for node in graph_response.json()["nodes"]] == ["node_ceo"]
     assert graph_response.json()["edges"] == []
+
+    with session_factory() as session:
+        deleted_node = session.scalar(
+            select(GraphNode).where(GraphNode.node_key == "node_report")
+        )
+        deleted_edge = session.scalar(
+            select(GraphEdge).where(GraphEdge.edge_key == "edge_reports_to")
+        )
+        assert deleted_node is not None and deleted_edge is not None
+        assert deleted_node.deleted_time is not None
+        assert deleted_node.delete_date is None
+        assert deleted_edge.deleted_time is not None
+        assert deleted_edge.delete_date is None
+
+    later_state_key = _create_org_state(client, organisation_key, "2020-01-02")
+    later_graph = client.get(_graph_path(organisation_key, later_state_key)).json()
+    assert [node["id"] for node in later_graph["nodes"]] == ["node_ceo"]
+    assert later_graph["edges"] == []
+
+
+def test_same_day_node_deletion_soft_deletes_connected_edges(
+    client: TestClient,
+    session_factory: sessionmaker[Session],
+) -> None:
+    organisation_key = _create_organisation(client)
+    graph_path = _graph_path(organisation_key, "initial_state")
+    for node_id in ("node_a", "node_b"):
+        assert (
+            client.post(
+                f"{graph_path}/nodes",
+                json={"id": node_id, "name": node_id, "nodeTypeId": "nt_person"},
+            ).status_code
+            == 201
+        )
+    assert (
+        client.post(
+            f"{graph_path}/edges",
+            json={
+                "id": "edge_a",
+                "name": "Edge",
+                "edgeTypeId": "et_reports_to",
+                "sourceNodeId": "node_a",
+                "targetNodeId": "node_b",
+            },
+        ).status_code
+        == 201
+    )
+
+    assert client.delete(f"{graph_path}/nodes/node_b").status_code == 204
+
+    refreshed_graph = client.get(graph_path).json()
+    assert [node["id"] for node in refreshed_graph["nodes"]] == ["node_a"]
+    assert refreshed_graph["edges"] == []
+
+    with session_factory() as session:
+        deleted_node = session.scalar(
+            select(GraphNode).where(GraphNode.node_key == "node_b")
+        )
+        deleted_edge = session.scalar(
+            select(GraphEdge).where(GraphEdge.edge_key == "edge_a")
+        )
+        assert deleted_node is not None and deleted_edge is not None
+        assert deleted_node.deleted_time is not None
+        assert deleted_node.delete_date is None
+        assert deleted_edge.deleted_time is not None
+        assert deleted_edge.delete_date is None
+
+
+def test_graph_history_and_logical_deletion_preserve_lifetimes(
+    client: TestClient,
+) -> None:
+    organisation_key = _create_organisation(client)
+    initial_graph_path = _graph_path(organisation_key, "initial_state")
+    deletion_state_key = _create_org_state(client, organisation_key, "2030-01-01")
+    after_state_key = _create_org_state(client, organisation_key, "2030-01-02")
+
+    for node_id, name in [("node_b", "Beta"), ("node_a", "Alpha")]:
+        assert (
+            client.post(
+                f"{initial_graph_path}/nodes",
+                json={"id": node_id, "name": name, "nodeTypeId": "nt_person"},
+            ).status_code
+            == 201
+        )
+    assert (
+        client.post(
+            f"{initial_graph_path}/edges",
+            json={
+                "id": "edge_a",
+                "name": "Reports to",
+                "edgeTypeId": "et_reports_to",
+                "sourceNodeId": "node_b",
+                "targetNodeId": "node_a",
+            },
+        ).status_code
+        == 201
+    )
+
+    deletion_path = _graph_path(organisation_key, deletion_state_key)
+    assert client.delete(f"{deletion_path}/nodes/node_b").status_code == 204
+
+    at_deletion = client.get(deletion_path).json()
+    assert {node["id"] for node in at_deletion["nodes"]} == {"node_a", "node_b"}
+    assert [edge["id"] for edge in at_deletion["edges"]] == ["edge_a"]
+
+    after_deletion = client.get(_graph_path(organisation_key, after_state_key)).json()
+    assert [node["id"] for node in after_deletion["nodes"]] == ["node_a"]
+    assert after_deletion["edges"] == []
+
+    history_response = client.get(_history_path(organisation_key))
+    assert history_response.status_code == 200
+    history = history_response.json()
+    assert [node["id"] for node in history["nodes"]] == ["node_a", "node_b"]
+    assert history["nodes"][1]["createDate"] == "2020-01-01"
+    assert history["nodes"][1]["deleteDate"] == "2030-01-01"
+    assert history["edges"][0]["sourceNodeId"] == "node_b"
+    assert history["edges"][0]["targetNodeId"] == "node_a"
+    assert history["edges"][0]["deleteDate"] == "2030-01-01"
+
+
+def test_graph_history_excludes_persistence_soft_deleted_elements(
+    client: TestClient,
+    session_factory: sessionmaker[Session],
+) -> None:
+    organisation_key = _create_organisation(client)
+    graph_path = _graph_path(organisation_key, "initial_state")
+    for node_id in ("node_a", "node_b"):
+        assert (
+            client.post(
+                f"{graph_path}/nodes",
+                json={"id": node_id, "name": node_id, "nodeTypeId": "nt_person"},
+            ).status_code
+            == 201
+        )
+    assert (
+        client.post(
+            f"{graph_path}/edges",
+            json={
+                "id": "edge_a",
+                "name": "Edge",
+                "edgeTypeId": "et_reports_to",
+                "sourceNodeId": "node_a",
+                "targetNodeId": "node_b",
+            },
+        ).status_code
+        == 201
+    )
+
+    with session_factory() as session:
+        node = session.scalar(select(GraphNode).where(GraphNode.node_key == "node_b"))
+        edge = session.scalar(select(GraphEdge).where(GraphEdge.edge_key == "edge_a"))
+        assert node is not None and edge is not None
+        node.deleted_time = datetime.now(UTC)
+        edge.deleted_time = datetime.now(UTC)
+        session.commit()
+
+    history = client.get(_history_path(organisation_key)).json()
+    assert [node["id"] for node in history["nodes"]] == ["node_a"]
+    assert history["edges"] == []
+
+
+def test_graph_lifetime_validation_and_same_day_node_cleanup(
+    client: TestClient,
+    session_factory: sessionmaker[Session],
+) -> None:
+    organisation_key = _create_organisation(client)
+    graph_path = _graph_path(organisation_key, "initial_state")
+    later_state_key = _create_org_state(client, organisation_key, "2030-01-01")
+    for node_id in ("node_a", "node_b"):
+        assert (
+            client.post(
+                f"{graph_path}/nodes",
+                json={"id": node_id, "name": node_id, "nodeTypeId": "nt_person"},
+            ).status_code
+            == 201
+        )
+
+    with session_factory() as session:
+        node_b = session.scalar(select(GraphNode).where(GraphNode.node_key == "node_b"))
+        assert node_b is not None
+        node_b.delete_date = date(2025, 1, 1)
+        session.commit()
+
+    invalid_edge = client.post(
+        f"{graph_path}/edges",
+        json={
+            "id": "edge_invalid",
+            "name": "Invalid lifetime",
+            "edgeTypeId": "et_reports_to",
+            "sourceNodeId": "node_a",
+            "targetNodeId": "node_b",
+        },
+    )
+    assert invalid_edge.status_code == 400
+    assert "cannot extend beyond" in invalid_edge.json()["detail"]
+
+    with session_factory() as session:
+        node_b = session.scalar(select(GraphNode).where(GraphNode.node_key == "node_b"))
+        assert node_b is not None
+        node_b.delete_date = None
+        session.commit()
+
+    later_path = _graph_path(organisation_key, later_state_key)
+    assert (
+        client.post(
+            f"{later_path}/edges",
+            json={
+                "id": "edge_future",
+                "name": "Future edge",
+                "edgeTypeId": "et_reports_to",
+                "sourceNodeId": "node_a",
+                "targetNodeId": "node_b",
+            },
+        ).status_code
+        == 201
+    )
+    same_day_node_delete = client.delete(f"{graph_path}/nodes/node_a")
+    assert same_day_node_delete.status_code == 204
+
+    with session_factory() as session:
+        deleted_node = session.scalar(
+            select(GraphNode).where(GraphNode.node_key == "node_a")
+        )
+        deleted_edge = session.scalar(
+            select(GraphEdge).where(GraphEdge.edge_key == "edge_future")
+        )
+        assert deleted_node is not None and deleted_edge is not None
+        assert deleted_node.deleted_time is not None
+        assert deleted_edge.deleted_time is not None
+
+
+def test_scenario_graph_endpoints_validate_ownership_and_return_type_catalog(
+    client: TestClient,
+) -> None:
+    organisation_key = _create_organisation(client)
+    history_path = _history_path(organisation_key)
+    type_path = history_path.removesuffix("/history") + "/types"
+
+    assert client.get(history_path).status_code == 200
+    type_response = client.get(type_path)
+    assert type_response.status_code == 200
+    assert [item["id"] for item in type_response.json()["nodeTypes"]] == [
+        "nt_person",
+        "nt_team",
+    ]
+    assert client.get(_history_path("missing")).status_code == 404
+    assert (
+        client.get(
+            f"/api/v1/organisations/{organisation_key}/scenarios/missing/graph/history"
+        ).status_code
+        == 404
+    )
 
 
 def test_graph_node_patch_updates_timeserie_links_by_stable_keys(
@@ -729,4 +988,10 @@ def _graph_path(organisation_key: str, org_state_key: str) -> str:
     return (
         f"/api/v1/organisations/{organisation_key}/scenarios/reality/"
         f"org-states/{org_state_key}/graph"
+    )
+
+
+def _history_path(organisation_key: str) -> str:
+    return (
+        f"/api/v1/organisations/{organisation_key}/scenarios/reality/graph/history"
     )

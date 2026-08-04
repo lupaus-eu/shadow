@@ -158,7 +158,7 @@ Responsible for:
 - metamodels
 - node and edge type definitions
 - allowed graph connections
-- graph snapshots, graph nodes and graph edges
+- scenario graph history, graph nodes and graph edges
 
 Owns:
 
@@ -167,7 +167,6 @@ Owns:
 - edge_types
 - type_attributes
 - allowed_connections
-- graphs
 - graph_nodes
 - graph_edges
 

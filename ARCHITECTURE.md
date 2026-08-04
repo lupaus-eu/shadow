@@ -248,9 +248,9 @@ Alustava virheformaattisuositus:
 
 Status: implemented baseline
 
-Org Twin Structure kuvaa organisaatiotilan graph-rakenteen. Domain omistaa
-metamodelit, node- ja edge-tyypit, allowed connection -säännöt sekä graph
-snapshotit, nodet ja edget. Tarkempi domain-omistajuus on dokumentissa
+Org Twin Structure kuvaa skenaarion ajallisen graph-rakenteen. Domain omistaa
+metamodelit, node- ja edge-tyypit, allowed connection -säännöt sekä graph-nodet
+ja -edget. Tarkempi domain-omistajuus on dokumentissa
 `docs/domains/ORG_TWIN_STRUCTURE.md`.
 
 Backend toteutus sijaitsee hakemistossa:
@@ -270,6 +270,8 @@ Keskeiset backend-komponentit:
 Endpointit ovat organisaatio-, skenaario- ja organisaatiotila-kontekstissa:
 
 ```text
+GET    /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/graph/history
+GET    /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/graph/types
 GET    /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/org-states/{org_state_key}/graph
 GET    /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/org-states/{org_state_key}/graph/types
 POST   /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/org-states/{org_state_key}/graph/nodes
@@ -280,6 +282,14 @@ PATCH  /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/org-sta
 DELETE /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/org-states/{org_state_key}/graph/edges/{edge_key}
 PATCH  /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/org-states/{org_state_key}/graph/positions
 ```
+
+`graph_nodes`- ja `graph_edges`-rivit kuuluvat skenaarioon. `create_date` ja
+nullable `delete_date` määrittävät loogisen elinkaaren. Organisaatiotilan graph
+on projektio, jossa elementti näkyy, kun sen elinkaari sisältää tilan
+`target_date`-päivän. `deleted_time` on erillinen persistence-soft-delete,
+jota käytetään esimerkiksi skenaarion poistossa, cleanupissa sekä silloin, kun
+Structure-poisto tehdään elementin `create_date`-päivänä. Tällöin myös poistetun
+noden yhteydessä olevat edget persistence-soft-deletoidaan.
 
 Frontend Structure UI sijaitsee hakemistossa:
 
@@ -312,6 +322,29 @@ Authorization:
   permission enforcementia.
 - Backend authorization on edelleen järjestelmän turvallisuusraja ja lisätään
   erillisessä follow-up taskissa.
+
+## Summary Timeline
+
+Frontend Summary UI sijaitsee hakemistossa:
+
+```text
+frontend/src/features/summary/
+```
+
+`SummaryTab.tsx` lataa valitulle skenaariolle graph-historian, graph-tyypit,
+tapahtumat ja aikasarjat rinnakkain. Se renderöi ne yhteiselle päiväakselille
+ilman organisaatiotilan valintavaatimusta. Valittu organisaatiotila laajentaa
+aikajanaa target date -päivällään, jos tila on saatavilla.
+
+`summaryTimeline.ts` sisältää testattavat päivämäärä-, järjestys-, suodatus-,
+zoom- ja chart scale -funktiot. Summary tarjoaa category- ja node type
+-suodatuksen, Rows-valikon rivikohtaisen näkyvyyden, rivien caret-ohjauksen
+laajennukseen ja kokoon taittamiseen, synkronoidun scrollauksen sekä yhteisen
+timeseries-rivikorkeuden. Näkyviin palautettava rivi laajennetaan samalla.
+Timeline header näyttää riittävän leveässä näkymässä vuoden ja lyhennetyn
+kuukauden, tiivistyy ensin lyhyisiin kuukausilabeleihin ja vaihtaa
+year-only-näkymään, kun nekään eivät mahdu; tällöin rivit näyttävät kuukausirajat
+pystyviivoina. Filters- ja Rows-valikot ovat toisensa poissulkevia.
 
 ---
 

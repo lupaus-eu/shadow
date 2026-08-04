@@ -1,5 +1,5 @@
 from copy import deepcopy
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 from fastapi import HTTPException, status
 from sqlalchemy import or_, select
@@ -22,6 +22,7 @@ from app.api.v1.org_twin_structure.schemas import (
     GraphEdgeCreateRequest,
     GraphEdgePatchRequest,
     GraphEdgeResponse,
+    GraphHistoryResponse,
     GraphNodeCreateRequest,
     GraphNodePatchRequest,
     GraphNodeResponse,
@@ -68,6 +69,51 @@ def get_graph(
     return to_graph_response(session, organisation, scenario, org_state)
 
 
+def get_graph_history(
+    session: Session,
+    organisation_key: str,
+    scenario_key: str,
+) -> GraphHistoryResponse:
+    _, scenario = _get_active_scenario_context(
+        session,
+        organisation_key,
+        scenario_key,
+    )
+    nodes = session.scalars(
+        select(GraphNode)
+        .where(
+            GraphNode.scenario_id == scenario.scenario_id,
+            GraphNode.deleted_time.is_(None),
+        )
+        .order_by(GraphNode.node_key, GraphNode.graph_node_id),
+    ).all()
+    edges = session.scalars(
+        select(GraphEdge)
+        .where(
+            GraphEdge.scenario_id == scenario.scenario_id,
+            GraphEdge.deleted_time.is_(None),
+        )
+        .order_by(GraphEdge.edge_key, GraphEdge.graph_edge_id),
+    ).all()
+    return GraphHistoryResponse(
+        nodes=[to_graph_node_response(session, node) for node in nodes],
+        edges=[to_graph_edge_response(session, edge) for edge in edges],
+    )
+
+
+def get_scenario_graph_type_catalog(
+    session: Session,
+    organisation_key: str,
+    scenario_key: str,
+) -> TypeCatalogResponse:
+    organisation, _ = _get_active_scenario_context(
+        session,
+        organisation_key,
+        scenario_key,
+    )
+    return _build_graph_type_catalog(session, organisation)
+
+
 def get_graph_type_catalog(
     session: Session,
     organisation_key: str,
@@ -80,6 +126,13 @@ def get_graph_type_catalog(
         scenario_key,
         org_state_key,
     )
+    return _build_graph_type_catalog(session, organisation)
+
+
+def _build_graph_type_catalog(
+    session: Session,
+    organisation: Organisation,
+) -> TypeCatalogResponse:
     metamodel = _get_active_organisation_metamodel(session, organisation)
 
     node_types = session.scalars(
@@ -236,6 +289,11 @@ def soft_delete_graph_node(
         org_state_key,
     )
     node = _get_visible_graph_node(session, scenario, org_state, node_key)
+    delete_date = org_state.target_date
+    if delete_date < node.create_date:
+        raise _invalid_lifetime_exception(
+            "Graph node deletion date cannot be before its creation date."
+        )
     now = datetime.now(UTC)
 
     connected_edges = session.scalars(
@@ -248,11 +306,39 @@ def soft_delete_graph_node(
             ),
         ),
     ).all()
+
+    if delete_date == node.create_date:
+        node.deleted_time = now
+        node.modified_time = now
+        for edge in connected_edges:
+            edge.deleted_time = now
+            edge.modified_time = now
+        session.commit()
+        return
+
+    node.delete_date = delete_date
     for edge in connected_edges:
-        edge.deleted_time = now
+        source_node = session.get(GraphNode, edge.source_graph_node_id)
+        target_node = session.get(GraphNode, edge.target_graph_node_id)
+        if source_node is None or target_node is None:
+            raise _invalid_graph_exception("Graph edge endpoint is missing.")
+        compatible_dates = [delete_date]
+        if edge.delete_date is not None:
+            compatible_dates.append(edge.delete_date)
+        if source_node.delete_date is not None:
+            compatible_dates.append(source_node.delete_date)
+        if target_node.delete_date is not None:
+            compatible_dates.append(target_node.delete_date)
+        edge_delete_date = min(compatible_dates)
+        _ensure_edge_lifetime_within_nodes(
+            edge.create_date,
+            edge_delete_date,
+            source_node,
+            target_node,
+        )
+        edge.delete_date = edge_delete_date
         edge.modified_time = now
 
-    node.deleted_time = now
     node.modified_time = now
     session.commit()
 
@@ -303,6 +389,12 @@ def create_graph_edge(
         target_graph_node_id=target_node.graph_node_id,
         create_date=org_state.target_date,
         attributes=payload.attributes,
+    )
+    _ensure_edge_lifetime_within_nodes(
+        edge.create_date,
+        edge.delete_date,
+        source_node,
+        target_node,
     )
     session.add(edge)
     session.commit()
@@ -369,6 +461,12 @@ def patch_graph_edge(
         edge.edge_type_id = edge_type.edge_type_id
         edge.source_graph_node_id = source_node.graph_node_id
         edge.target_graph_node_id = target_node.graph_node_id
+    _ensure_edge_lifetime_within_nodes(
+        edge.create_date,
+        edge.delete_date,
+        source_node,
+        target_node,
+    )
     if "name" in update_data and payload.name is not None:
         edge.name = payload.name
     if "description" in update_data:
@@ -397,9 +495,23 @@ def soft_delete_graph_edge(
         org_state_key,
     )
     edge = _get_visible_graph_edge(session, scenario, org_state, edge_key)
+    delete_date = org_state.target_date
+    source_node = session.get(GraphNode, edge.source_graph_node_id)
+    target_node = session.get(GraphNode, edge.target_graph_node_id)
+    if source_node is None or target_node is None:
+        raise _invalid_graph_exception("Graph edge endpoint is missing.")
+    _ensure_edge_lifetime_within_nodes(
+        edge.create_date,
+        delete_date,
+        source_node,
+        target_node,
+    )
     now = datetime.now(UTC)
 
-    edge.deleted_time = now
+    if delete_date == edge.create_date:
+        edge.deleted_time = now
+    else:
+        edge.delete_date = delete_date
     edge.modified_time = now
     session.commit()
 
@@ -431,6 +543,10 @@ def bulk_update_positions(
                 GraphNode.scenario_id == scenario.scenario_id,
                 GraphNode.node_key.in_(node_ids),
                 GraphNode.create_date <= org_state.target_date,
+                or_(
+                    GraphNode.delete_date.is_(None),
+                    GraphNode.delete_date >= org_state.target_date,
+                ),
                 GraphNode.deleted_time.is_(None),
             ),
         ).all()
@@ -597,6 +713,10 @@ def copy_graph_snapshots_for_org_states(
         .where(
             GraphNode.scenario_id == source_scenario_id,
             GraphNode.create_date <= boundary_date,
+            or_(
+                GraphNode.delete_date.is_(None),
+                GraphNode.delete_date >= boundary_date,
+            ),
             GraphNode.deleted_time.is_(None),
         )
         .order_by(GraphNode.graph_node_id),
@@ -611,6 +731,7 @@ def copy_graph_snapshots_for_org_states(
             description=source_node.description,
             node_type_id=source_node.node_type_id,
             create_date=source_node.create_date,
+            delete_date=source_node.delete_date,
             position_x=source_node.position_x,
             position_y=source_node.position_y,
             attributes=deepcopy(source_node.attributes),
@@ -626,6 +747,10 @@ def copy_graph_snapshots_for_org_states(
         .where(
             GraphEdge.scenario_id == source_scenario_id,
             GraphEdge.create_date <= boundary_date,
+            or_(
+                GraphEdge.delete_date.is_(None),
+                GraphEdge.delete_date >= boundary_date,
+            ),
             GraphEdge.deleted_time.is_(None),
         )
         .order_by(GraphEdge.graph_edge_id),
@@ -646,6 +771,7 @@ def copy_graph_snapshots_for_org_states(
                 source_graph_node_id=node_id_map[source_edge.source_graph_node_id],
                 target_graph_node_id=node_id_map[source_edge.target_graph_node_id],
                 create_date=source_edge.create_date,
+                delete_date=source_edge.delete_date,
                 attributes=deepcopy(source_edge.attributes),
             ),
         )
@@ -690,6 +816,10 @@ def to_graph_response(
         .where(
             GraphNode.scenario_id == scenario.scenario_id,
             GraphNode.create_date <= org_state.target_date,
+            or_(
+                GraphNode.delete_date.is_(None),
+                GraphNode.delete_date >= org_state.target_date,
+            ),
             GraphNode.deleted_time.is_(None),
         )
         .order_by(GraphNode.graph_node_id),
@@ -703,6 +833,10 @@ def to_graph_response(
                 .where(
                     GraphEdge.scenario_id == scenario.scenario_id,
                     GraphEdge.create_date <= org_state.target_date,
+                    or_(
+                        GraphEdge.delete_date.is_(None),
+                        GraphEdge.delete_date >= org_state.target_date,
+                    ),
                     GraphEdge.source_graph_node_id.in_(visible_node_ids),
                     GraphEdge.target_graph_node_id.in_(visible_node_ids),
                     GraphEdge.deleted_time.is_(None),
@@ -735,6 +869,7 @@ def to_graph_node_response(session: Session, node: GraphNode) -> GraphNodeRespon
         description=node.description or "",
         nodeTypeId=node_type.node_type_key,
         createDate=node.create_date,
+        deleteDate=node.delete_date,
         position=position,
         attributes=node.attributes,
         timeserieId=_active_timeserie_key_by_id(session, node.timeserie_id),
@@ -762,6 +897,7 @@ def to_graph_edge_response(session: Session, edge: GraphEdge) -> GraphEdgeRespon
         sourceNodeId=source_node.node_key,
         targetNodeId=target_node.node_key,
         createDate=edge.create_date,
+        deleteDate=edge.delete_date,
         attributes=edge.attributes,
     )
 
@@ -829,19 +965,11 @@ def _get_active_context(
     scenario_key: str,
     org_state_key: str,
 ) -> tuple[Organisation, Scenario, OrgState]:
-    organisation = get_active_organisation(session, organisation_key)
-    scenario = session.scalar(
-        select(Scenario).where(
-            Scenario.organisation_id == organisation.organisation_id,
-            Scenario.scenario_key == scenario_key,
-            Scenario.deleted_time.is_(None),
-        ),
+    organisation, scenario = _get_active_scenario_context(
+        session,
+        organisation_key,
+        scenario_key,
     )
-    if scenario is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Scenario not found.",
-        )
 
     org_state = session.scalar(
         select(OrgState).where(
@@ -859,6 +987,28 @@ def _get_active_context(
     return organisation, scenario, org_state
 
 
+def _get_active_scenario_context(
+    session: Session,
+    organisation_key: str,
+    scenario_key: str,
+) -> tuple[Organisation, Scenario]:
+    organisation = get_active_organisation(session, organisation_key)
+    scenario = session.scalar(
+        select(Scenario).where(
+            Scenario.organisation_id == organisation.organisation_id,
+            Scenario.scenario_key == scenario_key,
+            Scenario.deleted_time.is_(None),
+        ),
+    )
+    if scenario is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Scenario not found.",
+        )
+
+    return organisation, scenario
+
+
 def _get_visible_graph_node(
     session: Session,
     scenario: Scenario,
@@ -870,6 +1020,10 @@ def _get_visible_graph_node(
             GraphNode.scenario_id == scenario.scenario_id,
             GraphNode.node_key == node_key,
             GraphNode.create_date <= org_state.target_date,
+            or_(
+                GraphNode.delete_date.is_(None),
+                GraphNode.delete_date >= org_state.target_date,
+            ),
             GraphNode.deleted_time.is_(None),
         ),
     )
@@ -914,6 +1068,10 @@ def _get_visible_graph_edge(
             GraphEdge.scenario_id == scenario.scenario_id,
             GraphEdge.edge_key == edge_key,
             GraphEdge.create_date <= org_state.target_date,
+            or_(
+                GraphEdge.delete_date.is_(None),
+                GraphEdge.delete_date >= org_state.target_date,
+            ),
             GraphEdge.deleted_time.is_(None),
         ),
     )
@@ -1137,6 +1295,30 @@ def _ensure_connection_is_allowed(
         )
 
 
+def _ensure_edge_lifetime_within_nodes(
+    create_date: date,
+    delete_date: date | None,
+    source_node: GraphNode,
+    target_node: GraphNode,
+) -> None:
+    if delete_date is not None and delete_date < create_date:
+        raise _invalid_lifetime_exception(
+            "Graph edge deletion date cannot be before its creation date."
+        )
+
+    for endpoint in (source_node, target_node):
+        if create_date < endpoint.create_date:
+            raise _invalid_lifetime_exception(
+                "Graph edge lifetime cannot start before an endpoint node."
+            )
+        if endpoint.delete_date is not None and (
+            delete_date is None or delete_date > endpoint.delete_date
+        ):
+            raise _invalid_lifetime_exception(
+                "Graph edge lifetime cannot extend beyond an endpoint node."
+            )
+
+
 def _ensure_node_type_change_keeps_edges_allowed(
     session: Session,
     scenario: Scenario,
@@ -1205,6 +1387,13 @@ def _apply_position(node: GraphNode, position: Position | None) -> None:
 def _invalid_graph_exception(detail: str) -> HTTPException:
     return HTTPException(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail=detail,
+    )
+
+
+def _invalid_lifetime_exception(detail: str) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
         detail=detail,
     )
 

@@ -157,6 +157,46 @@ Authorization note:
 
 ---
 
+# Testing Summary Feature
+
+Summary changes combine graph history, events and timeseries on a shared date
+axis, so test the pure timeline model separately from component interactions.
+
+Backend Summary and temporal graph checks:
+
+```bash
+cd backend
+uv run ruff check .
+uv run pytest tests/test_org_twin_structure_api.py -v
+uv run pyright
+```
+
+Cover organisation/scenario ownership, stable ids, persistence soft-delete
+exclusion, inclusive logical lifetime projection, connected-edge end dates and
+invalid lifetime rejection.
+
+Frontend Summary checks:
+
+```bash
+cd frontend
+pnpm lint
+pnpm test
+pnpm build
+```
+
+Pure helper tests cover malformed dates, bounds, ordering, filtering, row and
+month label formatting, adaptive year-only headers, chart scales and zoom limits. Component tests cover concurrent cancellable loading,
+stale response prevention, states and retry, row rendering, hover details,
+filters, mutually exclusive popovers, row visibility and collapsing, zoom scale
+feedback, zoom-to-fit, scrolling and shared timeseries row resizing.
+
+Manual QA:
+
+- Use `docs/qa/SUMMARY-QA-CHECKLIST.md` for the scenario-scoped timeline,
+  Structure lifetime behavior and visual interaction checks.
+
+---
+
 # Test Levels
 
 Use the lightest useful test level.

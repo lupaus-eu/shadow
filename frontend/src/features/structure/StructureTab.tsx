@@ -515,19 +515,33 @@ export default function StructureTab(props: { orgId: string }) {
         selectedOrgState.id,
         selectedNode.id
       );
-      setGraph((current) =>
-        current
-          ? {
-              ...current,
-              nodes: current.nodes.filter((node) => node.id !== selectedNode.id),
-              edges: current.edges.filter(
-                (edge) =>
-                  edge.sourceNodeId !== selectedNode.id &&
-                  edge.targetNodeId !== selectedNode.id
-              )
-            }
-          : current
-      );
+      if (selectedNode.createDate === selectedOrgState.targetDate) {
+        setGraph((current) =>
+          current
+            ? {
+                ...current,
+                nodes: current.nodes.filter((node) => node.id !== selectedNode.id),
+                edges: current.edges.filter(
+                  (edge) =>
+                    edge.sourceNodeId !== selectedNode.id &&
+                    edge.targetNodeId !== selectedNode.id
+                )
+              }
+            : current
+        );
+      } else {
+        const nextGraph = await fetchGraph(
+          props.orgId,
+          selectedScenario.id,
+          selectedOrgState.id
+        );
+        if (
+          contextRef.current?.scenarioId === selectedScenario.id &&
+          contextRef.current.orgStateId === selectedOrgState.id
+        ) {
+          setGraph(nextGraph);
+        }
+      }
       setSelected(null);
     } catch (error) {
       setActionError(messageFromError(error));
@@ -600,14 +614,28 @@ export default function StructureTab(props: { orgId: string }) {
         selectedOrgState.id,
         selectedEdge.id
       );
-      setGraph((current) =>
-        current
-          ? {
-              ...current,
-              edges: current.edges.filter((edge) => edge.id !== selectedEdge.id)
-            }
-          : current
-      );
+      if (selectedEdge.createDate === selectedOrgState.targetDate) {
+        setGraph((current) =>
+          current
+            ? {
+                ...current,
+                edges: current.edges.filter((edge) => edge.id !== selectedEdge.id)
+              }
+            : current
+        );
+      } else {
+        const nextGraph = await fetchGraph(
+          props.orgId,
+          selectedScenario.id,
+          selectedOrgState.id
+        );
+        if (
+          contextRef.current?.scenarioId === selectedScenario.id &&
+          contextRef.current.orgStateId === selectedOrgState.id
+        ) {
+          setGraph(nextGraph);
+        }
+      }
       setSelected(null);
     } catch (error) {
       setActionError(messageFromError(error));

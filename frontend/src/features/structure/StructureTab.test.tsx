@@ -45,12 +45,19 @@ vi.mock("../../api/timeseries", async (importOriginal) => {
 
 vi.mock("./GraphViewer", () => ({
   default: (props: {
+    graph: GraphDto | null;
     centerNodeRequest: { nodeId: string; requestId: number } | null;
     onSelect: (selection: { kind: "node" | "edge"; id: string } | null) => void;
     onNodePositionChange: (nodeId: string, position: { x: number; y: number }) => void;
     onViewportCenterChange: (position: { x: number; y: number }) => void;
   }) => (
     <div data-testid="graph-viewer">
+      <span data-testid="graph-node-ids">
+        {props.graph?.nodes.map((node) => node.id).join(",") ?? ""}
+      </span>
+      <span data-testid="graph-edge-ids">
+        {props.graph?.edges.map((edge) => edge.id).join(",") ?? ""}
+      </span>
       <span data-testid="center-node-request">
         {props.centerNodeRequest
           ? `${props.centerNodeRequest.nodeId}:${props.centerNodeRequest.requestId}`
@@ -112,7 +119,8 @@ const graph: GraphDto = {
       name: "CEO",
       description: "Chief executive",
       nodeTypeId: "nt_person",
-      createDate: null,
+      createDate: "2026-01-01",
+      deleteDate: null,
       position: { x: 10, y: 20 },
       attributes: { level: 1 },
       timeserieId: null,
@@ -124,6 +132,7 @@ const graph: GraphDto = {
       description: "Sales department",
       nodeTypeId: "nt_team",
       createDate: null,
+      deleteDate: null,
       position: { x: 120, y: 20 },
       attributes: {},
       timeserieId: null,
@@ -135,6 +144,7 @@ const graph: GraphDto = {
       description: "Finance lead",
       nodeTypeId: "nt_person",
       createDate: null,
+      deleteDate: null,
       position: { x: 200, y: 20 },
       attributes: {},
       timeserieId: null,
@@ -146,6 +156,7 @@ const graph: GraphDto = {
       description: "Monthly revenue",
       nodeTypeId: "nt_metric",
       createDate: null,
+      deleteDate: null,
       position: { x: 320, y: 20 },
       attributes: {},
       timeserieId: null,
@@ -160,7 +171,8 @@ const graph: GraphDto = {
       edgeTypeId: "et_reports_to",
       sourceNodeId: "node_sales",
       targetNodeId: "node_ceo",
-      createDate: null,
+      createDate: "2026-01-01",
+      deleteDate: null,
       attributes: {}
     }
   ]
@@ -279,6 +291,7 @@ describe("StructureTab", () => {
       description: "",
       nodeTypeId: "nt_team",
       createDate: null,
+      deleteDate: null,
       position: { x: 0, y: 0 },
       attributes: {},
       timeserieId: null,
@@ -482,6 +495,7 @@ describe("StructureTab", () => {
       sourceNodeId: "node_ceo",
       targetNodeId: "node_sales",
       createDate: null,
+      deleteDate: null,
       attributes: {}
     });
 
@@ -836,7 +850,10 @@ describe("StructureTab", () => {
         "draft",
         "node_ceo"
       );
+      expect(structureApi.fetchGraph).toHaveBeenCalledTimes(2);
     });
+    expect(screen.getByTestId("graph-node-ids")).toHaveTextContent("node_ceo");
+    expect(screen.getByTestId("graph-edge-ids")).toHaveTextContent("edge_reports");
   });
 
   it("confirms selected edge deletion with yes and no buttons", async () => {
@@ -868,6 +885,53 @@ describe("StructureTab", () => {
         "draft",
         "edge_reports"
       );
+      expect(structureApi.fetchGraph).toHaveBeenCalledTimes(2);
     });
+    expect(screen.getByTestId("graph-edge-ids")).toHaveTextContent("edge_reports");
+  });
+
+  it("removes a same-day deleted node and its connected edges locally", async () => {
+    vi.mocked(structureApi.fetchGraph).mockResolvedValue({
+      ...graph,
+      nodes: graph.nodes.map((node) =>
+        node.id === "node_ceo"
+          ? { ...node, createDate: "2026-07-01" }
+          : node
+      )
+    });
+    renderStructureTab();
+    await screen.findByRole("region", { name: "Person nodes" });
+
+    fireEvent.click(screen.getByRole("button", { name: "CEO Chief executive" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete selected node" }));
+    fireEvent.click(screen.getByRole("button", { name: "Yes" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("graph-node-ids")).not.toHaveTextContent("node_ceo");
+      expect(screen.getByTestId("graph-edge-ids")).toBeEmptyDOMElement();
+    });
+    expect(structureApi.fetchGraph).toHaveBeenCalledTimes(1);
+  });
+
+  it("removes a same-day deleted edge locally", async () => {
+    vi.mocked(structureApi.fetchGraph).mockResolvedValue({
+      ...graph,
+      edges: graph.edges.map((edge) => ({
+        ...edge,
+        createDate: "2026-07-01"
+      }))
+    });
+    renderStructureTab();
+    await screen.findByRole("region", { name: "Person nodes" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Show & Edit" }));
+    fireEvent.click(screen.getByRole("button", { name: "Select reports edge" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete selected edge" }));
+    fireEvent.click(screen.getByRole("button", { name: "Yes" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("graph-edge-ids")).toBeEmptyDOMElement();
+    });
+    expect(structureApi.fetchGraph).toHaveBeenCalledTimes(1);
   });
 });

@@ -146,6 +146,7 @@ const graph: GraphDto = {
       description: "",
       nodeTypeId: "nt_person",
       createDate: null,
+      deleteDate: null,
       position: { x: 10, y: 20 },
       attributes: {},
       timeserieId: null,
@@ -157,6 +158,7 @@ const graph: GraphDto = {
       description: "",
       nodeTypeId: "nt_hidden",
       createDate: null,
+      deleteDate: null,
       position: { x: 100, y: 120 },
       attributes: {},
       timeserieId: null,
@@ -172,6 +174,7 @@ const graph: GraphDto = {
       sourceNodeId: "node_ceo",
       targetNodeId: "node_ceo",
       createDate: null,
+      deleteDate: null,
       attributes: {}
     },
     {
@@ -182,6 +185,7 @@ const graph: GraphDto = {
       sourceNodeId: "node_hidden",
       targetNodeId: "node_ceo",
       createDate: null,
+      deleteDate: null,
       attributes: {}
     }
   ]

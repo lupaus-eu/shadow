@@ -12,6 +12,7 @@ import EventsTab from "../features/events/EventsTab";
 import MetricsTab from "../features/metrics/MetricsTab";
 import ScenariosTab from "../features/scenarios/ScenariosTab";
 import StructureTab from "../features/structure/StructureTab";
+import SummaryTab from "../features/summary/SummaryTab";
 import { useWorkspaceSelection } from "../workspace/WorkspaceSelectionContext";
 import WorkspaceSelectionProvider from "../workspace/WorkspaceSelectionProvider";
 import { WORKSPACE_TABS, type WorkspaceTab } from "../workspace/workspaceTabs";
@@ -189,6 +190,10 @@ function WorkspaceTabContent(props: { tab: WorkspaceTab; orgId: string }) {
 
   if (props.tab.signature === "graph") {
     return <StructureTab orgId={props.orgId} />;
+  }
+
+  if (props.tab.signature === "summary") {
+    return <SummaryTab orgId={props.orgId} />;
   }
 
   return <EmptyTab title={props.tab.label} description={props.tab.emptyText} />;
