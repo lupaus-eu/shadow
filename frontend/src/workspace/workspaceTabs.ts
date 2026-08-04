@@ -4,7 +4,8 @@ export type WorkspaceTabSignature =
   | "events"
   | "metrics"
   | "summary"
-  | "analysis";
+  | "analysis"
+  | "users";
 
 export type WorkspaceTab = {
   signature: WorkspaceTabSignature;
@@ -45,5 +46,10 @@ export const WORKSPACE_TABS: WorkspaceTab[] = [
     signature: "analysis",
     label: "Analysis",
     emptyText: "Analysis tools and generated insight will appear here."
+  },
+  {
+    signature: "users",
+    label: "Users",
+    emptyText: "Application user management will appear here."
   }
 ];

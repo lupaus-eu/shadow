@@ -81,6 +81,12 @@ function mockSchattenApi(options?: {
       );
     }
 
+    if (url.endsWith("/api/v1/users") && method === "GET") {
+      return Promise.resolve(
+        jsonResponse([{ id: 101, name: "Development Admin", role: "admin" }])
+      );
+    }
+
     if (url.endsWith("/api/v1/organisations/acme/scenarios/copy")) {
       return Promise.resolve(
         jsonResponse({
@@ -563,7 +569,8 @@ describe("Schatten UI shell", () => {
       ["Scenarios", "/schatten/acme/org-states"],
       ["Metrics", "/schatten/acme/metrics"],
       ["Summary", "/schatten/acme/summary"],
-      ["Analysis", "/schatten/acme/analysis"]
+      ["Analysis", "/schatten/acme/analysis"],
+      ["Users", "/schatten/acme/users"]
     ] as const;
 
     for (const [label, href] of expectedLinks) {
@@ -587,6 +594,24 @@ describe("Schatten UI shell", () => {
     expect(screen.getByRole("link", { name: "Scenarios" })).not.toHaveClass(
       "tab-link--active"
     );
+  });
+
+  it("renders the application-wide Users route without workspace selections", async () => {
+    const fetchMock = mockSchattenApi();
+
+    renderAt("/schatten/acme/users");
+
+    expect(screen.getByRole("link", { name: "Users" })).toHaveClass(
+      "tab-link--active"
+    );
+    expect(await screen.findByRole("heading", { name: "Users" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /Development Admin/ })).toBeVisible();
+    expect(
+      fetchMock.mock.calls.some(
+        ([input, init]) =>
+          String(input) === "/api/v1/users" && init?.method === "GET"
+      )
+    ).toBe(true);
   });
 
   it("renders the Summary route without requiring an organisation state", () => {

@@ -421,6 +421,21 @@
   background: var(--color-bg-subtle);
 }
 
+.user-row:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.user-row:disabled:hover {
+  border-color: var(--color-border-subtle);
+  background: var(--color-bg-surface);
+}
+
+.user-row.entity-row--selected:disabled:hover {
+  border-color: var(--color-brand-500);
+  background: var(--color-brand-50);
+}
+
 .entity-row--selected {
   border-color: var(--color-brand-500);
   background: var(--color-brand-50);
@@ -460,6 +475,11 @@
   color: var(--color-text-secondary);
   font-family: var(--font-mono);
   font-size: var(--text-meta-size);
+}
+
+.user-row .badge {
+  min-width: 92px;
+  flex: 0 0 auto;
 }
 
 .event-row {

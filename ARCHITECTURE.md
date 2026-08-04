@@ -244,6 +244,46 @@ Alustava virheformaattisuositus:
 
 ---
 
+# Users
+
+Status: implemented frontend and backend CRUD baseline
+
+Users Domain owns application-wide user records, application roles and the
+user soft-delete lifecycle. The domain boundary and rules are documented in
+`docs/domains/USERS.md`.
+
+Backend implementation resides in:
+
+```text
+backend/app/api/v1/users/
+```
+
+The versioned HTTP/JSON API provides active-user list, get, create, patch and
+soft-delete operations under:
+
+```text
+/api/v1/users
+```
+
+Frontend Users UI resides in:
+
+```text
+frontend/src/features/users/
+```
+
+`UsersTab.tsx` lists active users and supports create, edit and confirmed
+soft-delete operations through `frontend/src/api/users.ts`. The workspace tab
+is available at `/schatten/:orgId/users` without a scenario or organisation
+state selection. The route is part of the current workspace navigation shell,
+but users remain application-wide: `orgId` is not included in Users Domain API
+requests and does not establish organisation membership.
+
+Authentication, authorization, Entra ID mapping and organisation membership
+remain outside this baseline. Backend authorization remains the future trusted
+security boundary.
+
+---
+
 # Org Twin Structure
 
 Status: implemented baseline
