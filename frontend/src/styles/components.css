@@ -59,6 +59,8 @@
 .input:focus-visible,
 .select:focus-visible,
 .tab-link:focus-visible,
+.context-chip--interactive:focus-visible,
+.icon-button:focus-visible,
 .detail-mode-switch__button:focus-visible,
 .structure-type-caret:focus-visible {
   outline: none;
@@ -243,6 +245,18 @@
   background: var(--color-bg-surface);
 }
 
+.context-chip--interactive {
+  max-width: 320px;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+}
+
+.context-chip--interactive:hover:not(:disabled) {
+  border-color: var(--color-border-strong);
+  background: var(--color-bg-inset);
+}
+
 .context-chip__label {
   flex: 0 0 auto;
   color: var(--color-text-secondary);
@@ -259,6 +273,55 @@
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.icon-button {
+  display: inline-grid;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-surface);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.icon-button:hover:not(:disabled) {
+  border-color: var(--color-border-strong);
+  background: var(--color-bg-inset);
+  color: var(--color-text-primary);
+}
+
+.icon-button--danger {
+  border-color: var(--color-danger-500);
+  background: var(--color-danger-500);
+  color: var(--color-text-on-brand);
+}
+
+.icon-button--danger:hover:not(:disabled) {
+  border-color: #9f2a22;
+  background: #9f2a22;
+  color: var(--color-text-on-brand);
+}
+
+.icon-button:disabled {
+  border-color: var(--color-border-subtle);
+  background: var(--color-bg-inset);
+  color: var(--color-text-disabled);
+  cursor: not-allowed;
+}
+
+.icon-button svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
 }
 
 .tab-link {

@@ -7,6 +7,10 @@ export type OrganisationCreateRequest = {
   name: string;
 };
 
+export type OrganisationPatchRequest = {
+  name: string;
+};
+
 const API_BASE_URL =
   (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim() ?? "";
 
@@ -97,4 +101,53 @@ export async function createOrganisation(
   }
 
   return (await res.json()) as OrganisationDto;
+}
+
+export async function updateOrganisation(
+  organisationId: string,
+  payload: OrganisationPatchRequest,
+  signal?: AbortSignal
+): Promise<OrganisationDto> {
+  const res = await fetch(
+    buildApiUrl(
+      `/api/v1/organisations/${encodeURIComponent(organisationId)}`
+    ),
+    {
+      method: "PATCH",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload),
+      signal
+    }
+  );
+
+  if (!res.ok) {
+    throw new Error(await responseErrorMessage(res, "update organisation"));
+  }
+
+  return (await res.json()) as OrganisationDto;
+}
+
+export async function deleteOrganisation(
+  organisationId: string,
+  signal?: AbortSignal
+): Promise<void> {
+  const res = await fetch(
+    buildApiUrl(
+      `/api/v1/organisations/${encodeURIComponent(organisationId)}`
+    ),
+    {
+      method: "DELETE",
+      headers: {
+        Accept: "application/json"
+      },
+      signal
+    }
+  );
+
+  if (!res.ok) {
+    throw new Error(await responseErrorMessage(res, "delete organisation"));
+  }
 }

@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo } from "react";
+import { useLayoutEffect, useMemo, useState } from "react";
 import {
   NavLink,
   Navigate,
@@ -8,6 +8,7 @@ import {
   useParams
 } from "react-router-dom";
 import EmptyTab from "../components/EmptyTab";
+import OrganisationDropdown from "../components/OrganisationDropdown";
 import EventsTab from "../features/events/EventsTab";
 import MetricsTab from "../features/metrics/MetricsTab";
 import ScenariosTab from "../features/scenarios/ScenariosTab";
@@ -54,56 +55,77 @@ export default function Workspace() {
   if (!orgId) return <Navigate to="/" replace />;
 
   const organisationName = stateOrgName ?? storedOrgName ?? orgId;
-  const forwardedState: WorkspaceNavState = { organisationName };
 
   return (
     <WorkspaceSelectionProvider key={orgId}>
-      <div className="workspace-shell">
-        <header className="workspace-header">
-          <div className="workspace-header__top">
-            <div className="workspace-header__brand">
-              <span className="app-mark" aria-hidden="true">
-                S
-              </span>
-              <span className="app-name">Schatten</span>
-            </div>
-            <WorkspaceIndicators organisationName={organisationName} />
-          </div>
-          <WorkspaceTabs orgId={orgId} forwardedState={forwardedState} />
-        </header>
-
-        <main className="workspace-content">
-          <Routes>
-            <Route
-              index
-              element={
-                <Navigate to="org-states" replace state={forwardedState} />
-              }
-            />
-            {WORKSPACE_TABS.map((tab) => (
-              <Route
-                key={tab.signature}
-                path={tab.signature}
-                element={<WorkspaceTabContent tab={tab} orgId={orgId} />}
-              />
-            ))}
-            <Route
-              path="*"
-              element={
-                <EmptyTab
-                  title="Not found"
-                  description="This workspace tab does not exist."
-                />
-              }
-            />
-          </Routes>
-        </main>
-      </div>
+      <WorkspaceShell orgId={orgId} initialOrganisationName={organisationName} />
     </WorkspaceSelectionProvider>
   );
 }
 
-function WorkspaceIndicators(props: { organisationName: string }) {
+function WorkspaceShell(props: {
+  orgId: string;
+  initialOrganisationName: string;
+}) {
+  const [organisationName, setOrganisationName] = useState(
+    props.initialOrganisationName
+  );
+  const forwardedState: WorkspaceNavState = { organisationName };
+
+  return (
+    <div className="workspace-shell">
+      <header className="workspace-header">
+        <div className="workspace-header__top">
+          <div className="workspace-header__brand">
+            <span className="app-mark" aria-hidden="true">
+              S
+            </span>
+            <span className="app-name">Schatten</span>
+          </div>
+          <WorkspaceIndicators
+            orgId={props.orgId}
+            organisationName={organisationName}
+            onOrganisationNameChange={setOrganisationName}
+          />
+        </div>
+        <WorkspaceTabs orgId={props.orgId} forwardedState={forwardedState} />
+      </header>
+
+      <main className="workspace-content">
+        <Routes>
+          <Route
+            index
+            element={
+              <Navigate to="org-states" replace state={forwardedState} />
+            }
+          />
+          {WORKSPACE_TABS.map((tab) => (
+            <Route
+              key={tab.signature}
+              path={tab.signature}
+              element={<WorkspaceTabContent tab={tab} orgId={props.orgId} />}
+            />
+          ))}
+          <Route
+            path="*"
+            element={
+              <EmptyTab
+                title="Not found"
+                description="This workspace tab does not exist."
+              />
+            }
+          />
+        </Routes>
+      </main>
+    </div>
+  );
+}
+
+function WorkspaceIndicators(props: {
+  orgId: string;
+  organisationName: string;
+  onOrganisationNameChange: (name: string) => void;
+}) {
   const { selectedScenario, selectedOrgState } = useWorkspaceSelection();
   const orgStateValue = selectedOrgState
     ? `${selectedOrgState.name} (${selectedOrgState.targetDate})`
@@ -111,7 +133,11 @@ function WorkspaceIndicators(props: { organisationName: string }) {
 
   return (
     <div className="workspace-indicators" aria-label="Current workspace context">
-      <ReadOnlyChip label="Organisation" value={props.organisationName} />
+      <OrganisationDropdown
+        orgId={props.orgId}
+        organisationName={props.organisationName}
+        onOrganisationNameChange={props.onOrganisationNameChange}
+      />
       <ReadOnlyChip label="Scenario" value={selectedScenario?.name ?? "None"} />
       <ReadOnlyChip label="Org state" value={orgStateValue} />
     </div>
