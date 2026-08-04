@@ -169,6 +169,52 @@ export default function ScenariosTab(props: { orgId: string }) {
     [setSelectedOrgState]
   );
 
+  const applySelectedScenario = useCallback(
+    (
+      scenario: ScenarioDto | null,
+      options?: { preserveOrgState?: boolean }
+    ) => {
+      selectedScenarioIdRef.current = scenario?.id ?? null;
+      setSelectedScenario(
+        scenario ? { id: scenario.id, name: scenario.name } : null
+      );
+      if (!options?.preserveOrgState) {
+        applySelectedOrgState(null);
+      }
+      setDetailMode("scenario");
+      setScenarioEditName(scenario?.name ?? "");
+      setScenarioEditDescription(scenario?.description ?? "");
+      setForkName(scenario ? `Fork of ${scenario.name}` : "");
+      setForkDescription(scenario?.description ?? "");
+      setScenarioAction(null);
+      setScenarioActionError("");
+      setScenarioDeleteConfirmation("");
+      setOrgStateActionError("");
+      setOrgStateDeleteConfirmation("");
+      setForkError("");
+      setStateCreateError("");
+      setCleanConfirming(false);
+      setCleanMessage("");
+      setCleanError("");
+    },
+    [applySelectedOrgState, setSelectedScenario]
+  );
+
+  const reconcileLoadedScenarios = useCallback(
+    (items: ScenarioDto[]) => {
+      const storedScenarioId = selectedScenarioIdRef.current;
+      const storedScenario = storedScenarioId
+        ? items.find((scenario) => scenario.id === storedScenarioId) ?? null
+        : null;
+      const nextScenario = storedScenario ?? items[0] ?? null;
+
+      applySelectedScenario(nextScenario, {
+        preserveOrgState: Boolean(storedScenario)
+      });
+    },
+    [applySelectedScenario]
+  );
+
   const loadScenarios = useCallback(
     async (signal?: AbortSignal) => {
       try {
@@ -176,30 +222,7 @@ export default function ScenariosTab(props: { orgId: string }) {
         setScenarioError("");
         const items = await fetchScenarios(props.orgId, signal);
         setScenarios(items);
-        if (!selectedScenarioIdRef.current && items[0]) {
-          const firstScenario = items[0];
-          selectedScenarioIdRef.current = firstScenario.id;
-          setSelectedScenario({
-            id: firstScenario.id,
-            name: firstScenario.name
-          });
-          applySelectedOrgState(null);
-          setDetailMode("scenario");
-          setScenarioEditName(firstScenario.name);
-          setScenarioEditDescription(firstScenario.description);
-          setForkName(`Fork of ${firstScenario.name}`);
-          setForkDescription(firstScenario.description);
-          setScenarioAction(null);
-          setScenarioActionError("");
-          setScenarioDeleteConfirmation("");
-          setOrgStateActionError("");
-          setOrgStateDeleteConfirmation("");
-          setForkError("");
-          setStateCreateError("");
-          setCleanConfirming(false);
-          setCleanMessage("");
-          setCleanError("");
-        }
+        reconcileLoadedScenarios(items);
       } catch (error) {
         const err = error as { name?: string };
         if (err.name === "AbortError") return;
@@ -208,11 +231,7 @@ export default function ScenariosTab(props: { orgId: string }) {
         setLoadingScenarios(false);
       }
     },
-    [
-      applySelectedOrgState,
-      props.orgId,
-      setSelectedScenario
-    ]
+    [props.orgId, reconcileLoadedScenarios]
   );
 
   useEffect(() => {
@@ -226,30 +245,7 @@ export default function ScenariosTab(props: { orgId: string }) {
         const items = await fetchScenarios(props.orgId, ac.signal);
         if (ignore) return;
         setScenarios(items);
-        if (!selectedScenarioIdRef.current && items[0]) {
-          const firstScenario = items[0];
-          selectedScenarioIdRef.current = firstScenario.id;
-          setSelectedScenario({
-            id: firstScenario.id,
-            name: firstScenario.name
-          });
-          applySelectedOrgState(null);
-          setDetailMode("scenario");
-          setScenarioEditName(firstScenario.name);
-          setScenarioEditDescription(firstScenario.description);
-          setForkName(`Fork of ${firstScenario.name}`);
-          setForkDescription(firstScenario.description);
-          setScenarioAction(null);
-          setScenarioActionError("");
-          setScenarioDeleteConfirmation("");
-          setOrgStateActionError("");
-          setOrgStateDeleteConfirmation("");
-          setForkError("");
-          setStateCreateError("");
-          setCleanConfirming(false);
-          setCleanMessage("");
-          setCleanError("");
-        }
+        reconcileLoadedScenarios(items);
       } catch (error) {
         const err = error as { name?: string };
         if (ignore || err.name === "AbortError") return;
@@ -265,11 +261,7 @@ export default function ScenariosTab(props: { orgId: string }) {
       ignore = true;
       ac.abort();
     };
-  }, [
-    applySelectedOrgState,
-    props.orgId,
-    setSelectedScenario
-  ]);
+  }, [props.orgId, reconcileLoadedScenarios]);
 
   useEffect(() => {
     const scenarioId = selectedScenario?.id;
@@ -328,24 +320,7 @@ export default function ScenariosTab(props: { orgId: string }) {
   }
 
   function selectScenario(scenario: ScenarioDto) {
-    selectedScenarioIdRef.current = scenario.id;
-    setSelectedScenario({ id: scenario.id, name: scenario.name });
-    applySelectedOrgState(null);
-    setDetailMode("scenario");
-    setScenarioEditName(scenario.name);
-    setScenarioEditDescription(scenario.description);
-    setForkName(`Fork of ${scenario.name}`);
-    setForkDescription(scenario.description);
-    setScenarioAction(null);
-    setScenarioActionError("");
-    setScenarioDeleteConfirmation("");
-    setOrgStateActionError("");
-    setOrgStateDeleteConfirmation("");
-    setForkError("");
-    setStateCreateError("");
-    setCleanConfirming(false);
-    setCleanMessage("");
-    setCleanError("");
+    applySelectedScenario(scenario);
   }
 
   function selectOrgState(orgState: OrgStateDto) {

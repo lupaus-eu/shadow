@@ -38,8 +38,10 @@ function mockSchattenApi(options?: {
   cleanResponse?: Promise<Response>;
   eventsStatus?: number;
   eventMutationStatus?: number;
+  omitFutureAfterFirstScenarioLoad?: boolean;
 }) {
   let cleanedFutureStates = false;
+  let scenarioListRequestCount = 0;
   let futureEvents = [
     {
       id: "kickoff",
@@ -179,6 +181,22 @@ function mockSchattenApi(options?: {
     }
 
     if (url.endsWith("/api/v1/organisations/acme/scenarios")) {
+      scenarioListRequestCount += 1;
+      if (
+        options?.omitFutureAfterFirstScenarioLoad &&
+        scenarioListRequestCount > 1
+      ) {
+        return Promise.resolve(
+          jsonResponse([
+            {
+              scenario_id: "reality",
+              scenario_name: "Reality",
+              scenario_description: "Current baseline"
+            }
+          ])
+        );
+      }
+
       return Promise.resolve(
         jsonResponse([
           {
@@ -1008,6 +1026,67 @@ describe("Schatten UI shell", () => {
         screen.getByRole("button", { name: /Planned launch/ })
       ).toHaveClass("entity-row--selected");
     });
+
+    const selectedScenarioPanel = screen.getByRole("region", {
+      name: "Selected scenario"
+    });
+    expect(within(selectedScenarioPanel).getByLabelText("Name")).toHaveValue(
+      "Future plan"
+    );
+    expect(
+      within(selectedScenarioPanel).getByLabelText("Description")
+    ).toHaveValue("A possible future");
+    expect(
+      within(selectedScenarioPanel).getByRole("button", {
+        name: "Save scenario"
+      })
+    ).toBeDisabled();
+
+    const forkForm = screen.getByRole("form", { name: "Fork from existing" });
+    expect(within(forkForm).getByLabelText(/Name/)).toHaveValue(
+      "Fork of Future plan"
+    );
+    expect(within(forkForm).getByLabelText(/Description/)).toHaveValue(
+      "A possible future"
+    );
+  });
+
+  it("falls back when the selected scenario is missing on return", async () => {
+    mockSchattenApi({ omitFutureAfterFirstScenarioLoad: true });
+
+    renderAt("/schatten/acme/org-states");
+
+    fireEvent.click(await screen.findByRole("button", { name: /Future plan/ }));
+    await screen.findByRole("button", { name: /Draft state/ });
+    expect(
+      screen.getByTitle("Org state: Draft state (2026-06-01)")
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("link", { name: "Events" }));
+    expect(
+      await screen.findByRole("heading", { name: "Events", level: 1 })
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("link", { name: "Scenarios" }));
+
+    await waitFor(() => {
+      expect(screen.getByTitle("Scenario: Reality")).toBeInTheDocument();
+      expect(
+        screen.getByTitle("Org state: Today (2026-06-23)")
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByRole("button", { name: /Draft state/ })
+    ).not.toBeInTheDocument();
+
+    const selectedScenarioPanel = screen.getByRole("region", {
+      name: "Selected scenario"
+    });
+    expect(within(selectedScenarioPanel).getByLabelText("Name")).toHaveValue(
+      "Reality"
+    );
+    expect(
+      within(selectedScenarioPanel).getByLabelText("Description")
+    ).toHaveValue("Current baseline");
   });
 
   it("edits the selected org state immediately and saves only after changes", async () => {
