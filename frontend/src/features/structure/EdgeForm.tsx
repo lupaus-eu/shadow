@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { FormEvent } from "react";
+import type { SubmitEvent } from "react";
 import type {
   EdgeTypeMetadataDto,
   GraphEdgeCreateRequest,
@@ -89,7 +89,7 @@ export default function EdgeForm(props: {
     ? "Self referencing edges not allowed"
     : "";
 
-  async function submit(event: FormEvent<HTMLFormElement>) {
+  async function submit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     setFormError("");
 

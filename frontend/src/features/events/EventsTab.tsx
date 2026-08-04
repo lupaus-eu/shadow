@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { FormEvent } from "react";
+import type { SubmitEvent } from "react";
 import {
   createEvent,
   deleteEvent,
@@ -149,7 +149,7 @@ export default function EventsTab(props: { orgId: string }) {
     await loadEvents(selectedEventId);
   }
 
-  async function onCreateSubmit(event: FormEvent<HTMLFormElement>) {
+  async function onCreateSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selectedScenario) return;
 
@@ -182,7 +182,7 @@ export default function EventsTab(props: { orgId: string }) {
     }
   }
 
-  async function onEditSubmit(event: FormEvent<HTMLFormElement>) {
+  async function onEditSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selectedScenario || !selectedEvent) return;
 
@@ -357,7 +357,7 @@ function EventDetail(props: {
   onEditNameChange: (value: string) => void;
   onEditTargetDateChange: (value: string) => void;
   onEditDetailsChange: (value: string) => void;
-  onEditSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onEditSubmit: (event: SubmitEvent<HTMLFormElement>) => void;
   onDelete: () => Promise<void>;
 }) {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -469,7 +469,7 @@ function CreateEventForm(props: {
   onNameChange: (value: string) => void;
   onTargetDateChange: (value: string) => void;
   onDetailsChange: (value: string) => void;
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onSubmit: (event: SubmitEvent<HTMLFormElement>) => void;
 }) {
   return (
     <form

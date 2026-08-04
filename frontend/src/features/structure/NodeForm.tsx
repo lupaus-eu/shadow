@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { FormEvent } from "react";
+import type { SubmitEvent } from "react";
 import type {
   GraphNodeCreateRequest,
   GraphNodeDto,
@@ -44,7 +44,7 @@ export default function NodeForm(props: {
     return "Node type metadata is required before nodes can be saved.";
   }, [hasNodeTypes]);
 
-  async function submit(event: FormEvent<HTMLFormElement>) {
+  async function submit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     setFormError("");
 

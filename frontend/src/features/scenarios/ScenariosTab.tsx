@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { FormEvent } from "react";
+import type { SubmitEvent } from "react";
 import {
   ApiError,
   cleanOrgStates,
@@ -422,7 +422,7 @@ export default function ScenariosTab(props: { orgId: string }) {
     }
   }
 
-  async function onScenarioEditSubmit(event: FormEvent<HTMLFormElement>) {
+  async function onScenarioEditSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selectedScenarioDto) return;
     const name = scenarioEditName.trim();
@@ -456,7 +456,7 @@ export default function ScenariosTab(props: { orgId: string }) {
     }
   }
 
-  async function onForkSubmit(event: FormEvent<HTMLFormElement>) {
+  async function onForkSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selectedScenarioDto) return;
     if (!forkSourceOrgStateDto) {
@@ -490,7 +490,7 @@ export default function ScenariosTab(props: { orgId: string }) {
     }
   }
 
-  async function onScenarioDeleteSubmit(event: FormEvent<HTMLFormElement>) {
+  async function onScenarioDeleteSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     if (
       !selectedScenarioDto ||
@@ -524,7 +524,7 @@ export default function ScenariosTab(props: { orgId: string }) {
     }
   }
 
-  async function onOrgStateCreateSubmit(event: FormEvent<HTMLFormElement>) {
+  async function onOrgStateCreateSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selectedScenarioDto) return;
     const name = stateCreateName.trim();
@@ -561,7 +561,7 @@ export default function ScenariosTab(props: { orgId: string }) {
     }
   }
 
-  async function onOrgStateEditSubmit(event: FormEvent<HTMLFormElement>) {
+  async function onOrgStateEditSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selectedScenarioDto || !selectedOrgStateDto) return;
     const name = stateEditName.trim();
@@ -606,7 +606,7 @@ export default function ScenariosTab(props: { orgId: string }) {
     }
   }
 
-  async function onOrgStateDeleteSubmit(event: FormEvent<HTMLFormElement>) {
+  async function onOrgStateDeleteSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     if (
       !selectedScenarioDto ||
@@ -991,8 +991,8 @@ function ScenarioDetail(props: {
   onOpenEdit: () => void;
   onOpenDelete: () => void;
   onCancel: () => void;
-  onEditSubmit: (event: FormEvent<HTMLFormElement>) => void;
-  onDeleteSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onEditSubmit: (event: SubmitEvent<HTMLFormElement>) => void;
+  onDeleteSubmit: (event: SubmitEvent<HTMLFormElement>) => void;
 }) {
   const editedScenarioName = props.editName.trim();
   const editedScenarioDescription = props.editDescription.trim();
@@ -1096,7 +1096,7 @@ function ForkScenarioForm(props: {
   onSourceOrgStateChange: (orgState: OrgStateDto) => void;
   onNameChange: (value: string) => void;
   onDescriptionChange: (value: string) => void;
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onSubmit: (event: SubmitEvent<HTMLFormElement>) => void;
 }) {
   const disabled = !props.scenario || !props.orgState || props.saving;
 
@@ -1198,8 +1198,8 @@ function OrgStateDetail(props: {
   onEditTargetDateChange: (value: string) => void;
   onDeleteConfirmationChange: (value: string) => void;
   onCancel: () => void;
-  onEditSubmit: (event: FormEvent<HTMLFormElement>) => void;
-  onDeleteSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onEditSubmit: (event: SubmitEvent<HTMLFormElement>) => void;
+  onDeleteSubmit: (event: SubmitEvent<HTMLFormElement>) => void;
 }) {
   const editedOrgStateName = props.editName.trim();
   const editedOrgStateDescription = props.editDescription.trim();
@@ -1287,7 +1287,7 @@ function CreateOrgStateForm(props: {
   onNameChange: (value: string) => void;
   onDescriptionChange: (value: string) => void;
   onTargetDateChange: (value: string) => void;
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onSubmit: (event: SubmitEvent<HTMLFormElement>) => void;
 }) {
   return (
     <form

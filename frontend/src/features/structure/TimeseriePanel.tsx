@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { FormEvent } from "react";
+import type { SubmitEvent } from "react";
 import type {
   GraphNodeDto,
   GraphNodeUpdateRequest,
@@ -152,7 +152,7 @@ export default function TimeseriePanel(props: {
     return () => ac.abort();
   }, [effectiveIdSignature, props.orgId, props.scenarioId]);
 
-  async function saveLinks(event: FormEvent<HTMLFormElement>) {
+  async function saveLinks(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     setPanelError("");
 
@@ -371,7 +371,7 @@ function MissingTimeserieForm(props: {
   const [formError, setFormError] = useState("");
   const submitDisabled = props.disabled || !name.trim();
 
-  async function submit(event: FormEvent<HTMLFormElement>) {
+  async function submit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     setFormError("");
 
