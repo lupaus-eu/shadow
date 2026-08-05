@@ -1,6 +1,6 @@
 # Customer Domain
 
-Status: persistence baseline and backend API implemented; frontend UI pending
+Status: persistence baseline, backend API and frontend management UI implemented
 
 ## Purpose
 

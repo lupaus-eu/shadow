@@ -284,7 +284,7 @@ security boundary.
 
 # Customers
 
-Status: implemented backend API; frontend UI pending
+Status: implemented backend API and frontend management UI
 
 Customer Domain owns application-wide customer profiles, contacts, addresses
 and their soft-delete lifecycles. The domain boundary and rules are documented
@@ -306,6 +306,12 @@ records.
 Customer records remain application-wide in this baseline. Authentication,
 authorization and organisation-specific ownership are not part of the current
 Customer Domain API.
+
+The frontend management view resides in
+`frontend/src/features/customers/CustomersTab.tsx` and is routed through the
+existing organisation workspace at `/schatten/:orgId/customers`. The workspace
+organisation id is navigation context only: Customer Domain API paths and
+payloads do not contain an organisation, scenario or organisation-state id.
 
 ---
 

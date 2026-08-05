@@ -89,6 +89,20 @@ function mockSchattenApi(options?: {
       );
     }
 
+    if (url.endsWith("/api/v1/customers") && method === "GET") {
+      return Promise.resolve(
+        jsonResponse([{ id: 201, name: "Acme Customer", email: null, status: "active", createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z" }])
+      );
+    }
+
+    if (url.endsWith("/api/v1/customers/201/contacts") && method === "GET") {
+      return Promise.resolve(jsonResponse([]));
+    }
+
+    if (url.endsWith("/api/v1/customers/201/addresses") && method === "GET") {
+      return Promise.resolve(jsonResponse([]));
+    }
+
     if (url.endsWith("/api/v1/organisations/acme/scenarios/copy")) {
       return Promise.resolve(
         jsonResponse({
@@ -588,6 +602,7 @@ describe("Schatten UI shell", () => {
       ["Metrics", "/schatten/acme/metrics"],
       ["Summary", "/schatten/acme/summary"],
       ["Analysis", "/schatten/acme/analysis"],
+      ["Customers", "/schatten/acme/customers"],
       ["Users", "/schatten/acme/users"]
     ] as const;
 
@@ -630,6 +645,19 @@ describe("Schatten UI shell", () => {
           String(input) === "/api/v1/users" && init?.method === "GET"
       )
     ).toBe(true);
+  });
+
+  it("renders the application-wide Customers route without workspace context in its API", async () => {
+    const fetchMock = mockSchattenApi();
+
+    renderAt("/schatten/acme/customers");
+
+    expect(screen.getByRole("link", { name: "Customers" })).toHaveClass("tab-link--active");
+    expect(await screen.findByRole("heading", { name: "Customers" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /Acme Customer/ })).toBeVisible();
+    const customerCalls = fetchMock.mock.calls.filter(([input]) => String(input).includes("/api/v1/customers"));
+    expect(customerCalls.length).toBeGreaterThanOrEqual(3);
+    expect(customerCalls.every(([input]) => !String(input).includes("acme"))).toBe(true);
   });
 
   it("renders the Summary route without requiring an organisation state", () => {

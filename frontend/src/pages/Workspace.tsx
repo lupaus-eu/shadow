@@ -16,6 +16,7 @@ import MetricsTab from "../features/metrics/MetricsTab";
 import ScenariosTab from "../features/scenarios/ScenariosTab";
 import StructureTab from "../features/structure/StructureTab";
 import SummaryTab from "../features/summary/SummaryTab";
+import CustomersTab from "../features/customers/CustomersTab";
 import UsersTab from "../features/users/UsersTab";
 import { useWorkspaceSelection } from "../workspace/WorkspaceSelectionContext";
 import WorkspaceSelectionProvider from "../workspace/WorkspaceSelectionProvider";
@@ -222,6 +223,10 @@ function WorkspaceTabContent(props: { tab: WorkspaceTab; orgId: string }) {
 
   if (props.tab.signature === "users") {
     return <UsersTab />;
+  }
+
+  if (props.tab.signature === "customers") {
+    return <CustomersTab />;
   }
 
   return <EmptyTab title={props.tab.label} description={props.tab.emptyText} />;

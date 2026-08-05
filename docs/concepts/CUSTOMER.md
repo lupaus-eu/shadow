@@ -1,6 +1,6 @@
 # Customer Concept
 
-Status: persistence baseline and backend API implemented; frontend UI pending
+Status: persistence baseline, backend API and frontend management UI implemented
 
 ## Purpose
 
@@ -210,8 +210,9 @@ Related Concepts:
 
 # Related APIs
 
-The Customer Domain owns the following implemented backend routes. Frontend
-integration remains in TASK-036C.
+The Customer Domain owns the following implemented backend routes. The
+application-wide frontend management UI consumes these routes from the
+organisation workspace without passing workspace context to the API.
 
 ```text
 /api/v1/customers
