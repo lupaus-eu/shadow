@@ -96,7 +96,8 @@ function renderMetricsTab(options?: {
         : options.scenario,
     setSelectedScenario: vi.fn(),
     selectedOrgState: null,
-    setSelectedOrgState: vi.fn()
+    setSelectedOrgState: vi.fn(),
+    setWorkspaceSelection: vi.fn()
   };
 
   return render(
@@ -178,6 +179,34 @@ describe("MetricsTab", () => {
     expect(
       screen.getByLabelText("Capacity 2030-01-01 read-only")
     ).toBeInTheDocument();
+  });
+
+  it("refetches metrics when workspace scenario changes in place", async () => {
+    const view = renderMetricsTab();
+    await screen.findByText("3 timeserie(s)");
+    vi.mocked(timeseriesApi.fetchTimeseries).mockClear();
+
+    view.rerender(
+      <WorkspaceSelectionContext.Provider
+        value={{
+          selectedScenario: { id: "alternate", name: "Alternate" },
+          setSelectedScenario: vi.fn(),
+          selectedOrgState: null,
+          setSelectedOrgState: vi.fn(),
+          setWorkspaceSelection: vi.fn()
+        }}
+      >
+        <MetricsTab orgId="acme" />
+      </WorkspaceSelectionContext.Provider>
+    );
+
+    await waitFor(() => {
+      expect(timeseriesApi.fetchTimeseries).toHaveBeenCalledWith(
+        "acme",
+        "alternate",
+        expect.any(AbortSignal)
+      );
+    });
   });
 
   it("sorts metric rows by every toolbar option", async () => {

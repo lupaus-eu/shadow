@@ -9,6 +9,8 @@ import {
 } from "react-router-dom";
 import EmptyTab from "../components/EmptyTab";
 import OrganisationDropdown from "../components/OrganisationDropdown";
+import OrgStateDropdown from "../components/OrgStateDropdown";
+import ScenarioDropdown from "../components/ScenarioDropdown";
 import EventsTab from "../features/events/EventsTab";
 import MetricsTab from "../features/metrics/MetricsTab";
 import ScenariosTab from "../features/scenarios/ScenariosTab";
@@ -126,11 +128,6 @@ function WorkspaceIndicators(props: {
   organisationName: string;
   onOrganisationNameChange: (name: string) => void;
 }) {
-  const { selectedScenario, selectedOrgState } = useWorkspaceSelection();
-  const orgStateValue = selectedOrgState
-    ? `${selectedOrgState.name} (${selectedOrgState.targetDate})`
-    : "None";
-
   return (
     <div className="workspace-indicators" aria-label="Current workspace context">
       <OrganisationDropdown
@@ -138,8 +135,8 @@ function WorkspaceIndicators(props: {
         organisationName={props.organisationName}
         onOrganisationNameChange={props.onOrganisationNameChange}
       />
-      <ReadOnlyChip label="Scenario" value={selectedScenario?.name ?? "None"} />
-      <ReadOnlyChip label="Org state" value={orgStateValue} />
+      <ScenarioDropdown orgId={props.orgId} />
+      <OrgStateDropdown orgId={props.orgId} />
     </div>
   );
 }
@@ -228,13 +225,4 @@ function WorkspaceTabContent(props: { tab: WorkspaceTab; orgId: string }) {
   }
 
   return <EmptyTab title={props.tab.label} description={props.tab.emptyText} />;
-}
-
-function ReadOnlyChip(props: { label: string; value: string }) {
-  return (
-    <span className="context-chip" title={`${props.label}: ${props.value}`}>
-      <span className="context-chip__label">{props.label}</span>
-      <span className="context-chip__value">{props.value}</span>
-    </span>
-  );
 }

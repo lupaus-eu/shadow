@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import {
   WorkspaceSelectionContext,
@@ -9,19 +9,50 @@ import {
 export default function WorkspaceSelectionProvider(props: {
   children: ReactNode;
 }) {
-  const [selectedScenario, setSelectedScenario] =
-    useState<WorkspaceScenarioSummary | null>(null);
-  const [selectedOrgState, setSelectedOrgState] =
-    useState<WorkspaceOrgStateSummary | null>(null);
+  const [selection, setSelection] = useState<{
+    selectedScenario: WorkspaceScenarioSummary | null;
+    selectedOrgState: WorkspaceOrgStateSummary | null;
+  }>({ selectedScenario: null, selectedOrgState: null });
+
+  const setSelectedScenario = useCallback(
+    (selectedScenario: WorkspaceScenarioSummary | null) => {
+      setSelection((current) => ({ ...current, selectedScenario }));
+    },
+    []
+  );
+
+  const setSelectedOrgState = useCallback(
+    (selectedOrgState: WorkspaceOrgStateSummary | null) => {
+      setSelection((current) => ({ ...current, selectedOrgState }));
+    },
+    []
+  );
+
+  const setWorkspaceSelection = useCallback(
+    (
+      selectedScenario: WorkspaceScenarioSummary | null,
+      selectedOrgState: WorkspaceOrgStateSummary | null
+    ) => {
+      setSelection({ selectedScenario, selectedOrgState });
+    },
+    []
+  );
 
   const value = useMemo(
     () => ({
-      selectedScenario,
+      selectedScenario: selection.selectedScenario,
       setSelectedScenario,
-      selectedOrgState,
-      setSelectedOrgState
+      selectedOrgState: selection.selectedOrgState,
+      setSelectedOrgState,
+      setWorkspaceSelection
     }),
-    [selectedScenario, selectedOrgState]
+    [
+      selection.selectedOrgState,
+      selection.selectedScenario,
+      setSelectedOrgState,
+      setSelectedScenario,
+      setWorkspaceSelection
+    ]
   );
 
   return (

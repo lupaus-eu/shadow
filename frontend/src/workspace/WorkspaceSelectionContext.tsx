@@ -16,6 +16,10 @@ type WorkspaceSelectionContextValue = {
   setSelectedScenario: (scenario: WorkspaceScenarioSummary | null) => void;
   selectedOrgState: WorkspaceOrgStateSummary | null;
   setSelectedOrgState: (orgState: WorkspaceOrgStateSummary | null) => void;
+  setWorkspaceSelection: (
+    scenario: WorkspaceScenarioSummary | null,
+    orgState: WorkspaceOrgStateSummary | null
+  ) => void;
 };
 
 export const WorkspaceSelectionContext =

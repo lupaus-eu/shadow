@@ -885,6 +885,155 @@ describe("Schatten UI shell", () => {
     );
   });
 
+  it("switches header context in place and refetches the active Events tab", async () => {
+    const fetchMock = mockSchattenApi();
+
+    renderAt("/schatten/acme/org-states");
+    await screen.findByTitle("Org state: Today (2026-06-23)");
+    fireEvent.click(screen.getByRole("link", { name: "Events" }));
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(([input]) =>
+          String(input).endsWith(
+            "/api/v1/organisations/acme/scenarios/reality/events"
+          )
+        )
+      ).toBe(true);
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Change scenario" }));
+    const scenarioDialog = await screen.findByRole("dialog", {
+      name: "Scenario and org state selector"
+    });
+    const scenarioColumn = within(scenarioDialog).getByRole("region", {
+      name: "Scenarios"
+    });
+    fireEvent.click(
+      await within(scenarioColumn).findByRole("button", {
+        name: /Future plan/
+      })
+    );
+    const stateColumn = within(scenarioDialog).getByRole("region", {
+      name: "Scenario org states"
+    });
+    await within(stateColumn).findByRole("button", { name: /Draft state/ });
+
+    expect(screen.getByRole("link", { name: "Events" })).toHaveClass(
+      "tab-link--active"
+    );
+    expect(
+      fetchMock.mock.calls.some(([input]) =>
+        String(input).endsWith(
+          "/api/v1/organisations/acme/scenarios/future/events"
+        )
+      )
+    ).toBe(false);
+
+    fireEvent.click(
+      within(scenarioDialog).getByRole("button", { name: "Select" })
+    );
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(([input]) =>
+          String(input).endsWith(
+            "/api/v1/organisations/acme/scenarios/future/events"
+          )
+        )
+      ).toBe(true);
+    });
+    expect(screen.getByRole("link", { name: "Events" })).toHaveClass(
+      "tab-link--active"
+    );
+    expect(screen.getByTitle("Scenario: Future plan")).toBeInTheDocument();
+    expect(
+      screen.getByTitle("Org state: Draft state (2026-06-01)")
+    ).toBeInTheDocument();
+
+    const futureEventReadCount = fetchMock.mock.calls.filter(([input, init]) =>
+      String(input).endsWith(
+        "/api/v1/organisations/acme/scenarios/future/events"
+      ) && (init?.method ?? "GET") === "GET"
+    ).length;
+    fireEvent.click(screen.getByRole("button", { name: "Change org state" }));
+    const orgStateDialog = await screen.findByRole("dialog", {
+      name: "Org state selector"
+    });
+    fireEvent.click(
+      await within(orgStateDialog).findByRole("button", {
+        name: /Planned launch/
+      })
+    );
+
+    expect(screen.getByRole("link", { name: "Events" })).toHaveClass(
+      "tab-link--active"
+    );
+    expect(screen.getByTitle("Scenario: Future plan")).toBeInTheDocument();
+    expect(
+      screen.getByTitle("Org state: Planned launch (2026-07-01)")
+    ).toBeInTheDocument();
+    expect(
+      fetchMock.mock.calls.filter(([input, init]) =>
+        String(input).endsWith(
+          "/api/v1/organisations/acme/scenarios/future/events"
+        ) && (init?.method ?? "GET") === "GET"
+      )
+    ).toHaveLength(futureEventReadCount);
+  });
+
+  it("reconciles Scenarios forms when header context changes in place", async () => {
+    mockSchattenApi();
+
+    renderAt("/schatten/acme/org-states");
+    await screen.findByTitle("Org state: Today (2026-06-23)");
+
+    fireEvent.click(screen.getByRole("button", { name: "Change scenario" }));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Scenario and org state selector"
+    });
+    fireEvent.click(
+      await within(
+        within(dialog).getByRole("region", { name: "Scenarios" })
+      ).findByRole("button", { name: /Future plan/ })
+    );
+    await within(
+      within(dialog).getByRole("region", { name: "Scenario org states" })
+    ).findByRole("button", { name: /Draft state/ });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Select" }));
+
+    const selectedScenarioPanel = screen.getByRole("region", {
+      name: "Selected scenario"
+    });
+    await waitFor(() => {
+      expect(within(selectedScenarioPanel).getByLabelText("Name")).toHaveValue(
+        "Future plan"
+      );
+      expect(
+        within(selectedScenarioPanel).getByLabelText("Description")
+      ).toHaveValue("A possible future");
+    });
+    expect(screen.getByRole("link", { name: "Scenarios" })).toHaveClass(
+      "tab-link--active"
+    );
+    expect(
+      screen.getByTitle("Org state: Draft state (2026-06-01)")
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "State" }));
+    const selectedStateHeading = await screen.findByRole("heading", {
+      name: "Draft state"
+    });
+    const selectedStatePanel = selectedStateHeading.closest("section");
+    expect(selectedStatePanel).not.toBeNull();
+    expect(within(selectedStatePanel!).getByLabelText("Name")).toHaveValue(
+      "Draft state"
+    );
+    expect(within(selectedStatePanel!).getByLabelText("Target date")).toHaveValue(
+      "2026-06-01"
+    );
+  });
+
   it("renders the selected scenario group without sidebar descriptions", async () => {
     mockSchattenApi();
 

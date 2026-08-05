@@ -267,7 +267,8 @@ function workspaceValue(
     selectedScenario: scenario,
     setSelectedScenario: vi.fn(),
     selectedOrgState: orgState,
-    setSelectedOrgState: vi.fn()
+    setSelectedOrgState: vi.fn(),
+    setWorkspaceSelection: vi.fn()
   };
 }
 
@@ -820,6 +821,39 @@ describe("StructureTab", () => {
 
     expect(structureApi.bulkUpdatePositions).not.toHaveBeenCalled();
     vi.useRealTimers();
+  });
+
+  it("refetches state-scoped data when workspace context changes in place", async () => {
+    const { rerender } = renderStructureTab();
+    await screen.findByRole("region", { name: "Person nodes" });
+    vi.mocked(structureApi.fetchGraph).mockClear();
+    vi.mocked(structureApi.fetchGraphTypeCatalog).mockClear();
+
+    rerender(
+      <WorkspaceSelectionContext.Provider
+        value={workspaceValue(
+          { id: "alternate", name: "Alternate" },
+          { id: "target", name: "Target", targetDate: "2026-08-01" }
+        )}
+      >
+        <StructureTab orgId="acme" />
+      </WorkspaceSelectionContext.Provider>
+    );
+
+    await waitFor(() => {
+      expect(structureApi.fetchGraph).toHaveBeenCalledWith(
+        "acme",
+        "alternate",
+        "target",
+        expect.any(AbortSignal)
+      );
+      expect(structureApi.fetchGraphTypeCatalog).toHaveBeenCalledWith(
+        "acme",
+        "alternate",
+        "target",
+        expect.any(AbortSignal)
+      );
+    });
   });
 
   it("confirms selected node deletion with yes and no buttons", async () => {

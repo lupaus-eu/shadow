@@ -148,7 +148,8 @@ function renderSummary(
         selectedScenario,
         setSelectedScenario: vi.fn(),
         selectedOrgState,
-        setSelectedOrgState: vi.fn()
+        setSelectedOrgState: vi.fn(),
+        setWorkspaceSelection: vi.fn()
       }}
     >
       <SummaryTab orgId="acme" />
@@ -166,7 +167,8 @@ function withSelection(
         selectedScenario,
         setSelectedScenario: vi.fn(),
         selectedOrgState: null,
-        setSelectedOrgState: vi.fn()
+        setSelectedOrgState: vi.fn(),
+        setWorkspaceSelection: vi.fn()
       }}
     >
       {child}

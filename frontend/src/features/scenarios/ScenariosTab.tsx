@@ -87,6 +87,8 @@ export default function ScenariosTab(props: { orgId: string }) {
   const selectedOrgStateIdRef = useRef<string | null>(
     selectedOrgState?.id ?? null
   );
+  const hydratedScenarioIdRef = useRef<string | null>(null);
+  const hydratedOrgStateIdRef = useRef<string | null>(null);
 
   const [scenarios, setScenarios] = useState<ScenarioDto[]>([]);
   const [orgStates, setOrgStates] = useState<OrgStateDto[]>([]);
@@ -158,6 +160,7 @@ export default function ScenariosTab(props: { orgId: string }) {
   const applySelectedOrgState = useCallback(
     (orgState: OrgStateDto | null) => {
       selectedOrgStateIdRef.current = orgState?.id ?? null;
+      hydratedOrgStateIdRef.current = orgState?.id ?? null;
       setSelectedOrgState(orgState ? orgStateSummary(orgState) : null);
       setStateEditName(orgState?.name ?? "");
       setStateEditDescription(orgState?.description ?? "");
@@ -175,6 +178,7 @@ export default function ScenariosTab(props: { orgId: string }) {
       options?: { preserveOrgState?: boolean }
     ) => {
       selectedScenarioIdRef.current = scenario?.id ?? null;
+      hydratedScenarioIdRef.current = scenario?.id ?? null;
       setSelectedScenario(
         scenario ? { id: scenario.id, name: scenario.name } : null
       );
@@ -199,6 +203,57 @@ export default function ScenariosTab(props: { orgId: string }) {
     },
     [applySelectedOrgState, setSelectedScenario]
   );
+
+  useEffect(() => {
+    const scenarioId = selectedScenario?.id ?? null;
+    if (hydratedScenarioIdRef.current === scenarioId) return;
+    const scenario = scenarioId
+      ? scenarios.find((item) => item.id === scenarioId) ?? null
+      : null;
+    if (scenarioId && !scenario) return;
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      hydratedScenarioIdRef.current = scenarioId;
+      setScenarioEditName(scenario?.name ?? "");
+      setScenarioEditDescription(scenario?.description ?? "");
+      setForkName(scenario ? `Fork of ${scenario.name}` : "");
+      setForkDescription(scenario?.description ?? "");
+      setScenarioAction(null);
+      setScenarioActionError("");
+      setScenarioDeleteConfirmation("");
+      setForkError("");
+      setCleanConfirming(false);
+      setCleanMessage("");
+      setCleanError("");
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [scenarios, selectedScenario?.id]);
+
+  useEffect(() => {
+    const orgStateId = selectedOrgState?.id ?? null;
+    if (hydratedOrgStateIdRef.current === orgStateId) return;
+    const orgState = orgStateId
+      ? orgStates.find((item) => item.id === orgStateId) ?? null
+      : null;
+    if (orgStateId && !orgState) return;
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      hydratedOrgStateIdRef.current = orgStateId;
+      setStateEditName(orgState?.name ?? "");
+      setStateEditDescription(orgState?.description ?? "");
+      setStateEditTargetDate(orgState?.targetDate ?? "");
+      setForkSourceOrgStateId(orgState?.id ?? "");
+      setOrgStateActionError("");
+      setOrgStateDeleteConfirmation("");
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [orgStates, selectedOrgState?.id]);
 
   const reconcileLoadedScenarios = useCallback(
     (items: ScenarioDto[]) => {
