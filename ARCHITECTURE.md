@@ -282,6 +282,31 @@ Authentication, authorization, Entra ID mapping and organisation membership
 remain outside this baseline. Backend authorization remains the future trusted
 security boundary.
 
+# Customers
+
+Status: implemented backend API; frontend UI pending
+
+Customer Domain owns application-wide customer profiles, contacts, addresses
+and their soft-delete lifecycles. The domain boundary and rules are documented
+in `docs/domains/CUSTOMER.md`.
+
+Backend implementation resides in:
+
+```text
+backend/app/api/v1/customers/
+```
+
+The versioned HTTP/JSON API provides customer lookup, search, filtering,
+replacement and soft deletion under `/api/v1/customers`. Contact and address
+management uses nested customer routes. The service layer enforces active or
+archived parent visibility, child ownership, normalization and transactional
+customer-to-child soft-delete propagation. Normal reads exclude soft-deleted
+records.
+
+Customer records remain application-wide in this baseline. Authentication,
+authorization and organisation-specific ownership are not part of the current
+Customer Domain API.
+
 ---
 
 # Org Twin Structure

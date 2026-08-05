@@ -1,6 +1,6 @@
 # Customer Domain
 
-Status: persistence baseline defined; backend API and frontend UI pending
+Status: persistence baseline and backend API implemented; frontend UI pending
 
 ## Purpose
 
@@ -118,7 +118,7 @@ PUT    /customers/{customer_id}/addresses/{address_id}
 DELETE /customers/{customer_id}/addresses/{address_id}
 ```
 
-The versioned FastAPI routes are implemented in TASK-036B. Nested paths make
+The versioned FastAPI routes were implemented in TASK-036B. Nested paths make
 Customer ownership explicit and require the child resource to belong to the
 Customer in the route.
 

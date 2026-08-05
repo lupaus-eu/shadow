@@ -1,6 +1,6 @@
 # Customer Concept
 
-Status: persistence baseline defined; backend API and frontend UI pending
+Status: persistence baseline and backend API implemented; frontend UI pending
 
 ## Purpose
 
@@ -183,7 +183,7 @@ no separate status column.
 - The trusted backend service normalizes blank optional values to `NULL`.
 - Email format and length validation belongs to the trusted backend service.
 - Country codes are normalized to uppercase by the trusted backend service.
-- Backend validation and normalization are implemented in TASK-036B; frontend
+- Backend validation and normalization were implemented in TASK-036B; frontend
   validation is only a user-experience aid.
 
 ---
@@ -210,8 +210,8 @@ Related Concepts:
 
 # Related APIs
 
-The Customer Domain owns the following API direction. Backend routes are
-implemented in TASK-036B.
+The Customer Domain owns the following implemented backend routes. Frontend
+integration remains in TASK-036C.
 
 ```text
 /api/v1/customers
