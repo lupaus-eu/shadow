@@ -2,7 +2,7 @@
 
 Tämä dokumentti kuvaa järjestelmän fyysisen tietokantamallin ja tietokantakäytännöt.
 
-Status: core schema baseline defined. AI, billing and customer still TBD.
+Status: core and customer schema baseline defined. AI and billing still TBD.
 
 Tietokantateknologia ja ORM on päätetty ADR-001:ssä:
 
@@ -51,6 +51,9 @@ db/migrations/002_add_org_state_name_and_org_name_unique_index.sql
 db/migrations/003_alter_scenario_target_dates_not_null.sql
 db/migrations/004_alter_graphs_to_scenarios.sql
 db/migrations/005_add_graph_logical_delete_dates.sql
+db/migrations/006_create_customers.sql
+db/migrations/007_create_contacts.sql
+db/migrations/008_create_customer_addresses.sql
 ```
 
 | Table | Purpose | Notes |
@@ -69,6 +72,9 @@ db/migrations/005_add_graph_logical_delete_dates.sql
 | `graph_edges` | Scenario graph edges | References source and target graph nodes and has a logical `create_date`/`delete_date` lifetime. |
 | `timeseries` | Scenario-specific timeseries definitions | Supports `day`, `week`, `month`, `year` time units. |
 | `timeserie_values` | Timeseries values by date | No `name` column; value is stored as `JSONB` with the public scalar under `value`. |
+| `customers` | Application-wide customer profiles | Status is `active`, `archived` or `deleted`; status and `deleted_time` must agree. |
+| `contacts` | Customer-owned contacts | Name is required; email, phone and job title are optional. |
+| `customer_addresses` | Customer-owned labelled addresses | Label, first address line and two-letter uppercase country code are required. |
 
 ---
 
@@ -108,8 +114,19 @@ Primary key names follow table-specific singular names, for example `scenario_id
   values are soft-deleted, submitted dates can reactivate soft-deleted rows and
   the service validates value type plus time-unit start date.
 - `type_attributes` enforces exactly one owner reference matching `owner_kind`.
+- `customers.name`, `contacts.name`, `customer_addresses.label` and
+  `customer_addresses.address_line_1` cannot be blank.
+- `customers.status` is `active`, `archived` or `deleted`, and status is
+  `deleted` exactly when `deleted_time` is present.
+- `customer_addresses.country_code` contains exactly two uppercase ASCII
+  letters.
+- `contacts.customer_id` and `customer_addresses.customer_id` use
+  `ON DELETE CASCADE` for physical hard-delete cleanup/safety behavior.
 
-Soft-delete propagation is not automatic in PostgreSQL. Application or service logic must set `deleted_time` on scenario-owned rows when a scenario is soft-deleted.
+Soft-delete propagation is not automatic in PostgreSQL. Application or service
+logic must set `deleted_time` on scenario-owned rows when a scenario is
+soft-deleted. The Customer Domain service must likewise soft-delete a Customer
+and its active Contacts and Customer Addresses atomically.
 
 ---
 
@@ -127,6 +144,9 @@ The migration defines:
 - one timeserie value per `(timeserie_id, date)`
 - graph traversal indexes for source and target graph node lookups
 - parent lookup indexes for common list views
+- non-deleted customer lookup by status and case-insensitive name
+- non-deleted contact lookup by customer and case-insensitive name
+- non-deleted customer-address lookup by customer and case-insensitive label
 
 ---
 
@@ -136,9 +156,6 @@ The following candidate tables are retained as planned future work. They are not
 
 | Table | Owning Domain | Notes |
 | --- | --- | --- |
-| customers | Customer Domain | Customer source of truth |
-| contacts | Customer Domain | Customer contacts |
-| customer_addresses | Customer Domain | Customer addresses |
 | invoices | Billing Domain | Invoice headers |
 | invoice_lines | Billing Domain | Invoice rows |
 | payments | Billing Domain | Payment records |
@@ -216,7 +233,8 @@ The seed creates non-production bootstrap data only:
 The default metamodel uses `metamodels.organisation_id = NULL` and stores the JSON root `version` field in `metamodels.version`.
 
 The seed does not create organisations, scenarios, org states, events, graph
-nodes, graph edges, timeseries or timeserie values.
+nodes, graph edges, timeseries, timeserie values, customers, contacts or
+customer addresses.
 
 ---
 

@@ -225,7 +225,8 @@ Depends On:
 Primary APIs:
 
 - `/customers`
-- `/contacts`
+- `/customers/{customer_id}/contacts`
+- `/customers/{customer_id}/addresses`
 
 Related Documents:
 

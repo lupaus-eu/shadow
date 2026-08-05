@@ -122,7 +122,7 @@ Related Document:
 
 ---
 
-# Initial Candidate Concepts
+# Implemented Customer Domain Concepts
 
 ## Customer
 
@@ -137,6 +137,15 @@ Owned By:
 Related Document:
 
 - `docs/concepts/CUSTOMER.md`
+
+Related Customer-owned concepts documented in the same file:
+
+- Contact
+- Customer Address
+
+---
+
+# Initial Candidate Concepts
 
 ## Invoice
 

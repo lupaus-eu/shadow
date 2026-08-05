@@ -12,6 +12,40 @@ entity "users" as users {
   role : TEXT
 }
 
+entity "customers" as customers {
+  * customer_id : BIGINT
+  --
+  name : TEXT
+  email : TEXT
+  status : TEXT
+  deleted_time : TIMESTAMPTZ
+}
+
+entity "contacts" as contacts {
+  * contact_id : BIGINT
+  --
+  customer_id : BIGINT
+  name : TEXT
+  email : TEXT
+  phone : TEXT
+  job_title : TEXT
+  deleted_time : TIMESTAMPTZ
+}
+
+entity "customer_addresses" as customer_addresses {
+  * customer_address_id : BIGINT
+  --
+  customer_id : BIGINT
+  label : TEXT
+  address_line_1 : TEXT
+  address_line_2 : TEXT
+  postal_code : TEXT
+  city : TEXT
+  region : TEXT
+  country_code : TEXT
+  deleted_time : TIMESTAMPTZ
+}
+
 entity "organisations" as organisations {
   * organisation_id : BIGINT
   --
@@ -144,6 +178,8 @@ entity "timeserie_values" as timeserie_values {
 
 organisations ||--o{ scenarios
 organisations ||--o{ metamodels
+customers ||--o{ contacts
+customers ||--o{ customer_addresses
 scenarios ||--o{ org_states
 scenarios ||--o{ events
 scenarios ||--o{ timeseries

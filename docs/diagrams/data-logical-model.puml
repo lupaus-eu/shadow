@@ -1,0 +1,81 @@
+@startuml
+title Schatten - Logical Data Model
+
+hide circle
+skinparam linetype ortho
+skinparam classAttributeIconSize 0
+
+package "Users Domain" {
+  entity "User" as user
+}
+
+package "Organisations Domain" {
+  entity "Organisation" as organisation
+}
+
+package "Organisation States Domain" {
+  entity "Scenario" as scenario
+  entity "Organisation State" as organisation_state
+  entity "Event" as event
+  entity "Timeserie" as timeserie
+  entity "Timeserie Value" as timeserie_value
+}
+
+package "Organisation Twin Structure Domain" {
+  entity "Metamodel" as metamodel
+  entity "Node Type" as node_type
+  entity "Edge Type" as edge_type
+  entity "Type Attribute" as type_attribute
+  entity "Allowed Connection" as allowed_connection
+  entity "Graph Node" as graph_node
+  entity "Graph Edge" as graph_edge
+}
+
+package "Customer Domain" {
+  entity "Customer" as customer
+  entity "Contact" as contact
+  entity "Customer Address" as customer_address
+}
+
+organisation ||--o{ scenario
+organisation ||--o{ metamodel
+scenario ||--o{ organisation_state
+scenario ||--o{ event
+scenario ||--o{ timeserie
+scenario ||--o{ scenario : source
+scenario }o--o| organisation_state : initial
+metamodel ||--o{ node_type
+metamodel ||--o{ edge_type
+metamodel ||--o{ type_attribute
+metamodel ||--o{ allowed_connection
+node_type ||--o{ type_attribute
+edge_type ||--o{ type_attribute
+edge_type ||--o{ allowed_connection
+node_type ||--o{ allowed_connection : source
+node_type ||--o{ allowed_connection : target
+scenario ||--o{ graph_node
+scenario ||--o{ graph_edge
+node_type ||--o{ graph_node
+edge_type ||--o{ graph_edge
+graph_node ||--o{ graph_edge : source
+graph_node ||--o{ graph_edge : target
+timeserie ||--o{ timeserie_value
+timeserie ||--o{ graph_node : primary
+timeserie ||--o{ graph_node : secondary
+customer ||--o{ contact
+customer ||--o{ customer_address
+
+note right of customer
+  active | archived | deleted
+  Application-wide
+end note
+
+note bottom of contact
+  Soft-deleted with deleted_time
+end note
+
+note bottom of customer_address
+  Soft-deleted with deleted_time
+end note
+
+@enduml

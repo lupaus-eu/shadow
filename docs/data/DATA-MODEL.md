@@ -2,7 +2,7 @@
 
 Tämä dokumentti kuvaa järjestelmän loogisen datamallin.
 
-Status: core model baseline defined. AI, billing and customer still TBD.
+Status: core and customer model baseline defined. AI and billing still TBD.
 
 Looginen datamalli kuvaa:
 
@@ -45,6 +45,9 @@ Lue nämä yhdessä datamallin kanssa:
 | Graph Edge | Scenario-owned connection whose logical lifetime must remain inside both endpoint node lifetimes. |
 | Timeserie | Scenario-specific timeseries definition. |
 | Timeserie Value | Date-specific value for a timeserie. |
+| Customer | Application-wide customer profile with active, archived and soft-deleted lifecycle states. |
+| Contact | Customer-owned contact person or communication channel. |
+| Customer Address | Customer-owned labelled postal or visiting address. |
 
 ---
 
@@ -83,6 +86,15 @@ Lue nämä yhdessä datamallin kanssa:
   unit.
 - Graph nodes may reference primary and secondary timeseries owned by the same
   scenario.
+- A customer owns zero or more contacts and customer addresses.
+- Customer names, emails, contact names and address labels are not unique.
+- Active and archived customers remain readable and editable.
+- Normal customer deletion atomically soft-deletes the customer and its active
+  contacts and customer addresses through `deleted_time`.
+- Contacts and customer addresses have no archive state or restore lifecycle in
+  the current baseline.
+- Physical customer-to-child cascades exist only as hard-delete cleanup/safety
+  behavior, not as the normal application deletion flow.
 
 ---
 
@@ -112,9 +124,6 @@ The following candidate entities are retained as planned future work. They are n
 
 | Entity | Owning Domain | Concept Document | Notes |
 | --- | --- | --- | --- |
-| Customer | Customer Domain | `docs/concepts/CUSTOMER.md` | Customer source of truth |
-| Contact | Customer Domain | TBD | Customer contact person or channel |
-| CustomerAddress | Customer Domain | TBD | Customer address data |
 | Invoice | Billing Domain | `docs/concepts/INVOICE.md` | Billing document |
 | InvoiceLine | Billing Domain | TBD | Invoice row |
 | Payment | Billing Domain | TBD | Payment record |

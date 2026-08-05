@@ -187,6 +187,13 @@ to:
 docs/diagrams/generated/db-physical-schema.svg
 ```
 
+Render the logical data model with an explicit source argument:
+
+```bash
+docker compose --profile docs run --rm diagram-renderer \
+  -tsvg -o generated data-logical-model.puml
+```
+
 Jos paikallinen PlantUML-serveri on käytössä portissa `9000`, renderöi SVG:t serverin kautta.
 
 Projektissa käytetty oletus:

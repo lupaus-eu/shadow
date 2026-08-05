@@ -61,6 +61,23 @@ Esimerkkejä:
 
 ---
 
+# Current Migrations
+
+The current ordered migration chain is:
+
+```text
+001_create_core_schema.sql
+002_add_org_state_name_and_org_name_unique_index.sql
+003_alter_scenario_target_dates_not_null.sql
+004_alter_graphs_to_scenarios.sql
+005_add_graph_logical_delete_dates.sql
+006_create_customers.sql
+007_create_contacts.sql
+008_create_customer_addresses.sql
+```
+
+---
+
 # Relationship To Init Scripts
 
 `db/init/` voi sisältää kehitysympäristön alustusskriptejä.

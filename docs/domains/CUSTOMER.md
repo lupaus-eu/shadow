@@ -1,12 +1,12 @@
 # Customer Domain
 
-Status: initial candidate domain
+Status: persistence baseline defined; backend API and frontend UI pending
 
 ## Purpose
 
-Customer Domain hallitsee kaikkea asiakkuuteen liittyvää tietoa.
-
-Tämä domain toimii järjestelmän source of truth -kerroksena asiakasdatalle.
+Customer Domain hallitsee asiakasprofiileja, asiakaskontakteja ja
+asiakasosoitteita. Domain toimii järjestelmän source of truth -kerroksena
+asiakasdatalle.
 
 ---
 
@@ -14,14 +14,10 @@ Tämä domain toimii järjestelmän source of truth -kerroksena asiakasdatalle.
 
 Owns:
 
-- customer profile
+- customer profile and lifecycle
 - customer contacts
 - customer addresses
-
-Provides:
-
-- customer lookup
-- customer search
+- customer lookup and search rules
 - customer metadata
 
 Does NOT Own:
@@ -31,55 +27,100 @@ Does NOT Own:
 - subscriptions
 - document lifecycle
 - AI-generated classifications
+- application users
+- a shared AuditEvent model
 
 ---
 
 # Domain Rules
 
-## Rule 1
+## Customer
 
-Customer must always have:
+- Customer has an internal id and a non-blank name.
+- Email is optional.
+- Customer status is `active`, `archived` or `deleted`.
+- New customers start as active.
+- Active and archived customers are normal readable records.
+- Archived customers and their contacts and addresses remain editable.
+- Deleted customers are excluded from normal reads.
+- Deletion is a soft delete and `deleted` is terminal in this baseline.
+- Names and email addresses are not unique.
 
-- id
-- name
+## Contacts
 
-## Rule 2
+- A Contact belongs to exactly one Customer.
+- Contact name is required and non-blank.
+- Email, phone and job title are optional.
+- Contacts use `deleted_time` soft deletion and have no status column, archive
+  state or restore lifecycle.
+- Contact names are not unique.
 
-Email is optional.
+## Customer Addresses
 
-## Rule 3
+- A Customer Address belongs to exactly one Customer.
+- Label, first address line and two-letter uppercase country code are required.
+- Second address line, postal code, city and region are optional.
+- Customer Addresses use `deleted_time` soft deletion and have no status
+  column, archive state or restore lifecycle.
+- Address labels are not unique.
 
-Customer deletion is soft delete.
+## Normalization
 
-Customers are never physically removed.
+- Backend services trim required and optional text.
+- Backend services reject blank required fields and normalize blank optional
+  fields to `NULL`.
+- Backend services validate email values and normalize country codes to
+  uppercase.
+- Database constraints remain the final persistence safeguard for documented
+  invariants.
+
+## Deletion
+
+- Normal Customer deletion atomically soft-deletes the Customer and all active
+  Contacts and Customer Addresses through the Customer Domain service.
+- Physical `ON DELETE CASCADE` foreign keys are hard-delete cleanup/safety only.
+- No database trigger performs application soft-delete propagation.
 
 ---
 
 # Database Ownership
 
-Tables:
+Tables owned exclusively by Customer Domain:
 
-- customers
-- contacts
-- customer_addresses
+- `customers`
+- `contacts`
+- `customer_addresses`
 
-Owned exclusively by Customer Domain.
-
-Other domains may reference these tables but may not modify them directly.
+Other domains may reference these tables by foreign key or through a Customer
+Domain API/service boundary, but they may not modify them directly.
 
 ---
 
 # API Ownership
 
-Endpoints:
+Nested Customer Domain API direction:
 
 ```text
-GET /customers
-POST /customers
-PUT /customers/{id}
-GET /contacts
-POST /contacts
+GET    /customers
+GET    /customers/{customer_id}
+POST   /customers
+PUT    /customers/{customer_id}
+DELETE /customers/{customer_id}
+
+GET    /customers/{customer_id}/contacts
+POST   /customers/{customer_id}/contacts
+PUT    /customers/{customer_id}/contacts/{contact_id}
+DELETE /customers/{customer_id}/contacts/{contact_id}
+
+GET    /customers/{customer_id}/addresses
+POST   /customers/{customer_id}/addresses
+PUT    /customers/{customer_id}/addresses/{address_id}
+DELETE /customers/{customer_id}/addresses/{address_id}
 ```
+
+The versioned FastAPI routes are implemented in TASK-036B. Nested paths make
+Customer ownership explicit and require the child resource to belong to the
+Customer in the route.
 
 ---
 
@@ -87,7 +128,7 @@ POST /contacts
 
 Depends On:
 
-- None
+- Users Domain for nullable audit-user references
 
 Referenced By:
 
@@ -101,32 +142,45 @@ Referenced By:
 
 ## Create Customer
 
-Flow:
+1. Validate and normalize the request.
+2. Create an active Customer.
+3. Return the Customer.
 
-1. Validate request
-2. Create customer
-3. Create audit event
-4. Return customer
+## Update Or Archive Customer
 
-## Update Customer
+1. Validate and normalize the request.
+2. Load an active or archived Customer.
+3. Apply the profile and lifecycle changes.
+4. Update modification metadata.
+5. Return the Customer.
 
-Flow:
+## Delete Customer
 
-1. Validate request
-2. Load customer
-3. Apply changes
-4. Create audit event
+1. Load an active or archived Customer.
+2. Use one deletion timestamp for the Customer and all active child records.
+3. Soft-delete active Contacts and Customer Addresses.
+4. Mark the Customer deleted.
+5. Commit the complete change atomically.
+
+## Manage Contact Or Address
+
+1. Load an active or archived owning Customer.
+2. Validate and normalize the request.
+3. For updates and deletes, verify that the child belongs to the Customer.
+4. Create, replace or soft-delete the child record.
+
+AuditEvent creation is deferred until a shared audit-event model, ownership and
+writing workflow are approved.
 
 ---
 
 # AI Agent Guidance
 
-When implementing customer features:
-
 Preferred locations:
 
-- backend/customer/*
-- frontend/customer/*
+- `backend/app/api/v1/customers/`
+- `frontend/src/features/customers/`
+- `frontend/src/api/customers.ts`
 
 Avoid:
 
@@ -134,14 +188,17 @@ Avoid:
 - modifying invoice logic
 - modifying document lifecycle logic
 - modifying AI extraction logic
+- bypassing nested child ownership checks
+- adding customer/contact/address uniqueness rules
+- physically deleting Customer Domain rows in normal flows
 
-If a change affects invoices:
-
-- create a separate Billing task
+If a change affects invoices, documents or AI output lifecycles, create a
+separate task for the owning domain.
 
 ---
 
 # Open Questions
 
 - customer merge workflow
-- customer archival policy
+- customer restore and permanent-deletion policy
+- shared AuditEvent ownership and writing workflow

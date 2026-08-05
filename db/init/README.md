@@ -81,6 +81,9 @@ PGPASSWORD=schatten_dev_password psql -h localhost -p 5432 -U schatten -d schatt
 PGPASSWORD=schatten_dev_password psql -h localhost -p 5432 -U schatten -d schatten -f db/migrations/003_alter_scenario_target_dates_not_null.sql
 PGPASSWORD=schatten_dev_password psql -h localhost -p 5432 -U schatten -d schatten -f db/migrations/004_alter_graphs_to_scenarios.sql
 PGPASSWORD=schatten_dev_password psql -h localhost -p 5432 -U schatten -d schatten -f db/migrations/005_add_graph_logical_delete_dates.sql
+PGPASSWORD=schatten_dev_password psql -h localhost -p 5432 -U schatten -d schatten -f db/migrations/006_create_customers.sql
+PGPASSWORD=schatten_dev_password psql -h localhost -p 5432 -U schatten -d schatten -f db/migrations/007_create_contacts.sql
+PGPASSWORD=schatten_dev_password psql -h localhost -p 5432 -U schatten -d schatten -f db/migrations/008_create_customer_addresses.sql
 PGPASSWORD=schatten_dev_password psql -h localhost -p 5432 -U schatten -d schatten -f db/init/002_seed_development_data.sql
 ```
 
@@ -88,4 +91,6 @@ PGPASSWORD=schatten_dev_password psql -h localhost -p 5432 -U schatten -d schatt
 
 - it inserts `Development Admin` only when `users` is empty
 - it inserts the default metamodel only when no active default metamodel exists
-- it does not create organisations, scenarios, org states, events, graphs, graph nodes, graph edges, timeseries or timeserie values
+- it does not create organisations, scenarios, org states, events, graph nodes,
+  graph edges, timeseries, timeserie values, customers, contacts or customer
+  addresses
