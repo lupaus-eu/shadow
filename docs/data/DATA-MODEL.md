@@ -23,7 +23,7 @@ Lue nämä yhdessä datamallin kanssa:
 - `docs/domains/DOMAIN.md`
 - `docs/concepts/CONCEPTS.md`
 - `docs/data/DATABASE.md`
-- `docs/decisions/ADR-002-database.md`, kun se on luotu
+- `docs/decisions/ADR-002-database-migrations.md`
 
 ---
 

@@ -210,20 +210,37 @@ uv sync
 uv run fastapi dev app/main.py
 ```
 
-Tietokannan migraatiokomennot lisätään, kun migraatiotyökalu on valittu.
-
-Tietokannan nykyisen skeeman voi alustaa paikalliseen tietokantaan ajamalla SQL-migraatiot järjestyksessä:
+Tietokannan nykyisen skeeman voi alustaa tai päivittää ajamalla kaikki puuttuvat
+migraatiot repositoryn juuresta:
 
 ```bash
-PGPASSWORD=schatten_dev_password psql -h localhost -p 5432 -U schatten -d schatten -f db/migrations/001_create_core_schema.sql
-PGPASSWORD=schatten_dev_password psql -h localhost -p 5432 -U schatten -d schatten -f db/migrations/002_add_org_state_name_and_org_name_unique_index.sql
-PGPASSWORD=schatten_dev_password psql -h localhost -p 5432 -U schatten -d schatten -f db/migrations/003_alter_scenario_target_dates_not_null.sql
-PGPASSWORD=schatten_dev_password psql -h localhost -p 5432 -U schatten -d schatten -f db/migrations/004_alter_graphs_to_scenarios.sql
-PGPASSWORD=schatten_dev_password psql -h localhost -p 5432 -U schatten -d schatten -f db/migrations/005_add_graph_logical_delete_dates.sql
-PGPASSWORD=schatten_dev_password psql -h localhost -p 5432 -U schatten -d schatten -f db/migrations/006_create_customers.sql
-PGPASSWORD=schatten_dev_password psql -h localhost -p 5432 -U schatten -d schatten -f db/migrations/007_create_contacts.sql
-PGPASSWORD=schatten_dev_password psql -h localhost -p 5432 -U schatten -d schatten -f db/migrations/008_create_customer_addresses.sql
+uv run --project backend python backend/migrate.py up
 ```
+
+Runner käyttää `DATABASE_URL`-ympäristömuuttujaa ja näyttää jokaisen sovelletun
+migraation. Uusi `up` on turvallinen no-op, kun kaikki migraatiot on jo ajettu.
+
+Viimeisimmän sovelletun migraation voi peruuttaa tarkalla tiedostonimellä:
+
+```bash
+uv run --project backend python backend/migrate.py 008_create_customer_addresses.down.sql
+```
+
+Down-migraatiot voivat poistaa dataa. Käytä niitä vain disposable-paikallisessa
+tietokannassa tai varmista palautuskelpoinen backup. Runner ei salli vanhemman
+migraation rollbackia ennen uudempien migraatioiden eksplisiittistä perumista.
+
+Jos paikallinen skeema on luotu vanhoilla manuaalisilla `psql`-komennoilla,
+varmista ensin että se vastaa migraatiota 008 ja ota historia käyttöön ajamatta
+SQL:ää uudelleen:
+
+```bash
+uv run --project backend python backend/migrate.py baseline 008
+```
+
+Baseline ei tarkista skeeman sisältöä eikä päättele sen versiota. Komento on
+operaattorin vakuutus valitusta tasosta, ja se sallitaan vain olemassa olevalle
+skeemalle, jolla ei vielä ole migraatiohistoriaa.
 
 Paikallisen kehitysdatan seed on dev-only ja se luo tyhjään tietokantaan dummy-adminin sekä repo-local JSON-lähteeseen perustuvan Schattenin default-metamallin:
 

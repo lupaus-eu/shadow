@@ -32,6 +32,7 @@ jobs:
           test -f docs/diagrams/README.md
           test -f docs/decisions/ADR-TEMPLATE.md
           test -f docs/decisions/ADR-001-tech-stack.md
+          test -f docs/decisions/ADR-002-database-migrations.md
           test -f db/migrations/README.md
           test -f db/init/README.md
           test -f tasks/TASK-TEMPLATE.md
@@ -43,6 +44,21 @@ jobs:
 
   backend-checks:
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:18.0
+        env:
+          POSTGRES_DB: schatten_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d schatten_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
       - uses: actions/checkout@v5
@@ -68,6 +84,8 @@ jobs:
 
       - name: Test backend
         working-directory: backend
+        env:
+          MIGRATION_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/schatten_test
         run: uv run pytest
 
       - name: Typecheck backend

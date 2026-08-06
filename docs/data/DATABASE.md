@@ -2,14 +2,16 @@
 
 Tämä dokumentti kuvaa järjestelmän fyysisen tietokantamallin ja tietokantakäytännöt.
 
-Status: core and customer schema baseline defined. AI and billing still TBD.
+Status: core and customer schema baseline and migration runner defined. AI and billing still TBD.
 
 Tietokantateknologia ja ORM on päätetty ADR-001:ssä:
 
 - PostgreSQL
 - SQLAlchemy
 
-Migraatiotyökalu päätetään erikseen. Siihen asti skeeman lähde on versionhallittu SQL-migraatio hakemistossa `db/migrations/`.
+Migraatiostrategia on päätetty ADR-002:ssa. Skeeman lähde on versionhallittu,
+pareittainen SQL-migraatioketju hakemistossa `db/migrations/`, ja migraatiot
+ajetaan repositoryn Python/Psycopg-runnerilla.
 
 ---
 
@@ -23,7 +25,7 @@ Lue nämä yhdessä tietokantamallin kanssa:
 - `db/migrations/README.md`
 - `db/init/README.md`
 - `docs/decisions/ADR-001-tech-stack.md`
-- `docs/decisions/ADR-002-database.md`, jos se luodaan migraatiotyökalua tai tarkempaa tietokantastrategiaa varten
+- `docs/decisions/ADR-002-database-migrations.md`
 
 ---
 
@@ -89,6 +91,11 @@ Most core tables use:
 - normal application deletion uses soft delete, not physical row deletion
 
 Primary key names follow table-specific singular names, for example `scenario_id`, `org_state_id`, `graph_node_id` and `timeserie_value_id`.
+
+`schema_migrations` is infrastructure metadata owned by the migration runner,
+not a domain table. It stores each applied version, up filename, SHA-256 checksum
+and application timestamp. It remains present even when migration 001 is rolled
+back.
 
 ---
 
@@ -203,6 +210,22 @@ Each migration must be:
 - reviewable
 - safe to run once
 - connected to a task or PR
+- paired as `NNN_name.sql` and `NNN_name.down.sql`
+
+Run all pending migrations:
+
+```bash
+uv run --project backend python backend/migrate.py up
+```
+
+Only the latest applied migration can be rolled back, using its exact down
+basename. Down migrations can destroy data and require a backup appropriate to
+the target environment.
+
+Databases whose schema predates migration tracking must be verified by an
+operator and adopted with `baseline NNN`. The runner does not infer historical
+migration state. ADR-002 defines history checksums, transactions, advisory
+locking and rollback policy.
 
 ---
 
@@ -245,7 +268,7 @@ When database schema changes:
 1. Update `docs/data/DATABASE.md`.
 2. Update `docs/data/DATA-MODEL.md` if logical model changes.
 3. Update relevant domain and concept documents.
-4. Add migration script in `db/migrations/`.
+4. Add paired up and down migration scripts in `db/migrations/`.
 5. Update init scripts only if local bootstrap needs them.
 6. Update `docs/diagrams/db-physical-schema.puml`.
 7. Regenerate `docs/diagrams/generated/db-physical-schema.svg`.

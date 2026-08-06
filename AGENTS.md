@@ -54,6 +54,7 @@ Päätetty teknologiapino:
 - backend: Python, FastAPI, Pydantic, uv, pytest, pyright, Ruff hakemistossa `backend/`
 - database: PostgreSQL
 - ORM: SQLAlchemy
+- migrations: repository-owned Python/Psycopg runner and paired SQL migrations
 - authentication: Microsoft Entra ID
 - local runtime: frontend, backend ja database omissa Docker-konteissaan
 - initial staging deployment: Railway
@@ -181,6 +182,10 @@ Kaikki skeemamuutokset:
 - migraatioina
 - versionhallinnassa
 - taskissa ja tarvittaessa ADR:ssä kuvattuina
+- pareina: `NNN_name.sql` ja `NNN_name.down.sql`
+
+Jokaisen uuden up-migraation mukana pitää lisätä saman muutoksen peruuttava down-migraatio.
+Migraatiot ajetaan `backend/migrate.py`-työkalulla ADR-002:n mukaisesti.
 
 Kielletty:
 

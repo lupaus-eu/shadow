@@ -2,9 +2,10 @@
 
 Tämä hakemisto sisältää versionhallittavat tietokantamigraatiot.
 
-Status: migration convention defined, PostgreSQL and SQLAlchemy selected
+Status: paired migration convention and Python/Psycopg runner available
 
-Tietokantateknologia on PostgreSQL ja ORM on SQLAlchemy. Migraatiotyökalu päätetään erikseen.
+Tietokantateknologia on PostgreSQL ja ORM on SQLAlchemy. Migraatiot ajetaan
+repositoryn `backend/migrate.py`-työkalulla ADR-002:n mukaisesti.
 
 ---
 
@@ -25,7 +26,12 @@ Muoto:
 
 ```text
 NNN_<verb>_<object>.sql
+NNN_<verb>_<object>.down.sql
 ```
+
+Jokaisella up-migraatiolla pitää aina olla täsmälleen samalla stemillä nimetty
+down-migraatio. Esimerkiksi `009_add_invoice_status.sql` vaatii tiedoston
+`009_add_invoice_status.down.sql`.
 
 Sallitut yleiset verbit:
 
@@ -53,11 +59,15 @@ Esimerkkejä:
 
 - Yksi looginen muutos per migraatio.
 - Numerointi kasvaa yhdellä.
+- Numerointi alkaa `001`:stä ja muodostaa aukottoman lineaarisen ketjun.
+- Lisää jokainen up- ja down-migraatio samassa muutoksessa.
 - Älä muuta jo mainiin mergeättyä migraatiota ilman erillistä päätöstä.
 - Korjaa aiempi julkaistu migraatio uudella migraatiolla.
 - Migraatio ei saa sisältää salaisuuksia.
 - Migraation pitää olla reviewattava.
 - Tuotantotietokantaa ei muuteta käsin.
+- Down-migraatio voi tuhota dataa. Ota tarvittava varmuuskopio ennen rollbackia.
+- Down-migraatio ajetaan vain, jos sen up-migraatio on viimeisin sovellettu migraatio.
 
 ---
 
@@ -75,6 +85,56 @@ The current ordered migration chain is:
 007_create_contacts.sql
 008_create_customer_addresses.sql
 ```
+
+Jokaisella yllä olevalla tiedostolla on vastaava `.down.sql`-tiedosto.
+
+---
+
+# Commands
+
+Aja kaikki puuttuvat migraatiot repositoryn juuresta:
+
+```bash
+uv run --project backend python backend/migrate.py up
+```
+
+Peruuta viimeisin sovellettu migraatio antamalla tarkka down-tiedostonimi:
+
+```bash
+uv run --project backend python backend/migrate.py 008_create_customer_addresses.down.sql
+```
+
+Runner ei hyväksy polkuja, versionumeroiden lyhenteitä, soveltamattomia
+migraatioita tai muuta kuin viimeisintä sovellettua down-migraatiota.
+
+Jos skeema on luotu ennen migraatiohistorian käyttöönottoa, tarkista sen taso ja
+rekisteröi se eksplisiittisesti suorittamatta SQL-tiedostoja:
+
+```bash
+uv run --project backend python backend/migrate.py baseline 008
+```
+
+Baseline on operaattorin vakuutus siitä, että olemassa oleva skeema vastaa
+annettua tasoa. Runner ei päättele tasoa automaattisesti.
+
+---
+
+# Migration History And Safety
+
+Runner ylläpitää `schema_migrations`-taulua. Se tallentaa version, up-tiedoston
+nimen, SHA-256-tarkistussumman ja suoritusajan. Historia hyväksytään vain, kun se
+on repositoryketjun yhtenäinen prefix ja tallennetut nimet sekä tarkistussummat
+vastaavat nykyisiä tiedostoja.
+
+Jokainen migraatio ja historiapäivitys suoritetaan samassa transaktiossa.
+Session-tason PostgreSQL advisory lock estää rinnakkaisten runnerien
+lomittumisen. Yhden pending-migraation epäonnistuminen ei peruuta sitä ennen jo
+onnistuneesti committoituja migraatioita.
+
+Migration 004:n alkuperäinen up-migraatio poisti graph-metadataa ja
+graph-to-org-state-assosiaation. Sen down-migraatio palauttaa legacy-rakenteen
+vain, kun jokainen graph-dataa sisältävä scenario liittyy täsmälleen yhteen
+organisation stateen. Muuten rollback epäonnistuu atomisesti.
 
 ---
 

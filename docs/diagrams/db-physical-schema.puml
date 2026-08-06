@@ -5,6 +5,14 @@ hide circle
 skinparam linetype ortho
 skinparam classAttributeIconSize 0
 
+entity "schema_migrations" as schema_migrations {
+  * version : INTEGER
+  --
+  filename : TEXT
+  checksum : TEXT
+  applied_at : TIMESTAMPTZ
+}
+
 entity "users" as users {
   * user_id : BIGINT
   --

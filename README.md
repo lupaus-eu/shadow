@@ -79,6 +79,17 @@ Health endpoint:
 curl http://localhost:8000/health
 ```
 
+Käynnistä tietokanta ja aja kaikki puuttuvat migraatiot:
+
+```bash
+docker compose up -d database
+uv run --project backend python backend/migrate.py up
+```
+
+Migraatiokäytännöt, rollback-komennot ja olemassa olevan tietokannan baseline
+on kuvattu tiedostoissa `db/migrations/README.md` ja
+`docs/LOCAL-DEVELOPMENT.md`.
+
 Buildatun frontendin preview:
 
 ```bash

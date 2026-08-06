@@ -146,14 +146,19 @@ Tietokanta:
 
 - PostgreSQL
 - SQLAlchemy ORM
+- repository-owned Python/Psycopg migration runner
 
-Migraatiotyökalu päätetään erikseen. Siihen asti migraatioiden periaatteet ovat voimassa, mutta tarkat generointi- ja ajokomennot lisätään, kun työkalu on valittu.
+Migraatiostrategia on päätetty ADR-002:ssa. Versionhallittavat SQL-migraatiot
+muodostavat lineaarisen ketjun, jokaisella up-migraatiolla on down-vastine ja
+runner seuraa sovellettuja migraatioita PostgreSQL:n `schema_migrations`-taulussa.
+Migraatiot ajetaan erikseen, ei automaattisesti backendin käynnistyessä.
 
 ## Database Principles
 
 - Yksi ensisijainen totuuden lähde.
 - Kaikki skeemamuutokset tehdään migraatioina.
 - Migraatiot versionhallitaan.
+- Jokaisella up-migraatiolla on down-migraatio.
 - Migraatiot sijaitsevat `db/migrations/`-hakemistossa.
 - Kehitysympäristön alustusskriptit sijaitsevat `db/init/`-hakemistossa.
 - Tuotantotietokantaa ei muuteta käsin.
@@ -596,7 +601,7 @@ Päätökset:
 
 ```text
 ADR-001 Tech Stack: accepted
-ADR-002 Database: optional follow-up for migration tooling or deeper database strategy
+ADR-002 Database Migration Tool: accepted
 ADR-003 Authentication: optional follow-up for Entra ID flow details
 ADR-004 Deployment: optional follow-up for production deployment
 ```

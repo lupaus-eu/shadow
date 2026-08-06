@@ -5,7 +5,7 @@ Use the next available ADR number.
 Example:
 
 ```text
-docs/decisions/ADR-002-database.md
+docs/decisions/ADR-003-short-title.md
 ```
 
 Status: Proposed

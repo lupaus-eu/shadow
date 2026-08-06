@@ -69,6 +69,10 @@ docs/data/DATABASE.md
 db/migrations/README.md
 ```
 
+Jokainen uusi `db/migrations/NNN_name.sql` pitää lisätä yhdessä vastaavan
+`db/migrations/NNN_name.down.sql`-migraation kanssa. Lisää hyväksymiskriteerit
+molempien suuntien ajolle disposable PostgreSQL -ympäristössä.
+
 ## Testing
 
 Kuvaa miten työ tarkistetaan. Katso myös `docs/TESTING.md`.

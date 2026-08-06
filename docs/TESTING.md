@@ -61,8 +61,9 @@ Also check:
 
 Expected:
 
-- migration script in `db/migrations/`
+- paired up and down scripts in `db/migrations/`
 - test or documented verification that migration applies cleanly
+- PostgreSQL verification that the down migration reverts cleanly
 - data model documentation update when logical model changes
 - database documentation update when physical schema changes
 
@@ -72,6 +73,26 @@ Also update when relevant:
 - `docs/data/DATABASE.md`
 - `docs/diagrams/db-physical-schema.puml`
 - `docs/diagrams/generated/db-physical-schema.svg`
+
+## Migration Runner
+
+Migration runner unit tests cover discovery, filename and pair validation,
+ordering, CLI parsing, history prefixes, checksums and latest-only rollback.
+PostgreSQL integration tests cover the actual up/down lifecycle, baselining,
+transaction failures, concurrency locking and migration-specific rollback
+constraints.
+
+Run the integration suite only against a disposable database. The tests create
+and remove uniquely named schemas inside that database:
+
+```bash
+cd backend
+MIGRATION_TEST_DATABASE_URL=postgresql://schatten:schatten_dev_password@localhost:5432/schatten uv run pytest tests/test_migrations_integration.py -v
+```
+
+When `MIGRATION_TEST_DATABASE_URL` is absent, the integration module is skipped;
+unit tests still run. CI supplies PostgreSQL 18 and always runs the integration
+suite.
 
 ## Integration Change
 
@@ -336,8 +357,10 @@ In that case:
 
 Current baseline CI checks repository documentation structure.
 
-CI runs the repository baseline checks and backend scaffold checks. As application
-coverage grows, CI should run:
+CI runs the repository baseline checks and backend checks. The backend job also
+starts PostgreSQL 18 and supplies `MIGRATION_TEST_DATABASE_URL`, so migration
+integration tests cannot be silently skipped. As application coverage grows, CI
+should run:
 
 ```text
 Install

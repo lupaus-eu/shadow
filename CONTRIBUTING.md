@@ -95,6 +95,17 @@ Lopuksi kerro mitä muutettiin ja mitkä tarkistukset ajoit.
 
 # 5. Verify Locally
 
+Tietokantamuutoksessa lisää aina pari:
+
+```text
+db/migrations/NNN_name.sql
+db/migrations/NNN_name.down.sql
+```
+
+Älä muuta jo hyväksyttyä migraatiota. Testaa up ja down disposable-tietokannassa
+`backend/migrate.py`-työkalulla ja lue ADR-002 ennen migraatiostrategian
+muuttamista.
+
 Backendin oletustarkistukset:
 
 ```bash
