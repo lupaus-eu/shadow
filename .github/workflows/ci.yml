@@ -23,6 +23,7 @@ jobs:
           test -f docs/AI-DEVELOPMENT-WORKFLOW.md
           test -f docs/LOCAL-DEVELOPMENT.md
           test -f docs/TESTING.md
+          test -f docs/DEPLOYMENT.md
           test -f docs/domains/DOMAIN.md
           test -f docs/domains/DOMAIN-TEMPLATE.md
           test -f docs/concepts/CONCEPTS.md
@@ -33,9 +34,14 @@ jobs:
           test -f docs/decisions/ADR-TEMPLATE.md
           test -f docs/decisions/ADR-001-tech-stack.md
           test -f docs/decisions/ADR-002-database-migrations.md
+          test -f docs/decisions/ADR-003-coolify-deployment.md
           test -f db/migrations/README.md
           test -f db/init/README.md
           test -f tasks/TASK-TEMPLATE.md
+          test -f tasks/TASK-038-automatic-deployment-migrations.md
+          test -f docker-compose.release.yml
+          test -f docker-compose.production.yml
+          test -f docker-compose.coolify.yml
           test -f .github/PULL_REQUEST_TEMPLATE.md
 
       - name: Explain CI status
@@ -91,3 +97,67 @@ jobs:
       - name: Typecheck backend
         working-directory: backend
         run: uv run pyright
+
+      - name: Validate production Compose
+        env:
+          BACKEND_IMAGE: schatten-backend:${{ github.sha }}
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/schatten_test
+        run: docker compose -f docker-compose.production.yml config --quiet
+
+      - name: Validate Coolify release identity and standard Compose fields
+        env:
+          COOLIFY_RESOURCE_UUID: ci-resource
+          SOURCE_COMMIT: ${{ github.sha }}
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/schatten_test
+        run: >-
+          sed '/exclude_from_hc:/d' docker-compose.coolify.yml |
+          docker compose -f - config |
+          grep --fixed-strings "image: schatten-backend-ci-resource:${{ github.sha }}"
+
+      - name: Build production backend image
+        run: >-
+          docker build
+          --target production
+          --tag schatten-backend:${{ github.sha }}
+          --file backend/Dockerfile
+          .
+
+      - name: Verify packaged migrations
+        run: >-
+          docker run --rm
+          --workdir /tmp
+          --entrypoint python
+          schatten-backend:${{ github.sha }}
+          -c "import importlib.util, os; from app.core.migrations import discover_migrations; migrations = discover_migrations(); assert len(migrations) == 8; assert importlib.util.find_spec('pytest') is None; assert os.getuid() == 10001; assert os.getgid() == 10001"
+
+      - name: Verify release migration and production API
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/schatten_test
+          BACKEND_IMAGE: schatten-backend:${{ github.sha }}
+        run: |
+          docker run --rm --network host \
+            --env DATABASE_URL \
+            "$BACKEND_IMAGE" python migrate.py up
+          docker run --rm --network host \
+            --env DATABASE_URL \
+            "$BACKEND_IMAGE" python migrate.py up
+
+          backend_container_id="$(docker run --detach --network host \
+            --env DATABASE_URL \
+            "$BACKEND_IMAGE")"
+          trap 'docker rm --force "$backend_container_id"' EXIT
+
+          for attempt in $(seq 1 20); do
+            if curl --fail --silent http://127.0.0.1:8000/health; then
+              exit 0
+            fi
+            sleep 1
+          done
+
+          docker logs "$backend_container_id"
+          exit 1
+
+      - name: Verify migration failure blocks Compose backend startup
+        env:
+          BACKEND_IMAGE: schatten-backend:${{ github.sha }}
+        run: bash .github/scripts/verify-release-compose-failure.sh

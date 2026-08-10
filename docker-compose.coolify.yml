@@ -1,0 +1,14 @@
+services:
+  migration:
+    extends:
+      file: docker-compose.release.yml
+      service: migration
+    image: schatten-backend-${COOLIFY_RESOURCE_UUID:?Coolify resource UUID is required}:${SOURCE_COMMIT:?Coolify source commit is required}
+    # Coolify-specific: completed one-shot jobs must not join aggregate health checks.
+    exclude_from_hc: true
+
+  backend:
+    extends:
+      file: docker-compose.release.yml
+      service: backend
+    image: schatten-backend-${COOLIFY_RESOURCE_UUID:?Coolify resource UUID is required}:${SOURCE_COMMIT:?Coolify source commit is required}

@@ -1,0 +1,24 @@
+x-backend-runtime: &backend-runtime
+  build:
+    context: .
+    dockerfile: backend/Dockerfile
+    target: production
+  environment:
+    DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL for the target environment}
+
+services:
+  migration:
+    <<: *backend-runtime
+    command: ["python", "migrate.py", "up"]
+    restart: "no"
+    healthcheck:
+      disable: true
+
+  backend:
+    <<: *backend-runtime
+    depends_on:
+      migration:
+        condition: service_completed_successfully
+        required: true
+    expose:
+      - "8000"

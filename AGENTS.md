@@ -57,7 +57,8 @@ Päätetty teknologiapino:
 - migrations: repository-owned Python/Psycopg runner and paired SQL migrations
 - authentication: Microsoft Entra ID
 - local runtime: frontend, backend ja database omissa Docker-konteissaan
-- initial staging deployment: Railway
+- staging and production deployment: Coolify Docker Compose, with a portable
+  backend image and one-shot migration job defined in ADR-003
 
 ---
 

@@ -259,7 +259,10 @@ fix(scope): short description
 docs(scope): short description
 ```
 
-Kun deployment on konfiguroitu, merge mainiin käynnistää sovitun deployment-putken. Alkuvaiheessa staging-deployment tehdään Railwayhin.
+Kun deployment on konfiguroitu, merge mainiin käynnistää sovitun
+deployment-putken. Staging- ja production-topologia on dokumentoitu ADR-003:ssa
+ja `docs/DEPLOYMENT.md`:ssä. Production-julkaisu vaatii edelleen ihmisen
+hyväksynnän.
 
 Lopuksi:
 

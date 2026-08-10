@@ -20,7 +20,8 @@ Päätetty tekninen perusrakenne:
 - ORM: SQLAlchemy
 - authentication: Microsoft Entra ID
 - local runtime: frontend, backend ja database omissa Docker-konteissaan
-- initial staging deployment: Railway
+- staging and production deployment: Coolify Docker Compose
+- release migrations: one-shot job using the same backend image as the API
 
 Tarkemmat toteutusyksityiskohdat täsmentyvät taskien ja tarvittaessa uusien ADR:ien kautta.
 
@@ -151,7 +152,9 @@ Tietokanta:
 Migraatiostrategia on päätetty ADR-002:ssa. Versionhallittavat SQL-migraatiot
 muodostavat lineaarisen ketjun, jokaisella up-migraatiolla on down-vastine ja
 runner seuraa sovellettuja migraatioita PostgreSQL:n `schema_migrations`-taulussa.
-Migraatiot ajetaan erikseen, ei automaattisesti backendin käynnistyessä.
+Migraatioita ei ajeta FastAPI-prosessin käynnistyksessä. ADR-003:n mukaisessa
+deploymentissa erillinen one-shot release job ajaa kaikki puuttuvat migraatiot
+ennen uuden backend-palvelun käynnistymistä.
 
 ## Database Principles
 
@@ -562,9 +565,11 @@ Kielletty:
 
 # Deployment
 
-Status: initial staging decided in ADR-001
+Status: staging and production baseline decided in ADR-003
 
-Alkuvaiheen staging-deployment tehdään Railwayhin. Deployment target voi muuttua myöhemmin.
+Staging- ja production-deployment tehdään Coolifyssa Docker Compose -topologialla.
+Coolify korvaa ADR-001:n alkuperäisen Railway-valinnan muuttamatta ADR-001:n
+historiallista teknologiapäätöstä.
 
 Tavoitemalli:
 
@@ -577,10 +582,26 @@ GitHub Actions
    v
 Build artifact / Docker image
    |
-   +--> Railway staging
+   +--> one-shot migration job
+   |       |
+   |       v
+   |    PostgreSQL
    |
-   +--> production
+   +--> backend after migration success
+           |
+           +--> Coolify staging
+           +--> Coolify production
 ```
+
+Backendin production-image sisältää sovelluksen, migraatio-runnerin ja
+versionhallittavat SQL-migraatiot. Migration- ja backend-palvelut käyttävät samaa
+immutable imageä ja `DATABASE_URL`:ia. Migration-palvelun epäonnistuminen estää
+uuden backendin käynnistymisen.
+
+Coolify Docker Compose ei takaa rolling- tai zero-downtime deploymentia.
+Application rollback ei aja down-migraatiota automaattisesti, ja onnistuneesti
+ajetut forward-migraatiot jätetään paikalleen. Skeemamuutokset julkaistaan
+expand/contract-mallilla.
 
 ## Infrastructure Principles
 
@@ -592,6 +613,8 @@ Ympäristöjen tulee käyttää:
 - ympäristömuuttujia
 - toistettavaa build- ja deployment-prosessia
 - dokumentoitua tietokantayhteyttä
+- provider-neutralia API- ja migration-komentoa
+- provider-kohtaisten manifestikenttien eristämistä sovelluskoodista
 
 ---
 
@@ -602,8 +625,8 @@ Päätökset:
 ```text
 ADR-001 Tech Stack: accepted
 ADR-002 Database Migration Tool: accepted
-ADR-003 Authentication: optional follow-up for Entra ID flow details
-ADR-004 Deployment: optional follow-up for production deployment
+ADR-003 Coolify Deployment And Release Migrations: accepted
+ADR-004 Authentication: optional follow-up for Entra ID flow details
 ```
 
 ---

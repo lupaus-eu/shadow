@@ -94,6 +94,41 @@ When `MIGRATION_TEST_DATABASE_URL` is absent, the integration module is skipped;
 unit tests still run. CI supplies PostgreSQL 18 and always runs the integration
 suite.
 
+## Production Image And Release Migration
+
+TASK-038 packages the existing runner into the production backend image and
+gates backend startup with a one-shot Compose service. Verify both the portable
+artifact and deployment wiring:
+
+```bash
+docker build --target production -t schatten-backend:local -f backend/Dockerfile .
+
+env \
+  BACKEND_IMAGE=schatten-backend:local \
+  DATABASE_URL=postgresql://user:password@database:5432/schatten \
+  docker compose -f docker-compose.production.yml config --quiet
+
+docker run --rm \
+  --workdir /tmp \
+  --entrypoint python \
+  schatten-backend:local \
+  -c "import os; from app.core.migrations import discover_migrations; assert discover_migrations(); assert os.getuid() == 10001"
+```
+
+Against disposable PostgreSQL, verify fresh `up`, repeated no-op `up`, failure
+blocking and concurrent-runner serialization before backend startup. Never use
+a developer's normal schema, staging or production for destructive tests.
+
+CI runs `.github/scripts/verify-release-compose-failure.sh` against an isolated
+PostgreSQL container. The script corrupts disposable migration history, starts
+the real production Compose model and requires both a nonzero deployment result
+and no running backend service.
+
+The standard production Compose model is validated locally. The thin Coolify
+manifest must additionally be parsed and rehearsed in Coolify because
+`exclude_from_hc` is a provider-specific field. A staging rehearsal requires
+human authorization and its result must be recorded in the PR.
+
 ## Integration Change
 
 Expected:

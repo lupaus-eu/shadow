@@ -26,6 +26,7 @@ Lue lisäksi tarpeen mukaan:
 - `docs/concepts/CONCEPTS.md`, kun muutos koskee liiketoimintakäsitettä
 - `docs/data/DATA-MODEL.md`, kun muutos koskee dataa tai tietokantaa
 - `docs/TESTING.md`, kun muutos koskee sovelluskoodia tai testejä
+- `docs/DEPLOYMENT.md`, kun muutos koskee imageä, migraatiojobia tai deploymentia
 - `docs/AI-DEVELOPMENT-WORKFLOW.md`, kun haluat tarkemman workflow-ohjeen
 - `AI-FIRST-ENGINEERING-HANDBOOK.md`, kun tarvitset koko projektin kehityskäsikirjan
 
@@ -55,7 +56,7 @@ Päätetty rakenne:
 - ORM: SQLAlchemy
 - authentication: Microsoft Entra ID
 - local runtime: frontend, backend ja database omissa Docker-konteissaan
-- initial staging deployment: Railway
+- staging and production deployment: Coolify Docker Compose (ADR-003)
 
 Frontendin voi ajaa Dockerissa:
 
@@ -89,6 +90,10 @@ uv run --project backend python backend/migrate.py up
 Migraatiokäytännöt, rollback-komennot ja olemassa olevan tietokannan baseline
 on kuvattu tiedostoissa `db/migrations/README.md` ja
 `docs/LOCAL-DEVELOPMENT.md`.
+
+Production-image, automaattinen release migration ja Coolify-konfiguraatio on
+kuvattu tiedostossa `docs/DEPLOYMENT.md`. Deployment ajaa migraatiot erillisenä
+jobina; backendin normaali startup ei muuta skeemaa.
 
 Buildatun frontendin preview:
 

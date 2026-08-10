@@ -110,6 +110,11 @@ Backend-kehityskontti:
 docker compose up backend
 ```
 
+Backendin Docker build käyttää repositoryn juurta build contextina, jotta sama
+Dockerfile voi rakentaa production-imagen yhdessä `db/migrations/`-tiedostojen
+kanssa. Dev-target säilyttää alkuperäisen `/app`-layoutin, bind mounttaa edelleen
+vain `backend/`-hakemiston eikä aja migraatioita automaattisesti.
+
 Backend on saatavilla osoitteessa:
 
 ```text
@@ -241,6 +246,11 @@ uv run --project backend python backend/migrate.py baseline 008
 Baseline ei tarkista skeeman sisältöä eikä päättele sen versiota. Komento on
 operaattorin vakuutus valitusta tasosta, ja se sallitaan vain olemassa olevalle
 skeemalle, jolla ei vielä ole migraatiohistoriaa.
+
+Staging- ja production-tietokantojen käyttöönotto, backup- ja baseline-portti
+sekä automaattinen release migration on kuvattu erikseen tiedostossa
+`docs/DEPLOYMENT.md`. Älä käytä production Compose -tiedostoja paikallisen dev
+backendin korvikkeena.
 
 Paikallisen kehitysdatan seed on dev-only ja se luo tyhjään tietokantaan dummy-adminin sekä repo-local JSON-lähteeseen perustuvan Schattenin default-metamallin:
 

@@ -26,6 +26,7 @@ Lue nämä yhdessä tietokantamallin kanssa:
 - `db/init/README.md`
 - `docs/decisions/ADR-001-tech-stack.md`
 - `docs/decisions/ADR-002-database-migrations.md`
+- `docs/decisions/ADR-003-coolify-deployment.md`
 
 ---
 
@@ -226,6 +227,16 @@ Databases whose schema predates migration tracking must be verified by an
 operator and adopted with `baseline NNN`. The runner does not infer historical
 migration state. ADR-002 defines history checksums, transactions, advisory
 locking and rollback policy.
+
+ADR-003 deploymentissa `up` ajetaan samalla immutable backend-imagella
+one-shot release jobina ennen uuden backendin käynnistymistä. Epäonnistunut job
+estää uuden backendin käynnistymisen. Onnistuneita forward-migraatioita ei
+peruta automaattisesti deployment- tai application rollbackin yhteydessä.
+
+Jokainen olemassa oleva staging- tai production-tietokanta tarkistetaan ja
+backup otetaan ennen automaation käyttöönottoa. Jos ei-tyhjältä tietokannalta
+puuttuu migraatiohistoria, operaattori varmistaa skeematason ja ajaa
+`baseline NNN`:n eksplisiittisesti. Deployment ei päättele baseline-versiota.
 
 ---
 

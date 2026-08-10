@@ -68,6 +68,8 @@ Esimerkkejä:
 - Tuotantotietokantaa ei muuteta käsin.
 - Down-migraatio voi tuhota dataa. Ota tarvittava varmuuskopio ennen rollbackia.
 - Down-migraatio ajetaan vain, jos sen up-migraatio on viimeisin sovellettu migraatio.
+- Deployment ajaa vain `up`-komennon. Deployment- tai application rollback ei
+  käynnistä down-migraatiota automaattisesti.
 
 ---
 
@@ -135,6 +137,23 @@ Migration 004:n alkuperäinen up-migraatio poisti graph-metadataa ja
 graph-to-org-state-assosiaation. Sen down-migraatio palauttaa legacy-rakenteen
 vain, kun jokainen graph-dataa sisältävä scenario liittyy täsmälleen yhteen
 organisation stateen. Muuten rollback epäonnistuu atomisesti.
+
+## Deployment Compatibility
+
+Staging- ja production-release ajaa `python migrate.py up` erillisenä one-shot
+jobina ennen uuden backendin käynnistymistä. Sama immutable backend-image sisältää
+sekä runnerin että tämän hakemiston migraatiot. PostgreSQL advisory lock suojaa
+myös rinnakkaisilta deploymenteilta.
+
+Käytä skeemamuutoksissa expand/contract-mallia:
+
+1. lisää uusi rakenne ja tarvittava backfill yhteensopivasti
+2. julkaise sovellus, joka toimii transitionaalisen skeeman kanssa
+3. poista vanha rakenne vasta myöhemmässä migraatiossa, kun vanha sovellus ja
+   sen rollback-ikkuna ovat poistuneet
+
+Älä yhdistä destruktiivista cleanupia julkaisuun, jossa vanha tai rollbackissa
+palautuva sovellus tarvitsee poistettavaa rakennetta.
 
 ---
 

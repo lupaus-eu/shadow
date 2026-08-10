@@ -1,0 +1,12 @@
+services:
+  migration:
+    extends:
+      file: docker-compose.release.yml
+      service: migration
+    image: ${BACKEND_IMAGE:?Set BACKEND_IMAGE to an immutable release image reference}
+
+  backend:
+    extends:
+      file: docker-compose.release.yml
+      service: backend
+    image: ${BACKEND_IMAGE:?Set BACKEND_IMAGE to an immutable release image reference}
