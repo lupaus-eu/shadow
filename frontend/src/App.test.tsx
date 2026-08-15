@@ -85,7 +85,14 @@ function mockSchattenApi(options?: {
 
     if (url.endsWith("/api/v1/users") && method === "GET") {
       return Promise.resolve(
-        jsonResponse([{ id: 101, name: "Development Admin", role: "admin" }])
+        jsonResponse([
+          {
+            id: 101,
+            name: "Development Admin",
+            email: "admin@example.local",
+            role: "admin"
+          }
+        ])
       );
     }
 

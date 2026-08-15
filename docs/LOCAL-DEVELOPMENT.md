@@ -228,19 +228,23 @@ migraation. Uusi `up` on turvallinen no-op, kun kaikki migraatiot on jo ajettu.
 Viimeisimmän sovelletun migraation voi peruuttaa tarkalla tiedostonimellä:
 
 ```bash
-uv run --project backend python backend/migrate.py 008_create_customer_addresses.down.sql
+uv run --project backend python backend/migrate.py 009_add_auth_identity_session_schema.down.sql
 ```
 
 Down-migraatiot voivat poistaa dataa. Käytä niitä vain disposable-paikallisessa
 tietokannassa tai varmista palautuskelpoinen backup. Runner ei salli vanhemman
 migraation rollbackia ennen uudempien migraatioiden eksplisiittistä perumista.
 
+Migration 009 adds required User emails and deliberately has no legacy-data
+backfill. If a local migration-008 database contains User rows, discard/reset
+that disposable database before running `up`.
+
 Jos paikallinen skeema on luotu vanhoilla manuaalisilla `psql`-komennoilla,
-varmista ensin että se vastaa migraatiota 008 ja ota historia käyttöön ajamatta
+varmista ensin että se vastaa migraatiota 009 ja ota historia käyttöön ajamatta
 SQL:ää uudelleen:
 
 ```bash
-uv run --project backend python backend/migrate.py baseline 008
+uv run --project backend python backend/migrate.py baseline 009
 ```
 
 Baseline ei tarkista skeeman sisältöä eikä päättele sen versiota. Komento on
@@ -252,7 +256,10 @@ sekä automaattinen release migration on kuvattu erikseen tiedostossa
 `docs/DEPLOYMENT.md`. Älä käytä production Compose -tiedostoja paikallisen dev
 backendin korvikkeena.
 
-Paikallisen kehitysdatan seed on dev-only ja se luo tyhjään tietokantaan dummy-adminin sekä repo-local JSON-lähteeseen perustuvan Schattenin default-metamallin:
+Paikallisen kehitysdatan seed on dev-only ja se luo tyhjään tietokantaan
+`admin@example.local`-sähköpostia käyttävän dummy-adminin sekä repo-local
+JSON-lähteeseen perustuvan Schattenin default-metamallin. Seed ei luo
+identiteetti-, login transaction- tai session-riveja:
 
 ```bash
 PGPASSWORD=schatten_dev_password psql -h localhost -p 5432 -U schatten -d schatten -f db/init/002_seed_development_data.sql

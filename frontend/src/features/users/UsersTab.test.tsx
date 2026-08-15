@@ -29,8 +29,18 @@ const createUserMock = vi.mocked(createUser);
 const updateUserMock = vi.mocked(updateUser);
 const deleteUserMock = vi.mocked(deleteUser);
 
-const ada: UserDto = { id: 2, name: "ada", role: "admin" };
-const grace: UserDto = { id: 3, name: "Grace", role: "consultant" };
+const ada: UserDto = {
+  id: 2,
+  name: "ada",
+  email: "ada@example.local",
+  role: "admin"
+};
+const grace: UserDto = {
+  id: 3,
+  name: "Grace",
+  email: "grace@example.local",
+  role: "consultant"
+};
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -48,7 +58,7 @@ describe("UsersTab", () => {
   it("loads, sorts, counts, and selects active users", async () => {
     fetchUsersMock.mockResolvedValue([
       grace,
-      { id: 5, name: "Ada", role: "consultant" },
+      { id: 5, name: "Ada", email: "ada2@example.local", role: "consultant" },
       ada
     ]);
 
@@ -58,9 +68,9 @@ describe("UsersTab", () => {
     const list = await screen.findByRole("generic", { name: "Active user list" });
     const rows = within(list).getAllByRole("button");
     expect(rows.map((row) => row.textContent)).toEqual([
-      "adaUser ID 2Admin",
-      "AdaUser ID 5Consultant",
-      "GraceUser ID 3Consultant"
+      "adaada@example.local · User ID 2Admin",
+      "Adaada2@example.local · User ID 5Consultant",
+      "Gracegrace@example.local · User ID 3Consultant"
     ]);
     expect(rows[0]).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByText("3 active user(s)")).toBeInTheDocument();
@@ -83,7 +93,12 @@ describe("UsersTab", () => {
   });
 
   it("creates a trimmed user and preserves the created selection", async () => {
-    const created: UserDto = { id: 4, name: "Linus", role: "admin" };
+    const created: UserDto = {
+      id: 4,
+      name: "Linus",
+      email: "linus@example.local",
+      role: "admin"
+    };
     fetchUsersMock.mockResolvedValue([ada]);
     createUserMock.mockResolvedValue(created);
 
@@ -94,6 +109,9 @@ describe("UsersTab", () => {
     fireEvent.change(within(form).getByLabelText("Name"), {
       target: { value: "  Linus  " }
     });
+    fireEvent.change(within(form).getByLabelText("Email"), {
+      target: { value: "  linus@example.local  " }
+    });
     fireEvent.change(within(form).getByLabelText("Role"), {
       target: { value: "admin" }
     });
@@ -102,16 +120,18 @@ describe("UsersTab", () => {
     await waitFor(() => {
       expect(createUserMock).toHaveBeenCalledWith({
         name: "Linus",
+        email: "linus@example.local",
         role: "admin"
       });
     });
     const createdRow = await screen.findByRole("button", { name: /Linus/ });
     expect(createdRow).toHaveAttribute("aria-pressed", "true");
     expect(within(form).getByLabelText("Name")).toHaveValue("");
+    expect(within(form).getByLabelText("Email")).toHaveValue("");
     expect(within(form).getByLabelText("Role")).toHaveValue("consultant");
   });
 
-  it("disables creation for an empty or whitespace-only name", async () => {
+  it("requires non-blank name and email for creation", async () => {
     fetchUsersMock.mockResolvedValue([]);
     render(<UsersTab />);
     await screen.findByText("No active users available.");
@@ -123,15 +143,24 @@ describe("UsersTab", () => {
     expect(createButton).toBeDisabled();
 
     fireEvent.change(within(form).getByLabelText("Name"), {
-      target: { value: "   " }
+      target: { value: "Ada" }
     });
 
+    expect(createButton).toBeDisabled();
+    fireEvent.change(within(form).getByLabelText("Email"), {
+      target: { value: "   " }
+    });
     expect(createButton).toBeDisabled();
     expect(createUserMock).not.toHaveBeenCalled();
   });
 
   it("updates a user and preserves its selection", async () => {
-    const updated: UserDto = { id: ada.id, name: "Ada Lovelace", role: "consultant" };
+    const updated: UserDto = {
+      id: ada.id,
+      name: "Ada Lovelace",
+      email: "lovelace@example.local",
+      role: "consultant"
+    };
     fetchUsersMock.mockResolvedValue([ada, grace]);
     updateUserMock.mockResolvedValue(updated);
 
@@ -141,6 +170,9 @@ describe("UsersTab", () => {
     fireEvent.change(within(form).getByLabelText("Name"), {
       target: { value: "  Ada Lovelace " }
     });
+    fireEvent.change(within(form).getByLabelText("Email"), {
+      target: { value: " lovelace@example.local " }
+    });
     fireEvent.change(within(form).getByLabelText("Role"), {
       target: { value: "consultant" }
     });
@@ -149,6 +181,7 @@ describe("UsersTab", () => {
     await waitFor(() => {
       expect(updateUserMock).toHaveBeenCalledWith(ada.id, {
         name: "Ada Lovelace",
+        email: "lovelace@example.local",
         role: "consultant"
       });
     });
@@ -190,11 +223,19 @@ describe("UsersTab", () => {
     fireEvent.change(within(form).getByLabelText("Name"), {
       target: { value: "Linus" }
     });
+    fireEvent.change(within(form).getByLabelText("Email"), {
+      target: { value: "linus@example.local" }
+    });
     fireEvent.submit(form);
 
     expect(await within(form).findByRole("button", { name: "Saving..." })).toBeDisabled();
     expect(userRow).toBeDisabled();
-    pending.resolve({ id: 4, name: "Linus", role: "consultant" });
+    pending.resolve({
+      id: 4,
+      name: "Linus",
+      email: "linus@example.local",
+      role: "consultant"
+    });
     expect(await screen.findByRole("button", { name: /Linus/ })).toHaveAttribute(
       "aria-pressed",
       "true"
@@ -214,6 +255,7 @@ describe("UsersTab", () => {
     const updated: UserDto = {
       id: ada.id,
       name: "Ada updated",
+      email: ada.email,
       role: "consultant"
     };
     fetchUsersMock.mockResolvedValue([ada, grace]);

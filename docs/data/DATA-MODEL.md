@@ -31,7 +31,10 @@ Lue nämä yhdessä datamallin kanssa:
 
 | Entity | Notes |
 | --- | --- |
-| User | Application user with role `consultant` or `admin`. |
+| User | Application user allowlist entry with required email and role `consultant` or `admin`. |
+| User Identity | Permanent exact `(issuer, subject)` binding to one User. |
+| OIDC Login Transaction | Ten-minute browser-bound, single-use login flow state. |
+| Authentication Session | Opaque server-side session represented by a hashed identifier. |
 | Organisation | Tenant-like organisation boundary for scenarios and organisation-specific metamodels. Active organisation names are case-insensitively unique. |
 | Scenario | Versioned planning or analysis context within an organisation. |
 | Organisation State | Scenario-specific named snapshot state with target date and version. |
@@ -53,6 +56,16 @@ Lue nämä yhdessä datamallin kanssa:
 
 # Relationship Rules
 
+- A User owns zero or more identities across different issuers and zero or more
+  application sessions.
+- Active User emails are case-insensitively unique; soft-deleted emails are
+  reusable.
+- An exact `(issuer, subject)` belongs to one User, and a User has at most one
+  identity per issuer.
+- Login transactions are browser-bound through a separate hash and contain no
+  User or provider-token relationship.
+- Sessions reference one User and persist no raw session identifier or provider
+  token.
 - An organisation owns many scenarios.
 - Active organisations cannot share the same name when compared case-insensitively.
 - A scenario owns many organisation states and events.

@@ -6,8 +6,8 @@
 
 BEGIN;
 
-INSERT INTO users (name, role)
-SELECT 'Development Admin', 'admin'
+INSERT INTO users (name, email, role)
+SELECT 'Development Admin', 'admin@example.local', 'admin'
 WHERE NOT EXISTS (
     SELECT 1
     FROM users

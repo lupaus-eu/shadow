@@ -116,11 +116,11 @@ def test_full_up_down_and_reapply_lifecycle(migration_database_url: str) -> None
 
     assert (
         _scalar(migration_database_url, "SELECT count(*) FROM schema_migrations")
-        == 8
+        == 9
     )
     assert _scalar(
         migration_database_url,
-        "SELECT to_regclass('customer_addresses') IS NOT NULL",
+        "SELECT to_regclass('auth_sessions') IS NOT NULL",
     )
 
     execute_command(UpCommand(), database_url=migration_database_url)
@@ -141,7 +141,7 @@ def test_full_up_down_and_reapply_lifecycle(migration_database_url: str) -> None
     execute_command(UpCommand(), database_url=migration_database_url)
     assert (
         _scalar(migration_database_url, "SELECT count(*) FROM schema_migrations")
-        == 8
+        == 9
     )
 
 
@@ -152,7 +152,7 @@ def test_rejects_non_latest_and_unapplied_down_migrations(
 
     with pytest.raises(MigrationError, match="Unknown down migration"):
         execute_command(
-            DownCommand("009_unknown.down.sql"),
+            DownCommand("010_unknown.down.sql"),
             database_url=migration_database_url,
         )
 
@@ -162,6 +162,10 @@ def test_rejects_non_latest_and_unapplied_down_migrations(
             database_url=migration_database_url,
         )
 
+    execute_command(
+        DownCommand("009_add_auth_identity_session_schema.down.sql"),
+        database_url=migration_database_url,
+    )
     execute_command(
         DownCommand("008_create_customer_addresses.down.sql"),
         database_url=migration_database_url,
@@ -236,10 +240,10 @@ def test_existing_schema_requires_explicit_baseline(
         "SELECT to_regclass('schema_migrations') IS NOT NULL",
     )
 
-    execute_command(BaselineCommand(8), database_url=migration_database_url)
+    execute_command(BaselineCommand(9), database_url=migration_database_url)
     assert (
         _scalar(migration_database_url, "SELECT count(*) FROM schema_migrations")
-        == 8
+        == 9
     )
     execute_command(UpCommand(), database_url=migration_database_url)
 
@@ -261,6 +265,122 @@ def test_existing_schema_with_empty_history_requires_explicit_baseline(
     assert _scalar(
         migration_database_url,
         "SELECT to_regclass('preexisting') IS NOT NULL",
+    )
+
+
+def test_migration_nine_upgrades_an_empty_version_eight_database(
+    migration_database_url: str,
+    tmp_path: Path,
+) -> None:
+    migration_copy = tmp_path / "migrations_through_008"
+    migration_copy.mkdir()
+    for migration in discover_migrations()[:8]:
+        shutil.copy2(migration.up_path, migration_copy / migration.up_name)
+        shutil.copy2(migration.down_path, migration_copy / migration.down_name)
+
+    execute_command(
+        UpCommand(),
+        database_url=migration_database_url,
+        migrations_directory=migration_copy,
+    )
+    assert _scalar(
+        migration_database_url,
+        "SELECT max(version) FROM schema_migrations",
+    ) == 8
+
+    execute_command(UpCommand(), database_url=migration_database_url)
+
+    assert _scalar(
+        migration_database_url,
+        "SELECT max(version) FROM schema_migrations",
+    ) == 9
+    assert _scalar(
+        migration_database_url,
+        "SELECT is_nullable = 'NO' FROM information_schema.columns "
+        "WHERE table_schema = current_schema() "
+        "AND table_name = 'users' AND column_name = 'email'",
+    )
+    assert _scalar(
+        migration_database_url,
+        "SELECT to_regclass('user_identities') IS NOT NULL",
+    )
+    assert _scalar(
+        migration_database_url,
+        "SELECT to_regclass('oidc_login_transactions') IS NOT NULL",
+    )
+    assert _scalar(
+        migration_database_url,
+        "SELECT to_regclass('auth_sessions') IS NOT NULL",
+    )
+
+
+def test_migration_nine_constraints_and_down_scope(
+    migration_database_url: str,
+) -> None:
+    execute_command(UpCommand(), database_url=migration_database_url)
+
+    with psycopg.connect(migration_database_url) as connection:
+        connection.execute(
+            "INSERT INTO users (name, email, role) "
+            "VALUES ('First', 'First@Example.Local', 'admin')"
+        )
+        connection.commit()
+
+    with psycopg.connect(migration_database_url) as connection:
+        with pytest.raises(psycopg.errors.UniqueViolation):
+            connection.execute(
+                "INSERT INTO users (name, email, role) "
+                "VALUES ('Duplicate', 'first@example.local', 'consultant')"
+            )
+
+    with psycopg.connect(migration_database_url) as connection:
+        connection.execute(
+            "UPDATE users SET deleted_time = now() "
+            "WHERE lower(email) = 'first@example.local'"
+        )
+        replacement = connection.execute(
+            "INSERT INTO users (name, email, role) "
+            "VALUES ('Replacement', 'first@example.local', 'consultant') "
+            "RETURNING user_id"
+        ).fetchone()
+        assert replacement is not None
+        connection.execute(
+            "INSERT INTO user_identities (user_id, issuer, subject) "
+            "VALUES (%s, 'https://issuer.example', 'subject-1')",
+            (replacement[0],),
+        )
+        connection.commit()
+
+    with psycopg.connect(migration_database_url) as connection:
+        with pytest.raises(psycopg.errors.UniqueViolation):
+            connection.execute(
+                "INSERT INTO user_identities (user_id, issuer, subject) "
+                "VALUES (%s, 'https://issuer.example', 'subject-2')",
+                (replacement[0],),
+            )
+
+    execute_command(
+        DownCommand("009_add_auth_identity_session_schema.down.sql"),
+        database_url=migration_database_url,
+    )
+
+    assert _scalar(
+        migration_database_url,
+        "SELECT max(version) FROM schema_migrations",
+    ) == 8
+    assert _scalar(
+        migration_database_url,
+        "SELECT to_regclass('customer_addresses') IS NOT NULL",
+    )
+    assert not _scalar(
+        migration_database_url,
+        "SELECT to_regclass('auth_sessions') IS NOT NULL",
+    )
+    assert not _scalar(
+        migration_database_url,
+        "SELECT EXISTS (SELECT 1 FROM information_schema.columns "
+        "WHERE table_schema = current_schema() "
+        "AND table_name = 'users' AND column_name = 'email')",
     )
 
 

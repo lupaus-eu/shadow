@@ -2,7 +2,7 @@
 
 Tämä dokumentti kuvaa järjestelmän fyysisen tietokantamallin ja tietokantakäytännöt.
 
-Status: core and customer schema baseline and migration runner defined. AI and billing still TBD.
+Status: core, customer and authentication persistence schema baseline defined. AI and billing still TBD.
 
 Tietokantateknologia ja ORM on päätetty ADR-001:ssä:
 
@@ -57,11 +57,15 @@ db/migrations/005_add_graph_logical_delete_dates.sql
 db/migrations/006_create_customers.sql
 db/migrations/007_create_contacts.sql
 db/migrations/008_create_customer_addresses.sql
+db/migrations/009_add_auth_identity_session_schema.sql
 ```
 
 | Table | Purpose | Notes |
 | --- | --- | --- |
-| `users` | Application users | `role` is `consultant` or `admin`. |
+| `users` | Application users | Required email; active emails are case-insensitively unique. `role` is `consultant` or `admin`. |
+| `user_identities` | Durable provider-neutral identities | Exact `(issuer, subject)` binds to one User; one identity per User and issuer. |
+| `oidc_login_transactions` | Browser-bound OIDC flow state | SHA-256 state/browser hashes, nonce, PKCE, return path and ten-minute expiry; no provider tokens. |
+| `auth_sessions` | Opaque application sessions | SHA-256 session-id hash, User, CSRF token, activity and absolute-expiry timestamps. |
 | `organisations` | Organisation records | Uses `organisation_key` for stable external/import identity. Active names are case-insensitively unique. |
 | `scenarios` | Scenario versions within an organisation | References source scenario and optional initial org state. |
 | `org_states` | Scenario-specific organisation state snapshots | `name` is the human-readable state display name; `target_date` is required and enforced as `NOT NULL`; soft-deleted with parent scenario in normal application flows. |
@@ -103,6 +107,15 @@ back.
 # Important Constraints
 
 - `users.role` is constrained to `consultant` or `admin`.
+- `users.email` is non-null and non-blank. A partial unique index enforces
+  case-insensitive uniqueness only for active Users.
+- `user_identities` requires non-blank exact issuer and subject values and
+  uniquely constrains both `(issuer, subject)` and `(user_id, issuer)`.
+- OIDC state, browser-binding and application session identifier hashes are
+  exactly 32 bytes, representing SHA-256 output. There is no raw session ID or
+  provider-token column.
+- OIDC transaction expiry is after creation; session last activity is not
+  before creation and absolute expiry is after creation.
 - Active organisation names are unique case-insensitively through `lower(name)` where `deleted_time IS NULL`; soft-deleted historical names are reusable.
 - `org_states.target_date` and `events.target_date` are required with `NOT NULL` constraints.
 - `org_states.scenario_id` and `events.scenario_id` use `ON DELETE CASCADE` for physical hard-delete cleanup/safety behavior.
@@ -142,6 +155,11 @@ and its active Contacts and Customer Addresses atomically.
 
 The migration defines:
 
+- active case-insensitive User email uniqueness
+- exact identity uniqueness by `(issuer, subject)` and `(user_id, issuer)`
+- OIDC transaction expiry and browser-binding hash indexes for cleanup and the
+  per-browser live-flow cap
+- application session User and absolute-expiry indexes
 - active stable-key uniqueness for organisations, scenarios, org states, events, node types, edge types, graph nodes, graph edges and timeseries
 - active case-insensitive organisation name uniqueness
 - one active default metamodel
@@ -260,15 +278,19 @@ db/init/002_seed_development_data.sql
 
 The seed creates non-production bootstrap data only:
 
-- one `Development Admin` user when `users` is empty
+- one `Development Admin` user with `admin@example.local` when `users` is empty
 - one active default metamodel when no active default metamodel exists
 - node types, edge types, type attributes and allowed connections from `db/init/metamodel_state_##default##.json`
 
 The default metamodel uses `metamodels.organisation_id = NULL` and stores the JSON root `version` field in `metamodels.version`.
 
-The seed does not create organisations, scenarios, org states, events, graph
-nodes, graph edges, timeseries, timeserie values, customers, contacts or
-customer addresses.
+The seed does not create identities, login transactions, sessions,
+organisations, scenarios, org states, events, graph nodes, graph edges,
+timeseries, timeserie values, customers, contacts or customer addresses.
+
+Migration 009 assumes there is no retained User data at migration 008. It adds
+required email directly, without a nullable transition or backfill. Disposable
+local databases containing User rows must be reset before upgrading.
 
 ---
 

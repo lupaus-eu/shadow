@@ -86,6 +86,7 @@ The current ordered migration chain is:
 006_create_customers.sql
 007_create_contacts.sql
 008_create_customer_addresses.sql
+009_add_auth_identity_session_schema.sql
 ```
 
 Jokaisella yllä olevalla tiedostolla on vastaava `.down.sql`-tiedosto.
@@ -103,7 +104,7 @@ uv run --project backend python backend/migrate.py up
 Peruuta viimeisin sovellettu migraatio antamalla tarkka down-tiedostonimi:
 
 ```bash
-uv run --project backend python backend/migrate.py 008_create_customer_addresses.down.sql
+uv run --project backend python backend/migrate.py 009_add_auth_identity_session_schema.down.sql
 ```
 
 Runner ei hyväksy polkuja, versionumeroiden lyhenteitä, soveltamattomia
@@ -113,11 +114,16 @@ Jos skeema on luotu ennen migraatiohistorian käyttöönottoa, tarkista sen taso
 rekisteröi se eksplisiittisesti suorittamatta SQL-tiedostoja:
 
 ```bash
-uv run --project backend python backend/migrate.py baseline 008
+uv run --project backend python backend/migrate.py baseline 009
 ```
 
 Baseline on operaattorin vakuutus siitä, että olemassa oleva skeema vastaa
 annettua tasoa. Runner ei päättele tasoa automaattisesti.
+
+Migration 009 intentionally adds required `users.email` without a backfill or
+temporary nullable state. It assumes migration-008 databases contain no
+retained User rows. Reset disposable local databases before applying it; do not
+apply it to retained data without a separately reviewed migration plan.
 
 ---
 

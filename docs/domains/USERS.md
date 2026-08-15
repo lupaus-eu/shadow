@@ -1,10 +1,11 @@
 # Users Domain
 
-Status: core domain baseline
+Status: identity and session persistence baseline
 
 ## Purpose
 
-Users Domain hallitsee Schattenin sovelluskayttajia ja kayttajan sovellusroolia.
+Users Domain hallitsee Schattenin sovelluskayttajia, kayttajan sovellusroolia,
+ulkoisten tunnusten pysyvia sidoksia ja palvelinpuolen kirjautumisistuntoja.
 
 Tama domain toimii source of truth -kerroksena sovelluksen omille user-riveille. Microsoft Entra ID on tuleva ulkoinen identiteettilahde, mutta sen tarkka mappaus ei kuulu tahan taskiin.
 
@@ -16,17 +17,21 @@ Owns:
 
 - application users
 - user roles
-- user soft-delete lifecycle
+- user email and soft-delete lifecycle
+- provider-neutral external identity bindings
+- browser-bound OIDC login transactions
+- opaque application sessions
 
 Provides:
 
 - user lookup
 - user role lookup
 - audit user references for other core tables
+- identity and session persistence services for the authentication layer
 
 Does NOT Own:
 
-- Microsoft Entra ID tenant configuration
+- Microsoft Entra ID or Authentik configuration and protocol adapters
 - organisation membership rules
 - organisation data
 - scenario or graph data
@@ -41,6 +46,30 @@ User `role` must be one of:
 
 - `consultant`
 - `admin`
+
+## Email
+
+- Every User has a trimmed, non-blank email.
+- Active User emails are unique under case-insensitive comparison.
+- A soft-deleted User's email may be reused by a new active User.
+- Email is used only to discover a guarded first-link candidate. It is not a
+  durable identity, session or authorization key.
+
+## External Identity
+
+- Exact, case-sensitive `(issuer, subject)` is the durable external identity.
+- One `(issuer, subject)` can bind to only one User.
+- One User can have at most one identity per issuer.
+- Authentication never creates a User or silently relinks an identity.
+
+## Login Transactions And Sessions
+
+- Login transactions persist separate SHA-256 state and initiating-browser
+  binding hashes, nonce, PKCE verifier, validated relative return path and a
+  ten-minute absolute expiry.
+- Application sessions persist only a SHA-256 session identifier hash, a
+  session-bound CSRF token and timestamps for idle and absolute expiry.
+- Provider tokens, raw session identifiers and client secrets are never stored.
 
 ## Audit References
 
@@ -65,6 +94,9 @@ Normal reads should exclude rows where `deleted_time IS NOT NULL`.
 Tables:
 
 - users
+- user_identities
+- oidc_login_transactions
+- auth_sessions
 
 Owned exclusively by Users Domain.
 
@@ -104,9 +136,10 @@ Referenced By:
 
 Flow:
 
-1. Validate user name and role.
-2. Create active user row.
-3. Return user data.
+1. Validate user name, email and role.
+2. Confirm the normalized email is not used by another active User.
+3. Create active user row.
+4. Return user data.
 
 ## Soft Delete User
 
@@ -137,5 +170,4 @@ Avoid:
 
 # Open Questions
 
-- Entra ID subject-to-user mapping
 - organisation membership and authorization model

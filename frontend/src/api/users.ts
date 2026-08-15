@@ -3,11 +3,13 @@ export type UserRole = "consultant" | "admin";
 export type UserDto = {
   id: number;
   name: string;
+  email: string;
   role: UserRole;
 };
 
 export type UserCreateRequest = {
   name: string;
+  email: string;
   role: UserRole;
 };
 

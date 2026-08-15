@@ -64,6 +64,21 @@ AI-agentin tulee lukea relevantti concept-dokumentti ennen muutosta, joka koskee
 
 # Core Concepts
 
+## User And Authentication Persistence
+
+Meaning:
+
+- application user allowlist entry, durable external identity binding,
+  short-lived login transaction and opaque server-side session
+
+Owned By:
+
+- Users Domain
+
+Related Document:
+
+- `docs/concepts/USER.md`
+
 ## Organisation
 
 Meaning:

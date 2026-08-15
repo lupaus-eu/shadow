@@ -36,9 +36,11 @@ export default function UsersTab() {
   const [listError, setListError] = useState("");
   const [saving, setSaving] = useState(false);
   const [createName, setCreateName] = useState("");
+  const [createEmail, setCreateEmail] = useState("");
   const [createRole, setCreateRole] = useState<UserRole>("consultant");
   const [createError, setCreateError] = useState("");
   const [editName, setEditName] = useState("");
+  const [editEmail, setEditEmail] = useState("");
   const [editRole, setEditRole] = useState<UserRole>("consultant");
   const [actionError, setActionError] = useState("");
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -54,6 +56,7 @@ export default function UsersTab() {
     selectedUserIdRef.current = user?.id ?? null;
     setSelectedUserId(user?.id ?? null);
     setEditName(user?.name ?? "");
+    setEditEmail(user?.email ?? "");
     setEditRole(user?.role ?? "consultant");
     setActionError("");
     setConfirmingDelete(false);
@@ -116,20 +119,26 @@ export default function UsersTab() {
   async function onCreateSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     const name = createName.trim();
+    const email = createEmail.trim();
     if (!name) {
       setCreateError("User name is required.");
+      return;
+    }
+    if (!email) {
+      setCreateError("User email is required.");
       return;
     }
 
     try {
       setSaving(true);
       setCreateError("");
-      const created = await createUser({ name, role: createRole });
+      const created = await createUser({ name, email, role: createRole });
       applyUsers(
         [...users.filter((user) => user.id !== created.id), created],
         created.id
       );
       setCreateName("");
+      setCreateEmail("");
       setCreateRole("consultant");
     } catch (error) {
       setCreateError(messageFromError(error));
@@ -143,8 +152,13 @@ export default function UsersTab() {
     if (!selectedUser) return;
 
     const name = editName.trim();
+    const email = editEmail.trim();
     if (!name) {
       setActionError("User name is required.");
+      return;
+    }
+    if (!email) {
+      setActionError("User email is required.");
       return;
     }
 
@@ -153,6 +167,7 @@ export default function UsersTab() {
       setActionError("");
       const updated = await updateUser(selectedUser.id, {
         name,
+        email,
         role: editRole
       });
       applyUsers(
@@ -185,7 +200,9 @@ export default function UsersTab() {
   }
 
   const editHasChanges = selectedUser
-    ? editName.trim() !== selectedUser.name || editRole !== selectedUser.role
+    ? editName.trim() !== selectedUser.name ||
+      editEmail.trim() !== selectedUser.email ||
+      editRole !== selectedUser.role
     : false;
   const busy = loading || saving;
 
@@ -251,7 +268,7 @@ export default function UsersTab() {
                     <span className="entity-row__main">
                       <span className="entity-row__title">{user.name}</span>
                       <span className="entity-row__description">
-                        User ID {user.id}
+                        {user.email} · User ID {user.id}
                       </span>
                     </span>
                     <span className="badge badge--neutral">
@@ -283,9 +300,11 @@ export default function UsersTab() {
                     <UserFields
                       idPrefix="user-edit"
                       name={editName}
+                      email={editEmail}
                       role={editRole}
                       disabled={busy}
                       onNameChange={setEditName}
+                      onEmailChange={setEditEmail}
                       onRoleChange={setEditRole}
                     />
                     <ActionError message={actionError} />
@@ -364,9 +383,11 @@ export default function UsersTab() {
               <UserFields
                 idPrefix="user-create"
                 name={createName}
+                email={createEmail}
                 role={createRole}
                 disabled={busy}
                 onNameChange={setCreateName}
+                onEmailChange={setCreateEmail}
                 onRoleChange={setCreateRole}
               />
               <ActionError message={createError} />
@@ -374,7 +395,7 @@ export default function UsersTab() {
                 <button
                   className="btn btn--primary"
                   type="submit"
-                  disabled={busy || !createName.trim()}
+                  disabled={busy || !createName.trim() || !createEmail.trim()}
                 >
                   {saving ? "Saving..." : "Create user"}
                 </button>
@@ -390,12 +411,15 @@ export default function UsersTab() {
 function UserFields(props: {
   idPrefix: string;
   name: string;
+  email: string;
   role: UserRole;
   disabled: boolean;
   onNameChange: (value: string) => void;
+  onEmailChange: (value: string) => void;
   onRoleChange: (value: UserRole) => void;
 }) {
   const nameId = `${props.idPrefix}-name`;
+  const emailId = `${props.idPrefix}-email`;
   const roleId = `${props.idPrefix}-role`;
 
   return (
@@ -410,6 +434,18 @@ function UserFields(props: {
         onChange={(event) => props.onNameChange(event.target.value)}
         disabled={props.disabled}
         autoComplete="off"
+      />
+      <label className="form-label form-label--required" htmlFor={emailId}>
+        Email
+      </label>
+      <input
+        id={emailId}
+        className="input"
+        type="email"
+        value={props.email}
+        onChange={(event) => props.onEmailChange(event.target.value)}
+        disabled={props.disabled}
+        autoComplete="email"
       />
       <label className="form-label form-label--required" htmlFor={roleId}>
         Role

@@ -7,6 +7,9 @@ skinparam classAttributeIconSize 0
 
 package "Users Domain" {
   entity "User" as user
+  entity "User Identity" as user_identity
+  entity "OIDC Login Transaction" as oidc_login_transaction
+  entity "Authentication Session" as auth_session
 }
 
 package "Organisations Domain" {
@@ -64,6 +67,18 @@ timeserie ||--o{ graph_node : primary
 timeserie ||--o{ graph_node : secondary
 customer ||--o{ contact
 customer ||--o{ customer_address
+user ||--o{ user_identity
+user ||--o{ auth_session
+
+note right of oidc_login_transaction
+  Browser-bound, single-use
+  10-minute expiry
+end note
+
+note right of auth_session
+  Hashed opaque identifier
+  Idle and absolute expiry
+end note
 
 note right of customer
   active | archived | deleted

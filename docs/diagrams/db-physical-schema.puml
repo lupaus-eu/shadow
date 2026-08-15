@@ -17,7 +17,40 @@ entity "users" as users {
   * user_id : BIGINT
   --
   name : TEXT
+  email : TEXT
   role : TEXT
+  deleted_time : TIMESTAMPTZ
+}
+
+entity "user_identities" as user_identities {
+  * user_identity_id : BIGINT
+  --
+  user_id : BIGINT
+  issuer : TEXT
+  subject : TEXT
+  created_time : TIMESTAMPTZ
+  last_login_time : TIMESTAMPTZ
+}
+
+entity "oidc_login_transactions" as oidc_login_transactions {
+  * state_hash : BYTEA
+  --
+  browser_binding_hash : BYTEA
+  nonce : TEXT
+  pkce_verifier : TEXT
+  return_to : TEXT
+  created_time : TIMESTAMPTZ
+  expires_time : TIMESTAMPTZ
+}
+
+entity "auth_sessions" as auth_sessions {
+  * session_id_hash : BYTEA
+  --
+  user_id : BIGINT
+  csrf_token : TEXT
+  created_time : TIMESTAMPTZ
+  last_activity_time : TIMESTAMPTZ
+  absolute_expires_time : TIMESTAMPTZ
 }
 
 entity "customers" as customers {
@@ -185,6 +218,8 @@ entity "timeserie_values" as timeserie_values {
 }
 
 organisations ||--o{ scenarios
+users ||--o{ user_identities
+users ||--o{ auth_sessions
 organisations ||--o{ metamodels
 customers ||--o{ contacts
 customers ||--o{ customer_addresses

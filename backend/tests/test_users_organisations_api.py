@@ -120,11 +120,20 @@ def _seed_default_metamodel(factory: sessionmaker[Session]) -> None:
 def test_users_crud_excludes_soft_deleted_rows(client: TestClient) -> None:
     create_response = client.post(
         "/api/v1/users",
-        json={"name": "  Ada Lovelace  ", "role": "admin"},
+        json={
+            "name": "  Ada Lovelace  ",
+            "email": "  Ada.Lovelace@Example.COM  ",
+            "role": "admin",
+        },
     )
     assert create_response.status_code == 201
     created_user = create_response.json()
-    assert created_user == {"id": 1, "name": "Ada Lovelace", "role": "admin"}
+    assert created_user == {
+        "id": 1,
+        "name": "Ada Lovelace",
+        "email": "Ada.Lovelace@Example.COM",
+        "role": "admin",
+    }
 
     user_id = created_user["id"]
     assert client.get(f"/api/v1/users/{user_id}").json() == created_user
@@ -132,12 +141,17 @@ def test_users_crud_excludes_soft_deleted_rows(client: TestClient) -> None:
 
     patch_response = client.patch(
         f"/api/v1/users/{user_id}",
-        json={"name": "Grace Hopper", "role": "consultant"},
+        json={
+            "name": "Grace Hopper",
+            "email": "grace@example.local",
+            "role": "consultant",
+        },
     )
     assert patch_response.status_code == 200
     assert patch_response.json() == {
         "id": user_id,
         "name": "Grace Hopper",
+        "email": "grace@example.local",
         "role": "consultant",
     }
 
@@ -150,10 +164,95 @@ def test_users_crud_excludes_soft_deleted_rows(client: TestClient) -> None:
 def test_user_create_rejects_invalid_role(client: TestClient) -> None:
     response = client.post(
         "/api/v1/users",
-        json={"name": "Ada Lovelace", "role": "owner"},
+        json={"name": "Ada Lovelace", "email": "ada@example.local", "role": "owner"},
     )
 
     assert response.status_code == 422
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"name": "Ada Lovelace", "role": "admin"},
+        {"name": "Ada Lovelace", "email": None, "role": "admin"},
+        {"name": "Ada Lovelace", "email": "   ", "role": "admin"},
+    ],
+)
+def test_user_create_rejects_missing_null_and_blank_email(
+    client: TestClient,
+    payload: dict[str, object],
+) -> None:
+    assert client.post("/api/v1/users", json=payload).status_code == 422
+
+
+@pytest.mark.parametrize("email", [None, "   "])
+def test_user_patch_rejects_null_and_blank_email(
+    client: TestClient,
+    email: object,
+) -> None:
+    created = client.post(
+        "/api/v1/users",
+        json={"name": "Ada", "email": "ada@example.local", "role": "admin"},
+    ).json()
+
+    response = client.patch(
+        f"/api/v1/users/{created['id']}",
+        json={"email": email},
+    )
+
+    assert response.status_code == 422
+
+
+def test_duplicate_active_user_email_returns_409(client: TestClient) -> None:
+    first = client.post(
+        "/api/v1/users",
+        json={"name": "Ada", "email": "Ada@Example.Local", "role": "admin"},
+    )
+    assert first.status_code == 201
+
+    duplicate = client.post(
+        "/api/v1/users",
+        json={"name": "Grace", "email": "ada@example.local", "role": "consultant"},
+    )
+
+    assert duplicate.status_code == 409
+    assert duplicate.json() == {
+        "detail": "An active user with this email already exists."
+    }
+
+
+def test_user_patch_rejects_duplicate_active_email(client: TestClient) -> None:
+    first = client.post(
+        "/api/v1/users",
+        json={"name": "Ada", "email": "ada@example.local", "role": "admin"},
+    ).json()
+    second = client.post(
+        "/api/v1/users",
+        json={"name": "Grace", "email": "grace@example.local", "role": "consultant"},
+    ).json()
+
+    response = client.patch(
+        f"/api/v1/users/{second['id']}",
+        json={"email": "ADA@example.local"},
+    )
+
+    assert response.status_code == 409
+    assert client.get(f"/api/v1/users/{first['id']}").status_code == 200
+
+
+def test_soft_deleted_user_email_can_be_reused(client: TestClient) -> None:
+    first = client.post(
+        "/api/v1/users",
+        json={"name": "Ada", "email": "Ada@Example.Local", "role": "admin"},
+    ).json()
+    assert client.delete(f"/api/v1/users/{first['id']}").status_code == 204
+
+    replacement = client.post(
+        "/api/v1/users",
+        json={"name": "New Ada", "email": "ada@example.local", "role": "consultant"},
+    )
+
+    assert replacement.status_code == 201
 
 
 def test_organisation_crud_returns_frontend_dto_and_excludes_deleted_rows(
