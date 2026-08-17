@@ -128,12 +128,15 @@ jobs:
           --workdir /tmp
           --entrypoint python
           schatten-backend:${{ github.sha }}
-          -c "import importlib.util, os; from app.core.migrations import discover_migrations; migrations = discover_migrations(); assert len(migrations) == 8; assert importlib.util.find_spec('pytest') is None; assert os.getuid() == 10001; assert os.getgid() == 10001"
+          -c "import importlib.util, os; from app.core.migrations import discover_migrations; migrations = discover_migrations(); assert len(migrations) == 9; assert importlib.util.find_spec('pytest') is None; assert os.getuid() == 10001; assert os.getgid() == 10001"
 
       - name: Verify release migration and production API
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/schatten_test
           BACKEND_IMAGE: schatten-backend:${{ github.sha }}
+          APP_ENV: test
+          PUBLIC_ORIGIN: http://127.0.0.1:8000
+          APP_ALLOWED_ORIGIN: http://127.0.0.1:8000
         run: |
           docker run --rm --network host \
             --env DATABASE_URL \
@@ -144,6 +147,9 @@ jobs:
 
           backend_container_id="$(docker run --detach --network host \
             --env DATABASE_URL \
+            --env APP_ENV \
+            --env PUBLIC_ORIGIN \
+            --env APP_ALLOWED_ORIGIN \
             "$BACKEND_IMAGE")"
           trap 'docker rm --force "$backend_container_id"' EXIT
 

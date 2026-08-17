@@ -77,7 +77,7 @@ Backend on saatavilla osoitteessa `http://localhost:8000`.
 Health endpoint:
 
 ```bash
-curl http://localhost:8000/health
+curl --header 'Host: localhost:5173' http://localhost:8000/health
 ```
 
 Käynnistä tietokanta ja aja kaikki puuttuvat migraatiot:

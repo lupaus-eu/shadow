@@ -124,7 +124,7 @@ http://localhost:8000
 Health endpoint:
 
 ```bash
-curl http://localhost:8000/health
+curl --header 'Host: localhost:5173' http://localhost:8000/health
 ```
 
 Frontend preview -kontti buildatulle Vite-tuotokselle:

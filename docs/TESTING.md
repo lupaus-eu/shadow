@@ -157,6 +157,24 @@ Examples:
 - SQL or query construction
 - secrets handling
 
+## Authentication Harness
+
+Backend authentication tests run entirely in process. `tests/test_auth_api.py`
+uses a fake discovery/token boundary with SQLite persistence to cover browser
+binding, one-time callback consumption, identity linking, opaque sessions,
+timeouts, CSRF/Origin, Host/proxy trust and rate limits.
+`tests/test_auth_provider.py` generates an ephemeral RSA key and signs ID tokens
+for Authlib validation tests; it does not use real provider credentials or the
+network. Pytest sets `APP_ENV=test` in `tests/conftest.py`; non-test application
+startup still requires complete OIDC configuration.
+
+Run the focused suite with:
+
+```bash
+cd backend
+uv run pytest tests/test_auth_api.py tests/test_auth_provider.py -v
+```
+
 ---
 
 # Testing Structure Feature
