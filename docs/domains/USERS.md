@@ -1,13 +1,15 @@
 # Users Domain
 
-Status: identity and session persistence baseline
+Status: identity, session and API authorization implemented
 
 ## Purpose
 
 Users Domain hallitsee Schattenin sovelluskayttajia, kayttajan sovellusroolia,
 ulkoisten tunnusten pysyvia sidoksia ja palvelinpuolen kirjautumisistuntoja.
 
-Tama domain toimii source of truth -kerroksena sovelluksen omille user-riveille. Microsoft Entra ID on tuleva ulkoinen identiteettilahde, mutta sen tarkka mappaus ei kuulu tahan taskiin.
+Tama domain toimii source of truth -kerroksena sovelluksen omille user-riveille.
+OIDC-provider todentaa ulkoisen identiteetin, mutta aktiivinen User-rivi ja sen
+tietokantarooli ratkaisevat sovellukseen pääsyn.
 
 ---
 
@@ -79,7 +81,20 @@ Core tables may reference `users.user_id` through nullable audit columns:
 - `modified_by`
 - `deleted_by`
 
-Audit references remain nullable until authentication is implemented.
+Kentät pysyvät nullable-muotoisina historiallisille, seed- ja
+pre-authentication-riveille. Nykyiset autentikoidut sovellusmutaatiot kirjoittavat
+actorin: `created_by` luontiin, `modified_by` päivityksiin ja domain-muutoksiin
+sekä `deleted_by` soft deleteen. Historiallisia null-arvoja ei backfillata.
+
+## Authorization
+
+- Kaikki Users-hallinnan list/get/create/update/delete-operaatiot vaativat
+  aktiivisen istunnon ja tietokannan `admin`-roolin.
+- Aktiivinen käyttäjä saa oman profiilinsa `/api/v1/auth/session`-endpointista.
+- `POST /api/v1/users/{user_id}/sessions/revoke` on admin-only ja poistaa
+  atomisesti valitun aktiivisen käyttäjän kaikki sovellusistunnot.
+- Käyttäjän soft delete estää olemassa olevan istunnon käytön heti seuraavassa
+  pyynnössä.
 
 ## Deletion
 
@@ -109,7 +124,12 @@ Other domains may reference `users.user_id` from audit columns but may not modif
 Endpoints:
 
 ```text
-/users
+GET    /api/v1/users
+GET    /api/v1/users/{user_id}
+POST   /api/v1/users
+PATCH  /api/v1/users/{user_id}
+DELETE /api/v1/users/{user_id}
+POST   /api/v1/users/{user_id}/sessions/revoke
 ```
 
 Exact HTTP operations and versioned paths are defined in backend implementation tasks.
@@ -158,7 +178,8 @@ When implementing user features:
 
 - read this document before changing user data, APIs or rules
 - preserve role constraints
-- keep audit user references nullable until authentication is implemented
+- keep historical audit user references nullable while requiring actor writes
+  from current authenticated mutations
 - do not add Entra ID behavior without an auth-specific task or ADR
 
 Avoid:
@@ -168,6 +189,8 @@ Avoid:
 
 ---
 
-# Open Questions
+# Trust Boundary
 
-- organisation membership and authorization model
+Both application roles are internal trusted users with access to all
+non-Users business domains and all organisations. Revisit ADR-004 before
+admitting users outside this boundary or adding organisation isolation.

@@ -42,6 +42,19 @@ Does NOT Own:
 
 Every scenario belongs to exactly one organisation.
 
+This relationship is a data-ownership boundary, not a user-membership rule.
+Both authenticated roles intentionally access scenarios, states, events and
+timeseries in every organisation under the accepted internal-tool trust model.
+All unsafe endpoints require the shared exact-Origin and session-CSRF guard.
+
+## Audit Actors
+
+Authenticated creates and copies set `created_by` on every new owned row.
+Updates, value replacement, cleanup and other domain mutation actions set
+`modified_by`; persistence soft deletion sets both `modified_by` and
+`deleted_by`, including propagated child rows. Historical nullable audit values
+are not backfilled.
+
 ## Organisation State Naming
 
 Every organisation state has:

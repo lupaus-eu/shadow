@@ -209,11 +209,14 @@ If a concept changes meaning, lifecycle or ownership, update concept, domain, da
 
 # Authentication
 
-Status: decided in ADR-001
+Status: backend OIDC and application-session boundary implemented
 
 Autentikointi perustuu Microsoft Entra ID:hen.
 
-Tarkka token/session-malli, callback-flow, roolien mappaus ja käyttäjän deaktivointi täsmennetään taskissa tai erillisessä ADR:ssä ennen autentikoinnin toteutusta.
+ADR-004 määrittää provider-neutralin OIDC-login flow'n ja opaque,
+palvelinpuolisen sovellusistunnon. FastAPI validoi istunnon jokaisella
+autentikoidulla pyynnöllä ja hylkää vanhentuneen istunnon sekä soft-deletoidun
+käyttäjän.
 
 Salasanapolitiikkaa ei hallita sovelluksessa, ellei Entra ID -integraation ulkopuolelle lisätä erillistä kirjautumistapaa.
 
@@ -221,13 +224,25 @@ Salasanapolitiikkaa ei hallita sovelluksessa, ellei Entra ID -integraation ulkop
 
 # Authorization
 
-Status: TBD
+Status: initial internal-tool model implemented from ADR-004
 
 Periaate:
 
-- Kaikki resurssikohtaiset oikeudet tarkistetaan backendissä.
+- Health sekä tarvittavat auth login-, callback- ja session-transport-reitit
+  ovat julkisia. Muut `/api/v1`-reitit vaativat aktiivisen istunnon.
+- Users-hallinta ja käyttäjän istuntojen revokointi vaativat tietokannan
+  `admin`-roolin.
+- Sekä `admin` että `consultant` saavat käyttää kaikkia muita business-APIeja
+  kaikkien organisaatioiden dataan.
+- Kaikki autentikoidut `POST`, `PUT`, `PATCH` ja `DELETE` -pyynnöt vaativat
+  istuntokohtaisen CSRF-headerin ja tarkan konfiguroidun Origin-arvon.
 - Frontendin tarkistuksia käytetään vain käyttökokemukseen, ei turvallisuusmekanismina.
-- Organization- ja membership-malli päätetään ennen käyttäjäkohtaisia resursseja.
+
+Kaikkien käyttäjien pääsy kaikkiin organisaatioihin on hyväksytty sisäisen
+työkalun trust boundary, ei toteuttamatta jäänyt object-level authorization.
+Mallia on arvioitava uudelleen ennen ulkopuolisten käyttäjien hyväksymistä tai
+organisaatioeristyksen lisäämistä. Route `orgId`, sähköposti, Entra tenant,
+provider-ryhmä tai token claim ei muodosta membershipiä tai käyttöoikeutta.
 
 ---
 
@@ -286,9 +301,9 @@ state selection. The route is part of the current workspace navigation shell,
 but users remain application-wide: `orgId` is not included in Users Domain API
 requests and does not establish organisation membership.
 
-Authentication, authorization, Entra ID mapping and organisation membership
-remain outside this baseline. Backend authorization remains the future trusted
-security boundary.
+Users administration is protected by the backend `admin` role. Active Users
+obtain their own profile from `/api/v1/auth/session`; the workspace route
+remains only navigation context and does not establish organisation membership.
 
 # Customers
 
@@ -311,9 +326,9 @@ archived parent visibility, child ownership, normalization and transactional
 customer-to-child soft-delete propagation. Normal reads exclude soft-deleted
 records.
 
-Customer records remain application-wide in this baseline. Authentication,
-authorization and organisation-specific ownership are not part of the current
-Customer Domain API.
+Customer records remain application-wide. Both authenticated roles may manage
+them under the accepted internal-tool trust model; no organisation-specific
+ownership is inferred from the workspace route.
 
 The frontend management view resides in
 `frontend/src/features/customers/CustomersTab.tsx` and is routed through the
@@ -397,10 +412,11 @@ Workspace-liitos:
 
 Authorization:
 
-- TASK-025A ja TASK-025B toteuttivat Structure API:n ja UI:n ilman
-  permission enforcementia.
-- Backend authorization on edelleen järjestelmän turvallisuusraja ja lisätään
-  erillisessä follow-up taskissa.
+- Structure API requires an active backend session and the common unsafe-request
+  guard for mutations.
+- Both application roles intentionally access Structure resources in every
+  organisation; organisation membership authorization is not implemented or
+  claimed.
 
 ## Summary Timeline
 
@@ -626,7 +642,7 @@ Päätökset:
 ADR-001 Tech Stack: accepted
 ADR-002 Database Migration Tool: accepted
 ADR-003 Coolify Deployment And Release Migrations: accepted
-ADR-004 Authentication: optional follow-up for Entra ID flow details
+ADR-004 Authentication, Identity And Session Architecture: accepted
 ```
 
 ---

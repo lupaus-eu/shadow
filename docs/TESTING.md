@@ -168,6 +168,13 @@ for Authlib validation tests; it does not use real provider credentials or the
 network. Pytest sets `APP_ENV=test` in `tests/conftest.py`; non-test application
 startup still requires complete OIDC configuration.
 
+Business API tests use `tests/auth_helpers.py` to create real test-only User and
+AuthSession rows and configure the TestClient cookie, Origin and CSRF headers.
+Production dependencies remain enabled. `tests/test_api_authorization.py`
+covers the anonymous route matrix, Users role matrix, unsafe-request matrix,
+session revocation, inactive-session rejection, broad cross-organisation access
+and audit actors for every mutation family.
+
 Run the focused suite with:
 
 ```bash

@@ -64,6 +64,17 @@ AI-agentin tulee lukea relevantti concept-dokumentti ennen muutosta, joka koskee
 
 # Core Concepts
 
+Current authenticated application mutations populate nullable audit-user
+relationships consistently: `created_by` for creation, `modified_by` for
+updates and domain mutation actions, and `deleted_by` for persistence soft
+deletion. Historical, seed and pre-authentication null values remain valid and
+are not backfilled.
+
+Organisation-scoped relationships below define data ownership, not current
+user membership. Under ADR-004's internal-tool trust boundary, both active
+roles may use all non-Users concepts across every organisation; Users
+administration remains `admin`-only.
+
 ## User And Authentication Persistence
 
 Meaning:

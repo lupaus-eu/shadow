@@ -2,6 +2,7 @@ from collections.abc import Iterator
 from datetime import UTC, date, datetime
 
 import pytest
+from auth_helpers import authenticate_test_client
 from fastapi.testclient import TestClient
 from sqlalchemy import StaticPool, create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
@@ -50,6 +51,7 @@ def client(session_factory: sessionmaker[Session]) -> Iterator[TestClient]:
     app.dependency_overrides[get_db_session] = override_get_db_session
 
     with TestClient(app) as test_client:
+        authenticate_test_client(test_client, session_factory)
         yield test_client
 
     app.dependency_overrides.clear()

@@ -56,6 +56,10 @@ Lue nämä yhdessä datamallin kanssa:
 
 # Relationship Rules
 
+- Nullable `created_by`, `modified_by` and `deleted_by` values may remain null
+  for historical, seed or pre-authentication rows. Authenticated application
+  mutations write the current User as creator, modifier or soft-deleter as
+  appropriate; no historical backfill is implied.
 - A User owns zero or more identities across different issuers and zero or more
   application sessions.
 - Active User emails are case-insensitively unique; soft-deleted emails are

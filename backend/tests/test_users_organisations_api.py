@@ -4,6 +4,7 @@ from datetime import UTC, date, datetime
 from typing import cast
 
 import pytest
+from auth_helpers import TEST_ACTOR_USER_ID, authenticate_test_client
 from fastapi.testclient import TestClient
 from sqlalchemy import StaticPool, create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
@@ -61,6 +62,7 @@ def client(session_factory: sessionmaker[Session]) -> Iterator[TestClient]:
     app.dependency_overrides[get_db_session] = override_get_db_session
 
     with TestClient(app) as test_client:
+        authenticate_test_client(test_client, session_factory)
         yield test_client
 
     app.dependency_overrides.clear()
@@ -137,7 +139,15 @@ def test_users_crud_excludes_soft_deleted_rows(client: TestClient) -> None:
 
     user_id = created_user["id"]
     assert client.get(f"/api/v1/users/{user_id}").json() == created_user
-    assert client.get("/api/v1/users").json() == [created_user]
+    assert client.get("/api/v1/users").json() == [
+        {
+            "id": TEST_ACTOR_USER_ID,
+            "name": "Test Admin",
+            "email": "test-0@example.test",
+            "role": "admin",
+        },
+        created_user,
+    ]
 
     patch_response = client.patch(
         f"/api/v1/users/{user_id}",
@@ -157,7 +167,9 @@ def test_users_crud_excludes_soft_deleted_rows(client: TestClient) -> None:
 
     delete_response = client.delete(f"/api/v1/users/{user_id}")
     assert delete_response.status_code == 204
-    assert client.get("/api/v1/users").json() == []
+    assert [user["id"] for user in client.get("/api/v1/users").json()] == [
+        TEST_ACTOR_USER_ID
+    ]
     assert client.get(f"/api/v1/users/{user_id}").status_code == 404
 
 
@@ -1737,6 +1749,7 @@ def test_clean_org_states_service_soft_deletes_active_states_and_clears_initial_
                 session,
                 organisation_key,
                 scenario_key,
+                TEST_ACTOR_USER_ID,
             )
 
     assert cleaned_count == 2
@@ -1817,6 +1830,7 @@ def test_clean_org_states_service_returns_zero_when_no_active_states(
             session,
             organisation_key,
             scenario_key,
+            TEST_ACTOR_USER_ID,
         )
 
     assert cleaned_count == 0

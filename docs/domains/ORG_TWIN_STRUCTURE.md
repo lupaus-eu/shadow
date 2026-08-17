@@ -156,9 +156,16 @@ Scenario history responses expose stable node and edge keys plus `createDate`
 and nullable `deleteDate`. They include logical history but exclude rows with a
 persistence-level `deleted_time`.
 
-Authorization and permission enforcement are not implemented in the Structure
-baseline. They must be added through a separate task before these endpoints are
-treated as a production authorization boundary.
+All Structure endpoints require an active application session, and mutations
+require the shared exact-Origin and session-CSRF guard. Both application roles
+intentionally access Structure data under every organisation; route keys do not
+establish membership or object-level permission.
+
+Authenticated node, edge, copied graph and copied metamodel creation writes
+`created_by`. Patches, position updates, logical lifetime changes and reference
+cleanup write `modified_by`. Persistence soft deletion writes `modified_by` and
+`deleted_by`, including cascaded graph rows. Historical nullable audit values
+are not backfilled.
 
 ---
 

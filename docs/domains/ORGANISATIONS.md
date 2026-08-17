@@ -6,7 +6,8 @@ Status: core domain baseline
 
 Organisations Domain hallitsee organisaatioita, joiden sisalla skenaariot, organisaatiotilat ja organisaatiokohtaiset metamodelit elavat.
 
-Organisation on tenant-like boundary MVP-datassa, mutta lopullinen authorization- ja membership-malli paatetaan erikseen.
+Organisation on tenant-like datan omistusraja, ei nykyisen käyttöoikeusmallin
+membership-raja.
 
 ---
 
@@ -55,6 +56,17 @@ Soft-deleted historical organisation names are reusable.
 Organisation deletion is a soft delete using `deleted_time`.
 
 Normal reads should exclude rows where `deleted_time IS NOT NULL`.
+
+## Authorization And Audit Actors
+
+Kaikki endpointit vaativat aktiivisen istunnon. Sekä `admin` että `consultant`
+saavat lukea ja muuttaa kaikkien organisaatioiden dataa hyväksytyn sisäisen
+työkalun trust boundaryn mukaisesti. `organisation_key`, frontendin route
+`orgId` tai provider claim ei osoita membershipiä.
+
+Autentikoitu luonti kirjoittaa `created_by`, päivitys `modified_by` ja soft
+delete sekä `modified_by`- että `deleted_by`-actorin. Historialliset null-arvot
+säilyvät.
 
 ---
 
@@ -136,5 +148,4 @@ Avoid:
 
 # Open Questions
 
-- membership and authorization model
 - organisation deletion behavior when active scenarios exist

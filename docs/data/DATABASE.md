@@ -95,6 +95,12 @@ Most core tables use:
 - soft-delete filtering through `deleted_time IS NULL`
 - normal application deletion uses soft delete, not physical row deletion
 
+Audit-user columns remain nullable so historical, seed and pre-authentication
+rows are valid. Current authenticated application writes set `created_by` on
+creation, `modified_by` on updates and domain mutation actions, and `deleted_by`
+on persistence soft deletion. Cascade-style application services propagate the
+same actor to every affected owned row. Existing null values are not backfilled.
+
 Primary key names follow table-specific singular names, for example `scenario_id`, `org_state_id`, `graph_node_id` and `timeserie_value_id`.
 
 `schema_migrations` is infrastructure metadata owned by the migration runner,

@@ -3,6 +3,10 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.orm import Session
 
+from app.api.v1.auth.dependencies import (
+    UnsafeRequestDependency,
+    require_business_request,
+)
 from app.api.v1.org_states import org_states_service
 from app.api.v1.org_states.schemas import (
     EventCreateRequest,
@@ -23,7 +27,11 @@ from app.api.v1.org_states.schemas import (
 )
 from app.core.database import get_db_session
 
-router = APIRouter(prefix="/organisations", tags=["org-states"])
+router = APIRouter(
+    prefix="/organisations",
+    tags=["org-states"],
+    dependencies=[Depends(require_business_request)],
+)
 SessionDependency = Annotated[Session, Depends(get_db_session)]
 
 
@@ -44,8 +52,11 @@ def create_scenario(
     organisation_key: str,
     payload: ScenarioCreateRequest,
     session: SessionDependency,
+    active: UnsafeRequestDependency,
 ) -> ScenarioResponse:
-    return org_states_service.create_scenario(session, organisation_key, payload)
+    return org_states_service.create_scenario(
+        session, organisation_key, payload, active.user.user_id
+    )
 
 
 @router.post(
@@ -57,8 +68,11 @@ def copy_scenario(
     organisation_key: str,
     payload: ScenarioCopyRequest,
     session: SessionDependency,
+    active: UnsafeRequestDependency,
 ) -> ScenarioResponse:
-    return org_states_service.copy_scenario(session, organisation_key, payload)
+    return org_states_service.copy_scenario(
+        session, organisation_key, payload, active.user.user_id
+    )
 
 
 @router.get(
@@ -82,12 +96,14 @@ def patch_scenario(
     scenario_key: str,
     payload: ScenarioPatchRequest,
     session: SessionDependency,
+    active: UnsafeRequestDependency,
 ) -> ScenarioResponse:
     return org_states_service.patch_scenario(
         session,
         organisation_key,
         scenario_key,
         payload,
+        active.user.user_id,
     )
 
 
@@ -99,8 +115,11 @@ def delete_scenario(
     organisation_key: str,
     scenario_key: str,
     session: SessionDependency,
+    active: UnsafeRequestDependency,
 ) -> Response:
-    org_states_service.soft_delete_scenario(session, organisation_key, scenario_key)
+    org_states_service.soft_delete_scenario(
+        session, organisation_key, scenario_key, active.user.user_id
+    )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -114,12 +133,14 @@ def create_timeserie(
     scenario_key: str,
     payload: TimeserieCreateRequest,
     session: SessionDependency,
+    active: UnsafeRequestDependency,
 ) -> TimeserieResponse:
     return org_states_service.create_timeserie(
         session,
         organisation_key,
         scenario_key,
         payload,
+        active.user.user_id,
     )
 
 
@@ -185,6 +206,7 @@ def replace_timeserie_values(
     timeserie_key: str,
     payload: TimeserieValuesPatchRequest,
     session: SessionDependency,
+    active: UnsafeRequestDependency,
 ) -> TimeserieResponse:
     return org_states_service.replace_timeserie_values(
         session,
@@ -192,6 +214,7 @@ def replace_timeserie_values(
         scenario_key,
         timeserie_key,
         payload,
+        active.user.user_id,
     )
 
 
@@ -204,12 +227,14 @@ def delete_timeserie(
     scenario_key: str,
     timeserie_key: str,
     session: SessionDependency,
+    active: UnsafeRequestDependency,
 ) -> Response:
     org_states_service.soft_delete_timeserie(
         session,
         organisation_key,
         scenario_key,
         timeserie_key,
+        active.user.user_id,
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -238,11 +263,13 @@ def clean_org_states(
     organisation_key: str,
     scenario_key: str,
     session: SessionDependency,
+    active: UnsafeRequestDependency,
 ) -> OrgStatesCleanResponse:
     cleaned = org_states_service.clean_org_states(
         session,
         organisation_key,
         scenario_key,
+        active.user.user_id,
     )
     return OrgStatesCleanResponse(cleaned=cleaned)
 
@@ -257,12 +284,14 @@ def create_org_state(
     scenario_key: str,
     payload: OrgStateCreateRequest,
     session: SessionDependency,
+    active: UnsafeRequestDependency,
 ) -> OrgStateResponse:
     return org_states_service.create_org_state(
         session,
         organisation_key,
         scenario_key,
         payload,
+        active.user.user_id,
     )
 
 
@@ -294,6 +323,7 @@ def patch_org_state(
     org_state_key: str,
     payload: OrgStatePatchRequest,
     session: SessionDependency,
+    active: UnsafeRequestDependency,
 ) -> OrgStateResponse:
     return org_states_service.patch_org_state(
         session,
@@ -301,6 +331,7 @@ def patch_org_state(
         scenario_key,
         org_state_key,
         payload,
+        active.user.user_id,
     )
 
 
@@ -313,12 +344,14 @@ def delete_org_state(
     scenario_key: str,
     org_state_key: str,
     session: SessionDependency,
+    active: UnsafeRequestDependency,
 ) -> Response:
     org_states_service.soft_delete_org_state(
         session,
         organisation_key,
         scenario_key,
         org_state_key,
+        active.user.user_id,
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -349,12 +382,14 @@ def create_event(
     scenario_key: str,
     payload: EventCreateRequest,
     session: SessionDependency,
+    active: UnsafeRequestDependency,
 ) -> EventResponse:
     return org_states_service.create_event(
         session,
         organisation_key,
         scenario_key,
         payload,
+        active.user.user_id,
     )
 
 
@@ -386,6 +421,7 @@ def patch_event(
     event_id: str,
     payload: EventPatchRequest,
     session: SessionDependency,
+    active: UnsafeRequestDependency,
 ) -> EventResponse:
     return org_states_service.patch_event(
         session,
@@ -393,6 +429,7 @@ def patch_event(
         scenario_key,
         event_id,
         payload,
+        active.user.user_id,
     )
 
 
@@ -405,11 +442,13 @@ def delete_event(
     scenario_key: str,
     event_id: str,
     session: SessionDependency,
+    active: UnsafeRequestDependency,
 ) -> Response:
     org_states_service.soft_delete_event(
         session,
         organisation_key,
         scenario_key,
         event_id,
+        active.user.user_id,
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)

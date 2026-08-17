@@ -2,6 +2,7 @@ from collections.abc import Iterator
 from typing import Any
 
 import pytest
+from auth_helpers import authenticate_test_client
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 from sqlalchemy import StaticPool, create_engine, event, select
@@ -41,6 +42,7 @@ def client(session_factory: sessionmaker[Session]) -> Iterator[TestClient]:
 
     app.dependency_overrides[get_db_session] = override_get_db_session
     with TestClient(app) as test_client:
+        authenticate_test_client(test_client, session_factory)
         yield test_client
     app.dependency_overrides.clear()
 
@@ -423,7 +425,7 @@ def test_customer_delete_rolls_back_when_child_update_fails(
         event.listen(CustomerAddress, "before_update", fail_child_update)
         try:
             with pytest.raises(RuntimeError, match="simulated database failure"):
-                service.delete_customer(session, customer_id)
+                service.delete_customer(session, customer_id, 0)
         finally:
             event.remove(CustomerAddress, "before_update", fail_child_update)
 
@@ -457,11 +459,12 @@ def test_child_delete_updates_modified_and_deleted_timestamps(
         session.add_all([contact, address])
         session.commit()
 
-        service.delete_contact(session, customer.customer_id, contact.contact_id)
+        service.delete_contact(session, customer.customer_id, contact.contact_id, 0)
         service.delete_address(
             session,
             customer.customer_id,
             address.customer_address_id,
+            0,
         )
         assert contact.deleted_time is not None
         assert contact.modified_time == contact.deleted_time

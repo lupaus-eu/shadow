@@ -142,6 +142,14 @@ Related APIs:
 
 # AI Agent Guidance
 
+Authorization and audit rules:
+
+- Organisation scope is data ownership, not user membership; both authenticated
+  roles may access every Organisation State.
+- Current authenticated creates/copies set `created_by`, mutations set
+  `modified_by`, and persistence soft deletions set `deleted_by`. Historical
+  null audit actors remain valid.
+
 When implementing Organisation State features:
 
 - read `docs/domains/ORG_STATES.md`

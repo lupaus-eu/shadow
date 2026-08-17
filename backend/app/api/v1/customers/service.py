@@ -158,8 +158,14 @@ def get_customer(session: Session, customer_id: int) -> CustomerResponse:
 def create_customer(
     session: Session,
     payload: CustomerCreateRequest,
+    actor_user_id: int,
 ) -> CustomerResponse:
-    customer = Customer(name=payload.name, email=payload.email, status="active")
+    customer = Customer(
+        name=payload.name,
+        email=payload.email,
+        status="active",
+        created_by=actor_user_id,
+    )
     session.add(customer)
     _commit(session)
     session.refresh(customer)
@@ -170,18 +176,22 @@ def replace_customer(
     session: Session,
     customer_id: int,
     payload: CustomerReplaceRequest,
+    actor_user_id: int,
 ) -> CustomerResponse:
     customer = _get_customer_record(session, customer_id)
     customer.name = payload.name
     customer.email = payload.email
     customer.status = payload.status
     customer.modified_time = datetime.now(UTC)
+    customer.modified_by = actor_user_id
     _commit(session)
     session.refresh(customer)
     return _customer_response(customer)
 
 
-def delete_customer(session: Session, customer_id: int) -> None:
+def delete_customer(
+    session: Session, customer_id: int, actor_user_id: int
+) -> None:
     customer = _get_customer_record(session, customer_id)
     contacts = session.scalars(
         select(Contact).where(
@@ -200,13 +210,19 @@ def delete_customer(session: Session, customer_id: int) -> None:
     def mutation() -> None:
         for contact in contacts:
             contact.deleted_time = now
+            contact.deleted_by = actor_user_id
             contact.modified_time = now
+            contact.modified_by = actor_user_id
         for address in addresses:
             address.deleted_time = now
+            address.deleted_by = actor_user_id
             address.modified_time = now
+            address.modified_by = actor_user_id
         customer.status = "deleted"
         customer.deleted_time = now
+        customer.deleted_by = actor_user_id
         customer.modified_time = now
+        customer.modified_by = actor_user_id
 
     _mutate_and_commit(session, mutation)
 
@@ -228,9 +244,14 @@ def create_contact(
     session: Session,
     customer_id: int,
     payload: ContactWriteRequest,
+    actor_user_id: int,
 ) -> ContactResponse:
     _get_customer_record(session, customer_id)
-    contact = Contact(customer_id=customer_id, **payload.model_dump(by_alias=False))
+    contact = Contact(
+        customer_id=customer_id,
+        created_by=actor_user_id,
+        **payload.model_dump(by_alias=False),
+    )
     session.add(contact)
     _commit(session)
     session.refresh(contact)
@@ -242,23 +263,29 @@ def replace_contact(
     customer_id: int,
     contact_id: int,
     payload: ContactWriteRequest,
+    actor_user_id: int,
 ) -> ContactResponse:
     _get_customer_record(session, customer_id)
     contact = _get_contact_record(session, customer_id, contact_id)
     for key, value in payload.model_dump(by_alias=False).items():
         setattr(contact, key, value)
     contact.modified_time = datetime.now(UTC)
+    contact.modified_by = actor_user_id
     _commit(session)
     session.refresh(contact)
     return _contact_response(contact)
 
 
-def delete_contact(session: Session, customer_id: int, contact_id: int) -> None:
+def delete_contact(
+    session: Session, customer_id: int, contact_id: int, actor_user_id: int
+) -> None:
     _get_customer_record(session, customer_id)
     contact = _get_contact_record(session, customer_id, contact_id)
     now = datetime.now(UTC)
     contact.deleted_time = now
+    contact.deleted_by = actor_user_id
     contact.modified_time = now
+    contact.modified_by = actor_user_id
     _commit(session)
 
 
@@ -282,10 +309,12 @@ def create_address(
     session: Session,
     customer_id: int,
     payload: AddressWriteRequest,
+    actor_user_id: int,
 ) -> AddressResponse:
     _get_customer_record(session, customer_id)
     address = CustomerAddress(
         customer_id=customer_id,
+        created_by=actor_user_id,
         **payload.model_dump(by_alias=False),
     )
     session.add(address)
@@ -299,21 +328,27 @@ def replace_address(
     customer_id: int,
     address_id: int,
     payload: AddressWriteRequest,
+    actor_user_id: int,
 ) -> AddressResponse:
     _get_customer_record(session, customer_id)
     address = _get_address_record(session, customer_id, address_id)
     for key, value in payload.model_dump(by_alias=False).items():
         setattr(address, key, value)
     address.modified_time = datetime.now(UTC)
+    address.modified_by = actor_user_id
     _commit(session)
     session.refresh(address)
     return _address_response(address)
 
 
-def delete_address(session: Session, customer_id: int, address_id: int) -> None:
+def delete_address(
+    session: Session, customer_id: int, address_id: int, actor_user_id: int
+) -> None:
     _get_customer_record(session, customer_id)
     address = _get_address_record(session, customer_id, address_id)
     now = datetime.now(UTC)
     address.deleted_time = now
+    address.deleted_by = actor_user_id
     address.modified_time = now
+    address.modified_by = actor_user_id
     _commit(session)

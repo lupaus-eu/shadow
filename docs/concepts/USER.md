@@ -1,6 +1,6 @@
 # User And Authentication Persistence Concepts
 
-Status: identity and session persistence baseline implemented
+Status: identity, session and initial authorization implemented
 
 ## Owner
 
@@ -59,6 +59,18 @@ and eight-hour absolute timeouts decided in ADR-004.
 Provider tokens, raw session identifiers and client secrets are not session
 fields. The CSRF token is not sufficient without the separate HttpOnly session
 cookie.
+
+## Authorization And Audit Actors
+
+The active User row is reloaded for each authenticated request so soft deletion
+and current database role changes take effect immediately. The `admin` role is
+required for all Users administration and session revocation; both roles may
+use every other business domain across all organisations under the accepted
+internal trust boundary.
+
+User and other core rows retain nullable audit references for historical data.
+Current authenticated mutations set creator, modifier and soft-deleter actors
+as appropriate without backfilling earlier null values.
 
 ## Related Decision
 

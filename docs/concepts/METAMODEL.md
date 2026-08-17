@@ -109,6 +109,14 @@ Related APIs:
 
 # AI Agent Guidance
 
+Authorization and audit rules:
+
+- Both authenticated roles may read and use organisation-specific metamodels
+  across all organisations; this scope is not a membership rule.
+- Organisation metamodel copies and their copied type rows set `created_by` to
+  the authenticated actor. Historical default/seed audit values may remain
+  null.
+
 When implementing Metamodel features:
 
 - read `docs/domains/ORG_TWIN_STRUCTURE.md`

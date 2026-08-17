@@ -81,6 +81,18 @@ Does NOT Own:
 - Physical `ON DELETE CASCADE` foreign keys are hard-delete cleanup/safety only.
 - No database trigger performs application soft-delete propagation.
 
+## Authorization And Audit Actors
+
+Every Customer API requires an active application session and every unsafe
+request requires the common exact-Origin and session-CSRF guard. Both current
+roles may manage every application-wide Customer; Customer has no organisation
+membership or ownership rule in this internal-tool baseline.
+
+Authenticated creates set `created_by`; replacements set `modified_by`; soft
+deletes set `modified_by` and `deleted_by`. Customer deletion propagates the
+same actor to all soft-deleted Contacts and Customer Addresses. Historical
+nullable audit values remain unchanged.
+
 ---
 
 # Database Ownership

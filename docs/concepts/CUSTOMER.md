@@ -210,6 +210,13 @@ Related Concepts:
 
 # Related APIs
 
+All Customer APIs require an active application session, and unsafe operations
+require the shared Origin/CSRF guard. Customers are application-wide: both
+roles may manage them and no workspace `orgId` creates ownership. Current
+authenticated creates, replacements and soft deletes set their corresponding
+nullable audit actors, including Customer-to-child deletion propagation;
+historical nulls remain valid.
+
 The Customer Domain owns the following implemented backend routes. The
 application-wide frontend management UI consumes these routes from the
 organisation workspace without passing workspace context to the API.

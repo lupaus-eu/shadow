@@ -145,6 +145,14 @@ Related APIs:
 
 # AI Agent Guidance
 
+Authorization and audit rules:
+
+- Organisation ownership does not restrict current Users; both authenticated
+  roles intentionally access every Scenario.
+- Current authenticated creates/copies set `created_by`, mutations set
+  `modified_by`, and persistence soft deletions set `deleted_by`, including
+  propagated owned rows. Historical null audit actors remain valid.
+
 When implementing Scenario features:
 
 - read `docs/domains/ORG_STATES.md`

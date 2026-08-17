@@ -69,6 +69,20 @@ AuthenticatedSessionDependency = Annotated[
 ]
 
 
+def require_business_request(
+    request: Request,
+    session: SessionDependency,
+    settings: SettingsDependency,
+    active: UntouchedAuthenticatedSessionDependency,
+) -> ActiveSession:
+    if request.method not in {"POST", "PUT", "PATCH", "DELETE"}:
+        touch_active_session(session, settings, active)
+    return active
+
+
+BusinessSessionDependency = Annotated[ActiveSession, Depends(require_business_request)]
+
+
 def require_admin(active: AuthenticatedSessionDependency) -> ActiveSession:
     if active.user.role != "admin":
         raise AuthHttpError(403, "FORBIDDEN", "Forbidden")
@@ -76,6 +90,12 @@ def require_admin(active: AuthenticatedSessionDependency) -> ActiveSession:
 
 
 AdminSessionDependency = Annotated[ActiveSession, Depends(require_admin)]
+
+
+def require_business_admin(active: BusinessSessionDependency) -> ActiveSession:
+    if active.user.role != "admin":
+        raise AuthHttpError(403, "FORBIDDEN", "Forbidden")
+    return active
 
 
 def require_unsafe_request(

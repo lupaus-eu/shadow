@@ -48,34 +48,43 @@ DEFAULT_ORG_STATE_TARGET_DATE = dt_date(2020, 1, 1)
 logger = logging.getLogger(__name__)
 
 
-def create_default_scenario(session: Session, organisation: Organisation) -> Scenario:
+def create_default_scenario(
+    session: Session, organisation: Organisation, actor_user_id: int
+) -> Scenario:
     scenario = Scenario(
         organisation_id=organisation.organisation_id,
         scenario_key="reality",
         name=DEFAULT_SCENARIO_NAME,
         description=DEFAULT_SCENARIO_DESCRIPTION,
         protected=DEFAULT_SCENARIO_PROTECTED,
+        created_by=actor_user_id,
     )
     session.add(scenario)
     session.flush()
     return scenario
 
 
-def create_default_org_state(session: Session, scenario: Scenario) -> OrgState:
+def create_default_org_state(
+    session: Session, scenario: Scenario, actor_user_id: int
+) -> OrgState:
     org_state = OrgState(
         scenario_id=scenario.scenario_id,
         org_state_key="initial_state",
         name=DEFAULT_ORG_STATE_NAME,
         description=DEFAULT_ORG_STATE_DESCRIPTION,
         target_date=DEFAULT_ORG_STATE_TARGET_DATE,
+        created_by=actor_user_id,
     )
     session.add(org_state)
     session.flush()
     return org_state
 
 
-def link_initial_state(scenario: Scenario, org_state: OrgState) -> None:
+def link_initial_state(
+    scenario: Scenario, org_state: OrgState, actor_user_id: int
+) -> None:
     scenario.initial_state_id = org_state.org_state_id
+    scenario.modified_by = actor_user_id
 
 
 def list_scenarios(
@@ -116,6 +125,7 @@ def create_scenario(
     session: Session,
     organisation_key: str,
     payload: ScenarioCreateRequest,
+    actor_user_id: int,
 ) -> ScenarioResponse:
     organisation = _get_active_organisation(session, organisation_key)
     scenario = Scenario(
@@ -124,6 +134,7 @@ def create_scenario(
         name=payload.name,
         description=payload.description,
         protected=False,
+        created_by=actor_user_id,
     )
     session.add(scenario)
     session.commit()
@@ -136,6 +147,7 @@ def copy_scenario(
     session: Session,
     organisation_key: str,
     payload: ScenarioCopyRequest,
+    actor_user_id: int,
 ) -> ScenarioResponse:
     organisation = _get_active_organisation(session, organisation_key)
     source_scenario = _get_active_scenario(
@@ -156,6 +168,7 @@ def copy_scenario(
         description=payload.description,
         protected=False,
         source_scenario_id=source_scenario.scenario_id,
+        created_by=actor_user_id,
     )
     session.add(copied_scenario)
     session.flush()
@@ -167,14 +180,17 @@ def copy_scenario(
         version=source_org_state.version,
         description=source_org_state.description,
         target_date=source_org_state.target_date,
+        created_by=actor_user_id,
     )
     session.add(copied_org_state)
     session.flush()
     copied_scenario.initial_state_id = copied_org_state.org_state_id
+    copied_scenario.modified_by = actor_user_id
 
     org_twin_structure_service.copy_graph_snapshots_for_org_states(
         session,
         {source_org_state.org_state_id: copied_org_state.org_state_id},
+        actor_user_id,
     )
 
     session.commit()
@@ -188,6 +204,7 @@ def patch_scenario(
     organisation_key: str,
     scenario_key: str,
     payload: ScenarioPatchRequest,
+    actor_user_id: int,
 ) -> ScenarioResponse:
     organisation = _get_active_organisation(session, organisation_key)
     scenario = _get_active_scenario(session, organisation, scenario_key)
@@ -199,6 +216,7 @@ def patch_scenario(
         scenario.description = payload.description
 
     scenario.modified_time = datetime.now(UTC)
+    scenario.modified_by = actor_user_id
     session.commit()
     session.refresh(scenario)
 
@@ -209,6 +227,7 @@ def soft_delete_scenario(
     session: Session,
     organisation_key: str,
     scenario_key: str,
+    actor_user_id: int,
 ) -> None:
     organisation = _get_active_organisation(session, organisation_key)
     scenario = _get_active_scenario(session, organisation, scenario_key)
@@ -222,20 +241,25 @@ def soft_delete_scenario(
         ),
     ).all()
 
-    _soft_delete_timeseries(session, scenario, now)
-    _soft_delete_events(session, scenario, now)
+    _soft_delete_timeseries(session, scenario, now, actor_user_id)
+    _soft_delete_events(session, scenario, now, actor_user_id)
     org_twin_structure_service.soft_delete_graph_structure_for_scenario(
         session,
         scenario.scenario_id,
         now,
+        actor_user_id,
     )
 
     for org_state in active_org_states:
         org_state.deleted_time = now
+        org_state.deleted_by = actor_user_id
         org_state.modified_time = now
+        org_state.modified_by = actor_user_id
 
     scenario.deleted_time = now
+    scenario.deleted_by = actor_user_id
     scenario.modified_time = now
+    scenario.modified_by = actor_user_id
     session.commit()
 
 
@@ -270,6 +294,7 @@ def clean_org_states(
     session: Session,
     organisation_key: str,
     scenario_key: str,
+    actor_user_id: int,
 ) -> int:
     try:
         organisation = _get_active_organisation(session, organisation_key)
@@ -295,16 +320,20 @@ def clean_org_states(
         if scenario.initial_state_id in cleaned_org_state_ids:
             scenario.initial_state_id = None
             scenario.modified_time = now
+            scenario.modified_by = actor_user_id
 
         org_twin_structure_service.soft_delete_graphs_for_org_states(
             session,
             cleaned_org_state_ids,
             now,
+            actor_user_id,
         )
 
         for org_state in active_org_states:
             org_state.deleted_time = now
+            org_state.deleted_by = actor_user_id
             org_state.modified_time = now
+            org_state.modified_by = actor_user_id
 
         session.commit()
     except HTTPException:
@@ -347,6 +376,7 @@ def create_org_state(
     organisation_key: str,
     scenario_key: str,
     payload: OrgStateCreateRequest,
+    actor_user_id: int,
 ) -> OrgStateResponse:
     organisation = _get_active_organisation(session, organisation_key)
     scenario = _get_active_scenario(
@@ -363,6 +393,7 @@ def create_org_state(
         name=payload.name,
         description=payload.description,
         target_date=payload.target_date,
+        created_by=actor_user_id,
     )
     session.add(org_state)
     session.commit()
@@ -377,6 +408,7 @@ def patch_org_state(
     scenario_key: str,
     org_state_key: str,
     payload: OrgStatePatchRequest,
+    actor_user_id: int,
 ) -> OrgStateResponse:
     organisation = _get_active_organisation(session, organisation_key)
     scenario = _get_active_scenario(
@@ -407,6 +439,7 @@ def patch_org_state(
         org_state.description = payload.description
 
     org_state.modified_time = datetime.now(UTC)
+    org_state.modified_by = actor_user_id
     session.commit()
     session.refresh(org_state)
 
@@ -418,6 +451,7 @@ def soft_delete_org_state(
     organisation_key: str,
     scenario_key: str,
     org_state_key: str,
+    actor_user_id: int,
 ) -> None:
     organisation = _get_active_organisation(session, organisation_key)
     scenario = _get_active_scenario(session, organisation, scenario_key)
@@ -427,14 +461,18 @@ def soft_delete_org_state(
     if scenario.initial_state_id == org_state.org_state_id:
         scenario.initial_state_id = None
         scenario.modified_time = now
+        scenario.modified_by = actor_user_id
 
     org_twin_structure_service.soft_delete_graphs_for_org_states(
         session,
         [org_state.org_state_id],
         now,
+        actor_user_id,
     )
     org_state.deleted_time = now
+    org_state.deleted_by = actor_user_id
     org_state.modified_time = now
+    org_state.modified_by = actor_user_id
     session.commit()
 
 
@@ -474,6 +512,7 @@ def create_event(
     organisation_key: str,
     scenario_key: str,
     payload: EventCreateRequest,
+    actor_user_id: int,
 ) -> EventResponse:
     organisation = _get_active_organisation(session, organisation_key)
     scenario = _get_active_scenario(session, organisation, scenario_key)
@@ -484,6 +523,7 @@ def create_event(
         name=payload.name,
         target_date=payload.target_date,
         event_details=payload.event_details,
+        created_by=actor_user_id,
     )
     session.add(event)
     session.commit()
@@ -498,6 +538,7 @@ def patch_event(
     scenario_key: str,
     event_key: str,
     payload: EventPatchRequest,
+    actor_user_id: int,
 ) -> EventResponse:
     organisation = _get_active_organisation(session, organisation_key)
     scenario = _get_active_scenario(session, organisation, scenario_key)
@@ -517,6 +558,7 @@ def patch_event(
         event.event_details = payload.event_details
 
     event.modified_time = datetime.now(UTC)
+    event.modified_by = actor_user_id
     session.commit()
     session.refresh(event)
 
@@ -528,6 +570,7 @@ def soft_delete_event(
     organisation_key: str,
     scenario_key: str,
     event_key: str,
+    actor_user_id: int,
 ) -> None:
     organisation = _get_active_organisation(session, organisation_key)
     scenario = _get_active_scenario(session, organisation, scenario_key)
@@ -535,7 +578,9 @@ def soft_delete_event(
     now = datetime.now(UTC)
 
     event.deleted_time = now
+    event.deleted_by = actor_user_id
     event.modified_time = now
+    event.modified_by = actor_user_id
     session.commit()
 
 
@@ -615,6 +660,7 @@ def create_timeserie(
     organisation_key: str,
     scenario_key: str,
     payload: TimeserieCreateRequest,
+    actor_user_id: int,
 ) -> TimeserieResponse:
     organisation = _get_active_organisation(session, organisation_key)
     scenario = _get_active_scenario(session, organisation, scenario_key)
@@ -628,6 +674,7 @@ def create_timeserie(
         unit=payload.unit,
         time_unit=payload.time_unit,
         value_unit=payload.value_unit,
+        created_by=actor_user_id,
     )
     session.add(timeserie)
     session.commit()
@@ -642,6 +689,7 @@ def replace_timeserie_values(
     scenario_key: str,
     timeserie_key: str,
     payload: TimeserieValuesPatchRequest,
+    actor_user_id: int,
 ) -> TimeserieResponse:
     organisation = _get_active_organisation(session, organisation_key)
     scenario = _get_active_scenario(session, organisation, scenario_key)
@@ -673,7 +721,9 @@ def replace_timeserie_values(
     for value in existing_values:
         if value.deleted_time is None and value.date not in replacement_values:
             value.deleted_time = now
+            value.deleted_by = actor_user_id
             value.modified_time = now
+            value.modified_by = actor_user_id
 
     for value_date, cell_value in replacement_values.items():
         stored_value: dict[str, object] = {"value": cell_value}
@@ -684,15 +734,19 @@ def replace_timeserie_values(
                     timeserie_id=timeserie.timeserie_id,
                     date=value_date,
                     value=stored_value,
+                    created_by=actor_user_id,
                 ),
             )
             continue
 
         existing_value.value = stored_value
         existing_value.deleted_time = None
+        existing_value.deleted_by = None
         existing_value.modified_time = now
+        existing_value.modified_by = actor_user_id
 
     timeserie.modified_time = now
+    timeserie.modified_by = actor_user_id
     session.commit()
     session.refresh(timeserie)
 
@@ -705,6 +759,7 @@ def soft_delete_timeserie(
     organisation_key: str,
     scenario_key: str,
     timeserie_key: str,
+    actor_user_id: int,
 ) -> None:
     organisation = _get_active_organisation(session, organisation_key)
     scenario = _get_active_scenario(session, organisation, scenario_key)
@@ -720,10 +775,13 @@ def soft_delete_timeserie(
         scenario.scenario_id,
         timeserie.timeserie_id,
         now,
+        actor_user_id,
     )
-    _soft_delete_timeserie_values(session, timeserie, now)
+    _soft_delete_timeserie_values(session, timeserie, now, actor_user_id)
     timeserie.deleted_time = now
+    timeserie.deleted_by = actor_user_id
     timeserie.modified_time = now
+    timeserie.modified_by = actor_user_id
     session.commit()
 
 
@@ -998,6 +1056,7 @@ def _soft_delete_events(
     session: Session,
     scenario: Scenario,
     deleted_time: datetime,
+    actor_user_id: int,
 ) -> None:
     events = session.scalars(
         select(Event).where(
@@ -1008,13 +1067,16 @@ def _soft_delete_events(
 
     for event in events:
         event.deleted_time = deleted_time
+        event.deleted_by = actor_user_id
         event.modified_time = deleted_time
+        event.modified_by = actor_user_id
 
 
 def _soft_delete_timeseries(
     session: Session,
     scenario: Scenario,
     deleted_time: datetime,
+    actor_user_id: int,
 ) -> None:
     timeseries = session.scalars(
         select(Timeserie).where(
@@ -1034,17 +1096,22 @@ def _soft_delete_timeseries(
 
         for value in values:
             value.deleted_time = deleted_time
+            value.deleted_by = actor_user_id
             value.modified_time = deleted_time
+            value.modified_by = actor_user_id
 
     for timeserie in timeseries:
         timeserie.deleted_time = deleted_time
+        timeserie.deleted_by = actor_user_id
         timeserie.modified_time = deleted_time
+        timeserie.modified_by = actor_user_id
 
 
 def _soft_delete_timeserie_values(
     session: Session,
     timeserie: Timeserie,
     deleted_time: datetime,
+    actor_user_id: int,
 ) -> None:
     values = session.scalars(
         select(TimeserieValue).where(
@@ -1055,7 +1122,9 @@ def _soft_delete_timeserie_values(
 
     for value in values:
         value.deleted_time = deleted_time
+        value.deleted_by = actor_user_id
         value.modified_time = deleted_time
+        value.modified_by = actor_user_id
 
 
 def _ensure_target_date_is_available(

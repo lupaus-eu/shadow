@@ -2,11 +2,11 @@ from datetime import UTC, datetime
 from typing import cast
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.api.v1.users.models import User
+from app.api.v1.users.models import AuthSession, User
 from app.api.v1.users.schemas import (
     UserCreateRequest,
     UserPatchRequest,
@@ -36,9 +36,16 @@ def get_user(session: Session, user_id: int) -> UserResponse:
     return to_user_response(_get_active_user(session, user_id))
 
 
-def create_user(session: Session, payload: UserCreateRequest) -> UserResponse:
+def create_user(
+    session: Session, payload: UserCreateRequest, actor_user_id: int
+) -> UserResponse:
     _ensure_email_is_available(session, payload.email)
-    user = User(name=payload.name, email=payload.email, role=payload.role)
+    user = User(
+        name=payload.name,
+        email=payload.email,
+        role=payload.role,
+        created_by=actor_user_id,
+    )
     session.add(user)
 
     try:
@@ -56,6 +63,7 @@ def patch_user(
     session: Session,
     user_id: int,
     payload: UserPatchRequest,
+    actor_user_id: int,
 ) -> UserResponse:
     user = _get_active_user(session, user_id)
     update_data = payload.model_dump(exclude_unset=True)
@@ -74,6 +82,7 @@ def patch_user(
         user.email = payload.email
 
     user.modified_time = datetime.now(UTC)
+    user.modified_by = actor_user_id
 
     try:
         session.commit()
@@ -86,12 +95,20 @@ def patch_user(
     return to_user_response(user)
 
 
-def soft_delete_user(session: Session, user_id: int) -> None:
+def soft_delete_user(session: Session, user_id: int, actor_user_id: int) -> None:
     user = _get_active_user(session, user_id)
     now = datetime.now(UTC)
 
     user.deleted_time = now
+    user.deleted_by = actor_user_id
     user.modified_time = now
+    user.modified_by = actor_user_id
+    session.commit()
+
+
+def revoke_user_sessions(session: Session, user_id: int) -> None:
+    user = _get_active_user(session, user_id)
+    session.execute(delete(AuthSession).where(AuthSession.user_id == user.user_id))
     session.commit()
 
 

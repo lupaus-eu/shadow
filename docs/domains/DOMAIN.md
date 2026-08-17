@@ -51,6 +51,13 @@ The core domain model covers users, organisations, scenarios, organisation state
 
 These domains define the MVP source of truth for access-facing identities, tenant-like organisation boundaries and the graph-based organisation twin data model.
 
+ADR-004's implemented initial authorization model treats every active User as
+trusted across every organisation. Users administration is `admin`-only; both
+roles may use every other business domain. Organisation relationships remain
+data ownership boundaries and do not imply membership authorization. Every
+authenticated unsafe request uses the shared Origin/CSRF guard, and mutation
+services receive the authenticated User explicitly for audit writes.
+
 ## Users Domain
 
 Responsible for:

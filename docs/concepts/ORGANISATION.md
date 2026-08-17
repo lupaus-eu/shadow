@@ -101,6 +101,16 @@ Related APIs:
 
 # AI Agent Guidance
 
+Authorization and audit rules:
+
+- Treat Organisation as a data-ownership boundary, not a current user
+  membership boundary. Both authenticated roles intentionally access every
+  Organisation.
+- Current authenticated creates, updates and soft deletes populate the
+  corresponding nullable audit actor; historical nulls remain valid.
+- Do not infer membership from `organisation_key`, route `orgId` or provider
+  claims.
+
 When implementing Organisation features:
 
 - read `docs/domains/ORGANISATIONS.md`
@@ -117,6 +127,4 @@ Avoid:
 
 # Open Questions
 
-- membership model
-- authorization model
 - organisation deletion rules when active dependent data exists

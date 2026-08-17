@@ -190,6 +190,7 @@ def create_graph_node(
     scenario_key: str,
     org_state_key: str,
     payload: GraphNodeCreateRequest,
+    actor_user_id: int,
 ) -> GraphNodeResponse:
     organisation, scenario, org_state = _get_active_context(
         session,
@@ -211,6 +212,7 @@ def create_graph_node(
         position_x=payload.position.x if payload.position is not None else None,
         position_y=payload.position.y if payload.position is not None else None,
         attributes=payload.attributes,
+        created_by=actor_user_id,
     )
     session.add(node)
     session.commit()
@@ -226,6 +228,7 @@ def patch_graph_node(
     org_state_key: str,
     node_key: str,
     payload: GraphNodePatchRequest,
+    actor_user_id: int,
 ) -> GraphNodeResponse:
     organisation, scenario, org_state = _get_active_context(
         session,
@@ -269,6 +272,7 @@ def patch_graph_node(
         )
 
     node.modified_time = datetime.now(UTC)
+    node.modified_by = actor_user_id
     session.commit()
     session.refresh(node)
 
@@ -281,6 +285,7 @@ def soft_delete_graph_node(
     scenario_key: str,
     org_state_key: str,
     node_key: str,
+    actor_user_id: int,
 ) -> None:
     _, scenario, org_state = _get_active_context(
         session,
@@ -309,10 +314,14 @@ def soft_delete_graph_node(
 
     if delete_date == node.create_date:
         node.deleted_time = now
+        node.deleted_by = actor_user_id
         node.modified_time = now
+        node.modified_by = actor_user_id
         for edge in connected_edges:
             edge.deleted_time = now
+            edge.deleted_by = actor_user_id
             edge.modified_time = now
+            edge.modified_by = actor_user_id
         session.commit()
         return
 
@@ -338,8 +347,10 @@ def soft_delete_graph_node(
         )
         edge.delete_date = edge_delete_date
         edge.modified_time = now
+        edge.modified_by = actor_user_id
 
     node.modified_time = now
+    node.modified_by = actor_user_id
     session.commit()
 
 
@@ -349,6 +360,7 @@ def create_graph_edge(
     scenario_key: str,
     org_state_key: str,
     payload: GraphEdgeCreateRequest,
+    actor_user_id: int,
 ) -> GraphEdgeResponse:
     organisation, scenario, org_state = _get_active_context(
         session,
@@ -389,6 +401,7 @@ def create_graph_edge(
         target_graph_node_id=target_node.graph_node_id,
         create_date=org_state.target_date,
         attributes=payload.attributes,
+        created_by=actor_user_id,
     )
     _ensure_edge_lifetime_within_nodes(
         edge.create_date,
@@ -410,6 +423,7 @@ def patch_graph_edge(
     org_state_key: str,
     edge_key: str,
     payload: GraphEdgePatchRequest,
+    actor_user_id: int,
 ) -> GraphEdgeResponse:
     organisation, scenario, org_state = _get_active_context(
         session,
@@ -475,6 +489,7 @@ def patch_graph_edge(
         edge.attributes = payload.attributes
 
     edge.modified_time = datetime.now(UTC)
+    edge.modified_by = actor_user_id
     session.commit()
     session.refresh(edge)
 
@@ -487,6 +502,7 @@ def soft_delete_graph_edge(
     scenario_key: str,
     org_state_key: str,
     edge_key: str,
+    actor_user_id: int,
 ) -> None:
     _, scenario, org_state = _get_active_context(
         session,
@@ -510,9 +526,11 @@ def soft_delete_graph_edge(
 
     if delete_date == edge.create_date:
         edge.deleted_time = now
+        edge.deleted_by = actor_user_id
     else:
         edge.delete_date = delete_date
     edge.modified_time = now
+    edge.modified_by = actor_user_id
     session.commit()
 
 
@@ -522,6 +540,7 @@ def bulk_update_positions(
     scenario_key: str,
     org_state_key: str,
     payload: BulkPositionUpdate,
+    actor_user_id: int,
 ) -> GraphResponse:
     organisation, scenario, org_state = _get_active_context(
         session,
@@ -564,6 +583,7 @@ def bulk_update_positions(
         node.position_x = position.x
         node.position_y = position.y
         node.modified_time = now
+        node.modified_by = actor_user_id
 
     session.commit()
 
@@ -573,23 +593,26 @@ def bulk_update_positions(
 def copy_active_default_metamodel(
     session: Session,
     organisation: Organisation,
+    actor_user_id: int,
 ) -> Metamodel:
     source = _get_active_default_metamodel(session)
     copied = Metamodel(
         organisation_id=organisation.organisation_id,
         version=source.version,
+        created_by=actor_user_id,
     )
     session.add(copied)
     session.flush()
 
-    node_type_id_map = _copy_node_types(session, source, copied)
-    edge_type_id_map = _copy_edge_types(session, source, copied)
+    node_type_id_map = _copy_node_types(session, source, copied, actor_user_id)
+    edge_type_id_map = _copy_edge_types(session, source, copied, actor_user_id)
     _copy_type_attributes(
         session,
         source,
         copied,
         node_type_id_map,
         edge_type_id_map,
+        actor_user_id,
     )
     _copy_allowed_connections(
         session,
@@ -597,6 +620,7 @@ def copy_active_default_metamodel(
         copied,
         node_type_id_map,
         edge_type_id_map,
+        actor_user_id,
     )
 
     return copied
@@ -606,6 +630,7 @@ def soft_delete_graph_structure_for_scenario(
     session: Session,
     scenario_id: int,
     deleted_time: datetime,
+    actor_user_id: int,
 ) -> None:
     graph_edges = session.scalars(
         select(GraphEdge).where(
@@ -622,17 +647,22 @@ def soft_delete_graph_structure_for_scenario(
 
     for edge in graph_edges:
         edge.deleted_time = deleted_time
+        edge.deleted_by = actor_user_id
         edge.modified_time = deleted_time
+        edge.modified_by = actor_user_id
 
     for node in graph_nodes:
         node.deleted_time = deleted_time
+        node.deleted_by = actor_user_id
         node.modified_time = deleted_time
+        node.modified_by = actor_user_id
 
 
 def soft_delete_graphs_for_org_states(
     session: Session,
     org_state_ids: list[int],
     deleted_time: datetime,
+    actor_user_id: int,
 ) -> None:
     if not org_state_ids:
         return
@@ -670,16 +700,21 @@ def soft_delete_graphs_for_org_states(
 
         for edge in graph_edges:
             edge.deleted_time = deleted_time
+            edge.deleted_by = actor_user_id
             edge.modified_time = deleted_time
+            edge.modified_by = actor_user_id
 
         for node in graph_nodes:
             node.deleted_time = deleted_time
+            node.deleted_by = actor_user_id
             node.modified_time = deleted_time
+            node.modified_by = actor_user_id
 
 
 def copy_graph_snapshots_for_org_states(
     session: Session,
     copied_org_state_id_by_source_id: dict[int, int],
+    actor_user_id: int,
 ) -> None:
     if not copied_org_state_id_by_source_id:
         return
@@ -737,6 +772,7 @@ def copy_graph_snapshots_for_org_states(
             attributes=deepcopy(source_node.attributes),
             timeserie_id=None,
             timeserie_secondary_id=None,
+            created_by=actor_user_id,
         )
         session.add(copied_node)
         session.flush()
@@ -773,6 +809,7 @@ def copy_graph_snapshots_for_org_states(
                 create_date=source_edge.create_date,
                 delete_date=source_edge.delete_date,
                 attributes=deepcopy(source_edge.attributes),
+                created_by=actor_user_id,
             ),
         )
 
@@ -784,6 +821,7 @@ def clear_timeserie_references(
     scenario_id: int,
     timeserie_id: int,
     modified_time: datetime,
+    actor_user_id: int,
 ) -> None:
     nodes = session.scalars(
         select(GraphNode).where(
@@ -802,6 +840,7 @@ def clear_timeserie_references(
         if node.timeserie_secondary_id == timeserie_id:
             node.timeserie_secondary_id = None
         node.modified_time = modified_time
+        node.modified_by = actor_user_id
 
 
 def to_graph_response(
@@ -1422,6 +1461,7 @@ def _copy_node_types(
     session: Session,
     source: Metamodel,
     copied: Metamodel,
+    actor_user_id: int,
 ) -> dict[int, int]:
     id_map: dict[int, int] = {}
     node_types = session.scalars(
@@ -1445,6 +1485,7 @@ def _copy_node_types(
             timeserie_id=source_node_type.timeserie_id,
             timeserie_secondary_id=source_node_type.timeserie_secondary_id,
             timeserie_id_rule=source_node_type.timeserie_id_rule,
+            created_by=actor_user_id,
         )
         session.add(copied_node_type)
         session.flush()
@@ -1457,6 +1498,7 @@ def _copy_edge_types(
     session: Session,
     source: Metamodel,
     copied: Metamodel,
+    actor_user_id: int,
 ) -> dict[int, int]:
     id_map: dict[int, int] = {}
     edge_types = session.scalars(
@@ -1478,6 +1520,7 @@ def _copy_edge_types(
             ui_style=source_edge_type.ui_style,
             ui_source_end=source_edge_type.ui_source_end,
             ui_target_end=source_edge_type.ui_target_end,
+            created_by=actor_user_id,
         )
         session.add(copied_edge_type)
         session.flush()
@@ -1492,6 +1535,7 @@ def _copy_type_attributes(
     copied: Metamodel,
     node_type_id_map: dict[int, int],
     edge_type_id_map: dict[int, int],
+    actor_user_id: int,
 ) -> None:
     type_attributes = session.scalars(
         select(TypeAttribute)
@@ -1527,6 +1571,7 @@ def _copy_type_attributes(
                 mandatory=source_attribute.mandatory,
                 max_length=source_attribute.max_length,
                 multiline=source_attribute.multiline,
+                created_by=actor_user_id,
             ),
         )
 
@@ -1539,6 +1584,7 @@ def _copy_allowed_connections(
     copied: Metamodel,
     node_type_id_map: dict[int, int],
     edge_type_id_map: dict[int, int],
+    actor_user_id: int,
 ) -> None:
     allowed_connections = session.scalars(
         select(AllowedConnection)
@@ -1569,6 +1615,7 @@ def _copy_allowed_connections(
                     "target node type",
                 ),
                 name=source_connection.name,
+                created_by=actor_user_id,
             ),
         )
 
