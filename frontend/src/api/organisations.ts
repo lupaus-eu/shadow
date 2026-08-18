@@ -1,3 +1,5 @@
+import { authenticatedFetch } from "./client";
+
 export type OrganisationDto = {
   id: string;
   name: string;
@@ -10,14 +12,6 @@ export type OrganisationCreateRequest = {
 export type OrganisationPatchRequest = {
   name: string;
 };
-
-const API_BASE_URL =
-  (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim() ?? "";
-
-function buildApiUrl(path: string): string {
-  if (!API_BASE_URL) return path;
-  return `${API_BASE_URL.replace(/\/+$/, "")}${path}`;
-}
 
 function messageFromPayload(payload: unknown): string {
   if (!payload || typeof payload !== "object") return "";
@@ -67,13 +61,12 @@ async function responseErrorMessage(
 export async function fetchOrganisations(
   signal?: AbortSignal
 ): Promise<OrganisationDto[]> {
-  const res = await fetch(buildApiUrl("/api/v1/organisations"), {
+  const res = await authenticatedFetch("/api/v1/organisations", {
     method: "GET",
     headers: {
       Accept: "application/json"
-    },
-    signal
-  });
+    }
+  }, signal);
 
   if (!res.ok) {
     throw new Error(await responseErrorMessage(res, "fetch organisations"));
@@ -86,15 +79,14 @@ export async function createOrganisation(
   payload: OrganisationCreateRequest,
   signal?: AbortSignal
 ): Promise<OrganisationDto> {
-  const res = await fetch(buildApiUrl("/api/v1/organisations"), {
+  const res = await authenticatedFetch("/api/v1/organisations", {
     method: "POST",
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json"
     },
-    body: JSON.stringify(payload),
-    signal
-  });
+    body: JSON.stringify(payload)
+  }, signal);
 
   if (!res.ok) {
     throw new Error(await responseErrorMessage(res, "create organisation"));
@@ -108,19 +100,17 @@ export async function updateOrganisation(
   payload: OrganisationPatchRequest,
   signal?: AbortSignal
 ): Promise<OrganisationDto> {
-  const res = await fetch(
-    buildApiUrl(
-      `/api/v1/organisations/${encodeURIComponent(organisationId)}`
-    ),
+  const res = await authenticatedFetch(
+    `/api/v1/organisations/${encodeURIComponent(organisationId)}`,
     {
       method: "PATCH",
       headers: {
         Accept: "application/json",
         "Content-Type": "application/json"
       },
-      body: JSON.stringify(payload),
-      signal
-    }
+      body: JSON.stringify(payload)
+    },
+    signal
   );
 
   if (!res.ok) {
@@ -134,17 +124,15 @@ export async function deleteOrganisation(
   organisationId: string,
   signal?: AbortSignal
 ): Promise<void> {
-  const res = await fetch(
-    buildApiUrl(
-      `/api/v1/organisations/${encodeURIComponent(organisationId)}`
-    ),
+  const res = await authenticatedFetch(
+    `/api/v1/organisations/${encodeURIComponent(organisationId)}`,
     {
       method: "DELETE",
       headers: {
         Accept: "application/json"
-      },
-      signal
-    }
+      }
+    },
+    signal
   );
 
   if (!res.ok) {

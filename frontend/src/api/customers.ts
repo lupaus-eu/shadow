@@ -1,3 +1,5 @@
+import { authenticatedFetch } from "./client";
+
 export type CustomerStatus = "active" | "archived";
 
 export type CustomerDto = {
@@ -58,14 +60,7 @@ export type CustomerListOptions = {
   signal?: AbortSignal;
 };
 
-const API_BASE_URL =
-  (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim() ?? "";
 const customersPath = "/api/v1/customers";
-
-function buildApiUrl(path: string): string {
-  if (!API_BASE_URL) return path;
-  return `${API_BASE_URL.replace(/\/+$/, "")}${path}`;
-}
 
 function messageFromPayload(payload: unknown): string {
   if (!payload || typeof payload !== "object") return "";
@@ -110,15 +105,14 @@ async function requestJson<T>(
   init: RequestInit,
   signal?: AbortSignal
 ): Promise<T> {
-  const response = await fetch(buildApiUrl(path), {
+  const response = await authenticatedFetch(path, {
     ...init,
     headers: {
       Accept: "application/json",
       ...(init.body ? { "Content-Type": "application/json" } : {}),
       ...init.headers
     },
-    signal
-  });
+  }, signal);
   if (!response.ok) throw new Error(await responseErrorMessage(response, action));
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;

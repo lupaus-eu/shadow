@@ -1,3 +1,5 @@
+import { authenticatedFetch } from "./client";
+
 export type JsonObject = Record<string, unknown>;
 
 export type GraphPosition = {
@@ -127,28 +129,19 @@ export class ApiError extends Error {
   }
 }
 
-const API_BASE_URL =
-  (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim() ?? "";
-
-function buildApiUrl(path: string): string {
-  if (!API_BASE_URL) return path;
-  return `${API_BASE_URL.replace(/\/+$/, "")}${path}`;
-}
-
 async function requestJson<T>(
   path: string,
   init?: RequestInit,
   signal?: AbortSignal
 ): Promise<T> {
-  const res = await fetch(buildApiUrl(path), {
+  const res = await authenticatedFetch(path, {
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",
       ...init?.headers
     },
-    ...init,
-    signal
-  });
+    ...init
+  }, signal);
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");

@@ -175,6 +175,14 @@ covers the anonymous route matrix, Users role matrix, unsafe-request matrix,
 session revocation, inactive-session rejection, broad cross-organisation access
 and audit actors for every mutation family.
 
+Frontend authentication tests mock Schatten's application-session endpoints:
+`GET /api/v1/auth/session` and `POST /api/v1/auth/logout`. They do not mock or
+expose Entra, Authentik, OIDC codes, provider tokens or provider claims. The
+shared request-helper tests cover same-origin credentials, memory-only CSRF
+headers, global `401` invalidation and non-invalidating `403` responses. UI
+tests cover restoration loading, protected routes, role-aware Users navigation,
+logout and user-session revocation.
+
 Run the focused suite with:
 
 ```bash

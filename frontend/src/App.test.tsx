@@ -7,7 +7,12 @@ import {
 } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { navigateBrowser } from "./auth/browserNavigation";
 import App from "./App";
+
+vi.mock("./auth/browserNavigation", () => ({
+  navigateBrowser: vi.fn()
+}));
 
 function jsonResponse(payload: unknown, init?: ResponseInit) {
   return new Response(JSON.stringify(payload), {
@@ -39,6 +44,9 @@ function mockSchattenApi(options?: {
   eventsStatus?: number;
   eventMutationStatus?: number;
   omitFutureAfterFirstScenarioLoad?: boolean;
+  authRole?: "admin" | "consultant";
+  sessionStatus?: number;
+  logoutUrl?: string | null;
 }) {
   let cleanedFutureStates = false;
   let scenarioListRequestCount = 0;
@@ -60,6 +68,41 @@ function mockSchattenApi(options?: {
   const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const method = init?.method ?? "GET";
+
+    if (url.endsWith("/api/v1/auth/session") && method === "GET") {
+      if (options?.sessionStatus) {
+        return Promise.resolve(
+          jsonResponse(
+            {
+              error: {
+                code: "AUTHENTICATION_REQUIRED",
+                message: "Authentication required"
+              }
+            },
+            { status: options.sessionStatus }
+          )
+        );
+      }
+      return Promise.resolve(
+        jsonResponse({
+          user: {
+            id: 101,
+            name: "Development Admin",
+            email: "admin@example.local",
+            role: options?.authRole ?? "admin"
+          },
+          csrfToken: "app-csrf-token"
+        })
+      );
+    }
+
+    if (url.endsWith("/api/v1/auth/logout") && method === "POST") {
+      return Promise.resolve(jsonResponse({ logoutUrl: options?.logoutUrl ?? null }));
+    }
+
+    if (url.endsWith("/sessions/revoke") && method === "POST") {
+      return Promise.resolve(noContentResponse());
+    }
 
     if (url.endsWith("/api/v1/organisations") && method === "POST") {
       if (options?.duplicateCreate) {
@@ -456,6 +499,7 @@ function todayDateValue(): string {
 describe("Schatten UI shell", () => {
   beforeEach(() => {
     sessionStorage.clear();
+    vi.mocked(navigateBrowser).mockReset();
   });
 
   afterEach(() => {
@@ -468,7 +512,7 @@ describe("Schatten UI shell", () => {
     renderAt("/");
 
     expect(
-      screen.getByRole("heading", { name: "Select organisation" })
+      await screen.findByRole("heading", { name: "Select organisation" })
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Open organisation" })
@@ -481,12 +525,210 @@ describe("Schatten UI shell", () => {
     expect(screen.getByLabelText("Create new organisation")).toBeVisible();
   });
 
+  it("keeps protected content hidden until session restoration completes", async () => {
+    const sessionResponse = deferredResponse();
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      if (String(input).endsWith("/api/v1/auth/session")) {
+        return sessionResponse.promise;
+      }
+      return Promise.resolve(jsonResponse([]));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderAt("/");
+
+    expect(screen.getByRole("heading", { name: "Loading session..." })).toBeVisible();
+    expect(
+      screen.queryByRole("heading", { name: "Select organisation" })
+    ).not.toBeInTheDocument();
+
+    sessionResponse.resolve(
+      jsonResponse({
+        user: {
+          id: 101,
+          name: "Development Admin",
+          email: "admin@example.local",
+          role: "admin"
+        },
+        csrfToken: "restored-csrf"
+      })
+    );
+
+    expect(
+      await screen.findByRole("heading", { name: "Select organisation" })
+    ).toBeVisible();
+  });
+
+  it("shows login for an anonymous protected route and preserves that route", async () => {
+    mockSchattenApi({ sessionStatus: 401 });
+
+    renderAt("/schatten/acme/users?view=selected");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Sign in" }));
+    expect(navigateBrowser).toHaveBeenCalledWith(
+      "/api/v1/auth/login?return_to=%2Fschatten%2Facme%2Fusers%3Fview%3Dselected"
+    );
+  });
+
+  it("invalidates the UI on a business API 401 without repeating restoration", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/api/v1/auth/session")) {
+        return Promise.resolve(
+          jsonResponse({
+            user: {
+              id: 101,
+              name: "Development Admin",
+              email: "admin@example.local",
+              role: "admin"
+            },
+            csrfToken: "restored-csrf"
+          })
+        );
+      }
+      return Promise.resolve(
+        jsonResponse(
+          { error: { code: "AUTHENTICATION_REQUIRED", message: "Authentication required" } },
+          { status: 401 }
+        )
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderAt("/");
+
+    expect(await screen.findByRole("heading", { name: "Sign in" })).toBeVisible();
+    expect(
+      fetchMock.mock.calls.filter(([input]) =>
+        String(input).endsWith("/api/v1/auth/session")
+      )
+    ).toHaveLength(1);
+  });
+
+  it("keeps a 403 as a permission error without invalidating the session", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      if (String(input).endsWith("/api/v1/auth/session")) {
+        return Promise.resolve(
+          jsonResponse({
+            user: {
+              id: 101,
+              name: "Development Admin",
+              email: "admin@example.local",
+              role: "admin"
+            },
+            csrfToken: "restored-csrf"
+          })
+        );
+      }
+      return Promise.resolve(
+        jsonResponse({ detail: "Permission denied." }, { status: 403 })
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderAt("/");
+
+    expect(
+      await screen.findByText("Failed to fetch organisations (403): Permission denied.")
+    ).toBeVisible();
+    expect(screen.getByText("Development Admin")).toBeVisible();
+    expect(screen.queryByRole("heading", { name: "Sign in" })).not.toBeInTheDocument();
+  });
+
+  it("hides Users and redirects its route for consultants", async () => {
+    mockSchattenApi({ authRole: "consultant" });
+
+    renderAt("/schatten/acme/users");
+
+    expect(
+      await screen.findByRole("heading", { name: "Scenarios", level: 1 })
+    ).toBeVisible();
+    expect(screen.queryByRole("link", { name: "Users" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Users" })).not.toBeInTheDocument();
+  });
+
+  it("returns an admin to login after revoking their own sessions", async () => {
+    mockSchattenApi();
+
+    renderAt("/schatten/acme/users");
+    await screen.findByRole("button", { name: /Development Admin/ });
+    fireEvent.click(screen.getByRole("button", { name: "Revoke sessions" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Confirm revoke sessions" })
+    );
+
+    expect(await screen.findByRole("heading", { name: "Sign in" })).toBeVisible();
+  });
+
+  it("logs out with CSRF and navigates to the local login page", async () => {
+    const fetchMock = mockSchattenApi();
+
+    renderAt("/");
+    fireEvent.click(await screen.findByRole("button", { name: "Sign out" }));
+
+    await waitFor(() => expect(navigateBrowser).toHaveBeenCalledWith("/login"));
+    const logoutCall = fetchMock.mock.calls.find(([input]) =>
+      String(input).endsWith("/api/v1/auth/logout")
+    );
+    expect(logoutCall?.[1]).toEqual(
+      expect.objectContaining({
+        method: "POST",
+        credentials: "same-origin",
+        headers: expect.objectContaining({ "X-CSRF-Token": "app-csrf-token" })
+      })
+    );
+  });
+
+  it("navigates to the trusted provider logout URL", async () => {
+    mockSchattenApi({ logoutUrl: "https://identity.example.test/logout" });
+
+    renderAt("/");
+    fireEvent.click(await screen.findByRole("button", { name: "Sign out" }));
+
+    await waitFor(() => {
+      expect(navigateBrowser).toHaveBeenCalledWith(
+        "https://identity.example.test/logout"
+      );
+    });
+  });
+
+  it("clears frontend auth after a successful logout with an invalid payload", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/api/v1/auth/session")) {
+        return Promise.resolve(
+          jsonResponse({
+            user: {
+              id: 101,
+              name: "Development Admin",
+              email: "admin@example.local",
+              role: "admin"
+            },
+            csrfToken: "app-csrf-token"
+          })
+        );
+      }
+      if (url.endsWith("/api/v1/auth/logout")) {
+        return Promise.resolve(jsonResponse({ unexpected: true }));
+      }
+      return Promise.resolve(jsonResponse([]));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderAt("/");
+    fireEvent.click(await screen.findByRole("button", { name: "Sign out" }));
+
+    expect(await screen.findByRole("heading", { name: "Sign in" })).toBeVisible();
+    expect(screen.getByText("Invalid logout response.")).toBeVisible();
+    expect(navigateBrowser).not.toHaveBeenCalled();
+  });
+
   it("creates an organisation through the backend API and selects it", async () => {
     const fetchMock = mockSchattenApi();
 
     renderAt("/");
 
-    const nameInput = screen.getByLabelText("Create new organisation");
+    const nameInput = await screen.findByLabelText("Create new organisation");
     fireEvent.change(nameInput, { target: { value: "New org" } });
     fireEvent.click(screen.getByRole("button", { name: "Create organisation" }));
 
@@ -508,7 +750,7 @@ describe("Schatten UI shell", () => {
 
     renderAt("/");
 
-    fireEvent.change(screen.getByLabelText("Create new organisation"), {
+    fireEvent.change(await screen.findByLabelText("Create new organisation"), {
       target: { value: "Acme" }
     });
     fireEvent.click(screen.getByRole("button", { name: "Create organisation" }));
@@ -599,7 +841,7 @@ describe("Schatten UI shell", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders tab URLs and disables Structure and Events before selection", () => {
+  it("renders tab URLs and disables Structure and Events before selection", async () => {
     mockSchattenApi();
 
     renderAt("/schatten/acme/org-states");
@@ -613,6 +855,7 @@ describe("Schatten UI shell", () => {
       ["Users", "/schatten/acme/users"]
     ] as const;
 
+    await screen.findByRole("link", { name: "Scenarios" });
     for (const [label, href] of expectedLinks) {
       expect(screen.getByRole("link", { name: label })).toHaveAttribute(
         "href",
@@ -625,10 +868,11 @@ describe("Schatten UI shell", () => {
     expect(screen.getByText("Events")).toHaveAttribute("aria-disabled", "true");
   });
 
-  it("marks the active tab from the current URL", () => {
+  it("marks the active tab from the current URL", async () => {
+    mockSchattenApi();
     renderAt("/schatten/acme/metrics");
 
-    expect(screen.getByRole("link", { name: "Metrics" })).toHaveClass(
+    expect(await screen.findByRole("link", { name: "Metrics" })).toHaveClass(
       "tab-link--active"
     );
     expect(screen.getByRole("link", { name: "Scenarios" })).not.toHaveClass(
@@ -641,7 +885,7 @@ describe("Schatten UI shell", () => {
 
     renderAt("/schatten/acme/users");
 
-    expect(screen.getByRole("link", { name: "Users" })).toHaveClass(
+    expect(await screen.findByRole("link", { name: "Users" })).toHaveClass(
       "tab-link--active"
     );
     expect(await screen.findByRole("heading", { name: "Users" })).toBeInTheDocument();
@@ -659,7 +903,7 @@ describe("Schatten UI shell", () => {
 
     renderAt("/schatten/acme/customers");
 
-    expect(screen.getByRole("link", { name: "Customers" })).toHaveClass("tab-link--active");
+    expect(await screen.findByRole("link", { name: "Customers" })).toHaveClass("tab-link--active");
     expect(await screen.findByRole("heading", { name: "Customers" })).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: /Acme Customer/ })).toBeVisible();
     const customerCalls = fetchMock.mock.calls.filter(([input]) => String(input).includes("/api/v1/customers"));
@@ -667,12 +911,12 @@ describe("Schatten UI shell", () => {
     expect(customerCalls.every(([input]) => !String(input).includes("acme"))).toBe(true);
   });
 
-  it("renders the Summary route without requiring an organisation state", () => {
+  it("renders the Summary route without requiring an organisation state", async () => {
     mockSchattenApi();
 
     renderAt("/schatten/acme/summary");
 
-    expect(screen.getByRole("link", { name: "Summary" })).toHaveClass(
+    expect(await screen.findByRole("link", { name: "Summary" })).toHaveClass(
       "tab-link--active"
     );
     expect(screen.getByRole("heading", { name: "Summary" })).toBeInTheDocument();
@@ -680,6 +924,7 @@ describe("Schatten UI shell", () => {
   });
 
   it("shows the organisation, scenario, and org state indicators", async () => {
+    mockSchattenApi();
     renderAt({
       pathname: "/schatten/acme/analysis",
       state: { organisationName: "Acme" }
@@ -1439,13 +1684,13 @@ describe("Schatten UI shell", () => {
     });
   });
 
-  it("keeps Events gated on direct route until scenario and state are selected", () => {
+  it("keeps Events gated on direct route until scenario and state are selected", async () => {
     mockSchattenApi();
 
     renderAt("/schatten/acme/events");
 
     expect(
-      screen.getByText("Select a scenario and org state in Scenarios to activate this tab.")
+      await screen.findByText("Select a scenario and org state in Scenarios to activate this tab.")
     ).toBeInTheDocument();
   });
 

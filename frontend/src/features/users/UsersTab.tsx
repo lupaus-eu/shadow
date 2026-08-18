@@ -4,6 +4,7 @@ import {
   createUser,
   deleteUser,
   fetchUsers,
+  revokeUserSessions,
   updateUser
 } from "../../api/users";
 import type { UserDto, UserRole } from "../../api/users";
@@ -29,7 +30,10 @@ function roleLabel(role: UserRole): string {
   return role === "admin" ? "Admin" : "Consultant";
 }
 
-export default function UsersTab() {
+export default function UsersTab(props: {
+  currentUserId?: number;
+  onCurrentUserSessionsRevoked?: () => void;
+}) {
   const [users, setUsers] = useState<UserDto[]>([]);
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
@@ -44,6 +48,8 @@ export default function UsersTab() {
   const [editRole, setEditRole] = useState<UserRole>("consultant");
   const [actionError, setActionError] = useState("");
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [confirmingRevoke, setConfirmingRevoke] = useState(false);
+  const [actionSuccess, setActionSuccess] = useState("");
   const requestController = useRef<AbortController | null>(null);
   const selectedUserIdRef = useRef<number | null>(null);
 
@@ -59,7 +65,9 @@ export default function UsersTab() {
     setEditEmail(user?.email ?? "");
     setEditRole(user?.role ?? "consultant");
     setActionError("");
+    setActionSuccess("");
     setConfirmingDelete(false);
+    setConfirmingRevoke(false);
   }, []);
 
   const applyUsers = useCallback((items: UserDto[], preferredUserId?: number | null) => {
@@ -199,6 +207,29 @@ export default function UsersTab() {
     }
   }
 
+  async function onConfirmRevoke() {
+    if (!selectedUser) return;
+
+    try {
+      setSaving(true);
+      setActionError("");
+      setActionSuccess("");
+      await revokeUserSessions(selectedUser.id);
+      if (selectedUser.id === props.currentUserId) {
+        props.onCurrentUserSessionsRevoked?.();
+        return;
+      }
+      setConfirmingRevoke(false);
+      setActionSuccess(
+        `${selectedUser.name}'s Schatten application sessions were revoked.`
+      );
+    } catch (error) {
+      setActionError(messageFromError(error));
+    } finally {
+      setSaving(false);
+    }
+  }
+
   const editHasChanges = selectedUser
     ? editName.trim() !== selectedUser.name ||
       editEmail.trim() !== selectedUser.email ||
@@ -308,6 +339,12 @@ export default function UsersTab() {
                       onRoleChange={setEditRole}
                     />
                     <ActionError message={actionError} />
+                    {actionSuccess ? (
+                      <div className="alert alert--info" role="status">
+                        <p className="alert__title">Sessions revoked</p>
+                        <p className="alert__text">{actionSuccess}</p>
+                      </div>
+                    ) : null}
                     <div className="form-actions">
                       <button
                         className="btn btn--primary"
@@ -319,13 +356,66 @@ export default function UsersTab() {
                     </div>
                   </form>
 
+                  <section
+                    className="state-delete-form"
+                    aria-label="User session revocation"
+                  >
+                    {!confirmingRevoke ? (
+                      <div className="form-actions">
+                        <button
+                          className="btn btn--secondary"
+                          type="button"
+                          onClick={() => {
+                            setConfirmingDelete(false);
+                            setConfirmingRevoke(true);
+                          }}
+                          disabled={busy}
+                        >
+                          Revoke sessions
+                        </button>
+                      </div>
+                    ) : (
+                      <div
+                        className="delete-confirmation"
+                        role="alertdialog"
+                        aria-labelledby="revoke-session-confirmation"
+                      >
+                        <p id="revoke-session-confirmation">
+                          Sign {selectedUser.name} out of every Schatten session?
+                          This does not sign them out of the identity provider.
+                        </p>
+                        <div className="form-actions">
+                          <button
+                            className="btn btn--secondary"
+                            type="button"
+                            onClick={() => setConfirmingRevoke(false)}
+                            disabled={busy}
+                          >
+                            Cancel revocation
+                          </button>
+                          <button
+                            className="btn btn--danger"
+                            type="button"
+                            onClick={() => void onConfirmRevoke()}
+                            disabled={busy}
+                          >
+                            {saving ? "Revoking..." : "Confirm revoke sessions"}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </section>
+
                   <section className="state-delete-form" aria-label="User deletion">
                     {!confirmingDelete ? (
                       <div className="form-actions">
                         <button
                           className="btn btn--danger"
                           type="button"
-                          onClick={() => setConfirmingDelete(true)}
+                          onClick={() => {
+                            setConfirmingRevoke(false);
+                            setConfirmingDelete(true);
+                          }}
                           disabled={busy}
                         >
                           Delete user

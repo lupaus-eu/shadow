@@ -12,6 +12,7 @@ import {
   createUser,
   deleteUser,
   fetchUsers,
+  revokeUserSessions,
   updateUser
 } from "../../api/users";
 import type { UserDto } from "../../api/users";
@@ -21,6 +22,7 @@ vi.mock("../../api/users", () => ({
   createUser: vi.fn(),
   deleteUser: vi.fn(),
   fetchUsers: vi.fn(),
+  revokeUserSessions: vi.fn(),
   updateUser: vi.fn()
 }));
 
@@ -28,6 +30,7 @@ const fetchUsersMock = vi.mocked(fetchUsers);
 const createUserMock = vi.mocked(createUser);
 const updateUserMock = vi.mocked(updateUser);
 const deleteUserMock = vi.mocked(deleteUser);
+const revokeUserSessionsMock = vi.mocked(revokeUserSessions);
 
 const ada: UserDto = {
   id: 2,
@@ -210,6 +213,64 @@ describe("UsersTab", () => {
       "aria-pressed",
       "true"
     );
+  });
+
+  it("confirms and reports application-session revocation", async () => {
+    fetchUsersMock.mockResolvedValue([ada]);
+    revokeUserSessionsMock.mockResolvedValue();
+
+    render(<UsersTab />);
+    await screen.findByRole("button", { name: /ada/ });
+    fireEvent.click(screen.getByRole("button", { name: "Revoke sessions" }));
+
+    expect(screen.getByRole("alertdialog")).toHaveTextContent(
+      "This does not sign them out of the identity provider."
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Confirm revoke sessions" })
+    );
+
+    await waitFor(() => expect(revokeUserSessionsMock).toHaveBeenCalledWith(ada.id));
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "ada's Schatten application sessions were revoked."
+    );
+  });
+
+  it("reports a session-revocation API failure", async () => {
+    fetchUsersMock.mockResolvedValue([ada]);
+    revokeUserSessionsMock.mockRejectedValue(new Error("Revocation forbidden."));
+
+    render(<UsersTab />);
+    await screen.findByRole("button", { name: /ada/ });
+    fireEvent.click(screen.getByRole("button", { name: "Revoke sessions" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Confirm revoke sessions" })
+    );
+
+    expect(await screen.findByText("Revocation forbidden.")).toBeInTheDocument();
+  });
+
+  it("invalidates frontend auth when the admin revokes their own sessions", async () => {
+    const onCurrentUserSessionsRevoked = vi.fn();
+    fetchUsersMock.mockResolvedValue([ada]);
+    revokeUserSessionsMock.mockResolvedValue();
+
+    render(
+      <UsersTab
+        currentUserId={ada.id}
+        onCurrentUserSessionsRevoked={onCurrentUserSessionsRevoked}
+      />
+    );
+    await screen.findByRole("button", { name: /ada/ });
+    fireEvent.click(screen.getByRole("button", { name: "Revoke sessions" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Confirm revoke sessions" })
+    );
+
+    await waitFor(() => {
+      expect(onCurrentUserSessionsRevoked).toHaveBeenCalledTimes(1);
+    });
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 
   it("shows mutation failures and disables duplicate submissions while saving", async () => {

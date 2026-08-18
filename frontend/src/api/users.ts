@@ -1,3 +1,5 @@
+import { authenticatedFetch } from "./client";
+
 export type UserRole = "consultant" | "admin";
 
 export type UserDto = {
@@ -14,14 +16,6 @@ export type UserCreateRequest = {
 };
 
 export type UserUpdateRequest = UserCreateRequest;
-
-const API_BASE_URL =
-  (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim() ?? "";
-
-function buildApiUrl(path: string): string {
-  if (!API_BASE_URL) return path;
-  return `${API_BASE_URL.replace(/\/+$/, "")}${path}`;
-}
 
 function messageFromPayload(payload: unknown): string {
   if (!payload || typeof payload !== "object") return "";
@@ -74,15 +68,14 @@ async function requestJson<T>(
   init: RequestInit,
   signal?: AbortSignal
 ): Promise<T> {
-  const response = await fetch(buildApiUrl(path), {
+  const response = await authenticatedFetch(path, {
     ...init,
     headers: {
       Accept: "application/json",
       ...(init.body ? { "Content-Type": "application/json" } : {}),
       ...init.headers
     },
-    signal
-  });
+  }, signal);
 
   if (!response.ok) {
     throw new Error(await responseErrorMessage(response, action));
@@ -140,6 +133,18 @@ export async function deleteUser(
     userPath(userId),
     "delete user",
     { method: "DELETE" },
+    signal
+  );
+}
+
+export async function revokeUserSessions(
+  userId: number,
+  signal?: AbortSignal
+): Promise<void> {
+  return requestJson<void>(
+    `${userPath(userId)}/sessions/revoke`,
+    "revoke user sessions",
+    { method: "POST" },
     signal
   );
 }

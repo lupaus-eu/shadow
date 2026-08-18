@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createUser, deleteUser, fetchUsers, updateUser } from "./users";
+import {
+  createUser,
+  deleteUser,
+  fetchUsers,
+  revokeUserSessions,
+  updateUser
+} from "./users";
 
 function jsonResponse(payload: unknown, init?: ResponseInit) {
   return new Response(JSON.stringify(payload), {
@@ -113,6 +119,21 @@ describe("users API", () => {
       createUser({ name: "Ada", email: "ada@example.local", role: "admin" })
     ).rejects.toThrow(
       "Failed to create user (422): Input should be 'consultant' or 'admin'"
+    );
+  });
+
+  it("revokes sessions through the admin endpoint", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await revokeUserSessions(102);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/users/102/sessions/revoke",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({ "X-CSRF-Token": "test-csrf-token" })
+      })
     );
   });
 });

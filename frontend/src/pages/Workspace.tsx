@@ -8,6 +8,7 @@ import {
   useParams
 } from "react-router-dom";
 import EmptyTab from "../components/EmptyTab";
+import { useAuth } from "../auth/AuthContext";
 import OrganisationDropdown from "../components/OrganisationDropdown";
 import OrgStateDropdown from "../components/OrgStateDropdown";
 import ScenarioDropdown from "../components/ScenarioDropdown";
@@ -70,6 +71,7 @@ function WorkspaceShell(props: {
   orgId: string;
   initialOrganisationName: string;
 }) {
+  const { user } = useAuth();
   const [organisationName, setOrganisationName] = useState(
     props.initialOrganisationName
   );
@@ -91,7 +93,11 @@ function WorkspaceShell(props: {
             onOrganisationNameChange={setOrganisationName}
           />
         </div>
-        <WorkspaceTabs orgId={props.orgId} forwardedState={forwardedState} />
+        <WorkspaceTabs
+          orgId={props.orgId}
+          forwardedState={forwardedState}
+          isAdmin={user?.role === "admin"}
+        />
       </header>
 
       <main className="workspace-content">
@@ -102,13 +108,26 @@ function WorkspaceShell(props: {
               <Navigate to="org-states" replace state={forwardedState} />
             }
           />
-          {WORKSPACE_TABS.map((tab) => (
+          {WORKSPACE_TABS.filter(
+            (tab) => tab.signature !== "users" || user?.role === "admin"
+          ).map((tab) => (
             <Route
               key={tab.signature}
               path={tab.signature}
               element={<WorkspaceTabContent tab={tab} orgId={props.orgId} />}
             />
           ))}
+          {user?.role !== "admin" ? (
+            <Route
+              path="users"
+              element={
+                <Navigate
+                  to={`/schatten/${props.orgId}/org-states`}
+                  replace
+                />
+              }
+            />
+          ) : null}
           <Route
             path="*"
             element={
@@ -145,13 +164,16 @@ function WorkspaceIndicators(props: {
 function WorkspaceTabs(props: {
   orgId: string;
   forwardedState: WorkspaceNavState;
+  isAdmin: boolean;
 }) {
   const { selectedScenario, selectedOrgState } = useWorkspaceSelection();
   const hasScenarioAndOrgState = Boolean(selectedScenario && selectedOrgState);
 
   return (
     <nav className="tab-bar" aria-label="Schatten workspace tabs">
-      {WORKSPACE_TABS.map((tab) => {
+      {WORKSPACE_TABS.filter(
+        (tab) => tab.signature !== "users" || props.isAdmin
+      ).map((tab) => {
         const isDisabled =
           tab.requiresScenarioAndOrgState && !hasScenarioAndOrgState;
 
@@ -188,6 +210,7 @@ function WorkspaceTabs(props: {
 
 function WorkspaceTabContent(props: { tab: WorkspaceTab; orgId: string }) {
   const { selectedScenario, selectedOrgState } = useWorkspaceSelection();
+  const { user, invalidateSession } = useAuth();
 
   if (props.tab.signature === "org-states") {
     return <ScenariosTab orgId={props.orgId} />;
@@ -222,7 +245,12 @@ function WorkspaceTabContent(props: { tab: WorkspaceTab; orgId: string }) {
   }
 
   if (props.tab.signature === "users") {
-    return <UsersTab />;
+    return (
+      <UsersTab
+        currentUserId={user?.id}
+        onCurrentUserSessionsRevoked={invalidateSession}
+      />
+    );
   }
 
   if (props.tab.signature === "customers") {
