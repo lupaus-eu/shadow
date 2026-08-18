@@ -182,6 +182,74 @@ cd backend
 uv run pytest tests/test_auth_api.py tests/test_auth_provider.py -v
 ```
 
+## Local Authentik Integration
+
+TASK-039E:n Authentik-tarkistukset käyttävät `.env.authentik.local`-tiedostoa,
+joka sisältää vain paikallisia salaisuuksia ja salted password hasheja. Luo se
+ensin ja validoi renderöity Compose. Tarkistusskripti käyttää samaa kerrostusta
+kuin runtime: `.env` ensin ja `.env.authentik.local` sen jälkeen.
+
+```bash
+scripts/setup-local-authentik.sh
+scripts/verify-local-authentik-config.sh
+docker compose --env-file .env --env-file .env.authentik.local config --quiet
+```
+
+Fresh-volume bootstrap pitää ajaa eksplisiittisellä disposable project namella.
+Pysäytä mahdollinen normaali identity stack ensin, jotta loopback-portti 9000
+vapautuu. Seuraava teardown poistaa vain
+`schatten-authentik-bootstrap-test`-projektin kontit, networkin ja nimetyt
+volumet; se ei kohdista normaaleihin `schatten_*`-volumeihin:
+
+```bash
+docker compose --env-file .env --env-file .env.authentik.local stop authentik-worker authentik-server authentik-database
+scripts/setup-local-authentik.sh /tmp/schatten-authentik-bootstrap-test.env
+docker compose \
+  --project-name schatten-authentik-bootstrap-test \
+  --env-file .env \
+  --env-file /tmp/schatten-authentik-bootstrap-test.env \
+  up -d --wait authentik-database authentik-server authentik-worker
+scripts/smoke-local-authentik.sh
+docker compose \
+  --project-name schatten-authentik-bootstrap-test \
+  --env-file .env \
+  --env-file /tmp/schatten-authentik-bootstrap-test.env \
+  down --volumes
+rm /tmp/schatten-authentik-bootstrap-test.env
+```
+
+Käynnistä tämän jälkeen normaali full stack, aja migraatiot ja dev seed
+`docs/LOCAL-DEVELOPMENT.md`:n komennoilla. Manual browser QA:
+
+- avaa `http://app.localhost:5173/api/v1/auth/login` ja kirjaudu
+  `schatten-consultant`-tunnuksella
+- varmista `/api/v1/auth/session`-vastauksesta consultant-käyttäjä ja
+  Schattenin tietokantarooli
+- kirjaudu ulos `POST /api/v1/auth/logout` -flow'n kautta ja varmista sekä
+  local sessionin että selainevästeen poistuminen
+- toista `schatten-admin`-tunnuksella ja varmista admin-rooli
+- yritä kirjautua `schatten-unmatched`-tunnuksella; odota geneeristä virhettä ja
+  varmista, ettei `users`- tai `user_identities`-riviä luotu
+- tarkista selaimen storage/cookie-näkymästä, että `app.localhost` ei lähetä
+  Schatten-cookieita `auth.localhost`-hostille eikä päinvastoin
+
+Token-claimien tarkistus tehdään Authentikin provider previewlla tai rajatulla
+kertakäyttöisellä testiclientillä: vaadi `sub`, `name`, `email` ja
+`email_verified=true`; varmista ettei tokenissa ole `groups`, `roles`, `oid` tai
+`tid`. Älä lokita tai tallenna oikean browser-flow'n authorization codea,
+tokeneita, cookieita tai salasanoja.
+
+Lopuksi aja backendin auth-harness ja normaalit baseline-tarkistukset. Local
+provider ei korvaa Entra-integraatiotestausta:
+
+```bash
+cd backend
+uv run pytest tests/test_auth_api.py tests/test_auth_provider.py -v
+uv run ruff check .
+uv run pytest
+uv run pyright
+```
+
 ---
 
 # Testing Structure Feature

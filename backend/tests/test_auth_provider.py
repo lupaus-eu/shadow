@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 from urllib.parse import parse_qs, urlsplit
 
+import httpx
 import pytest
 from authlib.jose import JsonWebKey
 from authlib.jose.errors import JoseError
@@ -222,6 +223,38 @@ def test_discovery_issuer_must_equal_independently_configured_issuer(
 
     with pytest.raises(OidcProviderError):
         provider.initialize()
+
+
+def test_discovery_uses_an_unauthenticated_http_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    requests: list[httpx.Request] = []
+    http_client = httpx.Client
+
+    def discovery(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "issuer": "https://issuer.test",
+                "authorization_endpoint": "https://issuer.test/authorize",
+                "token_endpoint": "https://issuer.test/token",
+                "jwks_uri": "https://issuer.test/jwks",
+            },
+        )
+
+    def client(**_: object) -> httpx.Client:
+        return http_client(transport=httpx.MockTransport(discovery))
+
+    monkeypatch.setattr(provider_module.httpx, "Client", client)
+    provider = AuthlibOidcProvider(Settings())
+
+    provider.initialize()
+
+    assert len(requests) == 1
+    assert str(requests[0].url) == Settings().oidc_discovery_url
+    assert "authorization" not in requests[0].headers
+    assert requests[0].headers["accept"] == "application/json"
 
 
 @pytest.mark.parametrize(

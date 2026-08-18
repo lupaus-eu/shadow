@@ -284,7 +284,9 @@ db/init/002_seed_development_data.sql
 
 The seed creates non-production bootstrap data only:
 
-- one `Development Admin` user with `admin@example.local` when `users` is empty
+- active `Development Consultant` (`consultant@example.local`) and `Development
+  Admin` (`admin@example.local`) users when their active emails are absent;
+  these match the local Authentik fixtures
 - one active default metamodel when no active default metamodel exists
 - node types, edge types, type attributes and allowed connections from `db/init/metamodel_state_##default##.json`
 

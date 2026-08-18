@@ -24,7 +24,7 @@ use HTTPS, Secure cookies and explicit trusted Caddy peer CIDRs.
 Health check:
 
 ```bash
-curl --header 'Host: localhost:5173' http://localhost:8000/health
+curl --header 'Host: app.localhost:5173' http://localhost:8000/health
 ```
 
 ## Production Image

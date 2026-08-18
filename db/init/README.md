@@ -22,7 +22,7 @@ Current init scripts:
 
 | Script | Purpose |
 | --- | --- |
-| `002_seed_development_data.sql` | Local/dev-only seed for a dummy admin user with `admin@example.local` and the default metamodel from `db/init/metamodel_state_##default##.json`. |
+| `002_seed_development_data.sql` | Local/dev-only seed for consultant/admin users matching the Authentik fixtures and the default metamodel from `db/init/metamodel_state_##default##.json`. |
 
 ---
 
@@ -85,8 +85,9 @@ migrations are pending.
 
 `002_seed_development_data.sql` is idempotent for normal local use:
 
-- it inserts `Development Admin` with the distinct non-production email
-  `admin@example.local` only when `users` is empty
+- it ensures active `Development Consultant` (`consultant@example.local`) and
+  `Development Admin` (`admin@example.local`) rows when those active emails are
+  absent; these emails match the local Authentik fixtures
 - it does not insert external identities, login transactions or sessions
 - it inserts the default metamodel only when no active default metamodel exists
 - it does not create organisations, scenarios, org states, events, graph nodes,

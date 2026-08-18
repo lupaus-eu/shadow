@@ -64,12 +64,13 @@ Frontendin voi ajaa Dockerissa:
 docker compose up frontend
 ```
 
-Frontend dev on saatavilla osoitteessa `http://localhost:5173`.
+Frontend dev on saatavilla osoitteessa `http://app.localhost:5173`.
 
 Backendin voi ajaa Dockerissa:
 
 ```bash
-docker compose up backend
+scripts/setup-local-authentik.sh
+docker compose --env-file .env --env-file .env.authentik.local up backend
 ```
 
 Backend on saatavilla osoitteessa `http://localhost:8000`.
@@ -77,14 +78,14 @@ Backend on saatavilla osoitteessa `http://localhost:8000`.
 Health endpoint:
 
 ```bash
-curl --header 'Host: localhost:5173' http://localhost:8000/health
+curl --header 'Host: app.localhost:5173' http://localhost:8000/health
 ```
 
 Käynnistä tietokanta ja aja kaikki puuttuvat migraatiot:
 
 ```bash
 docker compose up -d database
-uv run --project backend python backend/migrate.py up
+uv run --env-file .env --project backend python backend/migrate.py up
 ```
 
 Migraatiokäytännöt, rollback-komennot ja olemassa olevan tietokannan baseline

@@ -5,6 +5,7 @@ from threading import Lock
 from typing import Any, Protocol, cast
 from urllib.parse import urlencode, urlsplit
 
+import httpx
 from authlib.common.errors import AuthlibBaseError
 from authlib.deprecate import AuthlibDeprecationWarning
 from authlib.integrations.httpx_client import OAuth2Client
@@ -218,15 +219,13 @@ class AuthlibOidcProvider:
         return self._jwks
 
     def _get_json(self, url: str) -> dict[str, Any]:
-        client = self._client()
         try:
-            response = client.get(url)
-            response.raise_for_status()
-            value = response.json()
+            with httpx.Client(timeout=10.0, follow_redirects=False) as client:
+                response = client.get(url, headers={"Accept": "application/json"})
+                response.raise_for_status()
+                value = response.json()
         except Exception as exc:
             raise OidcProviderError("Provider metadata request failed") from exc
-        finally:
-            client.close()
         if not isinstance(value, dict):
             raise OidcProviderError("Provider metadata is invalid")
         return cast(dict[str, Any], value)

@@ -7,10 +7,17 @@
 BEGIN;
 
 INSERT INTO users (name, email, role)
-SELECT 'Development Admin', 'admin@example.local', 'admin'
+SELECT seed.name, seed.email, seed.role
+FROM (
+    VALUES
+        ('Development Consultant', 'consultant@example.local', 'consultant'),
+        ('Development Admin', 'admin@example.local', 'admin')
+) AS seed(name, email, role)
 WHERE NOT EXISTS (
     SELECT 1
     FROM users
+    WHERE lower(trim(users.email)) = lower(seed.email)
+        AND users.deleted_time IS NULL
 );
 
 CREATE TEMP TABLE _seed_default_metamodel (

@@ -9,8 +9,77 @@ services:
       POSTGRES_DB: ${DATABASE_NAME:-schatten}
       POSTGRES_USER: ${DATABASE_USER:-schatten}
       POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-schatten_dev_password}
+    working_dir: /workspace
     volumes:
       - database_data:/var/lib/postgresql
+      - ./db/init:/workspace/db/init:ro
+
+  authentik-database:
+    image: docker.io/library/postgres:16.10-alpine@sha256:029660641a0cfc575b14f336ba448fb8a75fd595d42e1fa316b9fb4378742297
+    environment:
+      POSTGRES_DB: authentik
+      POSTGRES_USER: authentik
+      POSTGRES_PASSWORD: ${AUTHENTIK_POSTGRESQL_PASSWORD:-}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d authentik -U authentik"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    volumes:
+      - authentik_database_data:/var/lib/postgresql/data
+
+  authentik-server:
+    image: &authentik-image ghcr.io/goauthentik/server:2026.5.6@sha256:ed120caf710ccf82ef0026f0bc74e51615bc95ebff228a7a2d6fc60c441c3868
+    command: server
+    ports:
+      - "127.0.0.1:9000:9000"
+    environment: &authentik-environment
+      AUTHENTIK_POSTGRESQL__HOST: authentik-database
+      AUTHENTIK_POSTGRESQL__NAME: authentik
+      AUTHENTIK_POSTGRESQL__USER: authentik
+      AUTHENTIK_POSTGRESQL__PASSWORD: ${AUTHENTIK_POSTGRESQL_PASSWORD:-}
+      AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY:-}
+      AUTHENTIK_ERROR_REPORTING__ENABLED: "false"
+      AUTHENTIK_DISABLE_STARTUP_ANALYTICS: "true"
+      AUTHENTIK_DISABLE_UPDATE_CHECK: "true"
+    depends_on:
+      authentik-database:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; response = urllib.request.urlopen('http://127.0.0.1:9000/application/o/schatten/.well-known/openid-configuration', timeout=3); raise SystemExit(0 if response.status == 200 else 1)"
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 30s
+    networks:
+      default:
+        aliases:
+          - auth.localhost
+    volumes:
+      - authentik_data:/data
+
+  authentik-worker:
+    image: *authentik-image
+    command: worker
+    environment:
+      <<: *authentik-environment
+      SCHATTEN_OIDC_CLIENT_SECRET: ${SCHATTEN_OIDC_CLIENT_SECRET:-}
+      AUTHENTIK_BOOTSTRAP_PASSWORD_HASH: ${AUTHENTIK_BOOTSTRAP_PASSWORD_HASH:-}
+      AUTHENTIK_BOOTSTRAP_EMAIL: authentik-admin@example.local
+      AUTHENTIK_CONSULTANT_PASSWORD_HASH: ${AUTHENTIK_CONSULTANT_PASSWORD_HASH:-}
+      AUTHENTIK_ADMIN_PASSWORD_HASH: ${AUTHENTIK_ADMIN_PASSWORD_HASH:-}
+      AUTHENTIK_UNMATCHED_PASSWORD_HASH: ${AUTHENTIK_UNMATCHED_PASSWORD_HASH:-}
+    depends_on:
+      authentik-database:
+        condition: service_healthy
+    volumes:
+      - authentik_data:/data
+      - ./authentik/blueprints/schatten.yaml:/blueprints/schatten.yaml:ro
 
   backend:
     build:
@@ -20,18 +89,18 @@ services:
     ports:
       - "8000:8000"
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql://schatten:schatten_dev_password@database:5432/schatten}
+      DATABASE_URL: postgresql://${DATABASE_USER:-schatten}:${DATABASE_PASSWORD:-schatten_dev_password}@database:5432/${DATABASE_NAME:-schatten}
       APP_ENV: ${APP_ENV:-development}
-      OIDC_DISCOVERY_URL: ${OIDC_DISCOVERY_URL:-}
-      OIDC_ISSUER: ${OIDC_ISSUER:-}
-      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
-      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      OIDC_DISCOVERY_URL: http://auth.localhost:9000/application/o/schatten/.well-known/openid-configuration
+      OIDC_ISSUER: http://auth.localhost:9000/application/o/schatten/
+      OIDC_CLIENT_ID: schatten-local
+      OIDC_CLIENT_SECRET: ${SCHATTEN_OIDC_CLIENT_SECRET:-}
       OIDC_SCOPES: ${OIDC_SCOPES:-openid profile email}
       OIDC_CALLBACK_PATH: ${OIDC_CALLBACK_PATH:-/api/v1/auth/callback}
       OIDC_ALLOWED_SIGNING_ALGORITHMS: ${OIDC_ALLOWED_SIGNING_ALGORITHMS:-RS256}
       OIDC_REQUIRE_VERIFIED_EMAIL: ${OIDC_REQUIRE_VERIFIED_EMAIL:-true}
-      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-http://localhost:5173}
-      APP_ALLOWED_ORIGIN: ${APP_ALLOWED_ORIGIN:-http://localhost:5173}
+      PUBLIC_ORIGIN: http://app.localhost:5173
+      APP_ALLOWED_ORIGIN: http://app.localhost:5173
       TRUSTED_CADDY_PEER_CIDRS: ${TRUSTED_CADDY_PEER_CIDRS:-}
       SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
       AUTH_SESSION_IDLE_TIMEOUT_SECONDS: ${AUTH_SESSION_IDLE_TIMEOUT_SECONDS:-1800}
@@ -39,7 +108,12 @@ services:
       AUTH_SESSION_ACTIVITY_WRITE_SECONDS: ${AUTH_SESSION_ACTIVITY_WRITE_SECONDS:-300}
       OIDC_TRANSACTION_LIFETIME_SECONDS: ${OIDC_TRANSACTION_LIFETIME_SECONDS:-600}
     depends_on:
-      - database
+      database:
+        condition: service_started
+      authentik-server:
+        condition: service_healthy
+      authentik-worker:
+        condition: service_started
     volumes:
       - ./backend:/app
       - backend_uv_cache:/root/.cache/uv
@@ -50,7 +124,7 @@ services:
       context: ./frontend
       target: dev
     ports:
-      - "5173:5173"
+      - "127.0.0.1:5173:5173"
     environment:
       VITE_DEV_API_PROXY_TARGET: ${FRONTEND_DEV_API_PROXY_TARGET:-http://backend:8000}
     extra_hosts:
@@ -80,6 +154,8 @@ services:
     command: ["-tsvg", "-o", "generated", "db-physical-schema.puml"]
 
 volumes:
+  authentik_data:
+  authentik_database_data:
   backend_uv_cache:
   backend_venv:
   database_data:

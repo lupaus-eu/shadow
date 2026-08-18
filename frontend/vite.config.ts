@@ -7,8 +7,12 @@ const devApiProxyTarget =
 export default defineConfig({
   plugins: [react()],
   server: {
+    allowedHosts: ["app.localhost"],
     proxy: {
-      "/api": devApiProxyTarget
+      "/api": {
+        target: devApiProxyTarget,
+        changeOrigin: false
+      }
     }
   },
   test: {

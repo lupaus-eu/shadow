@@ -24,10 +24,11 @@ git pull origin main
 
 # Environment Variables
 
-Repossa säilytetään vain:
+Repossa säilytetään vain tyhjät esimerkkipohjat:
 
 ```text
 .env.example
+.env.authentik.example
 ```
 
 Paikallinen tiedosto:
@@ -37,6 +38,25 @@ cp .env.example .env
 ```
 
 Älä commitoi `.env`-tiedostoja.
+
+Paikallisen Authentikin salaisuudet ja suolatut salasanatiivisteet luodaan
+erilliseen, Gitiltä ohitettavaan tiedostoon. Skripti ei luo bootstrap-API-tokenia
+eikä kirjoita selväkielisiä salasanoja levylle:
+
+```bash
+scripts/setup-local-authentik.sh
+```
+
+Komento näyttää satunnaiset `akadmin`-, consultant-, admin- ja unmatched-
+testikäyttäjien salasanat kerran terminaalissa. Tallenna tarvitsemasi salasanat
+paikalliseen salasananhallintaan. Skripti ei ylikirjoita olemassa olevaa
+`.env.authentik.local`-tiedostoa.
+
+Authentikia käyttävät Compose-komennot lataavat ensin normaalit paikalliset
+asetukset `.env`-tiedostosta ja sen jälkeen salaisuudet
+`.env.authentik.local`-tiedostosta. Jälkimmäinen tiedosto yliajaa vain samannimiset
+arvot. Local Compose pitää Authentikin issuerin ja Schattenin public originin
+kiinteinä, jotta selain ja backend käyttävät aina samoja tarkkoja osoitteita.
 
 ---
 
@@ -64,13 +84,32 @@ refactor/
 
 # Running The App
 
-Status: frontend, backend and database Docker runtimes available
+Status: frontend, backend, application database and local Authentik runtimes available
 
 Paikallinen ympäristö ajetaan Docker-konteissa:
 
 - frontend container: React / TypeScript / Vite
 - backend container: FastAPI / Python
 - database container: PostgreSQL
+- Authentik server and worker containers plus a dedicated PostgreSQL container
+
+Tuoreesta checkoutista koko paikallinen ympäristö käynnistetään näin:
+
+```bash
+scripts/setup-local-authentik.sh
+docker compose --env-file .env --env-file .env.authentik.local \
+  up -d database authentik-database authentik-server authentik-worker
+uv run --env-file .env --project backend python backend/migrate.py up
+docker compose --env-file .env --env-file .env.authentik.local exec -T database \
+  sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' \
+  < db/init/002_seed_development_data.sql
+docker compose --env-file .env --env-file .env.authentik.local up -d
+```
+
+Authentik tarvitsee virallisen vähimmäissuosituksen mukaan vähintään kaksi CPU-
+ydintä ja 2 GB RAM-muistia. Ensimmäinen käynnistys voi kestää muutaman minuutin,
+koska Authentik alustaa oman tietokantansa ja soveltaa blueprintit ennen kuin
+backend käynnistyy.
 
 Frontend-kehityskontti:
 
@@ -81,8 +120,12 @@ docker compose up frontend
 Frontend on saatavilla osoitteessa:
 
 ```text
-http://localhost:5173
+http://app.localhost:5173
 ```
+
+Käytä aina `app.localhost`-nimeä selaimessa. Paikalliset host-only Schatten-
+evästeet kuuluvat vain tälle hostille eivätkä siirry Authentikiin tai bare
+`localhost`-palveluihin. Vite-portti sidotaan vain loopback-osoitteeseen.
 
 Frontendin lähdekoodi bind mountataan konttiin, joten muutokset näkyvät ilman image rebuildia.
 
@@ -107,7 +150,7 @@ FRONTEND_DEV_API_PROXY_TARGET=http://host.docker.internal:8000
 Backend-kehityskontti:
 
 ```bash
-docker compose up backend
+docker compose --env-file .env --env-file .env.authentik.local up backend
 ```
 
 Backendin Docker build käyttää repositoryn juurta build contextina, jotta sama
@@ -124,8 +167,99 @@ http://localhost:8000
 Health endpoint:
 
 ```bash
-curl --header 'Host: localhost:5173' http://localhost:8000/health
+curl --header 'Host: app.localhost:5173' http://localhost:8000/health
 ```
+
+## Local Authentik OIDC
+
+Authentik on vain paikallinen identity provider. Selain ja backend käyttävät
+samaa tarkkaa per-provider issueria:
+
+```text
+http://auth.localhost:9000/application/o/schatten/
+```
+
+Discovery ja Authentik UI ovat saatavilla hostilta:
+
+```text
+http://auth.localhost:9000/application/o/schatten/.well-known/openid-configuration
+http://auth.localhost:9000
+```
+
+Portti `9000` on sidottu eksplisiittisesti osoitteeseen `127.0.0.1`, eikä
+Authentikin tietokantaporttia julkaista. Docker-network-alias `auth.localhost`
+antaa backend-kontille saman issuer-hostin kuin selaimelle. Authentik ei käytä
+Schattenin tietokantaa tai database-useria, eikä worker mounttaa Docker socketia.
+
+Versionhallittu `authentik/blueprints/schatten.yaml` provisionoi toistettavasti:
+
+- confidential `schatten-local` OAuth2/OIDC providerin ja Schatten-sovelluksen
+- tarkan callbackin
+  `http://app.localhost:5173/api/v1/auth/callback`
+- tarkan post-logout URI:n `http://app.localhost:5173/login`
+- vain `openid profile email` -claim mappingit
+- verified-email consultant-, admin- ja unmatched-testitunnukset
+
+Blueprint ei lähetä ryhmiä, rooleja, Entra `oid`/`tid`-claimeja tai muita
+application-oikeuksia. Authentikin consultant- ja admin-tunnukset linkittyvät
+ensimmäisellä onnistuneella kirjautumisella valmiiksi seedattuihin Schatten
+Users -riveihin sähköpostin perusteella. Tämän jälkeen tarkka `(issuer,
+subject)` on pysyvä identiteetti. Schattenin tietokannan `role` on aina
+sovellusroolin ainoa lähde.
+
+Unmatched-tunnuksen `unmatched@example.local` sähköpostia ei seedata Schattenin
+tietokantaan. Sen kirjautumisen pitää päätyä geneeriseen
+`/login?error=authentication_failed`-virheeseen eikä se saa luoda User- tai
+identity-riviä.
+
+Discovery- ja JWKS-smoke:
+
+```bash
+scripts/smoke-local-authentik.sh
+```
+
+Compose-, loopback-, issuer-, image-, secret- ja production-manifest-tarkistus:
+
+```bash
+scripts/verify-local-authentik-config.sh
+```
+
+Pysäytä vain identity stack säilyttäen sen datan:
+
+```bash
+docker compose --env-file .env --env-file .env.authentik.local \
+  stop authentik-worker authentik-server authentik-database
+```
+
+Kaikki paikalliset kontit pysäytetään normaalisti komennolla:
+
+```bash
+docker compose --env-file .env --env-file .env.authentik.local down
+```
+
+### Authentik image upgrade
+
+Local stack on pinnattu Authentik-versioon `2026.5.6` ja multi-platform digest-
+arvoon
+`sha256:ed120caf710ccf82ef0026f0bc74e51615bc95ebff228a7a2d6fc60c441c3868`.
+Authentikin oma PostgreSQL on pinnattu erikseen versioon `16.10-alpine` ja
+digestiin `sha256:029660641a0cfc575b14f336ba448fb8a75fd595d42e1fa316b9fb4378742297`.
+
+Päivitys tehdään tietoisena taskina:
+
+1. Lue kohdeversion viralliset release- ja upgrade-ohjeet. Major-versiot
+   päivitetään järjestyksessä.
+2. Tarkista uusi tarkka patch ja multi-platform digest komennolla
+   `docker buildx imagetools inspect ghcr.io/goauthentik/server:<patch>`.
+3. Päivitä image-viite `docker-compose.yml`:ssä ja pinnausdokumentaatio tässä.
+4. Aja `docker compose --env-file .env --env-file .env.authentik.local pull`, disposable fresh-
+   volume bootstrap, discovery/JWKS-smoke ja manual login/logout molemmilla
+   rooleilla ennen normaalin kehitysvolumen päivittämistä.
+
+Älä käytä `latest`-tagia tai kopioi upstream Composea sellaisenaan. Viralliset
+ohjeet: [Docker Compose installation](https://docs.goauthentik.io/install-config/install/docker-compose/),
+[2026.5 release notes](https://docs.goauthentik.io/releases/2026.5/) ja
+[upgrade guide](https://docs.goauthentik.io/install-config/upgrade/).
 
 Frontend preview -kontti buildatulle Vite-tuotokselle:
 
@@ -178,6 +312,11 @@ DATABASE_PORT=5432
 DATABASE_URL=postgresql://schatten:schatten_dev_password@localhost:5432/schatten
 ```
 
+`DATABASE_URL` on hostilla ajettavia backend- ja migraatiokomentoja varten.
+Docker Compose muodostaa backend-kontin URL:n samoista
+`DATABASE_NAME`-, `DATABASE_USER`- ja `DATABASE_PASSWORD`-arvoista käyttäen
+hostina `database`-palvelua.
+
 Tietokannan data säilyy konttien uudelleenkäynnistysten yli named volume -volumessa `database_data`.
 
 Tietokantakontin pysäytys:
@@ -219,7 +358,7 @@ Tietokannan nykyisen skeeman voi alustaa tai päivittää ajamalla kaikki puuttu
 migraatiot repositoryn juuresta:
 
 ```bash
-uv run --project backend python backend/migrate.py up
+uv run --env-file .env --project backend python backend/migrate.py up
 ```
 
 Runner käyttää `DATABASE_URL`-ympäristömuuttujaa ja näyttää jokaisen sovelletun
@@ -228,7 +367,8 @@ migraation. Uusi `up` on turvallinen no-op, kun kaikki migraatiot on jo ajettu.
 Viimeisimmän sovelletun migraation voi peruuttaa tarkalla tiedostonimellä:
 
 ```bash
-uv run --project backend python backend/migrate.py 009_add_auth_identity_session_schema.down.sql
+uv run --env-file .env --project backend \
+  python backend/migrate.py 009_add_auth_identity_session_schema.down.sql
 ```
 
 Down-migraatiot voivat poistaa dataa. Käytä niitä vain disposable-paikallisessa
@@ -244,7 +384,7 @@ varmista ensin että se vastaa migraatiota 009 ja ota historia käyttöön ajama
 SQL:ää uudelleen:
 
 ```bash
-uv run --project backend python backend/migrate.py baseline 009
+uv run --env-file .env --project backend python backend/migrate.py baseline 009
 ```
 
 Baseline ei tarkista skeeman sisältöä eikä päättele sen versiota. Komento on
@@ -256,9 +396,9 @@ sekä automaattinen release migration on kuvattu erikseen tiedostossa
 `docs/DEPLOYMENT.md`. Älä käytä production Compose -tiedostoja paikallisen dev
 backendin korvikkeena.
 
-Paikallisen kehitysdatan seed on dev-only ja se luo tyhjään tietokantaan
-`admin@example.local`-sähköpostia käyttävän dummy-adminin sekä repo-local
-JSON-lähteeseen perustuvan Schattenin default-metamallin. Seed ei luo
+Paikallisen kehitysdatan seed on dev-only ja se varmistaa aktiiviset
+`consultant@example.local` consultant- ja `admin@example.local` admin-rivit sekä
+repo-local JSON-lähteeseen perustuvan Schattenin default-metamallin. Seed ei luo
 identiteetti-, login transaction- tai session-riveja:
 
 ```bash
