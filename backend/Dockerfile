@@ -9,10 +9,11 @@ WORKDIR /app
 COPY backend/pyproject.toml backend/uv.lock ./
 RUN uv sync --frozen
 
+COPY --chmod=755 backend/docker-entrypoint-dev.sh /usr/local/bin/schatten-backend-dev
 COPY backend/ .
 
 EXPOSE 8000
-CMD ["uv", "run", "fastapi", "dev", "app/main.py", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["/usr/local/bin/schatten-backend-dev"]
 
 FROM base AS production
 

@@ -52,6 +52,29 @@ testikäyttäjien salasanat kerran terminaalissa. Tallenna tarvitsemasi salasana
 paikalliseen salasananhallintaan. Skripti ei ylikirjoita olemassa olevaa
 `.env.authentik.local`-tiedostoa.
 
+Sama komento luo `.local/authentik-tls/`-hakemistoon paikallisen CA:n ja
+`auth.localhost`-palvelinsertifikaatin. Jos `.env.authentik.local` on jo
+olemassa mutta TLS-materiaali puuttuu, aja erikseen:
+
+```bash
+scripts/setup-local-authentik-tls.sh
+```
+
+Skripti ei muuta käyttöjärjestelmän trust storea. Debian/Ubuntu-hostilla CA:n
+voi luottaa eksplisiittisesti näin:
+
+```bash
+sudo install -m 0644 .local/authentik-tls/ca.crt \
+  /usr/local/share/ca-certificates/schatten-local-authentik.crt
+sudo update-ca-certificates
+```
+
+Muilla käyttöjärjestelmillä tuo `.local/authentik-tls/ca.crt` paikallisten
+luotettujen root-varmenteiden storeen. Selain voi vaatia lisäksi oman
+certificate-store-importin. Poista trust testin jälkeen tarvittaessa poistamalla
+vain `schatten-local-authentik.crt` hostin trust storesta ja ajamalla trust
+store -päivitys uudelleen. Älä koskaan luota tai siirrä `ca.key`-tiedostoa.
+
 Authentikia käyttävät Compose-komennot lataavat ensin normaalit paikalliset
 asetukset `.env`-tiedostosta ja sen jälkeen salaisuudet
 `.env.authentik.local`-tiedostosta. Jälkimmäinen tiedosto yliajaa vain samannimiset
@@ -91,14 +114,15 @@ Paikallinen ympäristö ajetaan Docker-konteissa:
 - frontend container: React / TypeScript / Vite
 - backend container: FastAPI / Python
 - database container: PostgreSQL
-- Authentik server and worker containers plus a dedicated PostgreSQL container
+- Authentik server and worker containers, loopback-only TLS Caddy plus a
+  dedicated PostgreSQL container
 
 Tuoreesta checkoutista koko paikallinen ympäristö käynnistetään näin:
 
 ```bash
 scripts/setup-local-authentik.sh
 docker compose --env-file .env --env-file .env.authentik.local \
-  up -d database authentik-database authentik-server authentik-worker
+  up -d database authentik-database authentik-server authentik-worker authentik-tls
 uv run --env-file .env --project backend python backend/migrate.py up
 docker compose --env-file .env --env-file .env.authentik.local exec -T database \
   sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' \
@@ -153,8 +177,8 @@ same `pnpm build` output from Caddy and changes only the backend OIDC provider
 configuration to tenant-specific Entra values. Do not add provider-specific
 logic or browser tokens to the frontend when comparing environments.
 
-ADR-005 defines only local development/testing and production. TASK-040 may add
-an opt-in local overlay that federates this repository-managed Authentik to the
+ADR-005 defines only local development/testing and production. TASK-040 adds an
+opt-in local overlay that federates this repository-managed Authentik to the
 same organisation's Entra tenant through a local-only app registration. That
 supplemental path is not a production-like environment and does not validate
 FastAPI's direct production Entra client.
@@ -188,20 +212,24 @@ Authentik on vain paikallinen identity provider. Selain ja backend käyttävät
 samaa tarkkaa per-provider issueria:
 
 ```text
-http://auth.localhost:9000/application/o/schatten/
+https://auth.localhost:9443/application/o/schatten/
 ```
 
 Discovery ja Authentik UI ovat saatavilla hostilta:
 
 ```text
-http://auth.localhost:9000/application/o/schatten/.well-known/openid-configuration
-http://auth.localhost:9000
+https://auth.localhost:9443/application/o/schatten/.well-known/openid-configuration
+https://auth.localhost:9443
 ```
 
-Portti `9000` on sidottu eksplisiittisesti osoitteeseen `127.0.0.1`, eikä
-Authentikin tietokantaporttia julkaista. Docker-network-alias `auth.localhost`
-antaa backend-kontille saman issuer-hostin kuin selaimelle. Authentik ei käytä
-Schattenin tietokantaa tai database-useria, eikä worker mounttaa Docker socketia.
+TLS Caddyn portti `9443` sidotaan eksplisiittisesti osoitteeseen `127.0.0.1`.
+Authentik-serverin porttia `9000` tai tietokantaporttia ei julkaista.
+Docker-network-alias `auth.localhost` kuuluu TLS Caddylle, joten browser ja
+backend käyttävät samaa issueria. Backend asentaa julkisen local CA -sertifikaatin
+system trust bundleen ennen OIDC-startupia ja ohjaa local HTTP-clientin tähän
+bundleen; Caddylle mountataan vain leaf-sertifikaatti
+ja sen avain, ei CA:n private keytä. Authentik ei käytä Schattenin tietokantaa
+tai database-useria, eikä worker mounttaa Docker socketia.
 
 Versionhallittu `authentik/blueprints/schatten.yaml` provisionoi toistettavasti:
 
@@ -240,7 +268,7 @@ Pysäytä vain identity stack säilyttäen sen datan:
 
 ```bash
 docker compose --env-file .env --env-file .env.authentik.local \
-  stop authentik-worker authentik-server authentik-database
+  stop authentik-tls authentik-worker authentik-server authentik-database
 ```
 
 Kaikki paikalliset kontit pysäytetään normaalisti komennolla:
@@ -248,6 +276,80 @@ Kaikki paikalliset kontit pysäytetään normaalisti komennolla:
 ```bash
 docker compose --env-file .env --env-file .env.authentik.local down
 ```
+
+### Optional Entra federation through local Authentik
+
+Tämä opt-in rehearsal testaa ketjun Schatten -> local Authentik -> Entra. Se ei
+korvaa `docs/DEPLOYMENT.md`:n human-approved limited production smokea, koska
+Schatten näkee tässä flow'ssa issuerina edelleen Authentikin eikä suoraa
+Schatten-to-Entra- tai Coolify-rajaa testata.
+
+Varmista ensin, että `schatten-authentik` löytyy Entran **App registrations**
+-näkymästä; Enterprise application on rekisteröinnin service principal, mutta
+redirect URI ja client secret hallitaan app registrationissa. Käytä
+single-tenant Web-registrationia ja lisää täsmälleen:
+
+```text
+https://auth.localhost:9443/source/oauth/callback/schatten-auth/
+```
+
+Polun loppukauttaviiva ja slug `schatten-auth` ovat pakolliset. Lisää delegated
+Microsoft Graph -oikeudet `openid`, `profile`, `email` ja `User.Read`; älä lisää
+group-, role-, `offline_access`- tai application-permissioneita.
+
+Luo gitignored asetustiedosto interaktiivisesti. Skripti ei tulosta secret-arvoa:
+
+```bash
+scripts/setup-local-entra.sh
+scripts/verify-local-entra-config.sh
+```
+
+Overlay provisionoi Authentik 2026.5.6:een single-tenant Entra ID OAuth
+Sourcen, tenant-specific endpointit, `schatten-auth`-login-painikkeen ja source
+mappingin. Mapping asettaa `email_verified=true` vain kun Entra `/me` palauttaa
+ei-tyhjän emailin. Group sync ja group/role mappingit pysyvät pois käytöstä.
+Kolme blueprintia ajetaan järjestyksessä kertaluonteisessa
+`authentik-entra-config`-palvelussa, ja backend käynnistyy vasta kun konfigurointi
+onnistuu. Entra-arvoja ei anneta pitkäikäiselle Authentik workerille.
+
+Käynnistä full stack overlaylla, aja migraatiot ja lisää matching email
+Schattenin local allowlistiin:
+
+```bash
+docker compose \
+  --env-file .env \
+  --env-file .env.authentik.local \
+  --env-file .env.entra.local \
+  -f docker-compose.yml \
+  -f docker-compose.entra.yml \
+  up -d database authentik-database authentik-server authentik-worker authentik-tls
+uv run --env-file .env --project backend python backend/migrate.py up
+scripts/provision-local-entra-user.sh
+docker compose \
+  --env-file .env \
+  --env-file .env.authentik.local \
+  --env-file .env.entra.local \
+  -f docker-compose.yml \
+  -f docker-compose.entra.yml \
+  up -d
+```
+
+Provisionointi on idempotentti eikä muuta olemassa olevan aktiivisen käyttäjän
+roolia. Jos testisähköposti on jo aktiivisella käyttäjällä, varmista Users-UI:sta
+että rooli on tarkoitettu. Authentik-source käyttää source-specific identifieria;
+Schatten linkittää ensimmäisellä loginilla Authentikin `(issuer, subject)`-parin
+pre-provisionoituun emailiin ja lukee roolin vain omasta tietokannastaan.
+
+Avaa `http://app.localhost:5173`, aloita login ja valitse **Microsoft Entra
+development**. Testaa myös Entra-käyttäjä, jonka emailia ei ole Schattenissa;
+sen pitää päätyä geneeriseen authentication failureen luomatta User-, identity-
+tai session-riviä. Authentik logout poistaa local provider-session, mutta Entra
+voi käyttää olemassa olevaa upstream SSO -sessioita seuraavalla loginilla.
+
+Client secretin rotaatiossa korvaa vain `.env.entra.local`, käynnistä
+`authentik-entra-config` uudelleen overlay-komennolla (`docker compose ... run
+--rm authentik-entra-config`) ja varmista source Authentik Admin UI:ssa. Älä
+liitä arvoja issueen, PR:ään, komentoriville tai lokiin.
 
 ### Authentik image upgrade
 

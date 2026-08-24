@@ -2,6 +2,9 @@
 
 Status: Planned
 
+Supersession note: ADR-006 and TASK-040 replace this task's original local
+`http://auth.localhost:9000` endpoint with `https://auth.localhost:9443`.
+
 ## Source Plan
 
 Approved TASK-039 plan: daily local development uses a repository-managed,

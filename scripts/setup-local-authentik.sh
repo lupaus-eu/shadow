@@ -80,3 +80,5 @@ printf '  Schatten consultant (schatten-consultant): %s\n' "${consultant_passwor
 printf '  Schatten admin (schatten-admin): %s\n' "${admin_password}"
 printf '  Unmatched negative-test user (schatten-unmatched): %s\n' "${unmatched_password}"
 printf '\nOnly salted hashes were written to disk; no bootstrap API token was created.\n'
+
+"${REPOSITORY_ROOT}/scripts/setup-local-authentik-tls.sh"

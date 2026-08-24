@@ -77,6 +77,11 @@ scripts/setup-local-authentik.sh
 docker compose --env-file .env --env-file .env.authentik.local up backend
 ```
 
+Ensimmäinen setup luo myös gitignored local CA:n Authentikin HTTPS-osoitteelle
+`https://auth.localhost:9443`. CA pitää luottaa hostilla ennen browser-testausta;
+tarkat trust- ja optional Entra federation -ohjeet ovat
+`docs/LOCAL-DEVELOPMENT.md`:ssä.
+
 Backend on saatavilla osoitteessa `http://localhost:8000`.
 
 Health endpoint:

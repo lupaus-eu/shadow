@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-readonly DISCOVERY_URL="http://auth.localhost:9000/application/o/schatten/.well-known/openid-configuration"
-readonly EXPECTED_ISSUER="http://auth.localhost:9000/application/o/schatten/"
+readonly REPOSITORY_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+readonly CA_CERTIFICATE="${REPOSITORY_ROOT}/.local/authentik-tls/ca.crt"
+readonly DISCOVERY_URL="https://auth.localhost:9443/application/o/schatten/.well-known/openid-configuration"
+readonly EXPECTED_ISSUER="https://auth.localhost:9443/application/o/schatten/"
 
 command -v curl >/dev/null || {
   printf 'curl is required\n' >&2
@@ -12,13 +14,17 @@ command -v python3 >/dev/null || {
   printf 'python3 is required\n' >&2
   exit 1
 }
+if [[ ! -r "${CA_CERTIFICATE}" ]]; then
+  printf 'Missing %s; run scripts/setup-local-authentik-tls.sh first.\n' "${CA_CERTIFICATE}" >&2
+  exit 1
+fi
 
 discovery_file="$(mktemp)"
 jwks_file="$(mktemp)"
 trap 'rm -f "${discovery_file}" "${jwks_file}"' EXIT
 
 for attempt in $(seq 1 60); do
-  if curl --fail --silent --show-error "${DISCOVERY_URL}" >"${discovery_file}"; then
+  if curl --cacert "${CA_CERTIFICATE}" --fail --silent --show-error "${DISCOVERY_URL}" >"${discovery_file}"; then
     break
   fi
   if [[ "${attempt}" -eq 60 ]]; then
@@ -45,7 +51,7 @@ print(discovery["jwks_uri"])
 PY
 )"
 
-curl --fail --silent --show-error "${jwks_url}" >"${jwks_file}"
+curl --cacert "${CA_CERTIFICATE}" --fail --silent --show-error "${jwks_url}" >"${jwks_file}"
 python3 - "${jwks_file}" <<'PY'
 import json
 import sys

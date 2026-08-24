@@ -8,9 +8,10 @@ participant "Configured OIDC provider\nAuthentik: local\nEntra: production direc
 database PostgreSQL as DB
 
 note over Provider
-  TASK-040 may federate local Authentik to Entra
-  through a separate local app registration.
-  That upstream hop is not the production direct client.
+  Local Authentik is exposed through its loopback TLS Caddy
+  and may federate to Entra through a separate local registration.
+  That upstream hop does not replace the limited direct-Entra
+  production smoke or validate the Coolify boundary.
 end note
 
 Browser -> Caddy : GET /api/v1/auth/login?return_to=/workspace

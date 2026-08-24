@@ -145,7 +145,9 @@ string matching.
 All redirect and post-logout URIs are constructed from one fixed configured
 public origin, never from `Host`, `Forwarded`, `X-Forwarded-*`, `Origin` or
 request query values. Production and Entra endpoints use HTTPS. Plain HTTP is
-allowed only for the documented local Authentik and Schatten origins.
+allowed only for documented local origins. ADR-006 supersedes this for
+Authentik specifically by requiring `https://auth.localhost:9443`; Schatten's Vite
+origin remains local HTTP.
 
 Configuration contains both a discovery URL and a separately pinned expected
 issuer. The discovery document must return that exact issuer using
@@ -545,7 +547,10 @@ architecture decision.
 Using the Entra development tenant for every local login was rejected because
 it makes normal development depend on network access, shared external state and
 tenant credentials. Dockerized Authentik supplies the same OIDC contract
-locally; Entra remains mandatory for integration verification.
+locally. Under ADR-005, direct Entra/Coolify compatibility is first validated by
+the limited production smoke. ADR-006 adds an explicitly enabled
+Authentik-to-Entra rehearsal without making it the daily default or treating it
+as direct production compatibility evidence.
 
 ## Email, Entra Object IDs Or Provider Roles As Application Identity
 
@@ -590,7 +595,8 @@ Benefits:
 
 Costs and accepted limitations:
 
-- Local development adds Authentik and its dedicated database services.
+- Local development adds Authentik, a loopback TLS proxy and its dedicated
+  database services.
 - Staging and production add a Caddy frontend artifact and explicit proxy CIDR
   configuration.
 - One-time Entra email matching depends on the stated small-company tenant
@@ -637,6 +643,7 @@ After human acceptance, and in order:
 5. TASK-039F adds React session restoration and authentication UX.
 6. TASK-039G adds the production Caddy topology, Entra runbook, final diagrams
    and cross-provider security QA.
+7. TASK-040 and ADR-006 add optional local Authentik-to-Entra federation.
 
 TASK-039B through TASK-039G implement this decision. `ARCHITECTURE.md`,
 `docs/DEPLOYMENT.md` and the authentication diagrams describe the resulting
@@ -661,6 +668,8 @@ AI agent must not alter it on the developer's behalf.
   `https://docs.goauthentik.io/add-secure-apps/providers/oauth2/`
 
 # Related
+
+- `docs/decisions/ADR-006-local-authentik-entra-federation.md`
 
 - Related task: `tasks/TASK-039A-authentication-architecture-adr.md`
 - Extends deployment topology: `docs/decisions/ADR-003-coolify-deployment.md`

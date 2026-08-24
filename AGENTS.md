@@ -57,7 +57,7 @@ Päätetty teknologiapino:
 - migrations: repository-owned Python/Psycopg runner and paired SQL migrations
 - authentication: repository-managed Authentik locally and Microsoft Entra ID
   in production; optional local Authentik-to-Entra federation is defined by
-  ADR-005/TASK-040
+  ADR-006/TASK-040
 - local runtime: frontend, backend ja database omissa Docker-konteissaan
 - production-only deployment: Coolify Docker Compose, with portable
   frontend/backend images and the one-shot migration job defined by

@@ -89,16 +89,24 @@ Complete this section before the first production rollout and for
 authentication, provider or OIDC configuration changes after TASK-040 is
 available. Use only designated test accounts.
 
-- [ ] Human authorization to access the organisation Entra tenant is recorded.
-- [ ] Local Authentik uses its separate local-federation app registration.
-- [ ] Login, callback, first identity link, Schatten session, database role
+- [x] Human authorization to access the organisation Entra tenant is recorded.
+- [x] Local Authentik uses its separate local-federation app registration.
+- [x] Login, callback, first identity link, Schatten session, database role
       enforcement and logout pass through Authentik-to-Entra federation.
-- [ ] A designated unmatched account fails generically and creates no Schatten
+- [x] A designated unmatched account fails generically and creates no Schatten
       User, identity or session.
-- [ ] Browser storage/network and credential-safe logs expose no provider token,
+- [x] Browser storage/network and credential-safe logs expose no provider token,
       secret, code or personal email.
-- [ ] Evidence states that this path does not validate Schatten's direct
+- [x] Evidence states that this path does not validate Schatten's direct
       production Entra client, callback, secret, issuer or Coolify boundary.
+
+Preserved TASK-040 evidence: the checks marked complete above were run for
+commit `c9bb10a8d54564e5d5b9937be3ddc561bf6b97b5` on 2026-08-24 by
+`@jonatanska`. The recorded CI run is
+`https://github.com/reflector-oy/schatten/actions/runs/32713910091`.
+No issues were reported.
+
+This check used the local-only schatten-authentik Entra registration and local Authentik issuer. It validates the Authentik-to-Entra federation path only; it does not validate Schatten’s direct production Entra client, production callback, production secret, production issuer, or Coolify/TLS deployment boundary.
 
 ## Production Deployment Gate
 

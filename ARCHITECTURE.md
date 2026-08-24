@@ -59,10 +59,10 @@ Browser --HTTPS--> Coolify edge --internal HTTP--> Frontend/Caddy :8080
 
 Only frontend/Caddy receives the public application domain. FastAPI and the
 one-shot migration service remain internal. Local development replaces the
-Coolify/Caddy edge with Vite's same-origin `/api` proxy and uses
-repository-managed Authentik. TASK-040 may federate local Authentik to Entra,
-but production connects FastAPI directly to Entra. There is no deployed
-staging environment.
+Coolify/Caddy edge with Vite's same-origin `/api` proxy. Local Authentik is
+served through a separate loopback-only TLS Caddy boundary; it can optionally
+delegate credential verification to a separate local-only Entra registration
+while remaining Schatten's OIDC issuer.
 
 ---
 
@@ -221,11 +221,17 @@ Status: backend OIDC and application-session boundary implemented
 
 FastAPI on confidential OIDC relying party. Sama provider-neutral flow käyttää
 repository-managed Authentikia paikallisesti ja single-tenant Entraa suoraan
-productionissa. TASK-040 voi liittää paikallisen Authentikin Entraan rajattua
-provider-rehearsalia varten, mutta se ei validoi productionin suoraa
-Schatten-to-Entra OIDC-clientia. Local federation ja production käyttävät saman
-tenantin erillisiä confidential Web app registrationeita. React ei ole OIDC
-client eikä providerin access-, refresh- tai ID-token koskaan siirry browserille.
+productionissa. Paikallinen Authentik voidaan opt-in-testissä federatoida saman
+organisaation Entra-tenantiin erillisen local-only-rekisteröinnin kautta. React
+ei ole OIDC client eikä providerin access-, refresh- tai ID-token koskaan
+siirry browserille.
+
+ADR-006:n opt-in local federation rehearsal käyttää ketjua Schatten ->
+`https://auth.localhost:9443` -> Authentik -> single-tenant Entra. Schatten validoi
+edelleen Authentikin issuerin eikä tämä ketju korvaa human-approved limited
+production smokea, joka testaa suoran Schatten-to-Entra-polun ja Coolify-rajan.
+Local TLS Caddy on eri komponentti kuin production frontend/Caddy ja molemmat
+puuttuvat toistensa deploymenteista.
 
 ADR-004:n mukainen opaque sovellusistunto tallennetaan palvelinpuolelle vain
 hashatulla tunnisteella. FastAPI validoi istunnon ja aktiivisen User-rivin
@@ -680,6 +686,7 @@ ADR-002 Database Migration Tool: accepted
 ADR-003 Coolify Deployment And Release Migrations: accepted
 ADR-004 Authentication, Identity And Session Architecture: accepted
 ADR-005 Production-Only Deployment Environments: accepted
+ADR-006 Local Authentik TLS And Optional Entra Federation: accepted
 ```
 
 ---

@@ -32,8 +32,6 @@ services:
   authentik-server:
     image: &authentik-image ghcr.io/goauthentik/server:2026.5.6@sha256:ed120caf710ccf82ef0026f0bc74e51615bc95ebff228a7a2d6fc60c441c3868
     command: server
-    ports:
-      - "127.0.0.1:9000:9000"
     environment: &authentik-environment
       AUTHENTIK_POSTGRESQL__HOST: authentik-database
       AUTHENTIK_POSTGRESQL__NAME: authentik
@@ -56,12 +54,30 @@ services:
       timeout: 5s
       retries: 24
       start_period: 30s
+    volumes:
+      - authentik_data:/data
+
+  authentik-tls:
+    image: docker.io/library/caddy:2.11.4-alpine@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648
+    ports:
+      - "127.0.0.1:9443:9443"
+    depends_on:
+      authentik-server:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--spider", "--no-check-certificate", "https://auth.localhost:9443/-/health/live/"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
     networks:
       default:
         aliases:
           - auth.localhost
     volumes:
-      - authentik_data:/data
+      - ./authentik/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./.local/authentik-tls/auth.localhost.crt:/certs/auth.localhost.crt:ro
+      - ./.local/authentik-tls/auth.localhost.key:/certs/auth.localhost.key:ro
 
   authentik-worker:
     image: *authentik-image
@@ -91,14 +107,15 @@ services:
     environment:
       DATABASE_URL: postgresql://${DATABASE_USER:-schatten}:${DATABASE_PASSWORD:-schatten_dev_password}@database:5432/${DATABASE_NAME:-schatten}
       APP_ENV: ${APP_ENV:-development}
-      OIDC_DISCOVERY_URL: http://auth.localhost:9000/application/o/schatten/.well-known/openid-configuration
-      OIDC_ISSUER: http://auth.localhost:9000/application/o/schatten/
+      OIDC_DISCOVERY_URL: https://auth.localhost:9443/application/o/schatten/.well-known/openid-configuration
+      OIDC_ISSUER: https://auth.localhost:9443/application/o/schatten/
       OIDC_CLIENT_ID: schatten-local
       OIDC_CLIENT_SECRET: ${SCHATTEN_OIDC_CLIENT_SECRET:-}
       OIDC_SCOPES: ${OIDC_SCOPES:-openid profile email}
       OIDC_CALLBACK_PATH: ${OIDC_CALLBACK_PATH:-/api/v1/auth/callback}
       OIDC_ALLOWED_SIGNING_ALGORITHMS: ${OIDC_ALLOWED_SIGNING_ALGORITHMS:-RS256}
       OIDC_REQUIRE_VERIFIED_EMAIL: ${OIDC_REQUIRE_VERIFIED_EMAIL:-true}
+      SSL_CERT_FILE: /etc/ssl/certs/ca-certificates.crt
       PUBLIC_ORIGIN: http://app.localhost:5173
       APP_ALLOWED_ORIGIN: http://app.localhost:5173
       TRUSTED_CADDY_PEER_CIDRS: ${TRUSTED_CADDY_PEER_CIDRS:-}
@@ -110,12 +127,13 @@ services:
     depends_on:
       database:
         condition: service_started
-      authentik-server:
+      authentik-tls:
         condition: service_healthy
       authentik-worker:
         condition: service_started
     volumes:
       - ./backend:/app
+      - ./.local/authentik-tls/ca.crt:/usr/local/share/ca-certificates/schatten-local-authentik.crt:ro
       - backend_uv_cache:/root/.cache/uv
       - backend_venv:/app/.venv
 

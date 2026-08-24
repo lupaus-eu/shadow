@@ -244,19 +244,19 @@ docker compose --env-file .env --env-file .env.authentik.local config --quiet
 ```
 
 Fresh-volume bootstrap pitää ajaa eksplisiittisellä disposable project namella.
-Pysäytä mahdollinen normaali identity stack ensin, jotta loopback-portti 9000
+Pysäytä mahdollinen normaali identity stack ensin, jotta loopback-portti 9443
 vapautuu. Seuraava teardown poistaa vain
 `schatten-authentik-bootstrap-test`-projektin kontit, networkin ja nimetyt
 volumet; se ei kohdista normaaleihin `schatten_*`-volumeihin:
 
 ```bash
-docker compose --env-file .env --env-file .env.authentik.local stop authentik-worker authentik-server authentik-database
+docker compose --env-file .env --env-file .env.authentik.local stop authentik-tls authentik-worker authentik-server authentik-database
 scripts/setup-local-authentik.sh /tmp/schatten-authentik-bootstrap-test.env
 docker compose \
   --project-name schatten-authentik-bootstrap-test \
   --env-file .env \
   --env-file /tmp/schatten-authentik-bootstrap-test.env \
-  up -d --wait authentik-database authentik-server authentik-worker
+  up -d --wait authentik-database authentik-server authentik-worker authentik-tls
 scripts/smoke-local-authentik.sh
 docker compose \
   --project-name schatten-authentik-bootstrap-test \
@@ -287,8 +287,40 @@ kertakäyttöisellä testiclientillä: vaadi `sub`, `name`, `email` ja
 `tid`. Älä lokita tai tallenna oikean browser-flow'n authorization codea,
 tokeneita, cookieita tai salasanoja.
 
+Optional local Entra federation tarkistetaan lisäksi näin:
+
+```bash
+scripts/setup-local-entra.sh
+scripts/verify-local-entra-config.sh
+docker compose \
+  --env-file .env \
+  --env-file .env.authentik.local \
+  --env-file .env.entra.local \
+  -f docker-compose.yml \
+  -f docker-compose.entra.yml \
+  up -d --wait database authentik-database authentik-server authentik-worker authentik-tls
+uv run --env-file .env --project backend python backend/migrate.py up
+scripts/provision-local-entra-user.sh
+docker compose \
+  --env-file .env \
+  --env-file .env.authentik.local \
+  --env-file .env.entra.local \
+  -f docker-compose.yml \
+  -f docker-compose.entra.yml \
+  up -d --wait
+scripts/smoke-local-authentik.sh
+```
+
+Browser QA:ssa vaadi matching-email login, Schattenin tietokantarooli, logout
+ja unmatched Entra emailin geneerinen failure. Tarkista DevToolsista ettei
+provider tokenia ole URL-fragmentissa, web storagessa, cookieissa tai Schattenin
+API-vastauksissa. Tarkista Caddy-, Authentik- ja backend-lokeista, etteivät
+client secret, code, token, cookie, CSRF-arvo tai henkilökohtainen email näy.
+Tuloksiin kirjataan vain päivä, commit, testaaja ja pass/fail.
+
 Lopuksi aja backendin auth-harness ja normaalit baseline-tarkistukset. Local
-provider ei korvaa Entra-integraatiotestausta:
+provider tai local federation ei korvaa human-approved limited direct-Entra
+production smokea:
 
 ```bash
 cd backend

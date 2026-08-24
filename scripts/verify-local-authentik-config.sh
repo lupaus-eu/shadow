@@ -69,21 +69,37 @@ assert server["image"] == (
     "ghcr.io/goauthentik/server:2026.5.6@"
     "sha256:ed120caf710ccf82ef0026f0bc74e51615bc95ebff228a7a2d6fc60c441c3868"
 )
-assert server["ports"] == [
+assert not server.get("ports")
+tls = services["authentik-tls"]
+assert tls["image"] == (
+    "docker.io/library/caddy:2.11.4-alpine@"
+    "sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648"
+)
+assert tls["ports"] == [
     {
         "mode": "ingress",
-        "target": 9000,
-        "published": "9000",
+        "target": 9443,
+        "published": "9443",
         "protocol": "tcp",
         "host_ip": "127.0.0.1",
     }
 ]
+assert services["authentik-tls"]["networks"]["default"]["aliases"] == [
+    "auth.localhost"
+]
+assert all("ca.key" not in mount["source"] for mount in tls["volumes"])
 assert not services["authentik-database"].get("ports")
 assert services["backend"]["environment"]["PUBLIC_ORIGIN"] == (
     "http://app.localhost:5173"
 )
 assert services["backend"]["environment"]["OIDC_ISSUER"] == (
-    "http://auth.localhost:9000/application/o/schatten/"
+    "https://auth.localhost:9443/application/o/schatten/"
+)
+assert services["backend"]["environment"]["SSL_CERT_FILE"] == (
+    "/etc/ssl/certs/ca-certificates.crt"
+)
+assert services["backend"]["depends_on"]["authentik-tls"]["condition"] == (
+    "service_healthy"
 )
 assert services["backend"]["depends_on"]["authentik-worker"]["condition"] == (
     "service_started"

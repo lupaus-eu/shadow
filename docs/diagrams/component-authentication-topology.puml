@@ -11,12 +11,15 @@ rectangle "Local development / testing" {
   component "Vite\nsame-origin /api proxy" as vite
   component "Local FastAPI" as local_api
   database "Local PostgreSQL" as local_db
+  component "Local TLS Caddy\nhttps://auth.localhost:9443\nloopback-only host port" as local_tls
   cloud "Repository-managed Authentik" as authentik
 
   local_browser --> vite : HTTP
   vite --> local_api : /api
   local_api --> local_db
-  local_api ..> authentik : OIDC
+  local_browser ..> local_tls : OIDC browser redirects\nHTTPS
+  local_api ..> local_tls : OIDC discovery, token, JWKS\nHTTPS + local CA trust
+  local_tls --> authentik : Internal HTTP :9000
 }
 
 rectangle "Production (only deployed environment)" {
@@ -37,7 +40,8 @@ prod_api ..> entra : Direct OIDC\nseparate production app registration
 
 note bottom of authentik
   Local federation is supplemental evidence.
-  It does not validate the direct production client.
+  It does not replace the limited direct-Entra
+  production smoke or validate the Coolify boundary.
 end note
 
 note bottom of caddy

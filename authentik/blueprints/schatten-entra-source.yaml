@@ -1,0 +1,44 @@
+# yaml-language-server: $schema=https://goauthentik.io/blueprints/schema.json
+version: 1
+metadata:
+  name: Schatten local Entra source
+  labels:
+    blueprints.goauthentik.io/instantiate: "false"
+    blueprints.goauthentik.io/description: Optional single-tenant Entra source for local end-to-end authentication tests
+entries:
+  - model: authentik_blueprints.metaapplyblueprint
+    attrs:
+      identifiers:
+        name: Default - Source authentication flow
+      required: true
+
+  - model: authentik_blueprints.metaapplyblueprint
+    attrs:
+      identifiers:
+        name: Default - Source enrollment flow
+      required: true
+
+  - model: authentik_sources_oauth.oauthsource
+    identifiers:
+      slug: schatten-auth
+    attrs:
+      name: Microsoft Entra development
+      slug: schatten-auth
+      enabled: true
+      promoted: true
+      authentication_flow: !Find [authentik_flows.flow, [slug, default-source-authentication]]
+      enrollment_flow: !Find [authentik_flows.flow, [slug, default-source-enrollment]]
+      user_matching_mode: identifier
+      group_matching_mode: identifier
+      user_property_mappings:
+        - !Find [authentik_sources_oauth.oauthsourcepropertymapping, [name, Schatten Entra source verified email]]
+      group_property_mappings: []
+      provider_type: entraid
+      consumer_key: !Env ENTRA_APPLICATION_CLIENT_ID
+      consumer_secret: !Env ENTRA_CLIENT_SECRET
+      additional_scopes: ""
+      authorization_url: !Format ["https://login.microsoftonline.com/%s/oauth2/v2.0/authorize", !Env ENTRA_DIRECTORY_TENANT_ID]
+      access_token_url: !Format ["https://login.microsoftonline.com/%s/oauth2/v2.0/token", !Env ENTRA_DIRECTORY_TENANT_ID]
+      profile_url: https://graph.microsoft.com/v1.0/me
+      oidc_jwks_url: !Format ["https://login.microsoftonline.com/%s/discovery/v2.0/keys", !Env ENTRA_DIRECTORY_TENANT_ID]
+      authorization_code_auth_method: post_body

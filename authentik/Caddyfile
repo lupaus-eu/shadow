@@ -1,0 +1,25 @@
+{
+	auto_https off
+}
+
+https://auth.localhost:9443 {
+	tls /certs/auth.localhost.crt /certs/auth.localhost.key
+
+	log {
+		output stdout
+		format filter {
+			request>uri query {
+				replace code REDACTED
+				replace state REDACTED
+				replace error REDACTED
+				replace error_description REDACTED
+			}
+			wrap json
+		}
+	}
+
+	@invalid_host not host auth.localhost
+	respond @invalid_host "Invalid host" 400
+
+	reverse_proxy authentik-server:9000
+}
