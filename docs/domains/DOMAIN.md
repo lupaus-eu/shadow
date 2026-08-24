@@ -24,6 +24,7 @@ docs/domains/CUSTOMER.md
 docs/domains/BILLING.md
 docs/domains/DOCUMENT.md
 docs/domains/AI.md
+docs/domains/FORECASTING.md
 docs/domains/USERS.md
 docs/domains/ORGANISATIONS.md
 docs/domains/ORG_STATES.md
@@ -201,6 +202,44 @@ Primary APIs:
 Related Documents:
 
 - `docs/domains/ORG_TWIN_STRUCTURE.md`
+
+## Forecasting Domain
+
+Status: accepted in ADR-007; implementation is deferred to TASK-041B and
+TASK-041C.
+
+Responsible for:
+
+- immutable derived prediction versions
+- target-metric prediction records and per-model result metadata
+- dated prediction points and model/source-input audit snapshots
+
+Owns:
+
+- planned prediction version and result tables
+
+Does NOT Own:
+
+- organisations, scenarios, events or timeserie values
+- graph nodes, graph edges or metamodels
+- manually entered Reality data
+
+Depends On:
+
+- Organisations Domain
+- Organisation States Domain for Reality values, target scenarios and events
+- Organisation Twin Structure Domain for target-scenario graph history
+- Users Domain for audit references
+
+Primary APIs:
+
+- planned organisation-scoped prediction preflight, creation, list and detail
+  APIs; public routes are defined in TASK-041B
+
+Related Documents:
+
+- `docs/decisions/ADR-007-predictions-forecasting-domain.md`
+- `docs/domains/FORECASTING.md`
 
 ---
 
