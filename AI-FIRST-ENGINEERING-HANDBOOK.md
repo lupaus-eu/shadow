@@ -567,15 +567,19 @@ docs(workflow): document AI-first PR process
 
 ## 16. Deploy
 
-Kun deployment on päätetty ADR:ssä, merge mainiin käynnistää sovitun julkaisuprosessin.
+Kun deployment on päätetty ADR:ssä, julkaisu seuraa hyväksyttyä runbookia.
+Merge mainiin tai vihreä CI ei itsessään ole tuotantojulkaisun hyväksyntä.
 
-Tyypillinen malli:
+Schattenin nykyinen malli:
 
 ```text
-main -> GitHub Actions -> Docker image -> staging -> production
+main -> GitHub Actions -> commit-specific images -> human deployment gate -> production
 ```
 
-Tuotantojulkaisu on ihmisen vastuulla.
+ADR-005:n mukaisesti Schattenilla ei ole staging-ympäristöä. Jokainen
+tuotantojulkaisu vaatii `docs/DEPLOYMENT.md`:ssä määritellyn backup-, rollback-,
+hyväksyntä- ja rajatun production smoke -portin. Tuotantojulkaisu on ihmisen
+vastuulla.
 
 ## 17. Close Work
 
@@ -831,7 +835,7 @@ Pakollista:
 - authentication checks
 - authorization checks backendissä
 - parameterized SQL tai ORM:n turvalliset kyselyt
-- HTTPS tuotanto- ja staging-ympäristöissä
+- HTTPS tuotannossa; dokumentoitu paikallinen kehitys voi käyttää HTTP:tä
 - secrets ympäristömuuttujissa tai secret managerissa
 
 Kielletty:

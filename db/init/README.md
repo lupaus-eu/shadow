@@ -71,7 +71,8 @@ The schema source of truth is:
 db/migrations/
 ```
 
-Init scripts may help create a local database quickly, but production and staging schema changes must flow through migrations.
+Init scripts may help create a local database quickly, but production schema
+changes must flow through migrations.
 
 Run migrations before seed scripts. For the current local database baseline:
 

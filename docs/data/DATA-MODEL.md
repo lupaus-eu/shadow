@@ -70,6 +70,10 @@ Lue nämä yhdessä datamallin kanssa:
   User or provider-token relationship.
 - Sessions reference one User and persist no raw session identifier or provider
   token.
+- Authentication configuration, provider tokens and Entra/Authentik resources
+  are not logical entities. A session is bounded by a 30-minute idle timeout
+  and fixed eight-hour absolute expiry; exact `(issuer, subject)` remains the
+  durable link after guarded email-based first discovery.
 - An organisation owns many scenarios.
 - Active organisations cannot share the same name when compared case-insensitively.
 - A scenario owns many organisation states and events.

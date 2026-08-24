@@ -146,7 +146,7 @@ organisation stateen. Muuten rollback epäonnistuu atomisesti.
 
 ## Deployment Compatibility
 
-Staging- ja production-release ajaa `python migrate.py up` erillisenä one-shot
+Production-release ajaa `python migrate.py up` erillisenä one-shot
 jobina ennen uuden backendin käynnistymistä. Sama immutable backend-image sisältää
 sekä runnerin että tämän hakemiston migraatiot. PostgreSQL advisory lock suojaa
 myös rinnakkaisilta deploymenteilta.

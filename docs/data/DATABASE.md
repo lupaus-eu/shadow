@@ -122,6 +122,10 @@ back.
   provider-token column.
 - OIDC transaction expiry is after creation; session last activity is not
   before creation and absolute expiry is after creation.
+- Runtime configuration enforces ten-minute login transactions, 30-minute idle
+  sessions and an eight-hour absolute session maximum. Provider tokens, client
+  secrets and raw session/pre-authentication cookie values have no columns and
+  are never persisted.
 - Active organisation names are unique case-insensitively through `lower(name)` where `deleted_time IS NULL`; soft-deleted historical names are reusable.
 - `org_states.target_date` and `events.target_date` are required with `NOT NULL` constraints.
 - `org_states.scenario_id` and `events.scenario_id` use `ON DELETE CASCADE` for physical hard-delete cleanup/safety behavior.
@@ -257,8 +261,8 @@ one-shot release jobina ennen uuden backendin käynnistymistä. Epäonnistunut j
 estää uuden backendin käynnistymisen. Onnistuneita forward-migraatioita ei
 peruta automaattisesti deployment- tai application rollbackin yhteydessä.
 
-Jokainen olemassa oleva staging- tai production-tietokanta tarkistetaan ja
-backup otetaan ennen automaation käyttöönottoa. Jos ei-tyhjältä tietokannalta
+Olemassa oleva production-tietokanta tarkistetaan ja backup otetaan ennen
+automaation käyttöönottoa. Jos ei-tyhjältä tietokannalta
 puuttuu migraatiohistoria, operaattori varmistaa skeematason ja ajaa
 `baseline NNN`:n eksplisiittisesti. Deployment ei päättele baseline-versiota.
 

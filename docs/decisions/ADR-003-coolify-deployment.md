@@ -4,6 +4,11 @@ Status: Accepted
 
 Date: 2026-08-06
 
+Partial supersession: ADR-005 removes staging from the active environment model.
+The Coolify production topology, immutable-image contract, one-shot migration
+gate and forward-only application rollback decisions in this ADR remain active.
+Historical staging text below is retained as decision history.
+
 ---
 
 # Context
@@ -129,6 +134,11 @@ Costs and constraints:
 - Preserve the local development Compose workflow separately.
 
 # References
+
+- ADR-004 extends this release topology with a separately immutable
+  frontend/Caddy artifact as the only public ingress. It preserves this ADR's
+  shared backend/migration artifact, one-shot migration and failure gate.
+- The implemented operator contract is in `docs/DEPLOYMENT.md`.
 
 - Coolify Docker Compose build pack and `exclude_from_hc`:
   `https://coolify.io/docs/applications/build-packs/docker-compose`

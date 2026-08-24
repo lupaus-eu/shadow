@@ -1,8 +1,9 @@
 import os
+import re
 from functools import lru_cache
-from ipaddress import IPv4Network, IPv6Network, ip_network
+from ipaddress import IPv4Network, IPv6Network, ip_address, ip_network
 from typing import Literal
-from urllib.parse import urlsplit
+from urllib.parse import SplitResult, urlsplit
 
 from pydantic import Field, SecretStr, field_validator, model_validator
 
@@ -12,6 +13,10 @@ DEFAULT_DATABASE_URL = (
     "postgresql://schatten:schatten_dev_password@localhost:5432/schatten"
 )
 AppEnvironment = Literal["test", "development", "production"]
+ORIGIN_HOST_LABEL = re.compile(
+    r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$"
+)
+LEGACY_IPV4_LABEL = re.compile(r"^(?:0[xX][0-9A-Fa-f]+|[0-9]+)$")
 
 
 class Settings(StrictBaseModel):
@@ -123,6 +128,10 @@ class Settings(StrictBaseModel):
         if self.app_environment == "production":
             if public.scheme != "https" or allowed.scheme != "https":
                 raise ValueError("Production origins must use HTTPS")
+            if public.port is not None or allowed.port is not None:
+                raise ValueError(
+                    "Production origins must not include an explicit port"
+                )
             if self.allowed_origin != self.public_origin:
                 raise ValueError(
                     "Production APP_ALLOWED_ORIGIN must equal PUBLIC_ORIGIN"
@@ -165,13 +174,14 @@ class Settings(StrictBaseModel):
                 raise ValueError(f"{name} must be an absolute HTTP(S) URL")
             if self.app_environment == "production" and parsed.scheme != "https":
                 raise ValueError(f"{name} must use HTTPS in production")
-        issuer = urlsplit(self.oidc_issuer)
-        if issuer.hostname == "login.microsoftonline.com":
-            path_parts = {part.lower() for part in issuer.path.split("/") if part}
-            if path_parts.intersection({"common", "organizations", "consumers"}):
-                raise ValueError(
-                    "OIDC_ISSUER must use a tenant-specific Entra authority"
-                )
+            if parsed.hostname == "login.microsoftonline.com":
+                path_parts = {
+                    part.lower() for part in parsed.path.split("/") if part
+                }
+                if path_parts.intersection({"common", "organizations", "consumers"}):
+                    raise ValueError(
+                        f"{name} must use a tenant-specific Entra authority"
+                    )
 
     @property
     def public_host(self) -> str:
@@ -251,8 +261,24 @@ def get_sqlalchemy_database_url(settings: Settings) -> str:
     return settings.database_url
 
 
-def _validated_origin(value: str, name: str):  # type: ignore[no-untyped-def]
-    parsed = urlsplit(value)
+def _validated_origin(value: str, name: str) -> SplitResult:
+    error_message = (
+        f"{name} must be an HTTP(S) origin with one literal hostname or IP "
+        "and an optional valid port"
+    )
+    if "%" in value or any(
+        character.isspace() or ord(character) < 32 or ord(character) == 127
+        for character in value
+    ):
+        raise ValueError(error_message)
+
+    try:
+        parsed = urlsplit(value)
+        hostname = parsed.hostname
+        port = parsed.port
+    except ValueError as error:
+        raise ValueError(error_message) from error
+
     if (
         parsed.scheme not in {"http", "https"}
         or not parsed.netloc
@@ -261,8 +287,50 @@ def _validated_origin(value: str, name: str):  # type: ignore[no-untyped-def]
         or parsed.fragment
         or parsed.username is not None
         or parsed.password is not None
+        or hostname is None
+        or not _is_literal_origin_host(hostname)
+        or port == 0
     ):
-        raise ValueError(
-            f"{name} must be an HTTP(S) origin without path, query or fragment"
+        raise ValueError(error_message)
+
+    try:
+        address = ip_address(hostname)
+    except ValueError:
+        serialized_host = hostname
+        canonical_host = hostname.casefold()
+    else:
+        serialized_host = f"[{hostname}]" if address.version == 6 else hostname
+        canonical_address = address.compressed
+        canonical_host = (
+            f"[{canonical_address}]" if address.version == 6 else canonical_address
         )
+    if port is not None:
+        serialized_host = f"{serialized_host}:{port}"
+        canonical_host = f"{canonical_host}:{port}"
+    if parsed.netloc.casefold() != serialized_host.casefold():
+        raise ValueError(error_message)
+
+    default_port = 80 if parsed.scheme == "http" else 443
+    if port == default_port:
+        canonical_host = canonical_host.rsplit(":", 1)[0]
+    canonical_origin = f"{parsed.scheme}://{canonical_host}"
+    if value != canonical_origin:
+        raise ValueError(
+            f"{name} must use its browser-canonical lowercase serialization"
+        )
+
     return parsed
+
+
+def _is_literal_origin_host(hostname: str) -> bool:
+    try:
+        ip_address(hostname)
+    except ValueError:
+        labels = hostname.split(".")
+        if all(LEGACY_IPV4_LABEL.fullmatch(label) is not None for label in labels):
+            return False
+        return len(hostname) <= 253 and all(
+            ORIGIN_HOST_LABEL.fullmatch(label) is not None
+            for label in labels
+        )
+    return True

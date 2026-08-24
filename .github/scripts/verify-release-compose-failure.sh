@@ -4,6 +4,15 @@ set -euo pipefail
 
 : "${BACKEND_IMAGE:?Set BACKEND_IMAGE to the locally built release image}"
 
+export FRONTEND_IMAGE="${BACKEND_IMAGE}"
+export OIDC_DISCOVERY_URL="https://login.microsoftonline.com/tenant-id/v2.0/.well-known/openid-configuration"
+export OIDC_ISSUER="https://login.microsoftonline.com/tenant-id/v2.0"
+export OIDC_CLIENT_ID="test-client"
+export OIDC_CLIENT_SECRET="test-secret"
+export PUBLIC_ORIGIN="https://app.example.test"
+export TRUSTED_CADDY_PEER_CIDRS="172.30.0.0/24"
+export CADDY_TRUSTED_PROXY_CIDRS="172.29.0.0/24"
+
 gate_run_id="${GITHUB_RUN_ID:-$$}"
 gate_run_attempt="${GITHUB_RUN_ATTEMPT:-1}"
 gate_project="task038-gate-${gate_run_id}-${gate_run_attempt}"
@@ -73,25 +82,27 @@ if [[ "${gate_status}" == "0" ]]; then
   exit 1
 fi
 
-backend_container="$({
-  docker compose \
-    --project-name "${gate_project}" \
-    --file docker-compose.production.yml \
-    ps --all --quiet backend
-} 2>/dev/null)"
-
-if [[ -n "${backend_container}" ]]; then
-  backend_started_at="$(docker inspect --format '{{.State.StartedAt}}' "${backend_container}")"
-  backend_running="$(docker inspect --format '{{.State.Running}}' "${backend_container}")"
-
-  if [[ "${backend_started_at}" != "0001-01-01T00:00:00Z" || "${backend_running}" != "false" ]]; then
-    echo "Backend started even though the migration service failed." >&2
+for service in backend frontend; do
+  service_container="$({
     docker compose \
       --project-name "${gate_project}" \
       --file docker-compose.production.yml \
-      ps --all
-    exit 1
-  fi
-fi
+      ps --all --quiet "${service}"
+  } 2>/dev/null)"
 
-echo "Migration failure returned nonzero and prevented backend startup."
+  if [[ -n "${service_container}" ]]; then
+    service_started_at="$(docker inspect --format '{{.State.StartedAt}}' "${service_container}")"
+    service_running="$(docker inspect --format '{{.State.Running}}' "${service_container}")"
+
+    if [[ "${service_started_at}" != "0001-01-01T00:00:00Z" || "${service_running}" != "false" ]]; then
+      echo "${service} started even though the migration service failed." >&2
+      docker compose \
+        --project-name "${gate_project}" \
+        --file docker-compose.production.yml \
+        ps --all
+      exit 1
+    fi
+  fi
+done
+
+echo "Migration failure returned nonzero and prevented backend/frontend startup."

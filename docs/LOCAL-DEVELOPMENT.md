@@ -147,6 +147,18 @@ Jos ajat frontendin Dockerissa mutta backendin suoraan hostilla, käytä:
 FRONTEND_DEV_API_PROXY_TARGET=http://host.docker.internal:8000
 ```
 
+Viten local `/api` proxy exercises the same browser-visible one-origin contract
+as production Caddy. Production does not ship Vite or Authentik: it serves the
+same `pnpm build` output from Caddy and changes only the backend OIDC provider
+configuration to tenant-specific Entra values. Do not add provider-specific
+logic or browser tokens to the frontend when comparing environments.
+
+ADR-005 defines only local development/testing and production. TASK-040 may add
+an opt-in local overlay that federates this repository-managed Authentik to the
+same organisation's Entra tenant through a local-only app registration. That
+supplemental path is not a production-like environment and does not validate
+FastAPI's direct production Entra client.
+
 Backend-kehityskontti:
 
 ```bash
@@ -273,6 +285,10 @@ Preview on saatavilla osoitteessa:
 http://localhost:4173
 ```
 
+The preview target is a developer convenience and does not reproduce the
+production Host/proxy/header boundary. Build and verify the actual Caddy target
+with the commands in `docs/DEPLOYMENT.md` when changing release behavior.
+
 Tietokantakontti:
 
 ```bash
@@ -391,8 +407,8 @@ Baseline ei tarkista skeeman sisältöä eikä päättele sen versiota. Komento 
 operaattorin vakuutus valitusta tasosta, ja se sallitaan vain olemassa olevalle
 skeemalle, jolla ei vielä ole migraatiohistoriaa.
 
-Staging- ja production-tietokantojen käyttöönotto, backup- ja baseline-portti
-sekä automaattinen release migration on kuvattu erikseen tiedostossa
+Production-tietokannan käyttöönotto, backup- ja baseline-portti sekä
+automaattinen release migration on kuvattu erikseen tiedostossa
 `docs/DEPLOYMENT.md`. Älä käytä production Compose -tiedostoja paikallisen dev
 backendin korvikkeena.
 
@@ -411,7 +427,7 @@ Seed lukee lähteen ajon aikana tiedostosta:
 db/init/metamodel_state_##default##.json
 ```
 
-Seed on tarkoitettu vain paikalliseen kehitykseen. Sitä ei ajeta staging- tai tuotantoympäristöihin.
+Seed on tarkoitettu vain paikalliseen kehitykseen. Sitä ei ajeta tuotantoon.
 
 ## Rendering Diagrams
 

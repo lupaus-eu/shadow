@@ -60,6 +60,10 @@ Provider tokens, raw session identifiers and client secrets are not session
 fields. The CSRF token is not sufficient without the separate HttpOnly session
 cookie.
 
+The application session has a 30-minute idle timeout and a fixed eight-hour
+absolute lifetime. Provider-side logout or disablement does not immediately
+revoke it; Schatten User disablement or administrator session revocation does.
+
 ## Authorization And Audit Actors
 
 The active User row is reloaded for each authenticated request so soft deletion
@@ -75,3 +79,5 @@ as appropriate without backfilling earlier null values.
 ## Related Decision
 
 - `docs/decisions/ADR-004-authentication.md`
+- `docs/DEPLOYMENT.md`
+- `docs/qa/AUTHENTICATION-QA-CHECKLIST.md`

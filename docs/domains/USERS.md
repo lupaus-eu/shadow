@@ -33,7 +33,7 @@ Provides:
 
 Does NOT Own:
 
-- Microsoft Entra ID or Authentik configuration and protocol adapters
+- Microsoft Entra ID or local Authentik configuration and OIDC protocol adapters
 - organisation membership rules
 - organisation data
 - scenario or graph data
@@ -72,6 +72,9 @@ User `role` must be one of:
 - Application sessions persist only a SHA-256 session identifier hash, a
   session-bound CSRF token and timestamps for idle and absolute expiry.
 - Provider tokens, raw session identifiers and client secrets are never stored.
+- Sessions have a 30-minute idle and fixed eight-hour absolute maximum
+  lifetime. Administrator revocation and User soft deletion invalidate access
+  without depending on provider logout.
 
 ## Audit References
 
@@ -140,7 +143,10 @@ Exact HTTP operations and versioned paths are defined in backend implementation 
 
 Depends On:
 
-- Microsoft Entra ID, when authentication is implemented
+- the provider-neutral FastAPI OIDC adapter
+- repository-managed Authentik for local authentication, including optional
+  TASK-040 federation to Entra
+- tenant-specific Microsoft Entra ID directly in production
 
 Referenced By:
 
@@ -194,3 +200,11 @@ Avoid:
 Both application roles are internal trusted users with access to all
 non-Users business domains and all organisations. Revisit ADR-004 before
 admitting users outside this boundary or adding organisation isolation.
+
+The initial direct-production Entra first-link accepts a validated tenant email
+only to find one pre-provisioned active User. Missing email prevents first link;
+exact `(issuer, subject)` is permanent afterward. There is no provider group
+mapping, Graph access, refresh token, back-channel logout or immediate IdP
+revocation.
+Local Authentik-to-Entra federation, when enabled by TASK-040, does not change
+these ownership or role rules.

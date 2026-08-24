@@ -12,3 +12,9 @@ services:
       file: docker-compose.release.yml
       service: backend
     image: schatten-backend-${COOLIFY_RESOURCE_UUID:?Coolify resource UUID is required}:${SOURCE_COMMIT:?Coolify source commit is required}
+
+  frontend:
+    extends:
+      file: docker-compose.release.yml
+      service: frontend
+    image: schatten-frontend-${COOLIFY_RESOURCE_UUID:?Coolify resource UUID is required}:${SOURCE_COMMIT:?Coolify source commit is required}

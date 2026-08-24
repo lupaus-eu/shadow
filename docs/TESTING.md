@@ -105,7 +105,15 @@ docker build --target production -t schatten-backend:local -f backend/Dockerfile
 
 env \
   BACKEND_IMAGE=schatten-backend:local \
+  FRONTEND_IMAGE=schatten-frontend:local \
   DATABASE_URL=postgresql://user:password@database:5432/schatten \
+  OIDC_DISCOVERY_URL=https://login.microsoftonline.com/tenant-id/v2.0/.well-known/openid-configuration \
+  OIDC_ISSUER=https://login.microsoftonline.com/tenant-id/v2.0 \
+  OIDC_CLIENT_ID=test-client \
+  OIDC_CLIENT_SECRET=test-secret \
+  PUBLIC_ORIGIN=https://app.example.test \
+  TRUSTED_CADDY_PEER_CIDRS=172.30.0.0/24 \
+  CADDY_TRUSTED_PROXY_CIDRS=172.29.0.0/24 \
   docker compose -f docker-compose.production.yml config --quiet
 
 docker run --rm \
@@ -117,17 +125,49 @@ docker run --rm \
 
 Against disposable PostgreSQL, verify fresh `up`, repeated no-op `up`, failure
 blocking and concurrent-runner serialization before backend startup. Never use
-a developer's normal schema, staging or production for destructive tests.
+a developer's normal schema or production for destructive tests.
 
 CI runs `.github/scripts/verify-release-compose-failure.sh` against an isolated
 PostgreSQL container. The script corrupts disposable migration history, starts
 the real production Compose model and requires both a nonzero deployment result
 and no running backend service.
 
+## Production Frontend And Authentication Deployment
+
+TASK-039G adds the immutable frontend/Caddy artifact and makes it the only
+public release service. Run the production Compose and live ingress regression:
+
+```bash
+.github/scripts/verify-production-compose.sh
+
+docker build --target production -t schatten-frontend:local \
+  -f frontend/Dockerfile frontend
+FRONTEND_IMAGE=schatten-frontend:local \
+  .github/scripts/verify-production-frontend.sh
+```
+
+The Compose check verifies required settings, migration-only database
+configuration, immutable backend/frontend images, internal ports and the
+migration -> backend health -> frontend gate. The live Caddy check covers
+configuration adaptation/startup, non-canonical, port-bearing, malformed or
+wildcard origin rejection, image health, SPA fallback, exact Host rejection,
+strict trusted-proxy parsing, forwarded-header replacement, HSTS,
+Referrer-Policy, nosniff, frame denial, enforced CSP and selective callback
+query redaction while retaining ordinary request metadata.
+
+Automated checks do not replace provider/browser verification. Run the broad
+`docs/qa/AUTHENTICATION-QA-CHECKLIST.md` locally with repository-managed
+Authentik. Before the first production rollout and for authentication, provider
+or OIDC configuration changes, TASK-040 additionally requires a designated-user
+local Authentik-to-Entra smoke. That path is supplemental and does not prove the
+direct production OIDC client.
+
 The standard production Compose model is validated locally. The thin Coolify
-manifest must additionally be parsed and rehearsed in Coolify because
-`exclude_from_hc` is a provider-specific field. A staging rehearsal requires
-human authorization and its result must be recorded in the PR.
+manifest must additionally be parsed by Coolify because `exclude_from_hc` is a
+provider-specific field. There is no staging rehearsal. After each
+human-approved production deployment, operators run only the limited direct
+Entra smoke defined in `docs/DEPLOYMENT.md`; destructive, load, failure
+injection and broad automated testing are prohibited against production.
 
 ## Integration Change
 

@@ -10,3 +10,9 @@ services:
       file: docker-compose.release.yml
       service: backend
     image: ${BACKEND_IMAGE:?Set BACKEND_IMAGE to an immutable release image reference}
+
+  frontend:
+    extends:
+      file: docker-compose.release.yml
+      service: frontend
+    image: ${FRONTEND_IMAGE:?Set FRONTEND_IMAGE to an immutable release image reference}

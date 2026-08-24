@@ -54,9 +54,13 @@ Päätetty rakenne:
 - backend: Python, FastAPI, Pydantic, uv, pytest, pyright, Ruff hakemistossa `backend/`
 - database: PostgreSQL
 - ORM: SQLAlchemy
-- authentication: Microsoft Entra ID
-- local runtime: frontend, backend ja database omissa Docker-konteissaan
-- staging and production deployment: Coolify Docker Compose (ADR-003)
+- authentication: backend-managed OIDC session; local Authentik, optional local
+  Authentik-to-Entra federation and direct single-tenant Microsoft Entra ID in
+  production
+- local runtime: frontend, backend, application database and local-only
+  Authentik in Docker contexts
+- production-only deployment: one HTTPS origin through the frontend/Caddy
+  service in Coolify Docker Compose (ADR-003/ADR-005)
 
 Frontendin voi ajaa Dockerissa:
 
@@ -92,9 +96,13 @@ Migraatiokäytännöt, rollback-komennot ja olemassa olevan tietokannan baseline
 on kuvattu tiedostoissa `db/migrations/README.md` ja
 `docs/LOCAL-DEVELOPMENT.md`.
 
-Production-image, automaattinen release migration ja Coolify-konfiguraatio on
-kuvattu tiedostossa `docs/DEPLOYMENT.md`. Deployment ajaa migraatiot erillisenä
-jobina; backendin normaali startup ei muuta skeemaa.
+Production frontend/backend images, automatic release migration, required
+Entra/Coolify configuration, backup/approval gates, limited production smoke
+and rollback workflow are documented in `docs/DEPLOYMENT.md`. Local and
+production evidence uses `docs/qa/AUTHENTICATION-QA-CHECKLIST.md`. Deployment
+runs migrations as a separate job; normal backend startup does not mutate the
+schema. These instructions do not authorize a production deployment, Entra
+resource change, tag operation, backup or restore.
 
 Buildatun frontendin preview:
 

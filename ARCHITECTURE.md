@@ -8,7 +8,7 @@ Tämän tiedoston tulee kuvata päätettyä tai toteutettua nykytilaa. Tulevaisu
 
 # Current Status
 
-Status: project bootstrap
+Status: MVP bootstrap with authentication and release ingress implemented
 
 Teknologiapino on päätetty ADR-001:ssä.
 
@@ -18,9 +18,13 @@ Päätetty tekninen perusrakenne:
 - backend: Python, FastAPI, Pydantic, uv, pytest, pyright, Ruff hakemistossa `backend/`
 - database: PostgreSQL
 - ORM: SQLAlchemy
-- authentication: Microsoft Entra ID
-- local runtime: frontend, backend ja database omissa Docker-konteissaan
-- staging and production deployment: Coolify Docker Compose
+- authentication: provider-neutral backend OIDC; repository-managed Authentik
+  locally, optionally federated to Entra, and direct Microsoft Entra ID in
+  production
+- local runtime: frontend, backend, database and local-only Authentik in Docker
+  contexts
+- production-only deployment: Coolify Docker Compose with a Caddy same-origin
+  frontend ingress
 - release migrations: one-shot job using the same backend image as the API
 
 Tarkemmat toteutusyksityiskohdat täsmentyvät taskien ja tarvittaessa uusien ADR:ien kautta.
@@ -41,30 +45,30 @@ Kun tuotesuunta täsmentyy, lisää tähän lyhyt kuvaus:
 
 ---
 
-# Target Shape
+# Implemented Runtime Shape
 
-Päätetty tavoiterakenne:
+Production-rakenne:
 
 ```text
-Frontend container
-React / TypeScript / Vite
-   |
-   v
-Backend container
-FastAPI / Python
-   |
-   +--> Database container
-   |    PostgreSQL
-   |
-   +--> External integrations
-        Microsoft Entra ID
+Browser --HTTPS--> Coolify edge --internal HTTP--> Frontend/Caddy :8080
+                                                   | React SPA
+                                                   +--/api--> FastAPI :8000
+                                                               |--> PostgreSQL
+                                                               +--> Entra ID
 ```
+
+Only frontend/Caddy receives the public application domain. FastAPI and the
+one-shot migration service remain internal. Local development replaces the
+Coolify/Caddy edge with Vite's same-origin `/api` proxy and uses
+repository-managed Authentik. TASK-040 may federate local Authentik to Entra,
+but production connects FastAPI directly to Entra. There is no deployed
+staging environment.
 
 ---
 
 # Frontend
 
-Status: decided in ADR-001
+Status: React UI and production Caddy target implemented
 
 Frontend sijaitsee hakemistossa:
 
@@ -81,9 +85,12 @@ Teknologiat:
 - Vitest
 - ESLint
 
-Frontend kutsuu backendin APIa. Frontend ei tee suoria tietokantakutsuja eikä sisällä luotettavaa authorization-logiikkaa.
-
-State management, API client -rakenne ja routing täsmennetään ensimmäisissä frontend-taskeissa.
+Frontend kutsuu backendin APIa saman originin `/api`-polulla. Tuotantoimage
+rakentaa Vite SPA:n ja palvelee sen pinnatulla virallisella Caddy-imagella.
+Caddy tarjoaa history fallbackin, proxyaa `/api`:n, hylkää väärän Hostin,
+ylikirjoittaa luotetut proxy-headerit, redaktoi sensitiiviset query-arvot ja
+asettaa CSP- sekä muut selainsecurity-headerit. Frontend ei tee suoria
+tietokantakutsuja eikä sisällä luotettavaa authorization-logiikkaa.
 
 ## Frontend Principles
 
@@ -101,7 +108,7 @@ Kaikki luotettava data ja oikeustarkistus kulkee backendin kautta.
 
 # Backend
 
-Status: decided in ADR-001
+Status: FastAPI application and authentication boundary implemented
 
 Backend sijaitsee hakemistossa:
 
@@ -122,7 +129,8 @@ Teknologiat:
 
 Backend tarjoaa API-rajapinnan frontendille ja vastaa luotettavasta validoinnista, autentikoinnista, authorizationista, liiketoimintalogiikasta ja tietokantaoperaatioista. API-skeemat ja validointi tehdään Pydanticilla FastAPI:n käytäntöjen mukaisesti.
 
-API-rakenne, moduulirakenne, virheformaatti ja tarkka autentikointi-/authorization-malli täsmennetään toteutustaskeissa ja tarvittaessa erillisissä ADR:issä.
+OIDC-, session-, authentication- ja initial authorization -malli on toteutettu
+ADR-004:n mukaisesti.
 
 ## Backend Principles
 
@@ -211,14 +219,41 @@ If a concept changes meaning, lifecycle or ownership, update concept, domain, da
 
 Status: backend OIDC and application-session boundary implemented
 
-Autentikointi perustuu Microsoft Entra ID:hen.
+FastAPI on confidential OIDC relying party. Sama provider-neutral flow käyttää
+repository-managed Authentikia paikallisesti ja single-tenant Entraa suoraan
+productionissa. TASK-040 voi liittää paikallisen Authentikin Entraan rajattua
+provider-rehearsalia varten, mutta se ei validoi productionin suoraa
+Schatten-to-Entra OIDC-clientia. Local federation ja production käyttävät saman
+tenantin erillisiä confidential Web app registrationeita. React ei ole OIDC
+client eikä providerin access-, refresh- tai ID-token koskaan siirry browserille.
 
-ADR-004 määrittää provider-neutralin OIDC-login flow'n ja opaque,
-palvelinpuolisen sovellusistunnon. FastAPI validoi istunnon jokaisella
-autentikoidulla pyynnöllä ja hylkää vanhentuneen istunnon sekä soft-deletoidun
-käyttäjän.
+ADR-004:n mukainen opaque sovellusistunto tallennetaan palvelinpuolelle vain
+hashatulla tunnisteella. FastAPI validoi istunnon ja aktiivisen User-rivin
+jokaisella autentikoidulla pyynnöllä. Istunnolla on 30 minuutin idle- ja
+kahdeksan tunnin absoluuttinen enimmäisaika, ja admin voi revokoida käyttäjän
+kaikki sovellusistunnot.
+
+Ensimmäinen onnistunut linkitys vaatii aktiivisen pre-provisionoidun Userin ja
+matching emailin; tämän jälkeen exact, case-sensitive `(issuer, subject)` on
+pysyvä avain. Missing email, väärä tenant/issuer tai ristiriitainen linkitys
+failaa suljetusti.
 
 Salasanapolitiikkaa ei hallita sovelluksessa, ellei Entra ID -integraation ulkopuolelle lisätä erillistä kirjautumistapaa.
+
+Tunnetut rajat: ei organisation membership authorizationia, back-channel
+logoutia, immediate IdP revocationia, provider group mappingia, Graph-kutsuja,
+refresh tokeneita tai SCIM-provisionointia. Kaikkien aktiivisten sisäisten
+käyttäjien all-organisation access ja rajattu Entra email first-link ovat
+hyväksyttyjä trust-model-valintoja, eivät toteutusaukkoja.
+
+Authentication component- ja login sequence -kuvat:
+
+- `docs/diagrams/component-authentication-topology.puml`
+- `docs/diagrams/sequence-oidc-login.puml`
+
+![Authentication deployment components](docs/diagrams/generated/component-authentication-topology.svg)
+
+![OIDC login sequence](docs/diagrams/generated/sequence-oidc-login.svg)
 
 ---
 
@@ -564,7 +599,7 @@ Mahdollisia mittareita myöhemmin:
 
 Pakolliset periaatteet:
 
-- HTTPS tuotanto- ja staging-ympäristöissä
+- HTTPS tuotannossa
 - input validation
 - backend authorization checks
 - secrets ympäristömuuttujissa tai secret managerissa
@@ -581,11 +616,11 @@ Kielletty:
 
 # Deployment
 
-Status: staging and production baseline decided in ADR-003
+Status: production-only baseline decided in ADR-003 and ADR-005
 
-Staging- ja production-deployment tehdään Coolifyssa Docker Compose -topologialla.
-Coolify korvaa ADR-001:n alkuperäisen Railway-valinnan muuttamatta ADR-001:n
-historiallista teknologiapäätöstä.
+Production-deployment tehdään Coolifyssa Docker Compose -topologialla. ADR-005
+poistaa staging-ympäristön aktiivisesta mallista muuttamatta ADR-003:n
+production-topologiaa tai ADR-001:n historiallista teknologiapäätöstä.
 
 Tavoitemalli:
 
@@ -595,24 +630,25 @@ GitHub
    v
 GitHub Actions
    |
-   v
-Build artifact / Docker image
-   |
-   +--> one-shot migration job
+   +--> backend image (commit-specific)
    |       |
-   |       v
-   |    PostgreSQL
-   |
-   +--> backend after migration success
-           |
-           +--> Coolify staging
-           +--> Coolify production
+   |       +--> one-shot migration job --> PostgreSQL
+   |       |
+   |       +--> backend after migration success
+   |                    |
+   +--> frontend/Caddy image (same commit)
+                           |
+                           +--> starts after backend health
+                                      |
+                                      +--> Coolify production public domain
 ```
 
 Backendin production-image sisältää sovelluksen, migraatio-runnerin ja
 versionhallittavat SQL-migraatiot. Migration- ja backend-palvelut käyttävät samaa
 immutable imageä ja `DATABASE_URL`:ia. Migration-palvelun epäonnistuminen estää
-uuden backendin käynnistymisen.
+uuden backendin käynnistymisen. Erillinen saman commitin frontend-image sisältää
+rakennetun React SPA:n ja Caddyn. Frontend käynnistyy vasta backendin health
+checkin jälkeen ja on ainoa julkisen production-domainin vastaanottava palvelu.
 
 Coolify Docker Compose ei takaa rolling- tai zero-downtime deploymentia.
 Application rollback ei aja down-migraatiota automaattisesti, ja onnistuneesti
@@ -643,6 +679,7 @@ ADR-001 Tech Stack: accepted
 ADR-002 Database Migration Tool: accepted
 ADR-003 Coolify Deployment And Release Migrations: accepted
 ADR-004 Authentication, Identity And Session Architecture: accepted
+ADR-005 Production-Only Deployment Environments: accepted
 ```
 
 ---

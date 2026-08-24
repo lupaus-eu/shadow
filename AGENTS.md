@@ -55,10 +55,13 @@ Päätetty teknologiapino:
 - database: PostgreSQL
 - ORM: SQLAlchemy
 - migrations: repository-owned Python/Psycopg runner and paired SQL migrations
-- authentication: Microsoft Entra ID
+- authentication: repository-managed Authentik locally and Microsoft Entra ID
+  in production; optional local Authentik-to-Entra federation is defined by
+  ADR-005/TASK-040
 - local runtime: frontend, backend ja database omissa Docker-konteissaan
-- staging and production deployment: Coolify Docker Compose, with a portable
-  backend image and one-shot migration job defined in ADR-003
+- production-only deployment: Coolify Docker Compose, with portable
+  frontend/backend images and the one-shot migration job defined by
+  ADR-003/ADR-005
 
 ---
 

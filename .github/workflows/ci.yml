@@ -35,6 +35,13 @@ jobs:
           test -f docs/decisions/ADR-001-tech-stack.md
           test -f docs/decisions/ADR-002-database-migrations.md
           test -f docs/decisions/ADR-003-coolify-deployment.md
+          test -f docs/decisions/ADR-004-authentication.md
+          test -f docs/decisions/ADR-005-production-only-environments.md
+          test -f docs/qa/AUTHENTICATION-QA-CHECKLIST.md
+          test -f docs/diagrams/component-authentication-topology.puml
+          test -f docs/diagrams/generated/component-authentication-topology.svg
+          test -f docs/diagrams/sequence-oidc-login.puml
+          test -f docs/diagrams/generated/sequence-oidc-login.svg
           test -f db/migrations/README.md
           test -f db/init/README.md
           test -f tasks/TASK-TEMPLATE.md
@@ -42,6 +49,7 @@ jobs:
           test -f docker-compose.release.yml
           test -f docker-compose.production.yml
           test -f docker-compose.coolify.yml
+          test -f frontend/Caddyfile
           test -f .github/PULL_REQUEST_TEMPLATE.md
 
       - name: Explain CI status
@@ -101,18 +109,33 @@ jobs:
       - name: Validate production Compose
         env:
           BACKEND_IMAGE: schatten-backend:${{ github.sha }}
+          FRONTEND_IMAGE: schatten-frontend:${{ github.sha }}
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/schatten_test
-        run: docker compose -f docker-compose.production.yml config --quiet
+          OIDC_DISCOVERY_URL: https://login.microsoftonline.com/tenant-id/v2.0/.well-known/openid-configuration
+          OIDC_ISSUER: https://login.microsoftonline.com/tenant-id/v2.0
+          OIDC_CLIENT_ID: test-client
+          OIDC_CLIENT_SECRET: test-secret
+          PUBLIC_ORIGIN: https://app.example.test
+          TRUSTED_CADDY_PEER_CIDRS: 172.30.0.0/24
+          CADDY_TRUSTED_PROXY_CIDRS: 172.29.0.0/24
+        run: bash .github/scripts/verify-production-compose.sh
 
       - name: Validate Coolify release identity and standard Compose fields
         env:
           COOLIFY_RESOURCE_UUID: ci-resource
           SOURCE_COMMIT: ${{ github.sha }}
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/schatten_test
-        run: >-
-          sed '/exclude_from_hc:/d' docker-compose.coolify.yml |
-          docker compose -f - config |
-          grep --fixed-strings "image: schatten-backend-ci-resource:${{ github.sha }}"
+          OIDC_DISCOVERY_URL: https://login.microsoftonline.com/tenant-id/v2.0/.well-known/openid-configuration
+          OIDC_ISSUER: https://login.microsoftonline.com/tenant-id/v2.0
+          OIDC_CLIENT_ID: test-client
+          OIDC_CLIENT_SECRET: test-secret
+          PUBLIC_ORIGIN: https://app.example.test
+          TRUSTED_CADDY_PEER_CIDRS: 172.30.0.0/24
+          CADDY_TRUSTED_PROXY_CIDRS: 172.29.0.0/24
+        run: |
+          rendered="$(sed '/exclude_from_hc:/d' docker-compose.coolify.yml | docker compose -f - config)"
+          grep --fixed-strings "image: schatten-backend-ci-resource:${{ github.sha }}" <<<"$rendered"
+          grep --fixed-strings "image: schatten-frontend-ci-resource:${{ github.sha }}" <<<"$rendered"
 
       - name: Build production backend image
         run: >-
@@ -167,3 +190,48 @@ jobs:
         env:
           BACKEND_IMAGE: schatten-backend:${{ github.sha }}
         run: bash .github/scripts/verify-release-compose-failure.sh
+
+  frontend-checks:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Enable pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.12.1 --activate
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint frontend
+        working-directory: frontend
+        run: pnpm lint
+
+      - name: Test frontend
+        working-directory: frontend
+        run: pnpm test
+
+      - name: Build frontend
+        working-directory: frontend
+        run: pnpm build
+
+      - name: Build production frontend image
+        run: >-
+          docker build
+          --target production
+          --tag schatten-frontend:${{ github.sha }}
+          --file frontend/Dockerfile
+          frontend
+
+      - name: Verify production frontend security boundary
+        env:
+          FRONTEND_IMAGE: schatten-frontend:${{ github.sha }}
+        run: bash .github/scripts/verify-production-frontend.sh

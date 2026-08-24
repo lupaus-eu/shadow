@@ -4,6 +4,12 @@ Status: Accepted
 
 Date: 2026-08-14
 
+Partial supersession: ADR-005 removes the integration/pre-production environment
+and dedicated Entra development tenant from the active model. The OIDC,
+identity, session, authorization and production Entra decisions in this ADR
+remain active. Historical environment text below is retained as decision
+history.
+
 ---
 
 # Context
@@ -632,10 +638,10 @@ After human acceptance, and in order:
 6. TASK-039G adds the production Caddy topology, Entra runbook, final diagrams
    and cross-provider security QA.
 
-`ARCHITECTURE.md` must continue to describe authentication as unimplemented
-until those implementation tasks are complete. Human architecture and security
-review accepted this ADR; that acceptance remains human-owned and an AI agent
-must not alter it on the developer's behalf.
+TASK-039B through TASK-039G implement this decision. `ARCHITECTURE.md`,
+`docs/DEPLOYMENT.md` and the authentication diagrams describe the resulting
+runtime. Human architecture and security acceptance remains human-owned and an
+AI agent must not alter it on the developer's behalf.
 
 # References
 

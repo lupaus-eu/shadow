@@ -50,6 +50,73 @@ def test_production_requires_https_and_secure_cookie() -> None:
         Settings(APP_ENV="production")
 
 
+@pytest.mark.parametrize(
+    "origin",
+    [
+        "https://*.example.test",
+        "https://app.example.test evil.example.test",
+        "https://app.example.test,evil.example.test",
+        "https://app_example.test",
+        "https://app..example.test",
+        "https://127.1",
+        "https://0177.0.0.1",
+        "https://0x7f000001",
+        "https://0x7f.1",
+        "https://2130706433",
+        "https://app.example.test:0",
+        "https://app.example.test:080",
+        "https://app.example.test:65536",
+    ],
+)
+def test_origin_requires_one_literal_host(origin: str) -> None:
+    with pytest.raises(ValidationError, match="one literal hostname or IP"):
+        Settings.model_validate({"PUBLIC_ORIGIN": origin})
+
+
+@pytest.mark.parametrize(
+    "origin",
+    [
+        "https://APP.Example.Test",
+        "https://app.example.test:443",
+        "https://[2001:0db8:0:0:0:0:0:1]",
+    ],
+)
+def test_origin_requires_browser_canonical_serialization(origin: str) -> None:
+    with pytest.raises(ValidationError, match="browser-canonical lowercase"):
+        Settings.model_validate({"PUBLIC_ORIGIN": origin})
+
+
+@pytest.mark.parametrize(
+    "origin",
+    [
+        "http://localhost:5173",
+        "https://app.example.test",
+        "https://127.0.0.1:8443",
+        "https://[2001:db8::1]:8443",
+    ],
+)
+def test_origin_accepts_literal_dns_and_ip_hosts(origin: str) -> None:
+    settings = Settings.model_validate(
+        {"PUBLIC_ORIGIN": origin, "APP_ALLOWED_ORIGIN": origin}
+    )
+
+    assert settings.public_origin == origin
+
+
+def test_production_origin_rejects_explicit_non_default_port() -> None:
+    origin = "https://app.example.test:8443"
+    with pytest.raises(ValidationError, match="must not include an explicit port"):
+        Settings.model_validate(
+            {
+                "APP_ENV": "production",
+                "PUBLIC_ORIGIN": origin,
+                "APP_ALLOWED_ORIGIN": origin,
+                "SESSION_COOKIE_SECURE": True,
+                "TRUSTED_CADDY_PEER_CIDRS": "172.30.0.0/24",
+            }
+        )
+
+
 def test_symmetric_id_token_algorithms_are_configuration_errors() -> None:
     with pytest.raises(ValidationError, match="asymmetric algorithms"):
         Settings.model_validate({"OIDC_ALLOWED_SIGNING_ALGORITHMS": "HS256"})
@@ -68,13 +135,19 @@ def test_oidc_scopes_are_limited_to_identity_claims(scopes: str) -> None:
         Settings.model_validate({"OIDC_SCOPES": scopes})
 
 
-def test_generic_entra_authority_is_rejected() -> None:
-    settings = Settings.model_validate(
-        {
-            "APP_ENV": "development",
-            "OIDC_ISSUER": "https://login.microsoftonline.com/common/v2.0",
-        }
-    )
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("OIDC_ISSUER", "https://login.microsoftonline.com/common/v2.0"),
+        (
+            "OIDC_DISCOVERY_URL",
+            "https://login.microsoftonline.com/organizations/v2.0/"
+            ".well-known/openid-configuration",
+        ),
+    ],
+)
+def test_generic_entra_authority_is_rejected(name: str, value: str) -> None:
+    settings = Settings.model_validate({"APP_ENV": "development", name: value})
 
     with pytest.raises(ValueError, match="tenant-specific"):
         settings.validate_auth_configuration()

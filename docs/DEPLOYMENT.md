@@ -1,170 +1,326 @@
 # Deployment
 
-This document describes the staging and production deployment baseline decided
-in `docs/decisions/ADR-003-coolify-deployment.md`.
+This document describes the production-only baseline from ADR-003, ADR-004 and
+ADR-005. It is an operator runbook, not authorization to create provider
+resources, enter production secrets, deploy, create tags, take/restore backups
+or execute production QA.
 
-## Release Contract
+## Release Topology
 
-The production backend image is provider-neutral. It contains the API,
-`migrate.py`, its Python implementation and the paired SQL files from
-`db/migrations/`.
-
-The image has two commands:
+Schatten publishes one HTTPS origin:
 
 ```text
-API:       image default command
-Migration: python migrate.py up
+browser -> Coolify TLS edge -> frontend/Caddy :8080 -> backend/FastAPI :8000
+                                                     -> PostgreSQL
+                                                     -> Microsoft Entra ID
 ```
 
-Both commands require the same `DATABASE_URL`. A deployment provider must run
-the migration command once and start or promote the API only after exit code
-zero. The runner's PostgreSQL advisory lock serializes overlapping attempts.
+Only `frontend` receives the public application domain. Caddy serves the built
+React SPA, provides history fallback and reverse-proxies `/api`. Backend,
+one-shot migration and database ports remain internal. Caddy listens only on
+unprivileged internal HTTP port `8080`; it neither obtains certificates nor
+publishes container ports 80/443. Coolify terminates public TLS.
 
-Application rollback never runs a down migration automatically. Successfully
-applied forward migrations remain in place.
+The release has two immutable, commit-specific artifacts:
+
+- backend image: API, `migrate.py` and repository SQL migrations
+- frontend image: built SPA and pinned official Caddy
+
+Migration and API use the same backend image and `DATABASE_URL`. The migration
+command is `python migrate.py up`; it receives only database configuration and
+does not import or initialize the FastAPI/OIDC application. Backend starts only
+after migration exits zero, and frontend starts only after backend is healthy.
+Forward migrations are never automatically rolled back.
+
+Authentik is absent from every release/Coolify manifest. It is local-only,
+including TASK-040's optional Authentik-to-Entra federation.
+
+![Authentication deployment components](diagrams/generated/component-authentication-topology.svg)
 
 ## Files
 
 ```text
-backend/Dockerfile              dev and production image targets
-docker-compose.yml              local development
-docker-compose.release.yml      shared release-service lifecycle fragment
-docker-compose.production.yml   standard production release contract
-docker-compose.coolify.yml      thin Coolify adapter
+backend/Dockerfile                 backend API and migration artifact
+frontend/Dockerfile                Vite build and Caddy production artifact
+frontend/Caddyfile                 provider-neutral same-origin ingress policy
+frontend/caddy-entrypoint.sh       derives the allowed Host from PUBLIC_ORIGIN
+docker-compose.release.yml         shared release lifecycle and environment
+docker-compose.production.yml      portable immutable-image contract
+docker-compose.coolify.yml         thin Coolify image-tag/health adapter
+docs/qa/AUTHENTICATION-QA-CHECKLIST.md
 ```
 
-`docker-compose.release.yml` owns the shared build, commands, environment,
-health and dependency lifecycle. The provider-neutral production file adds the
-required `BACKEND_IMAGE`. The Coolify file extends the same lifecycle, derives
-one release image name from Coolify's resource UUID and source commit, and adds
-`exclude_from_hc: true` to the completed migration job. Provider-specific fields
-are not used by application code or the provider-neutral manifest.
+The Caddy runtime is official
+`caddy:2.11.4-alpine@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648`
+and uses only standard modules. Upgrade it deliberately: inspect the target
+patch's official multi-platform digest, review Caddy security/release notes,
+update the Dockerfile, then rerun the image and live ingress checks.
+
+## Required Configuration
+
+Production Compose has no development auth fallback. It fails interpolation if
+any required value is absent:
+
+| Variable | Service | Contract |
+| --- | --- | --- |
+| `BACKEND_IMAGE` | production manifest | Immutable backend commit tag/digest |
+| `FRONTEND_IMAGE` | production manifest | Immutable frontend commit tag/digest |
+| `DATABASE_URL` | migration + backend | Secret PostgreSQL URL |
+| `OIDC_DISCOVERY_URL` | backend only | Tenant-specific HTTPS discovery URL |
+| `OIDC_ISSUER` | backend only | Exact, case-sensitive single-tenant issuer |
+| `OIDC_CLIENT_ID` | backend only | Confidential web application client ID |
+| `OIDC_CLIENT_SECRET` | backend only | Secret-manager value, never committed |
+| `PUBLIC_ORIGIN` | backend + frontend | Exact HTTPS origin, no path or trailing slash; frontend derives its allowed Host from it |
+| `TRUSTED_CADDY_PEER_CIDRS` | backend only | Internal Caddy peer CIDR(s), comma-separated |
+| `CADDY_TRUSTED_PROXY_CIDRS` | frontend only | Coolify edge CIDR(s), space-separated for Caddy |
+
+Use one browser-canonical lowercase literal DNS or IP host. Do not use
+wildcards, multiple hosts, whitespace or any explicit port; Coolify terminates
+public HTTPS on the standard authority. The frontend derives its sole allowed
+Host from `PUBLIC_ORIGIN`, so non-canonical or malformed origins fail startup
+and the proxy and backend cannot be configured with different application
+hosts. Callback and post-logout URIs are fixed from that origin:
+
+```text
+${PUBLIC_ORIGIN}/api/v1/auth/callback
+${PUBLIC_ORIGIN}/login
+```
+
+The release fixes `APP_ENV=production`, `SESSION_COOKIE_SECURE=true`, scopes
+`openid profile email`, signing algorithm `RS256`, callback path, 30-minute
+idle timeout, eight-hour absolute lifetime and ten-minute login transaction.
+Production CORS middleware is disabled; no wildcard or credentialed cross-origin
+policy is configured.
+
+`CADDY_TRUSTED_PROXY_CIDRS` must contain only the actual Coolify edge network,
+not all private ranges. Caddy uses strict right-to-left trusted-proxy parsing.
+It removes browser-supplied `Forwarded`, `X-Forwarded-*` and
+`X-Schatten-Client-IP`, then sends FastAPI the fixed public Host and HTTPS
+scheme plus Caddy's parsed client address. FastAPI accepts that address only
+when its immediate peer belongs to `TRUSTED_CADDY_PEER_CIDRS`. Record the
+deployment-specific networks without credentials in the change record.
 
 ## Build And Portable Verification
 
-Build from the repository root. Use a release-specific immutable tag in real
-deployments, such as the Git commit SHA:
+Build from these exact contexts:
 
 ```bash
-docker build \
-  --target production \
-  --tag schatten-backend:local \
-  --file backend/Dockerfile \
-  .
+docker build --target production -t schatten-backend:local -f backend/Dockerfile .
+docker build --target production -t schatten-frontend:local -f frontend/Dockerfile frontend
 ```
 
-Verify migration discovery without relying on the image working directory:
+Validate the artifact and release boundary using non-production values:
 
 ```bash
-docker run --rm \
-  --workdir /tmp \
-  --entrypoint python \
-  schatten-backend:local \
-  -c "from app.core.migrations import discover_migrations; assert discover_migrations()"
+env \
+  BACKEND_IMAGE=schatten-backend:local \
+  FRONTEND_IMAGE=schatten-frontend:local \
+  DATABASE_URL=postgresql://user:password@database:5432/schatten \
+  OIDC_DISCOVERY_URL=https://login.microsoftonline.com/tenant-id/v2.0/.well-known/openid-configuration \
+  OIDC_ISSUER=https://login.microsoftonline.com/tenant-id/v2.0 \
+  OIDC_CLIENT_ID=test-client \
+  OIDC_CLIENT_SECRET=test-secret \
+  PUBLIC_ORIGIN=https://app.example.test \
+  TRUSTED_CADDY_PEER_CIDRS=172.30.0.0/24 \
+  CADDY_TRUSTED_PROXY_CIDRS=172.29.0.0/24 \
+  docker compose -f docker-compose.production.yml config --quiet
+
+.github/scripts/verify-production-compose.sh
+FRONTEND_IMAGE=schatten-frontend:local \
+  .github/scripts/verify-production-frontend.sh
 ```
 
-Run the portable migration command by injecting `DATABASE_URL` through the
-runtime environment or provider secret manager. Do not put a real URL in a
-Compose file, shell history or committed environment file.
+The live frontend check uses an isolated Docker network and mock internal API.
+It covers Caddyfile adaptation/startup, health, exact Host, forwarded-header
+overwrite, security headers, SPA fallback and query-log redaction.
+
+## Ingress Response And Logging Policy
+
+Caddy access logs retain useful method, path, query, status, client and timing
+metadata. Its query filter replaces every value for `code`, `state`, `error`
+and `error_description` with `REDACTED` on every path. Default Caddy
+credential-header redaction remains enabled; do not enable `log_credentials`.
+
+The repository Caddyfile enforces:
+
+```text
+Strict-Transport-Security: max-age=31536000
+Referrer-Policy: no-referrer
+X-Content-Type-Options: nosniff
+X-Frame-Options: DENY
+Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'
+```
+
+HSTS deliberately omits `includeSubDomains` and `preload`. The CSP style and
+image exceptions are limited to the current UI's inline layout styles and
+repository CSS data image. Any new external source requires security and
+architecture review.
+
+## Entra App Registrations
+
+Use one single-tenant organisation directory and two separate confidential
+**Web** app registrations outside this repository:
+
+- a local-federation registration owned by TASK-040, containing only the local
+  Authentik callback, its own secret and any minimal Graph permission Authentik
+  requires; restrict its enterprise application to designated test accounts
+  where tenant policy supports assignment
+- a production registration containing only the exact Schatten callback and
+  post-logout URIs shown above and its own production secret
+
+Do not share secrets, redirect URI sets or permissions between registrations.
+For the production registration:
+
+1. Do not register Schatten as an SPA/public client.
+2. Do not add wildcard, localhost or local Authentik URIs.
+3. Use tenant-specific discovery and issuer values. `common`, `organizations`
+   and `consumers` authorities are forbidden.
+4. Request only `openid profile email`. Do not request `offline_access`, Graph
+   permissions, provider groups or app roles.
+5. Store its secret only in Coolify or the approved secret manager. Record the
+   owner and expiry/rotation process, never the value.
+6. Pre-provision designated active Schatten Users with matching internal emails.
+   Missing email or no unique active match fails generically.
+7. After first login, treat exact `(issuer, subject)` as permanent. Email is not
+   consulted for subsequent identity ownership or authorization.
+
+The Entra email assertion is accepted only for guarded first linking in the
+small-company, single-tenant administrator trust model. External/guest users or
+a broader trust boundary require an ADR review before provisioning.
+
+Creating registrations, credentials or tenant policy remains human-owned.
+TASK-039G does not perform those operations.
 
 ## Coolify Configuration
 
-Configure the Git-backed Docker Compose resource to use:
-
-```text
-/docker-compose.coolify.yml
-```
-
-Set this environment variable in Coolify:
-
-- `DATABASE_URL`: the staging or production PostgreSQL connection URL, stored
-  as a secret
-
-The adapter requires Coolify's predefined `COOLIFY_RESOURCE_UUID` and
-`SOURCE_COMMIT` values and assigns both services this image reference:
+Configure the Git-backed resource with `/docker-compose.coolify.yml`. Coolify's
+predefined `COOLIFY_RESOURCE_UUID` and `SOURCE_COMMIT` create:
 
 ```text
 schatten-backend-${COOLIFY_RESOURCE_UUID}:${SOURCE_COMMIT}
+schatten-frontend-${COOLIFY_RESOURCE_UUID}:${SOURCE_COMMIT}
 ```
 
-This keeps staging and production image names separate and gives every Git
-release a commit-specific tag without an operator updating `BACKEND_IMAGE`.
+Enter the required configuration above in Coolify, marking database URL and
+OIDC client secret as secrets. Assign the application domain only to
+`frontend:8080`. Do not assign a domain or public port to backend or migration.
+The migration service retains `exclude_from_hc: true`; frontend/backend use
+their image health checks. Caddy and backend run as numeric user/group
+`10001:10001`.
 
-Assign the backend domain to container port `8000`. Do not assign a domain or
-public port to `migration`. The backend image checks `/health`; the migration
-job disables that long-running health check and Coolify excludes the completed
-job from aggregate health checks.
-
-The production image runs both commands as the unprivileged numeric user and
-group `10001:10001`.
-
-PostgreSQL is external to this application Compose stack. A connection failure
-therefore exits the migration job nonzero and blocks backend startup. Retrying
-the deployment is safe after connectivity is restored because `up` validates
-history and is a no-op when current.
-
-Coolify Docker Compose deployments are not rolling or zero-downtime. Plan a
-maintenance window where availability is required.
+Coolify Compose deployment is not rolling or zero-downtime. Plan a maintenance
+window where availability is required.
 
 ## Existing Database Adoption Gate
 
-Complete this once for every existing staging or production database before
-enabling automatic deployments:
+Before enabling deployment for an existing production database:
 
-1. Disable automatic deployment for the target environment.
-2. Take and verify a restorable database backup using the environment's backup
-   process.
-3. Inspect whether `schema_migrations` exists and review its records if it does.
-4. Compare the actual schema with the repository migration level. Do not infer
-   the level only from the latest filename.
-5. If the database is non-empty and untracked, run the exact verified baseline
-   command manually from the matching release image:
+1. Disable automatic deployment and take a verified restorable backup.
+2. Inspect `schema_migrations` and compare the actual schema with repository
+   migrations; never infer the level from the latest filename alone.
+3. For a verified non-empty untracked database only, run the explicit matching
+   image command `python migrate.py baseline NNN`.
+4. Run `python migrate.py up` from that image and require a successful no-op.
+5. Record backup, baseline and result without credentials.
 
-   ```bash
-   python migrate.py baseline NNN
-   ```
+Never automate `baseline` or use it for a fresh empty database.
 
-6. Run `python migrate.py up` from the matching image and require a successful
-   no-op before enabling automatic deployment.
-7. Record the backup, verified baseline and command outcome in the deployment
-   change record without recording credentials.
+## Production Deployment And Smoke
 
-Never automate `baseline` and never use it on a fresh empty database. The
-operator is asserting that the existing schema already matches `NNN`.
+There is no staging or pre-production application environment. Every production
+deployment requires a change record and this sequence:
 
-## Staging Rehearsal
+1. Require green CI, backend/frontend production image builds, production
+   Compose checks, migration failure gating, ingress/security checks and the
+   broad local Authentik QA checklist.
+2. Before the first production rollout and whenever authentication, provider or
+   OIDC configuration changes, also require TASK-040's local
+   Authentik-to-Entra smoke with designated accounts. Record that it is
+   supplemental evidence: it does not test Schatten's direct production client,
+   issuer, callback, secret or Coolify boundary.
+3. Freeze the release candidate. Confirm a completed production backup and
+   record its identifier plus the evidence location for the latest successful
+   restore verification. Missing backup or restore-verification evidence blocks
+   deployment.
+4. Record the target commit SHA, matching backend/frontend image references,
+   intended stable SemVer tag if one exists, and current stable rollback tag
+   with its commit and matching image references. For the first production
+   rollout, explicitly record that no previous stable application release
+   exists and that rollback means stopping the new application, not restoring
+   the database automatically.
+5. Obtain explicit human approval for this deployment. Merge or CI success is
+   not deployment authorization.
+6. Deploy both matching commit-specific images through the existing Coolify
+   topology and require the migration -> backend health -> frontend gate.
+7. Run the limited direct-Entra production smoke with designated,
+   pre-provisioned admin and consultant accounts and isolated test records:
+   login, clean callback, session restoration, database role enforcement and
+   logout. For the first rollout and authentication/provider changes, also
+   confirm a designated unmatched account fails generically and creates no
+   application session.
+8. Record pass/fail, commit, tester, time, backup identifier and evidence
+   location. Do not record names, personal email, credentials, codes, tokens,
+   cookies, session/CSRF values or secrets.
 
-Before enabling production deployment, rehearse in staging:
+Production is not a general QA environment. Do not run destructive tests,
+failure injection, load/rate-limit tests, session-expiry waiting, broad
+automated suites or tests against ordinary production records. Stop the release
+and follow rollback policy when the limited smoke fails.
 
-1. Deploy against a disposable or backed-up staging database.
-2. Confirm migration filenames and success or no-op output are visible without
-   credentials.
-3. Confirm the backend is not started when the migration job exits nonzero.
-4. Redeploy after correcting the failure and confirm `up` resumes safely.
-5. Confirm `/health` becomes healthy only for the backend service.
-6. Roll the application image back and confirm no down migration runs.
+If direct Entra testing proves `SameSite=Strict` incompatible with supported
+browsers, stop. Propose and obtain review for an ADR-004 amendment before
+changing the application session cookie to `Lax`.
 
-Creating Coolify resources and performing the rehearsal require explicit human
-authorization. Record the results in the PR or deployment change record.
+## Stable References, Failure And Rollback
 
-## Migration Failure And Rollback
+Stable release/rollback references are manually managed, immutable annotated
+SemVer Git tags such as `v0.1.0`. Tag creation and promotion timing are
+human-owned and are not automated or prescribed here. A deployment record maps
+each used stable tag to:
 
-On migration failure:
+```text
+tag -> commit SHA
+    -> schatten-backend-${COOLIFY_RESOURCE_UUID}:${SOURCE_COMMIT}
+    -> schatten-frontend-${COOLIFY_RESOURCE_UUID}:${SOURCE_COMMIT}
+```
 
-- keep the failed deployment stopped
-- inspect the migration job's credential-safe error
-- repair connectivity, history drift or SQL through a reviewed follow-up
-- retry the forward deployment
-- do not invoke a down migration automatically
+On migration failure, keep the deployment stopped, inspect credential-safe job
+output, correct the reviewed cause and retry forward. Never run a down migration
+automatically.
 
-If an application health check fails after migrations succeeded, roll back only
-the application image. Forward schema must remain compatible with that image.
-Use expand/contract releases so destructive cleanup occurs only after the old
-application and its rollback window are gone.
+If application health or the production smoke fails after migrations succeed,
+select the documented stable rollback tag, resolve its commit-specific backend
+and frontend images, and deploy both together. Successfully applied forward
+migrations remain in place, so every release must preserve expand/contract
+compatibility through its documented rollback window. If the older application
+is incompatible with the current forward schema, stop and escalate instead of
+deploying it or executing a down migration.
+
+For the first production rollout, there is no older stable application image.
+If that rollout fails, stop the new application and escalate; do not invent a
+rollback tag or restore the database without separate authorization.
+
+Database restoration is separate from application rollback. It requires its
+own explicit human authorization and impact review and is never triggered
+automatically by a failed deployment or smoke test.
+
+## Security And Product Limits
+
+- No organisation membership authorization; all active internal roles
+  intentionally access all organisations.
+- No back-channel logout or immediate provider revocation. A provider-disabled
+  account can retain its Schatten session until admin revocation/user disablement
+  or the 30-minute idle/eight-hour absolute limit.
+- No provider group mapping, Graph access, refresh tokens, SCIM or provider
+  access-token retention.
+- Local logout is guaranteed; provider end-session is best effort.
+- The in-memory public-auth limiter supports one backend replica. Multiple
+  replicas require shared rate limiting and architecture review.
 
 ## Provider Replacement
 
-A replacement provider needs only `DATABASE_URL`, the immutable image, the
-migration command, failure propagation and the API health check. Translate the
-Compose migration service to the provider's release job, init container or
-pre-deployment command. Backend and migration-runner code do not change.
+A replacement deployment provider must preserve both artifact boundaries: run
+the backend image migration command once with failure propagation, start the
+same backend image only after success, evaluate backend health, then start the
+frontend/Caddy image as the sole public ingress. Application code and the
+repository Caddyfile must remain provider-neutral.

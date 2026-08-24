@@ -1,0 +1,53 @@
+@startuml
+title Schatten - Authentication And Deployment Components
+
+skinparam componentStyle rectangle
+skinparam shadowing false
+
+cloud "Microsoft Entra ID\none organisation tenant" as entra
+
+rectangle "Local development / testing" {
+  actor "Local browser" as local_browser
+  component "Vite\nsame-origin /api proxy" as vite
+  component "Local FastAPI" as local_api
+  database "Local PostgreSQL" as local_db
+  cloud "Repository-managed Authentik" as authentik
+
+  local_browser --> vite : HTTP
+  vite --> local_api : /api
+  local_api --> local_db
+  local_api ..> authentik : OIDC
+}
+
+rectangle "Production (only deployed environment)" {
+  actor "Production browser" as prod_browser
+  cloud "Coolify edge\n(public TLS)" as edge
+  component "Frontend / Caddy\nSPA + /api proxy\ninternal HTTP :8080" as caddy
+  component "Production FastAPI\nconfidential OIDC client" as prod_api
+  database "Production PostgreSQL" as prod_db
+
+  prod_browser --> edge : HTTPS, one public origin
+  edge --> caddy : Internal HTTP\ntrusted edge CIDRs only
+  caddy --> prod_api : /api, fixed proxy headers
+  prod_api --> prod_db
+}
+
+authentik ..> entra : Optional TASK-040 federation\nlocal app registration
+prod_api ..> entra : Direct OIDC\nseparate production app registration
+
+note bottom of authentik
+  Local federation is supplemental evidence.
+  It does not validate the direct production client.
+end note
+
+note bottom of caddy
+  Only Caddy receives the public domain.
+  Backend, migration and database stay internal.
+end note
+
+note bottom of prod_api
+  React never receives provider tokens.
+  Schatten's database is the only role source.
+end note
+
+@enduml

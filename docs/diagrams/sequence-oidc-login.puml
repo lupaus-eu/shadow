@@ -1,0 +1,39 @@
+@startuml
+title Schatten - Same-Origin OIDC Login And Application Session
+
+actor Browser
+participant "Frontend / Caddy\n(one public origin)" as Caddy
+participant "FastAPI" as API
+participant "Configured OIDC provider\nAuthentik: local\nEntra: production direct" as Provider
+database PostgreSQL as DB
+
+note over Provider
+  TASK-040 may federate local Authentik to Entra
+  through a separate local app registration.
+  That upstream hop is not the production direct client.
+end note
+
+Browser -> Caddy : GET /api/v1/auth/login?return_to=/workspace
+Caddy -> API : Fixed Host/proto and trusted client IP
+API -> DB : Store hashed state + browser binding, nonce, PKCE
+API --> Browser : 302 provider authorization URL\nHttpOnly pre-auth cookie
+Browser -> Provider : Authorization Code + PKCE login
+Provider --> Browser : Redirect with code + state
+Browser -> Caddy : GET /api/v1/auth/callback?code=...&state=...
+note right of Caddy
+  Access log replaces code, state,
+  error and error_description values
+  with REDACTED.
+end note
+Caddy -> API : Callback with fixed proxy headers
+API -> DB : Atomically consume browser-bound transaction
+API -> Provider : Redeem code with confidential client + verifier
+Provider --> API : Validated identity claims
+API -> DB : Resolve permanent (issuer, subject)\nCreate hashed opaque application session
+API --> Browser : 303 clean local path\nSecure HttpOnly SameSite=Strict cookie
+Browser -> Caddy : GET SPA and /api with session cookie
+Caddy -> API : Same-origin /api request
+API -> DB : Reload active User and session
+API --> Browser : Application data only; no provider token
+
+@enduml

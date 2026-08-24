@@ -259,16 +259,17 @@ fix(scope): short description
 docs(scope): short description
 ```
 
-Kun deployment on konfiguroitu, merge mainiin käynnistää sovitun
-deployment-putken. Staging- ja production-topologia on dokumentoitu ADR-003:ssa
-ja `docs/DEPLOYMENT.md`:ssä. Production-julkaisu vaatii edelleen ihmisen
-hyväksynnän.
+Kun deployment on konfiguroitu, production-julkaisu seuraa ADR-005:n
+ihmisomisteista porttia. Production-topologia on dokumentoitu ADR-003:ssa ja
+`docs/DEPLOYMENT.md`:ssä. Mainiin mergeä ei pidä tulkita itsessään
+julkaisuhyväksynnäksi.
 
 Lopuksi:
 
 - task merkitään valmiiksi
 - dokumentaatio jää ajan tasalle
-- mahdollinen staging- tai production-deploy tarkistetaan
+- mahdollinen production-deploy, rajattu Entra-smoke ja rollback-evidence
+  tarkistetaan erikseen hyväksytyn runbookin mukaan
 
 ---
 

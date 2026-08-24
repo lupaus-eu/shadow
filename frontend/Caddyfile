@@ -1,0 +1,55 @@
+{
+	auto_https off
+	servers :8080 {
+		trusted_proxies static {$CADDY_TRUSTED_PROXY_CIDRS}
+		trusted_proxies_strict
+		client_ip_headers X-Forwarded-For
+	}
+}
+
+:8080 {
+	log {
+		output stdout
+		format filter {
+			request>uri query {
+				replace code REDACTED
+				replace state REDACTED
+				replace error REDACTED
+				replace error_description REDACTED
+			}
+			wrap json
+		}
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		Referrer-Policy "no-referrer"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
+	}
+
+	route {
+		@invalid_host not host {$PUBLIC_HOST}
+		respond @invalid_host "Invalid host" 400
+
+		@health path /health
+		respond @health "OK" 200
+
+		@api path /api /api/*
+		request_header @api -Forwarded
+		request_header @api -X-Forwarded-*
+		request_header @api -X-Schatten-Client-IP
+		reverse_proxy @api backend:8000 {
+			header_up Host {$PUBLIC_HOST}
+			header_up X-Forwarded-For {client_ip}
+			header_up X-Forwarded-Host {$PUBLIC_HOST}
+			header_up X-Forwarded-Proto https
+			header_up X-Schatten-Client-IP {client_ip}
+		}
+
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}
