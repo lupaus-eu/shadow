@@ -114,10 +114,9 @@ def _insert_graph_fixture(database_url: str, *, org_state_count: int) -> None:
 def test_full_up_down_and_reapply_lifecycle(migration_database_url: str) -> None:
     execute_command(UpCommand(), database_url=migration_database_url)
 
-    assert (
-        _scalar(migration_database_url, "SELECT count(*) FROM schema_migrations")
-        == 9
-    )
+    assert _scalar(
+        migration_database_url, "SELECT count(*) FROM schema_migrations"
+    ) == len(discover_migrations())
     assert _scalar(
         migration_database_url,
         "SELECT to_regclass('auth_sessions') IS NOT NULL",
@@ -131,18 +130,16 @@ def test_full_up_down_and_reapply_lifecycle(migration_database_url: str) -> None
         )
 
     assert (
-        _scalar(migration_database_url, "SELECT count(*) FROM schema_migrations")
-        == 0
+        _scalar(migration_database_url, "SELECT count(*) FROM schema_migrations") == 0
     )
     assert not _scalar(
         migration_database_url, "SELECT to_regclass('users') IS NOT NULL"
     )
 
     execute_command(UpCommand(), database_url=migration_database_url)
-    assert (
-        _scalar(migration_database_url, "SELECT count(*) FROM schema_migrations")
-        == 9
-    )
+    assert _scalar(
+        migration_database_url, "SELECT count(*) FROM schema_migrations"
+    ) == len(discover_migrations())
 
 
 def test_rejects_non_latest_and_unapplied_down_migrations(
@@ -163,6 +160,10 @@ def test_rejects_non_latest_and_unapplied_down_migrations(
         )
 
     execute_command(
+        DownCommand("010_create_prediction_schema.down.sql"),
+        database_url=migration_database_url,
+    )
+    execute_command(
         DownCommand("009_add_auth_identity_session_schema.down.sql"),
         database_url=migration_database_url,
     )
@@ -177,9 +178,7 @@ def test_rejects_non_latest_and_unapplied_down_migrations(
         )
 
 
-def test_detects_checksum_drift(
-    migration_database_url: str, tmp_path: Path
-) -> None:
+def test_detects_checksum_drift(migration_database_url: str, tmp_path: Path) -> None:
     migration_copy = tmp_path / "migrations"
     shutil.copytree(discover_migrations()[0].up_path.parent, migration_copy)
     execute_command(
@@ -221,8 +220,7 @@ def test_failed_migration_is_atomic(
         "SELECT to_regclass('partial_table') IS NOT NULL",
     )
     assert (
-        _scalar(migration_database_url, "SELECT count(*) FROM schema_migrations")
-        == 0
+        _scalar(migration_database_url, "SELECT count(*) FROM schema_migrations") == 0
     )
 
 
@@ -240,10 +238,9 @@ def test_existing_schema_requires_explicit_baseline(
         "SELECT to_regclass('schema_migrations') IS NOT NULL",
     )
 
-    execute_command(BaselineCommand(9), database_url=migration_database_url)
+    execute_command(BaselineCommand(10), database_url=migration_database_url)
     assert (
-        _scalar(migration_database_url, "SELECT count(*) FROM schema_migrations")
-        == 9
+        _scalar(migration_database_url, "SELECT count(*) FROM schema_migrations") == 10
     )
     execute_command(UpCommand(), database_url=migration_database_url)
 
@@ -259,8 +256,7 @@ def test_existing_schema_with_empty_history_requires_explicit_baseline(
         execute_command(UpCommand(), database_url=migration_database_url)
 
     assert (
-        _scalar(migration_database_url, "SELECT count(*) FROM schema_migrations")
-        == 0
+        _scalar(migration_database_url, "SELECT count(*) FROM schema_migrations") == 0
     )
     assert _scalar(
         migration_database_url,
@@ -283,17 +279,23 @@ def test_migration_nine_upgrades_an_empty_version_eight_database(
         database_url=migration_database_url,
         migrations_directory=migration_copy,
     )
-    assert _scalar(
-        migration_database_url,
-        "SELECT max(version) FROM schema_migrations",
-    ) == 8
+    assert (
+        _scalar(
+            migration_database_url,
+            "SELECT max(version) FROM schema_migrations",
+        )
+        == 8
+    )
 
     execute_command(UpCommand(), database_url=migration_database_url)
 
-    assert _scalar(
-        migration_database_url,
-        "SELECT max(version) FROM schema_migrations",
-    ) == 9
+    assert (
+        _scalar(
+            migration_database_url,
+            "SELECT max(version) FROM schema_migrations",
+        )
+        == 10
+    )
     assert _scalar(
         migration_database_url,
         "SELECT is_nullable = 'NO' FROM information_schema.columns "
@@ -311,6 +313,10 @@ def test_migration_nine_upgrades_an_empty_version_eight_database(
     assert _scalar(
         migration_database_url,
         "SELECT to_regclass('auth_sessions') IS NOT NULL",
+    )
+    assert _scalar(
+        migration_database_url,
+        "SELECT to_regclass('prediction_versions') IS NOT NULL",
     )
 
 
@@ -360,14 +366,21 @@ def test_migration_nine_constraints_and_down_scope(
             )
 
     execute_command(
+        DownCommand("010_create_prediction_schema.down.sql"),
+        database_url=migration_database_url,
+    )
+    execute_command(
         DownCommand("009_add_auth_identity_session_schema.down.sql"),
         database_url=migration_database_url,
     )
 
-    assert _scalar(
-        migration_database_url,
-        "SELECT max(version) FROM schema_migrations",
-    ) == 8
+    assert (
+        _scalar(
+            migration_database_url,
+            "SELECT max(version) FROM schema_migrations",
+        )
+        == 8
+    )
     assert _scalar(
         migration_database_url,
         "SELECT to_regclass('customer_addresses') IS NOT NULL",
@@ -384,6 +397,77 @@ def test_migration_nine_constraints_and_down_scope(
     )
 
 
+def test_prediction_schema_rejects_non_finite_numbers(
+    migration_database_url: str,
+) -> None:
+    execute_command(UpCommand(), database_url=migration_database_url)
+
+    with psycopg.connect(migration_database_url) as connection:
+        user = connection.execute(
+            "INSERT INTO users (name, email, role) "
+            "VALUES ('Prediction Tester', 'prediction@example.local', 'admin') "
+            "RETURNING user_id"
+        ).fetchone()
+        assert user is not None
+        organisation = connection.execute(
+            "INSERT INTO organisations (organisation_key, name, created_by) "
+            "VALUES ('prediction-org', 'Prediction Org', %s) "
+            "RETURNING organisation_id",
+            (user[0],),
+        ).fetchone()
+        assert organisation is not None
+        version = connection.execute(
+            "INSERT INTO prediction_versions ("
+            "organisation_id, prediction_key, name, cutoff_mode, start_date, "
+            "end_date, created_by"
+            ") VALUES (%s, 'prediction-1', 'Prediction 1', 'asOfStart', "
+            "DATE '2025-01-01', DATE '2025-02-01', %s) "
+            "RETURNING prediction_version_id",
+            (organisation[0], user[0]),
+        ).fetchone()
+        assert version is not None
+        target = connection.execute(
+            "INSERT INTO prediction_targets ("
+            "prediction_version_id, target_scenario_id, target_scenario_key, "
+            "reality_scenario_key, metric_key, metric_name, time_unit, "
+            "eligibility_status, created_by"
+            ") VALUES (%s, 1, 'target', 'reality', 'revenue', 'Revenue', "
+            "'month', 'eligible', %s) RETURNING prediction_target_id",
+            (version[0], user[0]),
+        ).fetchone()
+        assert target is not None
+        result = connection.execute(
+            "INSERT INTO prediction_model_results ("
+            "prediction_target_id, result_kind, status, cross_validation_status, "
+            "created_by"
+            ") VALUES (%s, 'naive', 'available', 'not_applicable', %s) "
+            "RETURNING prediction_model_result_id",
+            (target[0], user[0]),
+        ).fetchone()
+        assert result is not None
+        connection.commit()
+
+    with psycopg.connect(migration_database_url) as connection:
+        with pytest.raises(psycopg.errors.CheckViolation):
+            connection.execute(
+                "INSERT INTO prediction_model_results ("
+                "prediction_target_id, result_kind, status, cross_validation_status, "
+                "cross_validation_mae, created_by"
+                ") VALUES (%s, 'mlforecast', 'available', 'available', "
+                "'NaN'::float8, %s)",
+                (target[0], user[0]),
+            )
+
+    with psycopg.connect(migration_database_url) as connection:
+        with pytest.raises(psycopg.errors.CheckViolation):
+            connection.execute(
+                "INSERT INTO prediction_points ("
+                "prediction_model_result_id, date, value, created_by"
+                ") VALUES (%s, DATE '2025-01-01', 'NaN'::float8, %s)",
+                (result[0], user[0]),
+            )
+
+
 def test_migration_four_down_restores_unambiguous_legacy_graph(
     migration_database_url: str,
 ) -> None:
@@ -397,16 +481,19 @@ def test_migration_four_down_restores_unambiguous_legacy_graph(
     )
 
     assert _scalar(migration_database_url, "SELECT count(*) FROM graphs") == 1
-    assert _scalar(
-        migration_database_url,
-        """
+    assert (
+        _scalar(
+            migration_database_url,
+            """
         SELECT count(*)
         FROM graph_nodes gn
         JOIN graphs g ON g.graph_id = gn.graph_id
         JOIN org_states os ON os.org_state_id = g.org_state_id
         WHERE os.scenario_id = 101
         """,
-    ) == 1
+        )
+        == 1
+    )
 
 
 def test_migration_four_down_fails_atomically_when_mapping_is_ambiguous(
@@ -425,10 +512,13 @@ def test_migration_four_down_fails_atomically_when_mapping_is_ambiguous(
     assert not _scalar(
         migration_database_url, "SELECT to_regclass('graphs') IS NOT NULL"
     )
-    assert _scalar(
-        migration_database_url,
-        "SELECT max(version) FROM schema_migrations",
-    ) == 4
+    assert (
+        _scalar(
+            migration_database_url,
+            "SELECT max(version) FROM schema_migrations",
+        )
+        == 4
+    )
 
 
 def test_concurrent_up_commands_are_serialized(
@@ -463,6 +553,5 @@ def test_concurrent_up_commands_are_serialized(
 
     assert errors == []
     assert (
-        _scalar(migration_database_url, "SELECT count(*) FROM schema_migrations")
-        == 1
+        _scalar(migration_database_url, "SELECT count(*) FROM schema_migrations") == 1
     )

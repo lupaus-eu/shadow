@@ -217,6 +217,55 @@ entity "timeserie_values" as timeserie_values {
   value : JSONB
 }
 
+entity "prediction_versions" as prediction_versions {
+  * prediction_version_id : BIGINT
+  --
+  organisation_id : BIGINT
+  prediction_key : TEXT
+  name : TEXT
+  cutoff_mode : TEXT
+  start_date : DATE
+  end_date : DATE
+  model_configuration : JSONB
+  created_by : BIGINT
+  created_time : TIMESTAMPTZ
+}
+
+entity "prediction_targets" as prediction_targets {
+  * prediction_target_id : BIGINT
+  --
+  prediction_version_id : BIGINT
+  target_scenario_key : TEXT
+  reality_scenario_key : TEXT
+  metric_key : TEXT
+  time_unit : TEXT
+  eligibility_status : TEXT
+  seasonal_period : INT
+  source_snapshot : JSONB
+  input_snapshot : JSONB
+}
+
+entity "prediction_model_results" as prediction_model_results {
+  * prediction_model_result_id : BIGINT
+  --
+  prediction_target_id : BIGINT
+  result_kind : TEXT
+  status : TEXT
+  cross_validation_status : TEXT
+  cross_validation_mae : DOUBLE
+  configuration : JSONB
+  created_by : BIGINT
+}
+
+entity "prediction_points" as prediction_points {
+  * prediction_point_id : BIGINT
+  --
+  prediction_model_result_id : BIGINT
+  date : DATE
+  value : DOUBLE
+  created_by : BIGINT
+}
+
 organisations ||--o{ scenarios
 users ||--o{ user_identities
 users ||--o{ auth_sessions
@@ -244,6 +293,10 @@ edge_types ||--o{ graph_edges
 graph_nodes ||--o{ graph_edges : source
 graph_nodes ||--o{ graph_edges : target
 timeseries ||--o{ timeserie_values
+organisations ||--o{ prediction_versions
+prediction_versions ||--o{ prediction_targets
+prediction_targets ||--o{ prediction_model_results
+prediction_model_results ||--o{ prediction_points
 timeseries ||--o{ graph_nodes : primary
 timeseries ||--o{ graph_nodes : secondary
 

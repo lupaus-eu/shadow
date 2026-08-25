@@ -10,6 +10,9 @@ dependencies = [
     "psycopg[binary]>=3.2.0",
     "sqlalchemy>=2.0.0",
     "authlib>=1.6.0,<2.0.0",
+    "mlforecast>=1.0.2,<2.0.0",
+    "scikit-learn>=1.6.0,<2.0.0",
+    "statsmodels>=0.14.0,<1.0.0",
 ]
 
 [dependency-groups]

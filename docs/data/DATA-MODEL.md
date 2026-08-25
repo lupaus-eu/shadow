@@ -2,7 +2,7 @@
 
 Tämä dokumentti kuvaa järjestelmän loogisen datamallin.
 
-Status: core and customer model baseline defined. AI and billing still TBD.
+Status: core, customer and Forecasting Domain model defined. AI and billing still TBD.
 
 Looginen datamalli kuvaa:
 
@@ -48,6 +48,10 @@ Lue nämä yhdessä datamallin kanssa:
 | Graph Edge | Scenario-owned connection whose logical lifetime must remain inside both endpoint node lifetimes. |
 | Timeserie | Scenario-specific timeseries definition. |
 | Timeserie Value | Date-specific value for a timeserie. |
+| Prediction Version | Immutable, organisation-owned named execution with its cutoff and model configuration snapshot. |
+| Prediction Target | One target scenario and metric in a saved version, including effective-observation/source snapshots and metric eligibility. |
+| Prediction Model Result | One persisted requested output kind with eligibility and cross-validation metadata. |
+| Prediction Point | One dated numeric value belonging to a model result. |
 | Customer | Application-wide customer profile with active, archived and soft-deleted lifecycle states. |
 | Contact | Customer-owned contact person or communication channel. |
 | Customer Address | Customer-owned labelled postal or visiting address. |
@@ -107,6 +111,17 @@ Lue nämä yhdessä datamallin kanssa:
   unit.
 - Graph nodes may reference primary and secondary timeseries owned by the same
   scenario.
+- A Prediction Version belongs to one organisation; its name is case-insensitively
+  unique within that organisation and is never updated or overwritten.
+- A Prediction Version owns Prediction Targets; each target owns exactly one result
+  for every requested output kind, and a result owns dated Prediction Points.
+- Prediction Targets retain stable target/Reality keys and source and input JSON
+  snapshots rather than source-table foreign keys. The source snapshot records
+  the effective observation source for every period and the override policy, so
+  source soft deletion cannot make saved forecasts unreadable.
+- Forecasting reads Reality values, same-period overrides from the selected
+  target scenario, and target-scenario graph/event history; it does not own or
+  write Scenario, Timeserie or Timeserie Value rows.
 - A customer owns zero or more contacts and customer addresses.
 - Customer names, emails, contact names and address labels are not unique.
 - Active and archived customers remain readable and editable.
@@ -134,6 +149,7 @@ Examples:
 - `node_key`
 - `edge_key`
 - `timeserie_key`
+- `prediction_key`
 
 These keys preserve Varjo-style identifiers while allowing relational foreign keys to use bigint primary keys.
 

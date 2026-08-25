@@ -1,6 +1,6 @@
 # ADR-007: Predictions Forecasting Domain
 
-Status: Accepted
+Status: Accepted; observed-value sourcing amended by ADR-008
 
 Date: 2026-08-24
 
@@ -35,11 +35,11 @@ records, per-model result metadata and dated prediction points. It does not own
 or modify scenarios, events, graph elements, timeseries or manually entered
 timeserie values.
 
-The active protected scenario with stable key `reality` is the sole source of
-observed target values for every model and baseline. A prediction target may
-use only its own scenario's known event dates and graph history as explanatory
-inputs. Values from every non-Reality scenario are prohibited as model targets,
-training values, baseline inputs or imputation sources.
+The active protected scenario with stable key `reality` supplies the baseline
+observed target values. ADR-008 amends this rule so that a target scenario's
+own matching metric value overrides Reality for the same period; values from
+every other non-Reality scenario remain prohibited as model targets, training
+values, baseline inputs or imputation sources.
 
 Forecasting reads source data through Organisation States and Organisation Twin
 Structure Domain service boundaries. It retains immutable source-input and
@@ -66,12 +66,12 @@ set.
 
 Users select a prediction range and one of two cutoff modes:
 
-- `asOfStart`: use only Reality observations strictly before the first
-  generated period. This supports historical forecasts without later Reality
-  values leaking into the model.
-- `allCurrentReality`: use all current Reality observations. This is allowed
-  for exploratory work and must be retained in the saved metadata so a UI can
-  disclose future leakage for a past prediction range.
+- `asOfStart`: use only merged permitted observations strictly before the first
+  generated period. This supports historical forecasts without later values
+  leaking into the model.
+- `allCurrentReality`: retain the existing API value but use all current merged
+  permitted observations. The saved metadata discloses both this leakage mode
+  and ADR-008's target-scenario override policy.
 
 ## Models And Validation
 
@@ -81,9 +81,9 @@ kinds; Forecasting does not select and discard all but a winning model.
 | Result kind | Decision |
 | --- | --- |
 | `mlforecast` | MLForecast with a deterministic scikit-learn `RandomForestRegressor`, target lags, calendar features and the known target-scenario inputs. |
-| `naive` | Repeat the latest eligible Reality observation. |
-| `seasonal_naive` | Repeat the Reality observation one selected seasonal cycle ago. |
-| `average` | Mean of all Reality observations available under the selected cutoff mode. |
+| `naive` | Repeat the latest eligible effective observation. |
+| `seasonal_naive` | Repeat the effective observation one selected seasonal cycle ago. |
+| `average` | Mean of effective observations available under the selected cutoff mode. |
 | `sarima` | Statsmodels SARIMAX with the selected seasonal period and the same known target-scenario inputs. |
 
 Seasonality is detected separately for each eligible metric by identifying
@@ -119,9 +119,10 @@ progress-polling protocol.
 Before fitting, preflight and creation enforce these server-side limits for one
 request:
 
-- at most 50 eligible target scenario/metric pairs;
+- at most 50 numeric target scenario/metric candidates with compatible Reality
+  metadata; detailed eligibility is evaluated only within this protective bound;
 - at most 366 generated periods per pair;
-- at most 10,000 contiguous Reality observations per pair; and
+- at most 10,000 contiguous permitted observations per pair; and
 - at most 100,000 persisted prediction points across the version.
 
 A request exceeding a limit is rejected with a validation response that names
@@ -139,11 +140,11 @@ time-series semantics, lifecycle and API consumers. A separate derived-data
 domain prevents its model outputs from being mistaken for AI document output or
 manual Reality data.
 
-## Use Non-Reality Scenario Values As Training Data
+## Use Values From Other Scenarios As Training Data
 
-Rejected. Planning scenario values are hypothetical and may leak assumptions
-from one target into another. Reality remains the single observed truth source;
-each scenario changes only its explanatory event and structure inputs.
+Rejected. Values from another planning scenario may leak assumptions from one
+target into another. ADR-008 permits only the selected target scenario's own
+values to override Reality by period for the approved possible-pasts use case.
 
 ## Use Only One Best Forecast Model
 
@@ -178,7 +179,7 @@ Benefits:
 Costs and constraints:
 
 - prediction versions require new persistence, domain APIs, migrations and UI;
-- only numeric, complete Reality histories are eligible;
+- only numeric, complete merged permitted histories are eligible;
 - target scenarios without a compatible same-key Reality metric are excluded;
 - long or broad runs can be rejected by the MVP work limits; and
 - synchronous generation may need a future background-job design as data size
@@ -202,6 +203,7 @@ Costs and constraints:
 # References
 
 - `docs/decisions/ADR-001-tech-stack.md`
+- `docs/decisions/ADR-008-target-scenario-observation-overrides.md`
 - `docs/domains/FORECASTING.md`
 - `docs/domains/ORG_STATES.md`
 - `docs/domains/ORG_TWIN_STRUCTURE.md`

@@ -1,6 +1,6 @@
 # Forecasting Domain
 
-Status: accepted in ADR-007; no schema, API or runtime implementation yet
+Status: persistence and synchronous backend API implemented by TASK-041B
 
 ## Purpose
 
@@ -34,15 +34,17 @@ Does NOT Own:
 
 ## Domain Rules
 
-### Reality Is The Observed Truth Source
+### Observation Sources And Target Overrides
 
-The active protected scenario with stable key `reality` is the only source of
+The active protected scenario with stable key `reality` supplies the baseline
 observed values for Forecasting. Every target metric must match an active
 Reality metric by stable timeserie key and use compatible time-unit and display
 unit metadata.
 
-Values from every other scenario are prohibited as targets, training data,
-baseline data or gap-imputation data. Forecasting does not write into
+For a selected prediction target, its own matching metric value overrides
+Reality for the same metric period. This supports approved possible-pasts use
+cases. Values from every other scenario remain prohibited as targets, training
+data, baseline data or gap-imputation data. Forecasting does not write into
 `timeserie_values` and does not turn its results into manual Reality data.
 
 ### Scenario-Isolated Explanatory Inputs
@@ -53,16 +55,16 @@ event counts, active graph node/edge totals, type counts and target-metric
 linked node counts. Graph visibility uses the Organisation Twin Structure
 Domain's logical lifetime rules.
 
-The domain never combines a target scenario's model inputs with another
-non-Reality scenario's metric values, events or graph structure.
+The domain never combines a target scenario's model inputs or values with
+another non-Reality scenario's metric values, events or graph structure.
 
 ### Eligible Metrics And Date Grid
 
-Only number-valued timeseries are eligible. The Reality history must be
-contiguous on the matching metric time-unit grid; no missing observation is
-interpolated or forward-filled. Non-numeric, unmatched, incompatible,
-incomplete or insufficient metrics are normal ineligible states with a saved
-reason.
+Only number-valued timeseries are eligible. The effective history, formed from
+Reality with same-period target-scenario overrides, must be contiguous on the
+matching metric time-unit grid; no missing observation is interpolated or
+forward-filled. Non-numeric, unmatched, incompatible, incomplete or
+insufficient metrics are normal ineligible states with a saved reason.
 
 Prediction requests provide a start and end date. Each target metric produces
 only the valid day, week, month or year starts that fall inside that inclusive
@@ -72,10 +74,11 @@ range. The request requires the start date to be earlier than the end date.
 
 Each version records one selected truth cutoff mode:
 
-- `asOfStart` uses only Reality observations strictly before the first
-  predicted metric period. It supports non-leaking historical forecasts.
-- `allCurrentReality` uses all currently active Reality observations. A caller
-  must disclose that it can use future knowledge for a past prediction range.
+- `asOfStart` uses only effective permitted observations strictly before the
+  first predicted metric period. It supports non-leaking historical forecasts.
+- `allCurrentReality` retains its public API name but uses all currently active
+  effective permitted observations. A caller must disclose its future-knowledge
+  risk and the target-scenario override policy for a past prediction range.
 
 ### Result Kinds
 
@@ -84,9 +87,9 @@ Every otherwise eligible target metric attempts these five result kinds:
 | Kind | Meaning |
 | --- | --- |
 | MLForecast | Deterministic MLForecast using scikit-learn RandomForestRegressor, target lags, calendar features and known target-scenario inputs. |
-| Naive | Repeats the latest eligible Reality observation. |
-| Seasonal naive | Repeats the Reality observation one selected seasonal cycle ago. |
-| Average | Uses the mean of all Reality observations available under the selected cutoff mode. |
+| Naive | Repeats the latest eligible effective observation. |
+| Seasonal naive | Repeats the effective observation one selected seasonal cycle ago. |
+| Average | Uses the mean of effective observations available under the selected cutoff mode. |
 | SARIMA | Statsmodels SARIMAX with the selected seasonal period and known target-scenario inputs. |
 
 Seasonality is automatically detected per metric using autocorrelation and
@@ -107,9 +110,9 @@ needs a new name.
 
 Every saved result retains creator and creation metadata, target and Reality
 identifiers, cutoff mode, seasonal period/source, deterministic model
-configuration and seed, validation information, source-input snapshots and
-result points. This keeps results auditable after source rows change or are
-soft-deleted.
+configuration and seed, validation information, source-input snapshots
+including each effective observation source, and result points. This keeps
+results auditable after source rows change or are soft-deleted.
 
 Expected limitations are stored per metric/model with a machine-readable
 status and safe explanatory reason. They do not prevent other eligible
@@ -122,29 +125,32 @@ Forecasting runs synchronously in the authenticated backend request. There is
 no background worker, queue, scheduler, retry mechanism or progress-polling
 protocol in this MVP.
 
-One request permits at most 50 eligible target scenario/metric pairs, 366
-generated periods per pair, 10,000 contiguous Reality observations per pair and
-100,000 persisted prediction points across the version. A request that exceeds
-a limit is rejected rather than truncated.
+One request permits at most 50 numeric target scenario/metric candidates with
+compatible Reality metadata, 366 generated periods per pair, 10,000 contiguous
+effective observations per pair, and 100,000 persisted prediction points across
+the version. Detailed eligibility is evaluated only within the candidate bound.
+A request that exceeds a limit is rejected rather than truncated.
 
 ## Database Ownership
 
-Planned tables:
+Owned tables:
 
 - prediction versions
 - prediction target metrics
 - prediction model results
 - prediction points
 
-These tables will be owned exclusively by Forecasting Domain after TASK-041B
-adds them through paired migrations. Other domains may be referenced as source
-data but may not modify Forecasting-owned rows.
+These tables are owned exclusively by Forecasting Domain. Other domains may be
+read through their service boundaries but may not modify Forecasting-owned rows.
+Target source identities are retained as stable-key snapshots rather than source
+foreign keys, so saved versions remain readable when source rows are soft-deleted.
 
 ## API Ownership
 
-Forecasting's planned organisation-scoped API supports preflight, creation,
-listing and detail retrieval of prediction versions. TASK-041B defines and
-implements the public route and schema contract.
+The organisation-scoped API exposes `preflight`, create, list and detail routes
+under `/api/v1/organisations/{organisation_key}/predictions`. Preflight is
+read-only. Create is authenticated, origin/CSRF-protected and stores an audit
+actor; list and detail follow the existing authenticated organisation boundary.
 
 ## Dependencies
 
@@ -167,8 +173,9 @@ Referenced By:
 2. Resolve the active protected Reality scenario.
 3. Match active numeric target metrics to compatible Reality metrics by stable
    key.
-4. Validate continuous Reality history and construct only the target
-   scenario's known event and graph inputs.
+4. Merge Reality history with same-period target-scenario overrides, validate
+   continuity and construct only the target scenario's known event and graph
+   inputs.
 5. Detect seasonality or request a manual period where detection is
    inconclusive.
 6. Fit and evaluate the requested models within the synchronous work limits.
@@ -182,6 +189,7 @@ Before changing Forecasting behavior, read:
 
 ```text
 docs/decisions/ADR-007-predictions-forecasting-domain.md
+docs/decisions/ADR-008-target-scenario-observation-overrides.md
 docs/domains/FORECASTING.md
 docs/domains/ORG_STATES.md
 docs/domains/ORG_TWIN_STRUCTURE.md
