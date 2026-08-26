@@ -666,15 +666,127 @@ def test_scenario_copy_copies_selected_org_state_and_graph_snapshot(
         )
         assert node_type is not None
         assert edge_type is not None
-        timeserie = Timeserie(
+        primary_timeserie = Timeserie(
             scenario_id=source_scenario.scenario_id,
             timeserie_key="source_timeserie",
             name="Source timeserie",
+            description="Primary source metric",
+            unit="EUR",
+            time_unit="month",
+            value_unit="number",
+        )
+        secondary_timeserie = Timeserie(
+            scenario_id=source_scenario.scenario_id,
+            timeserie_key="secondary_timeserie",
+            name="Secondary timeserie",
+            description="Secondary source metric",
+            unit="flag",
+            time_unit="week",
+            value_unit="boolean",
+        )
+        string_timeserie = Timeserie(
+            scenario_id=source_scenario.scenario_id,
+            timeserie_key="status_timeserie",
+            name="Status timeserie",
+            description="String source metric",
+            unit="",
+            time_unit="day",
+            value_unit="string",
+        )
+        empty_timeserie = Timeserie(
+            scenario_id=source_scenario.scenario_id,
+            timeserie_key="empty_timeserie",
+            name="Empty timeserie",
             time_unit="year",
             value_unit="number",
         )
-        session.add(timeserie)
+        deleted_timeserie = Timeserie(
+            scenario_id=source_scenario.scenario_id,
+            timeserie_key="deleted_timeserie",
+            name="Deleted timeserie",
+            time_unit="year",
+            value_unit="number",
+            deleted_by=TEST_ACTOR_USER_ID,
+            deleted_time=datetime.now(UTC),
+        )
+        session.add_all(
+            [
+                primary_timeserie,
+                secondary_timeserie,
+                string_timeserie,
+                empty_timeserie,
+                deleted_timeserie,
+            ],
+        )
         session.flush()
+        session.add_all(
+            [
+                Event(
+                    scenario_id=source_scenario.scenario_id,
+                    event_key="before_event",
+                    name="Before event",
+                    target_date=date(2030, 1, 1),
+                    version=3,
+                    event_details="Before boundary",
+                ),
+                Event(
+                    scenario_id=source_scenario.scenario_id,
+                    event_key="boundary_event",
+                    name="Boundary event",
+                    target_date=date(2030, 2, 1),
+                    version=4,
+                    event_details="On boundary",
+                ),
+                Event(
+                    scenario_id=source_scenario.scenario_id,
+                    event_key="later_event",
+                    name="Later event",
+                    target_date=date(2030, 3, 1),
+                    event_details="After boundary",
+                ),
+                Event(
+                    scenario_id=source_scenario.scenario_id,
+                    event_key="deleted_event",
+                    name="Deleted event",
+                    target_date=date(2030, 1, 15),
+                    event_details="Soft deleted",
+                    deleted_by=TEST_ACTOR_USER_ID,
+                    deleted_time=datetime.now(UTC),
+                ),
+                TimeserieValue(
+                    timeserie_id=primary_timeserie.timeserie_id,
+                    date=date(2029, 12, 1),
+                    value={"value": 100},
+                ),
+                TimeserieValue(
+                    timeserie_id=primary_timeserie.timeserie_id,
+                    date=date(2030, 2, 1),
+                    value={"value": 200},
+                ),
+                TimeserieValue(
+                    timeserie_id=primary_timeserie.timeserie_id,
+                    date=date(2030, 3, 1),
+                    value={"value": 300},
+                ),
+                TimeserieValue(
+                    timeserie_id=primary_timeserie.timeserie_id,
+                    date=date(2030, 1, 1),
+                    value={"value": 50},
+                    deleted_by=TEST_ACTOR_USER_ID,
+                    deleted_time=datetime.now(UTC),
+                ),
+                TimeserieValue(
+                    timeserie_id=secondary_timeserie.timeserie_id,
+                    date=date(2030, 1, 29),
+                    value={"value": False},
+                ),
+                TimeserieValue(
+                    timeserie_id=string_timeserie.timeserie_id,
+                    date=date(2030, 1, 30),
+                    value={"value": "ready"},
+                ),
+            ],
+        )
         _add_graph_snapshot(
             session,
             first_state,
@@ -690,7 +802,8 @@ def test_scenario_copy_copies_selected_org_state_and_graph_snapshot(
             edge_type.edge_type_id,
             graph_name="Boundary graph",
             node_key="node_boundary",
-            timeserie_id=timeserie.timeserie_id,
+            timeserie_id=primary_timeserie.timeserie_id,
+            timeserie_secondary_id=secondary_timeserie.timeserie_id,
         )
         session.commit()
 
@@ -739,6 +852,114 @@ def test_scenario_copy_copies_selected_org_state_and_graph_snapshot(
         assert copied_boundary_state.target_date.isoformat() == "2030-02-01"
         assert copied_scenario.initial_state_id == copied_boundary_state.org_state_id
 
+        copied_events = session.scalars(
+            select(Event)
+            .where(
+                Event.scenario_id == copied_scenario.scenario_id,
+                Event.deleted_time.is_(None),
+            )
+            .order_by(Event.target_date, Event.event_id),
+        ).all()
+        assert [event.event_key for event in copied_events] == [
+            "before_event",
+            "boundary_event",
+        ]
+        copied_boundary_event = next(
+            event for event in copied_events if event.event_key == "boundary_event"
+        )
+        source_boundary_event = _get_event_including_deleted(
+            session,
+            source_scenario,
+            "boundary_event",
+        )
+        assert copied_boundary_event.event_id != source_boundary_event.event_id
+        assert (
+            copied_boundary_event.name,
+            copied_boundary_event.target_date,
+            copied_boundary_event.version,
+            copied_boundary_event.event_details,
+            copied_boundary_event.created_by,
+        ) == (
+            "Boundary event",
+            date(2030, 2, 1),
+            4,
+            "On boundary",
+            TEST_ACTOR_USER_ID,
+        )
+
+        copied_timeseries = {
+            timeserie.timeserie_key: timeserie
+            for timeserie in session.scalars(
+                select(Timeserie)
+                .where(
+                    Timeserie.scenario_id == copied_scenario.scenario_id,
+                    Timeserie.deleted_time.is_(None),
+                )
+                .order_by(Timeserie.timeserie_key, Timeserie.timeserie_id),
+            ).all()
+        }
+        assert set(copied_timeseries) == {
+            "empty_timeserie",
+            "secondary_timeserie",
+            "source_timeserie",
+            "status_timeserie",
+        }
+        copied_primary_timeserie = copied_timeseries["source_timeserie"]
+        copied_secondary_timeserie = copied_timeseries["secondary_timeserie"]
+        source_primary_timeserie = session.scalar(
+            select(Timeserie).where(
+                Timeserie.scenario_id == source_scenario.scenario_id,
+                Timeserie.timeserie_key == "source_timeserie",
+            ),
+        )
+        assert source_primary_timeserie is not None
+        assert (
+            copied_primary_timeserie.timeserie_id
+            != source_primary_timeserie.timeserie_id
+        )
+        assert (
+            copied_primary_timeserie.name,
+            copied_primary_timeserie.description,
+            copied_primary_timeserie.unit,
+            copied_primary_timeserie.time_unit,
+            copied_primary_timeserie.value_unit,
+            copied_primary_timeserie.created_by,
+        ) == (
+            "Source timeserie",
+            "Primary source metric",
+            "EUR",
+            "month",
+            "number",
+            TEST_ACTOR_USER_ID,
+        )
+        copied_values = {
+            timeserie_key: [
+                (value.date, value.value, value.created_by)
+                for value in session.scalars(
+                    select(TimeserieValue)
+                    .where(
+                        TimeserieValue.timeserie_id == timeserie.timeserie_id,
+                        TimeserieValue.deleted_time.is_(None),
+                    )
+                    .order_by(TimeserieValue.date, TimeserieValue.timeserie_value_id),
+                ).all()
+            ]
+            for timeserie_key, timeserie in copied_timeseries.items()
+        }
+        assert copied_values == {
+            "empty_timeserie": [],
+            "secondary_timeserie": [
+                (date(2030, 1, 29), {"value": False}, TEST_ACTOR_USER_ID),
+            ],
+            "source_timeserie": [
+                (date(2029, 12, 1), {"value": 100}, TEST_ACTOR_USER_ID),
+                (date(2030, 2, 1), {"value": 200}, TEST_ACTOR_USER_ID),
+            ],
+            "status_timeserie": [
+                (date(2030, 1, 30), {"value": "ready"}, TEST_ACTOR_USER_ID),
+            ],
+        }
+
         source_names = [
             org_state.name
             for org_state in session.scalars(
@@ -775,12 +996,88 @@ def test_scenario_copy_copies_selected_org_state_and_graph_snapshot(
             ),
         )
         assert copied_boundary_node.attributes == {"name": "node_boundary"}
-        assert copied_boundary_node.timeserie_id is None
-        assert copied_boundary_node.timeserie_secondary_id is None
+        assert (
+            copied_boundary_node.timeserie_id
+            == copied_primary_timeserie.timeserie_id
+        )
+        assert (
+            copied_boundary_node.timeserie_secondary_id
+            == copied_secondary_timeserie.timeserie_id
+        )
         assert copied_edge is not None
         assert copied_edge.source_graph_node_id == copied_boundary_node.graph_node_id
         assert copied_edge.target_graph_node_id == copied_boundary_node.graph_node_id
         assert copied_edge.attributes == {"weight": 1}
+
+        copied_boundary_event.name = "Copied event only"
+        copied_primary_value = session.scalar(
+            select(TimeserieValue).where(
+                TimeserieValue.timeserie_id == copied_primary_timeserie.timeserie_id,
+                TimeserieValue.date == date(2029, 12, 1),
+            ),
+        )
+        assert copied_primary_value is not None
+        copied_primary_value.value = {"value": 999}
+        session.commit()
+
+    assert (
+        client.delete(
+            f"/api/v1/organisations/{organisation_key}/scenarios/"
+            f"{copied_key}/timeseries/source_timeserie",
+        ).status_code
+        == 204
+    )
+
+    with session_factory() as session:
+        organisation = _get_organisation(session, organisation_key)
+        source_scenario = _get_scenario(session, organisation, source_scenario_key)
+        copied_scenario = _get_scenario(session, organisation, copied_key)
+        source_boundary_event = _get_event_including_deleted(
+            session,
+            source_scenario,
+            "boundary_event",
+        )
+        source_primary_timeserie = session.scalar(
+            select(Timeserie).where(
+                Timeserie.scenario_id == source_scenario.scenario_id,
+                Timeserie.timeserie_key == "source_timeserie",
+            ),
+        )
+        copied_primary_timeserie = session.scalar(
+            select(Timeserie).where(
+                Timeserie.scenario_id == copied_scenario.scenario_id,
+                Timeserie.timeserie_key == "source_timeserie",
+            ),
+        )
+        assert source_primary_timeserie is not None
+        assert copied_primary_timeserie is not None
+        source_primary_value = session.scalar(
+            select(TimeserieValue).join(Timeserie).where(
+                Timeserie.scenario_id == source_scenario.scenario_id,
+                Timeserie.timeserie_key == "source_timeserie",
+                TimeserieValue.date == date(2029, 12, 1),
+            ),
+        )
+        copied_primary_value = session.scalar(
+            select(TimeserieValue).where(
+                TimeserieValue.timeserie_id == copied_primary_timeserie.timeserie_id,
+                TimeserieValue.date == date(2029, 12, 1),
+            ),
+        )
+        assert source_primary_value is not None
+        assert copied_primary_value is not None
+        assert (
+            copied_primary_value.timeserie_value_id
+            != source_primary_value.timeserie_value_id
+        )
+        assert source_boundary_event.name == "Boundary event"
+        assert source_primary_timeserie.deleted_time is None
+        assert source_primary_value.value == {"value": 100}
+        assert source_primary_value.deleted_time is None
+        assert copied_primary_timeserie.deleted_by == TEST_ACTOR_USER_ID
+        assert copied_primary_timeserie.deleted_time is not None
+        assert copied_primary_value.deleted_by == TEST_ACTOR_USER_ID
+        assert copied_primary_value.deleted_time is not None
 
 
 @pytest.mark.parametrize("name_payload", [{}, {"name": "  "}])
@@ -2149,6 +2446,7 @@ def _add_graph_snapshot(
     graph_name: str,
     node_key: str,
     timeserie_id: int | None = None,
+    timeserie_secondary_id: int | None = None,
 ) -> None:
     graph_node = GraphNode(
         scenario_id=org_state.scenario_id,
@@ -2158,7 +2456,7 @@ def _add_graph_snapshot(
         create_date=org_state.target_date,
         attributes={"name": node_key},
         timeserie_id=timeserie_id,
-        timeserie_secondary_id=timeserie_id,
+        timeserie_secondary_id=timeserie_secondary_id or timeserie_id,
     )
     session.add(graph_node)
     session.flush()

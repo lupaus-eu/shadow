@@ -1,5 +1,6 @@
 import logging
 import math
+from copy import deepcopy
 from datetime import UTC, datetime
 from datetime import date as dt_date
 from typing import cast
@@ -187,9 +188,77 @@ def copy_scenario(
     copied_scenario.initial_state_id = copied_org_state.org_state_id
     copied_scenario.modified_by = actor_user_id
 
+    source_events = session.scalars(
+        select(Event)
+        .where(
+            Event.scenario_id == source_scenario.scenario_id,
+            Event.target_date <= source_org_state.target_date,
+            Event.deleted_time.is_(None),
+        )
+        .order_by(Event.target_date, Event.event_id),
+    ).all()
+    for source_event in source_events:
+        session.add(
+            Event(
+                scenario_id=copied_scenario.scenario_id,
+                event_key=source_event.event_key,
+                name=source_event.name,
+                target_date=source_event.target_date,
+                version=source_event.version,
+                event_details=source_event.event_details,
+                created_by=actor_user_id,
+            ),
+        )
+
+    source_timeseries = session.scalars(
+        select(Timeserie)
+        .where(
+            Timeserie.scenario_id == source_scenario.scenario_id,
+            Timeserie.deleted_time.is_(None),
+        )
+        .order_by(Timeserie.timeserie_key, Timeserie.timeserie_id),
+    ).all()
+    copied_timeserie_id_by_source_id: dict[int, int] = {}
+    for source_timeserie in source_timeseries:
+        copied_timeserie = Timeserie(
+            scenario_id=copied_scenario.scenario_id,
+            timeserie_key=source_timeserie.timeserie_key,
+            name=source_timeserie.name,
+            description=source_timeserie.description,
+            unit=source_timeserie.unit,
+            time_unit=source_timeserie.time_unit,
+            value_unit=source_timeserie.value_unit,
+            created_by=actor_user_id,
+        )
+        session.add(copied_timeserie)
+        session.flush()
+        copied_timeserie_id_by_source_id[source_timeserie.timeserie_id] = (
+            copied_timeserie.timeserie_id
+        )
+
+        source_values = session.scalars(
+            select(TimeserieValue)
+            .where(
+                TimeserieValue.timeserie_id == source_timeserie.timeserie_id,
+                TimeserieValue.date <= source_org_state.target_date,
+                TimeserieValue.deleted_time.is_(None),
+            )
+            .order_by(TimeserieValue.date, TimeserieValue.timeserie_value_id),
+        ).all()
+        for source_value in source_values:
+            session.add(
+                TimeserieValue(
+                    timeserie_id=copied_timeserie.timeserie_id,
+                    date=source_value.date,
+                    value=deepcopy(source_value.value),
+                    created_by=actor_user_id,
+                ),
+            )
+
     org_twin_structure_service.copy_graph_snapshots_for_org_states(
         session,
         {source_org_state.org_state_id: copied_org_state.org_state_id},
+        copied_timeserie_id_by_source_id,
         actor_user_id,
     )
 

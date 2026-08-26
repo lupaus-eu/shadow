@@ -137,9 +137,13 @@ Related APIs:
 - Scenario copy sets `initial_state_id` to the copied version of the selected
   source organisation state.
 - Scenario copy copies only the selected active source organisation state.
+- Scenario copy copies active source events through the selected source
+  organisation-state target date.
+- Scenario copy copies every active source timeserie and its active values
+  through the selected source organisation-state target date.
 - Scenario copy delegates copying of graph elements visible at the selected
-  source organisation-state target date to Organisation Twin Structure Domain.
-- Scenario copy does not copy scenario-owned timeseries or timeserie values.
+  source organisation-state target date, including remapped timeserie links,
+  to Organisation Twin Structure Domain.
 
 ---
 
@@ -164,7 +168,8 @@ Avoid:
 
 - treating physical cascade deletes as the normal deletion path
 - adding metamodel copy behavior unless task scope requires it
-- copying scenario-owned timeseries unless task scope requires it
+- bypassing the selected source organisation-state date when copying events or
+  timeserie values
 
 ---
 

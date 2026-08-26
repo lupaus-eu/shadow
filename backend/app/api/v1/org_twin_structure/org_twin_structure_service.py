@@ -714,6 +714,7 @@ def soft_delete_graphs_for_org_states(
 def copy_graph_snapshots_for_org_states(
     session: Session,
     copied_org_state_id_by_source_id: dict[int, int],
+    copied_timeserie_id_by_source_id: dict[int, int],
     actor_user_id: int,
 ) -> None:
     if not copied_org_state_id_by_source_id:
@@ -770,8 +771,14 @@ def copy_graph_snapshots_for_org_states(
             position_x=source_node.position_x,
             position_y=source_node.position_y,
             attributes=deepcopy(source_node.attributes),
-            timeserie_id=None,
-            timeserie_secondary_id=None,
+            timeserie_id=_copied_timeserie_id(
+                source_node.timeserie_id,
+                copied_timeserie_id_by_source_id,
+            ),
+            timeserie_secondary_id=_copied_timeserie_id(
+                source_node.timeserie_secondary_id,
+                copied_timeserie_id_by_source_id,
+            ),
             created_by=actor_user_id,
         )
         session.add(copied_node)
@@ -814,6 +821,21 @@ def copy_graph_snapshots_for_org_states(
         )
 
     session.flush()
+
+
+def _copied_timeserie_id(
+    source_timeserie_id: int | None,
+    copied_timeserie_id_by_source_id: dict[int, int],
+) -> int | None:
+    if source_timeserie_id is None:
+        return None
+
+    copied_timeserie_id = copied_timeserie_id_by_source_id.get(source_timeserie_id)
+    if copied_timeserie_id is None:
+        raise _invalid_graph_copy_exception(
+            "Graph copy requires a copied timeserie for every source node reference.",
+        )
+    return copied_timeserie_id
 
 
 def clear_timeserie_references(

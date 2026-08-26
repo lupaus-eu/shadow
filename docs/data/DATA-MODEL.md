@@ -89,6 +89,10 @@ Lue nämä yhdessä datamallin kanssa:
 - Physical database cascades exist only as hard-delete cleanup/safety behavior, not as the normal application deletion flow.
 - A scenario can reference a source scenario.
 - A scenario can reference one initial organisation state.
+- Scenario copy creates independent active event and timeserie rows in the
+  target scenario. The selected source organisation state's `target_date` is
+  the inclusive cutoff for copied events and timeserie values; every active
+  source timeserie is copied even when it has no qualifying value.
 - A metamodel can be default when `organisation_id` is `NULL`.
 - An organisation can have one active organisation-specific metamodel.
 - A metamodel owns node types, edge types, type attributes and allowed connection rules.
@@ -111,6 +115,8 @@ Lue nämä yhdessä datamallin kanssa:
   unit.
 - Graph nodes may reference primary and secondary timeseries owned by the same
   scenario.
+- Scenario copy remaps copied graph-node timeserie references to the matching
+  copied target-scenario timeseries.
 - A Prediction Version belongs to one organisation; its name is case-insensitively
   unique within that organisation and is never updated or overwritten.
 - A Prediction Version owns Prediction Targets; each target owns exactly one result

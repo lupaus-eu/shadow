@@ -136,12 +136,17 @@ Copy rules:
   preserves `name`, `description`, `target_date` and `version`
 - copied `initial_state_id` points to the copied version of the selected source
   organisation state
+- active source events with `target_date` on or before the selected source
+  organisation state's `target_date` are copied with their stable keys and
+  fields
+- every active source timeserie is copied with its stable key and metadata;
+  active values are copied only when their date is on or before the selected
+  source organisation state's `target_date`
 - graph elements visible at the selected source organisation state's target
   date are copied through the Organisation Twin Structure Domain service
   boundary
-- scenario-owned timeseries and timeserie values are not copied
-- source scenario, source organisation states and source graph history are not
-  mutated
+- source scenario, source organisation states, events, timeseries, values and
+  graph history are not mutated
 
 ---
 

@@ -137,6 +137,8 @@ Related APIs:
 - Scenario copy copies only the selected active source organisation state.
 - Scenario copy gives the copied organisation state a generated `org_state_key`
   while preserving `name`, `description`, `targetDate` and `version`.
+- The selected source organisation state's `targetDate` is the inclusive cutoff
+  for copied source-scenario events and active timeserie values.
 
 ---
 

@@ -91,8 +91,8 @@ selected source organisation state's target date into the copied scenario.
 
 Graph copy preserves node and edge stable keys, names, descriptions, type
 references, logical lifetime dates, positions and dynamic attributes. Graph
-node timeseries references are cleared because scenario-owned timeseries are not
-copied by scenario copy.
+node primary and secondary timeseries references are remapped to the matching
+copied scenario-owned timeseries.
 
 ---
 
@@ -245,9 +245,10 @@ Flow:
 Flow:
 
 1. Receive source organisation state to copied organisation state id mappings
-   from Organisation States Domain.
+   and source-to-copied timeserie id mappings from Organisation States Domain.
 2. Load graph elements visible at the selected source target date.
-3. Copy visible graph nodes, clearing timeseries references.
+3. Copy visible graph nodes, translating primary and secondary timeseries
+   references to copied-scenario rows.
 4. Copy visible graph edges to reference the copied graph nodes.
 
 ---
