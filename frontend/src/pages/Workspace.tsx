@@ -18,6 +18,7 @@ import ScenariosTab from "../features/scenarios/ScenariosTab";
 import StructureTab from "../features/structure/StructureTab";
 import SummaryTab from "../features/summary/SummaryTab";
 import CustomersTab from "../features/customers/CustomersTab";
+import PredictionsTab from "../features/predictions/PredictionsTab";
 import UsersTab from "../features/users/UsersTab";
 import { useWorkspaceSelection } from "../workspace/WorkspaceSelectionContext";
 import WorkspaceSelectionProvider from "../workspace/WorkspaceSelectionProvider";
@@ -72,6 +73,7 @@ function WorkspaceShell(props: {
   initialOrganisationName: string;
 }) {
   const { user } = useAuth();
+  const location = useLocation();
   const [organisationName, setOrganisationName] = useState(
     props.initialOrganisationName
   );
@@ -100,7 +102,13 @@ function WorkspaceShell(props: {
         />
       </header>
 
-      <main className="workspace-content">
+      <main
+        className={`workspace-content${
+          location.pathname.endsWith("/predictions")
+            ? " workspace-content--predictions"
+            : ""
+        }`}
+      >
         <Routes>
           <Route
             index
@@ -255,6 +263,10 @@ function WorkspaceTabContent(props: { tab: WorkspaceTab; orgId: string }) {
 
   if (props.tab.signature === "customers") {
     return <CustomersTab />;
+  }
+
+  if (props.tab.signature === "predictions") {
+    return <PredictionsTab orgId={props.orgId} />;
   }
 
   return <EmptyTab title={props.tab.label} description={props.tab.emptyText} />;

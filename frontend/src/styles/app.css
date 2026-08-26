@@ -401,6 +401,10 @@
   background: var(--color-bg-canvas);
 }
 
+.workspace-content--predictions {
+  overflow: auto;
+}
+
 .secondary__title {
   display: flex;
   margin: 0 0 var(--space-1);

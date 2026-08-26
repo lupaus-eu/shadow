@@ -153,6 +153,13 @@ function mockSchattenApi(options?: {
       return Promise.resolve(jsonResponse([]));
     }
 
+    if (
+      url.endsWith("/api/v1/organisations/acme/predictions") &&
+      method === "GET"
+    ) {
+      return Promise.resolve(jsonResponse([]));
+    }
+
     if (url.endsWith("/api/v1/organisations/acme/scenarios/copy")) {
       return Promise.resolve(
         jsonResponse({
@@ -851,6 +858,7 @@ describe("Schatten UI shell", () => {
       ["Metrics", "/schatten/acme/metrics"],
       ["Summary", "/schatten/acme/summary"],
       ["Analysis", "/schatten/acme/analysis"],
+      ["Predictions", "/schatten/acme/predictions"],
       ["Customers", "/schatten/acme/customers"],
       ["Users", "/schatten/acme/users"]
     ] as const;
@@ -921,6 +929,19 @@ describe("Schatten UI shell", () => {
     );
     expect(screen.getByRole("heading", { name: "Summary" })).toBeInTheDocument();
     expect(screen.getByText(/Select a scenario/)).toBeInTheDocument();
+  });
+
+  it("renders Predictions without a selected scenario or organisation state", async () => {
+    mockSchattenApi();
+
+    renderAt("/schatten/acme/predictions");
+
+    expect(await screen.findByText(/Reality remains live manually entered/i)).toBeVisible();
+    expect(screen.getByRole("link", { name: "Predictions" })).toHaveClass(
+      "tab-link--active"
+    );
+    expect(screen.getByTitle("Scenario: None")).toBeInTheDocument();
+    expect(screen.getByTitle("Org state: None")).toBeInTheDocument();
   });
 
   it("shows the organisation, scenario, and org state indicators", async () => {
