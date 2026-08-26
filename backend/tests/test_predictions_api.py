@@ -63,18 +63,17 @@ def _create_target_and_metrics(client: TestClient, organisation_key: str) -> str
     )
     assert scenario.status_code == 201
     target_key = str(scenario.json()["id"])
-    for scenario_key in ("reality", target_key):
-        response = client.post(
-            f"/api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/timeseries",
-            json={
-                "id": "revenue",
-                "name": "Revenue",
-                "unit": "EUR",
-                "timeUnit": "month",
-                "valueUnit": "number",
-            },
-        )
-        assert response.status_code == 201
+    response = client.post(
+        f"/api/v1/organisations/{organisation_key}/scenarios/{target_key}/timeseries",
+        json={
+            "id": "revenue",
+            "name": "Revenue",
+            "unit": "EUR",
+            "timeUnit": "month",
+            "valueUnit": "number",
+        },
+    )
+    assert response.status_code == 201
     values = [
         {"date": "2025-01-01", "value": 10},
         {"date": "2025-02-01", "value": 20},
@@ -82,7 +81,7 @@ def _create_target_and_metrics(client: TestClient, organisation_key: str) -> str
         {"date": "2025-04-01", "value": 40},
     ]
     response = client.patch(
-        f"/api/v1/organisations/{organisation_key}/scenarios/reality/timeseries/revenue/values",
+        f"/api/v1/organisations/{organisation_key}/scenarios/{target_key}/timeseries/revenue/values",
         json={"values": values},
     )
     assert response.status_code == 200
@@ -113,7 +112,7 @@ def _create_model_ready_target(client: TestClient) -> tuple[str, str]:
     ]
     replacement = client.patch(
         (
-            f"/api/v1/organisations/{organisation_key}/scenarios/reality/"
+            f"/api/v1/organisations/{organisation_key}/scenarios/{target_key}/"
             "timeseries/revenue/values"
         ),
         json={"values": values},
@@ -122,7 +121,7 @@ def _create_model_ready_target(client: TestClient) -> tuple[str, str]:
     return organisation_key, target_key
 
 
-def test_preflight_is_read_only_and_create_persists_reality_baselines(
+def test_preflight_is_read_only_and_create_persists_target_scenario_history(
     client: TestClient, session_factory: sessionmaker[Session]
 ) -> None:
     organisation_key = _create_organisation(client)
@@ -174,7 +173,7 @@ def test_preflight_is_read_only_and_create_persists_reality_baselines(
         assert target.created_by == 0
         assert (
             target.source_snapshot["observationPolicy"]
-            == "targetScenarioOverridesReality"
+            == "targetScenarioOnly"
         )
         result = session.scalar(select(PredictionModelResult))
         point = session.scalar(select(PredictionPoint))
@@ -216,24 +215,19 @@ def test_preflight_rejects_candidate_pair_limit_before_history_preparation(
     organisation_key = _create_organisation(client)
     target_key = _create_target_and_metrics(client, organisation_key)
     with session_factory() as session:
-        scenarios = {
-            scenario.scenario_key: scenario
-            for scenario in session.scalars(
-                select(Scenario).where(
-                    Scenario.scenario_key.in_(("reality", target_key))
-                )
-            )
-        }
+        scenario = session.scalar(
+            select(Scenario).where(Scenario.scenario_key == target_key)
+        )
+        assert scenario is not None
         session.add_all(
             Timeserie(
-                scenario_id=scenarios[scenario_key].scenario_id,
+                scenario_id=scenario.scenario_id,
                 timeserie_key=f"metric-{index}",
                 name=f"Metric {index}",
                 unit="EUR",
                 time_unit="month",
                 value_unit="number",
             )
-            for scenario_key in ("reality", target_key)
             for index in range(50)
         )
         session.commit()
@@ -256,7 +250,12 @@ def test_as_of_start_excludes_observations_at_or_after_first_period(
             f"/api/v1/organisations/{organisation_key}/scenarios/{target_key}/"
             "timeseries/revenue/values"
         ),
-        json={"values": [{"date": "2025-04-01", "value": 400}]},
+        json={"values": [
+            {"date": "2025-01-01", "value": 10},
+            {"date": "2025-02-01", "value": 20},
+            {"date": "2025-03-01", "value": 30},
+            {"date": "2025-04-01", "value": 400},
+        ]},
     )
     assert replacement.status_code == 200
     response = client.post(
@@ -283,7 +282,13 @@ def test_as_of_start_uses_first_generated_period_for_unaligned_ranges(
             f"/api/v1/organisations/{organisation_key}/scenarios/{target_key}/"
             "timeseries/revenue/values"
         ),
-        json={"values": [{"date": "2025-05-01", "value": 500}]},
+        json={"values": [
+            {"date": "2025-01-01", "value": 10},
+            {"date": "2025-02-01", "value": 20},
+            {"date": "2025-03-01", "value": 30},
+            {"date": "2025-04-01", "value": 40},
+            {"date": "2025-05-01", "value": 500},
+        ]},
     )
     assert replacement.status_code == 200
 
@@ -302,7 +307,7 @@ def test_as_of_start_uses_first_generated_period_for_unaligned_ranges(
     assert [point["value"] for point in results["naive"]["points"]] == [500.0]
 
 
-def test_target_scenario_values_override_reality_observations(
+def test_target_scenario_values_are_the_only_observed_history(
     client: TestClient,
 ) -> None:
     organisation_key = _create_organisation(client)
@@ -312,7 +317,12 @@ def test_target_scenario_values_override_reality_observations(
             f"/api/v1/organisations/{organisation_key}/scenarios/{target_key}/"
             "timeseries/revenue/values"
         ),
-        json={"values": [{"date": "2025-04-01", "value": 400}]},
+        json={"values": [
+            {"date": "2025-01-01", "value": 100},
+            {"date": "2025-02-01", "value": 200},
+            {"date": "2025-03-01", "value": 300},
+            {"date": "2025-04-01", "value": 400},
+        ]},
     )
     assert replacement.status_code == 200
 
@@ -324,12 +334,177 @@ def test_target_scenario_values_override_reality_observations(
     target = response.json()["targets"][0]
     results = {result["kind"]: result for result in target["results"]}
     assert [point["value"] for point in results["naive"]["points"]] == [400.0, 400.0]
-    assert [point["value"] for point in results["average"]["points"]] == [115.0, 115.0]
+    assert [point["value"] for point in results["average"]["points"]] == [250.0, 250.0]
     assert target["sourceSnapshot"]["effectiveObservations"][-1] == {
         "date": "2025-04-01",
         "value": 400.0,
         "source": "targetScenario",
     }
+    assert target["sourceSnapshot"]["observationPolicy"] == "targetScenarioOnly"
+    assert "realityScenarioId" not in target
+
+
+def test_reality_is_a_prediction_target_with_its_own_history(
+    client: TestClient,
+) -> None:
+    organisation_key = _create_organisation(client)
+    response = client.post(
+        f"/api/v1/organisations/{organisation_key}/scenarios/reality/timeseries",
+        json={
+            "id": "revenue",
+            "name": "Revenue",
+            "unit": "EUR",
+            "timeUnit": "month",
+            "valueUnit": "number",
+        },
+    )
+    assert response.status_code == 201
+    response = client.patch(
+        f"/api/v1/organisations/{organisation_key}/scenarios/reality/timeseries/revenue/values",
+        json={
+            "values": [
+                {"date": "2025-01-01", "value": 10},
+                {"date": "2025-02-01", "value": 20},
+                {"date": "2025-03-01", "value": 30},
+                {"date": "2025-04-01", "value": 40},
+            ]
+        },
+    )
+    assert response.status_code == 200
+
+    response = client.post(
+        f"/api/v1/organisations/{organisation_key}/predictions",
+        json=_prediction_payload("reality", name="Reality forecast"),
+    )
+
+    assert response.status_code == 201
+    target = response.json()["targets"][0]
+    assert target["scenarioId"] == "reality"
+    assert [
+        observation["source"]
+        for observation in target["sourceSnapshot"]["effectiveObservations"]
+    ] == ["targetScenario"] * 4
+
+
+def test_all_current_scenario_uses_only_target_data_and_rejects_legacy_cutoff(
+    client: TestClient,
+) -> None:
+    organisation_key = _create_organisation(client)
+    target_key = _create_target_and_metrics(client, organisation_key)
+    other = client.post(
+        f"/api/v1/organisations/{organisation_key}/scenarios",
+        json={"name": "Other plan"},
+    )
+    assert other.status_code == 201
+    other_key = other.json()["id"]
+    response = client.post(
+        f"/api/v1/organisations/{organisation_key}/scenarios/{other_key}/timeseries",
+        json={
+            "id": "revenue",
+            "name": "Revenue",
+            "unit": "EUR",
+            "timeUnit": "month",
+            "valueUnit": "number",
+        },
+    )
+    assert response.status_code == 201
+    response = client.patch(
+        f"/api/v1/organisations/{organisation_key}/scenarios/{other_key}/timeseries/revenue/values",
+        json={
+            "values": [
+                {"date": "2025-01-01", "value": 1000},
+                {"date": "2025-02-01", "value": 2000},
+                {"date": "2025-03-01", "value": 3000},
+                {"date": "2025-04-01", "value": 4000},
+            ]
+        },
+    )
+    assert response.status_code == 200
+
+    response = client.post(
+        f"/api/v1/organisations/{organisation_key}/predictions",
+        json=_prediction_payload(
+            target_key,
+            name="All current target",
+            startDate="2025-03-01",
+            endDate="2025-04-30",
+            cutoffMode="allCurrentScenario",
+        ),
+    )
+    assert response.status_code == 201
+    results = {item["kind"]: item for item in response.json()["targets"][0]["results"]}
+    assert [point["value"] for point in results["naive"]["points"]] == [40.0, 40.0]
+    assert [point["value"] for point in results["average"]["points"]] == [25.0, 25.0]
+
+    legacy = client.post(
+        f"/api/v1/organisations/{organisation_key}/predictions/preflight",
+        json=_prediction_payload(target_key, cutoffMode="allCurrentReality"),
+    )
+    assert legacy.status_code == 422
+
+
+def test_forked_timeserie_history_is_independently_forecastable(
+    client: TestClient,
+) -> None:
+    organisation_key = _create_organisation(client)
+    response = client.post(
+        f"/api/v1/organisations/{organisation_key}/scenarios/reality/timeseries",
+        json={
+            "id": "revenue",
+            "name": "Revenue",
+            "unit": "EUR",
+            "timeUnit": "month",
+            "valueUnit": "number",
+        },
+    )
+    assert response.status_code == 201
+    response = client.patch(
+        f"/api/v1/organisations/{organisation_key}/scenarios/reality/timeseries/revenue/values",
+        json={
+            "values": [
+                {"date": "2025-01-01", "value": 10},
+                {"date": "2025-02-01", "value": 20},
+                {"date": "2025-03-01", "value": 30},
+                {"date": "2025-04-01", "value": 40},
+            ]
+        },
+    )
+    assert response.status_code == 200
+    state = client.post(
+        f"/api/v1/organisations/{organisation_key}/scenarios/reality/org-states",
+        json={"name": "Forecast source", "targetDate": "2025-04-01"},
+    )
+    assert state.status_code == 201
+    fork = client.post(
+        f"/api/v1/organisations/{organisation_key}/scenarios/copy",
+        json={
+            "sourceScenarioId": "reality",
+            "sourceOrgStateId": state.json()["id"],
+            "name": "Forecast fork",
+        },
+    )
+    assert fork.status_code == 201
+    fork_key = fork.json()["id"]
+
+    prediction = client.post(
+        f"/api/v1/organisations/{organisation_key}/predictions",
+        json=_prediction_payload(fork_key, name="Fork forecast"),
+    )
+    assert prediction.status_code == 201
+    assert prediction.json()["targets"][0]["status"] == "eligible"
+
+    response = client.patch(
+        f"/api/v1/organisations/{organisation_key}/scenarios/reality/timeseries/revenue/values",
+        json={"values": [{"date": "2025-01-01", "value": 999}]},
+    )
+    assert response.status_code == 200
+    rerun = client.post(
+        f"/api/v1/organisations/{organisation_key}/predictions",
+        json=_prediction_payload(fork_key, name="Fork forecast after source edit"),
+    )
+    assert rerun.status_code == 201
+    results = {item["kind"]: item for item in rerun.json()["targets"][0]["results"]}
+    assert [point["value"] for point in results["naive"]["points"]] == [40.0, 40.0]
 
 
 def test_sarima_nonconvergence_is_saved_without_discarding_mlforecast(
@@ -346,7 +521,7 @@ def test_sarima_nonconvergence_is_saved_without_discarding_mlforecast(
     ]
     replacement = client.patch(
         (
-            f"/api/v1/organisations/{organisation_key}/scenarios/reality/"
+            f"/api/v1/organisations/{organisation_key}/scenarios/{target_key}/"
             "timeseries/revenue/values"
         ),
         json={"values": values},
@@ -527,7 +702,10 @@ def test_sarima_uses_the_selected_seasonal_period(
             return FakeFittedModel()
 
     monkeypatch.setattr("statsmodels.tsa.statespace.sarimax.SARIMAX", FakeSarimax)
-    history = [(date(2024, month, 1), float(month), "reality") for month in range(1, 9)]
+    history = [
+        (date(2024, month, 1), float(month), "targetScenario")
+        for month in range(1, 9)
+    ]
     prepared_target = predictions_service._PreparedTarget  # pyright: ignore[reportPrivateUsage]
     sarima_points = predictions_service._sarima_points  # pyright: ignore[reportPrivateUsage]
     row = prepared_target(
@@ -547,18 +725,20 @@ def test_sarima_uses_the_selected_seasonal_period(
     assert captured["seasonal_order"] == (1, 0, 0, 2)
 
 
-def test_missing_reality_period_is_saved_as_normal_ineligibility(
+def test_missing_target_scenario_period_is_saved_as_normal_ineligibility(
     client: TestClient, session_factory: sessionmaker[Session]
 ) -> None:
     organisation_key = _create_organisation(client)
     target_key = _create_target_and_metrics(client, organisation_key)
     with session_factory() as session:
-        reality = session.scalar(
-            select(Scenario).where(Scenario.scenario_key == "reality")
+        target_scenario = session.scalar(
+            select(Scenario).where(Scenario.scenario_key == target_key)
         )
-        assert reality is not None
+        assert target_scenario is not None
         timeserie = session.scalar(
-            select(Timeserie).where(Timeserie.scenario_id == reality.scenario_id)
+            select(Timeserie).where(
+                Timeserie.scenario_id == target_scenario.scenario_id
+            )
         )
         assert timeserie is not None
         missing = session.scalar(

@@ -54,7 +54,6 @@ class PredictionTarget(Base):
     )
     target_scenario_id: Mapped[int] = mapped_column(BigInteger)
     target_scenario_key: Mapped[str] = mapped_column(Text)
-    reality_scenario_key: Mapped[str] = mapped_column(Text)
     metric_key: Mapped[str] = mapped_column(Text)
     metric_name: Mapped[str] = mapped_column(Text)
     time_unit: Mapped[str] = mapped_column(Text)

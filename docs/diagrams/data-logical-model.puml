@@ -105,8 +105,8 @@ note bottom of customer_address
 end note
 
 note right of prediction_target
-  Retains Reality and target-source
-  stable-key/input snapshots
+  Retains target-scenario-only
+  source/input snapshots
 end note
 
 @enduml

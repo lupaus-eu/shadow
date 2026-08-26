@@ -59,6 +59,7 @@ db/migrations/007_create_contacts.sql
 db/migrations/008_create_customer_addresses.sql
 db/migrations/009_add_auth_identity_session_schema.sql
 db/migrations/010_create_prediction_schema.sql
+db/migrations/011_alter_prediction_target_observation_source.sql
 ```
 
 | Table | Purpose | Notes |
@@ -81,7 +82,7 @@ db/migrations/010_create_prediction_schema.sql
 | `timeseries` | Scenario-specific timeseries definitions | Supports `day`, `week`, `month`, `year` time units. |
 | `timeserie_values` | Timeseries values by date | No `name` column; value is stored as `JSONB` with the public scalar under `value`. |
 | `prediction_versions` | Immutable named Forecasting executions | Organisation-local case-insensitive name and stable `prediction_key`; persists range, cutoff and deterministic configuration. |
-| `prediction_targets` | Saved scenario/metric Forecasting targets | Stores stable source keys, eligibility, seasonality and immutable JSON snapshots; source scenario/metric IDs are snapshots, not FKs. |
+| `prediction_targets` | Saved scenario/metric Forecasting targets | Stores stable target key, eligibility, seasonality and immutable target-source JSON snapshots; source scenario/metric IDs are snapshots, not FKs. |
 | `prediction_model_results` | One result per target/model kind | Persists availability, safe ineligibility reason, cross-validation state and configuration. |
 | `prediction_points` | Dated numeric derived values | Owned by a Forecasting model result; never written to `timeserie_values`. |
 | `customers` | Application-wide customer profiles | Status is `active`, `archived` or `deleted`; status and `deleted_time` must agree. |
@@ -151,9 +152,9 @@ back.
 - Prediction target/model/result-point rows are privately owned by the
   Forecasting Domain and cascade only from their own immutable version.
 - Prediction source references are stable-key snapshots instead of FKs to
-  scenarios or timeseries. Their source JSON records the effective observation
-  source per period and the target-overrides-Reality policy, preserving
-  auditability after a source soft delete.
+  scenarios or timeseries. Their source JSON records target-scenario-only
+  effective observations per period, preserving auditability after a source
+  soft delete.
 - Prediction model kinds, eligibility and cross-validation statuses are
   constrained to the Forecasting Domain's approved values; point values and
   cross-validation MAE values must be finite, and MAE cannot be negative.

@@ -88,6 +88,7 @@ The current ordered migration chain is:
 008_create_customer_addresses.sql
 009_add_auth_identity_session_schema.sql
 010_create_prediction_schema.sql
+011_alter_prediction_target_observation_source.sql
 ```
 
 Jokaisella yllä olevalla tiedostolla on vastaava `.down.sql`-tiedosto.

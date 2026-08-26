@@ -160,6 +160,10 @@ def test_rejects_non_latest_and_unapplied_down_migrations(
         )
 
     execute_command(
+        DownCommand("011_alter_prediction_target_observation_source.down.sql"),
+        database_url=migration_database_url,
+    )
+    execute_command(
         DownCommand("010_create_prediction_schema.down.sql"),
         database_url=migration_database_url,
     )
@@ -238,9 +242,9 @@ def test_existing_schema_requires_explicit_baseline(
         "SELECT to_regclass('schema_migrations') IS NOT NULL",
     )
 
-    execute_command(BaselineCommand(10), database_url=migration_database_url)
+    execute_command(BaselineCommand(11), database_url=migration_database_url)
     assert (
-        _scalar(migration_database_url, "SELECT count(*) FROM schema_migrations") == 10
+        _scalar(migration_database_url, "SELECT count(*) FROM schema_migrations") == 11
     )
     execute_command(UpCommand(), database_url=migration_database_url)
 
@@ -294,7 +298,7 @@ def test_migration_nine_upgrades_an_empty_version_eight_database(
             migration_database_url,
             "SELECT max(version) FROM schema_migrations",
         )
-        == 10
+        == 11
     )
     assert _scalar(
         migration_database_url,
@@ -366,6 +370,10 @@ def test_migration_nine_constraints_and_down_scope(
             )
 
     execute_command(
+        DownCommand("011_alter_prediction_target_observation_source.down.sql"),
+        database_url=migration_database_url,
+    )
+    execute_command(
         DownCommand("010_create_prediction_schema.down.sql"),
         database_url=migration_database_url,
     )
@@ -429,10 +437,10 @@ def test_prediction_schema_rejects_non_finite_numbers(
         target = connection.execute(
             "INSERT INTO prediction_targets ("
             "prediction_version_id, target_scenario_id, target_scenario_key, "
-            "reality_scenario_key, metric_key, metric_name, time_unit, "
+            "metric_key, metric_name, time_unit, "
             "eligibility_status, created_by"
-            ") VALUES (%s, 1, 'target', 'reality', 'revenue', 'Revenue', "
-            "'month', 'eligible', %s) RETURNING prediction_target_id",
+            ") VALUES (%s, 1, 'target', 'revenue', 'Revenue', 'month', "
+            "'eligible', %s) RETURNING prediction_target_id",
             (version[0], user[0]),
         ).fetchone()
         assert target is not None
@@ -466,6 +474,53 @@ def test_prediction_schema_rejects_non_finite_numbers(
                 ") VALUES (%s, DATE '2025-01-01', 'NaN'::float8, %s)",
                 (result[0], user[0]),
             )
+
+
+def test_prediction_observation_source_migration_replaces_schema(
+    migration_database_url: str,
+) -> None:
+    execute_command(UpCommand(), database_url=migration_database_url)
+
+    assert not _scalar(
+        migration_database_url,
+        """
+        SELECT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = current_schema()
+              AND table_name = 'prediction_targets'
+              AND column_name = 'reality_scenario_key'
+        )
+        """,
+    )
+
+    with psycopg.connect(migration_database_url) as connection:
+        with pytest.raises(psycopg.errors.CheckViolation):
+            connection.execute(
+                """
+                INSERT INTO prediction_versions (
+                    organisation_id, prediction_key, name, cutoff_mode,
+                    start_date, end_date
+                ) VALUES (1, 'legacy-cutoff', 'Legacy cutoff',
+                    'allCurrentReality', DATE '2025-01-01', DATE '2025-02-01')
+                """
+            )
+
+    execute_command(
+        DownCommand("011_alter_prediction_target_observation_source.down.sql"),
+        database_url=migration_database_url,
+    )
+    assert _scalar(
+        migration_database_url,
+        """
+        SELECT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = current_schema()
+              AND table_name = 'prediction_targets'
+              AND column_name = 'reality_scenario_key'
+        )
+        """,
+    )
+    execute_command(UpCommand(), database_url=migration_database_url)
 
 
 def test_migration_four_down_restores_unambiguous_legacy_graph(

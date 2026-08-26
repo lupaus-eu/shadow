@@ -1,6 +1,6 @@
 # ADR-008: Target Scenario Observation Overrides
 
-Status: Accepted
+Status: Superseded by ADR-009
 
 Date: 2026-08-25
 
@@ -51,13 +51,12 @@ Costs and constraints:
 
 # Supersedes
 
-This ADR amends only ADR-007's sole-Reality observed-value rule and its related
-baseline/training wording. It does not change Forecasting ownership, model
-libraries, persistence ownership, execution bounds or the prohibition on using
-other target scenarios' values.
+ADR-009 supersedes this policy with target-scenario-only observation history.
+This document remains a historical record of the previous override policy.
 
 # References
 
 - `docs/decisions/ADR-007-predictions-forecasting-domain.md`
+- `docs/decisions/ADR-009-scenario-owned-prediction-inputs.md`
 - `docs/domains/FORECASTING.md`
 - `tasks/TASK-041B-predictions-backend-modeling.md`

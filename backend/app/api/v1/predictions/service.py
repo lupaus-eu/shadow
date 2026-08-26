@@ -1,8 +1,7 @@
 """Forecasting Domain service.
 
-All source reads live here so a planning scenario can contribute only its own
-known inputs. Reality observations are merged only with same-period values
-from the selected target scenario.
+All source reads live here so each prediction target uses only its own observed
+values and known inputs.
 """
 # pyright: reportAttributeAccessIssue=false, reportMissingTypeStubs=false, reportUnknownArgumentType=false, reportUnknownMemberType=false, reportUnknownVariableType=false
 
@@ -68,11 +67,9 @@ MODEL_CONFIGURATION: dict[str, object] = {
 def preflight_predictions(
     session: Session, organisation_key: str, payload: PredictionPreflightRequest
 ) -> PredictionPreflightResponse:
-    organisation, reality, targets = _request_context(
-        session, organisation_key, payload
-    )
+    organisation, targets = _request_context(session, organisation_key, payload)
     del organisation
-    rows = _prepare_targets(session, reality, targets, payload)
+    rows = _prepare_targets(session, targets, payload)
     _enforce_limits(rows)
     return PredictionPreflightResponse(metrics=[row.preflight for row in rows])
 
@@ -83,10 +80,8 @@ def create_prediction(
     payload: PredictionCreateRequest,
     actor_user_id: int,
 ) -> PredictionVersionDetailResponse:
-    organisation, reality, targets = _request_context(
-        session, organisation_key, payload
-    )
-    rows = _prepare_targets(session, reality, targets, payload)
+    organisation, targets = _request_context(session, organisation_key, payload)
+    rows = _prepare_targets(session, targets, payload)
     _enforce_limits(rows)
     if (
         session.scalar(
@@ -117,7 +112,6 @@ def create_prediction(
                 prediction_version_id=version.prediction_version_id,
                 target_scenario_id=row.scenario.scenario_id,
                 target_scenario_key=row.scenario.scenario_key,
-                reality_scenario_key=reality.scenario_key,
                 metric_key=row.metric.timeserie_key,
                 metric_name=row.metric.name,
                 time_unit=row.metric.time_unit,
@@ -207,7 +201,7 @@ class _PreparedTarget:
     def source_snapshot(self) -> dict[str, object]:
         return {
             "targetScenarioId": self.scenario.scenario_key,
-            "observationPolicy": "targetScenarioOverridesReality",
+            "observationPolicy": "targetScenarioOnly",
             "metric": {
                 "id": self.metric.timeserie_key,
                 "timeUnit": self.metric.time_unit,
@@ -250,21 +244,8 @@ class _PreparedTarget:
 
 def _request_context(
     session: Session, organisation_key: str, payload: PredictionRequestBase
-) -> tuple[Organisation, Scenario, list[Scenario]]:
+) -> tuple[Organisation, list[Scenario]]:
     organisation = get_active_organisation(session, organisation_key)
-    reality = session.scalar(
-        select(Scenario).where(
-            Scenario.organisation_id == organisation.organisation_id,
-            Scenario.scenario_key == "reality",
-            Scenario.protected.is_(True),
-            Scenario.deleted_time.is_(None),
-        )
-    )
-    if reality is None:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Active protected Reality scenario is required.",
-        )
     targets = session.scalars(
         select(Scenario).where(
             Scenario.organisation_id == organisation.organisation_id,
@@ -277,29 +258,14 @@ def _request_context(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Target scenario not found."
         )
-    if reality.scenario_key in by_key:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Reality cannot be a prediction target scenario.",
-        )
-    return organisation, reality, [by_key[key] for key in payload.target_scenario_ids]
+    return organisation, [by_key[key] for key in payload.target_scenario_ids]
 
 
 def _prepare_targets(
     session: Session,
-    reality: Scenario,
     targets: list[Scenario],
     payload: PredictionRequestBase,
 ) -> list[_PreparedTarget]:
-    reality_metrics = {
-        metric.timeserie_key: metric
-        for metric in session.scalars(
-            select(Timeserie).where(
-                Timeserie.scenario_id == reality.scenario_id,
-                Timeserie.deleted_time.is_(None),
-            )
-        ).all()
-    }
     prepared: list[_PreparedTarget] = []
     candidate_count = 0
     for scenario in targets:
@@ -312,35 +278,21 @@ def _prepare_targets(
             .order_by(Timeserie.timeserie_key)
         ).all()
         for metric in metrics:
-            reality_metric = reality_metrics.get(metric.timeserie_key)
-            if _is_model_candidate(reality_metric, metric):
+            if _is_model_candidate(metric):
                 candidate_count += 1
                 if candidate_count > MAX_PAIRS:
                     raise _pair_limit_exception()
-            row = _prepare_metric(
-                session,
-                reality_metric,
-                scenario,
-                metric,
-                payload,
-            )
+            row = _prepare_metric(session, scenario, metric, payload)
             prepared.append(row)
     return prepared
 
 
-def _is_model_candidate(reality_metric: Timeserie | None, metric: Timeserie) -> bool:
-    return (
-        metric.value_unit == "number"
-        and reality_metric is not None
-        and reality_metric.value_unit == "number"
-        and reality_metric.time_unit == metric.time_unit
-        and reality_metric.unit == metric.unit
-    )
+def _is_model_candidate(metric: Timeserie) -> bool:
+    return metric.value_unit == "number"
 
 
 def _prepare_metric(
     session: Session,
-    reality_metric: Timeserie | None,
     scenario: Scenario,
     metric: Timeserie,
     payload: PredictionRequestBase,
@@ -361,16 +313,6 @@ def _prepare_metric(
 
     if metric.value_unit != "number":
         return empty("ineligible", "Only numeric metrics can be forecast.")
-    if reality_metric is None:
-        return empty(
-            "ineligible", "Reality does not have an active metric with this stable ID."
-        )
-    if (
-        reality_metric.value_unit != "number"
-        or reality_metric.time_unit != metric.time_unit
-        or reality_metric.unit != metric.unit
-    ):
-        return empty("ineligible", "Reality metric metadata is incompatible.")
     periods = _periods_in_range(payload.start_date, payload.end_date, metric.time_unit)
     if not periods:
         return empty(
@@ -380,12 +322,12 @@ def _prepare_metric(
         return empty(
             "ineligible", f"Prediction range exceeds the {MAX_PERIODS} period limit."
         )
-    history = _effective_history(session, reality_metric, metric, payload, periods[0])
+    history = _target_history(session, metric, payload, periods[0])
     if not history:
         return empty(
             "ineligible",
-            "Reality and target scenario have no observations available under "
-            "the selected cutoff.",
+            "Target scenario has no observations available under the selected "
+            "cutoff.",
         )
     if len(history) > MAX_HISTORY:
         return empty(
@@ -438,43 +380,34 @@ def _prepare_metric(
     )
 
 
-def _effective_history(
+def _target_history(
     session: Session,
-    reality_metric: Timeserie,
     target_metric: Timeserie,
     payload: PredictionRequestBase,
     first_period: dt_date,
 ) -> list[Observation]:
-    effective_by_date: dict[dt_date, Observation] = {}
-    for source_metric, source_name in (
-        (reality_metric, "reality"),
-        (target_metric, "targetScenario"),
-    ):
-        values = session.scalars(
-            select(TimeserieValue)
-            .where(
-                TimeserieValue.timeserie_id == source_metric.timeserie_id,
-                TimeserieValue.deleted_time.is_(None),
-            )
-            .order_by(TimeserieValue.date)
-            .limit(MAX_HISTORY + 1)
-        ).all()
-        for item in values:
-            if payload.cutoff_mode == "asOfStart" and item.date >= first_period:
-                continue
-            value = item.value.get("value")
-            if (
-                isinstance(value, bool)
-                or not isinstance(value, (int, float))
-                or not math.isfinite(float(value))
-            ):
-                continue
-            effective_by_date[item.date] = (
-                item.date,
-                float(value),
-                source_name,
-            )
-    return [effective_by_date[day] for day in sorted(effective_by_date)]
+    values = session.scalars(
+        select(TimeserieValue)
+        .where(
+            TimeserieValue.timeserie_id == target_metric.timeserie_id,
+            TimeserieValue.deleted_time.is_(None),
+        )
+        .order_by(TimeserieValue.date)
+        .limit(MAX_HISTORY + 1)
+    ).all()
+    history: list[Observation] = []
+    for item in values:
+        if payload.cutoff_mode == "asOfStart" and item.date >= first_period:
+            continue
+        value = item.value.get("value")
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(float(value))
+        ):
+            continue
+        history.append((item.date, float(value), "targetScenario"))
+    return history
 
 
 def _known_features(
@@ -965,7 +898,6 @@ def _target_response(
     ).all()
     return PredictionTargetResponse(
         scenarioId=target.target_scenario_key,
-        realityScenarioId=target.reality_scenario_key,
         metricId=target.metric_key,
         metricName=target.metric_name,
         timeUnit=target.time_unit,

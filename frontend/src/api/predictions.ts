@@ -1,6 +1,6 @@
 import { authenticatedFetch } from "./client";
 
-export type PredictionCutoffMode = "asOfStart" | "allCurrentReality";
+export type PredictionCutoffMode = "asOfStart" | "allCurrentScenario";
 
 export type PredictionRequest = {
   targetScenarioIds: string[];
@@ -49,7 +49,6 @@ export type PredictionModelResultDto = {
 
 export type PredictionTargetDto = {
   scenarioId: string;
-  realityScenarioId: string;
   metricId: string;
   metricName: string;
   timeUnit: string;

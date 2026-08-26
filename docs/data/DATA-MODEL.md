@@ -121,13 +121,13 @@ Lue nämä yhdessä datamallin kanssa:
   unique within that organisation and is never updated or overwritten.
 - A Prediction Version owns Prediction Targets; each target owns exactly one result
   for every requested output kind, and a result owns dated Prediction Points.
-- Prediction Targets retain stable target/Reality keys and source and input JSON
+- Prediction Targets retain stable target keys and source and input JSON
   snapshots rather than source-table foreign keys. The source snapshot records
-  the effective observation source for every period and the override policy, so
-  source soft deletion cannot make saved forecasts unreadable.
-- Forecasting reads Reality values, same-period overrides from the selected
-  target scenario, and target-scenario graph/event history; it does not own or
-  write Scenario, Timeserie or Timeserie Value rows.
+  target-scenario-only effective observations, so source soft deletion cannot
+  make saved forecasts unreadable.
+- Forecasting reads only the selected target scenario's values, graph history
+  and events; it does not own or write Scenario, Timeserie or Timeserie Value
+  rows.
 - A customer owns zero or more contacts and customer addresses.
 - Customer names, emails, contact names and address labels are not unique.
 - Active and archived customers remain readable and editable.

@@ -2,10 +2,15 @@ import { describe, expect, it } from "vitest";
 import { buildPredictionMetricCharts, formatModelKind, predictionChartAxisTicks, predictionVersionStatus } from "./predictionChart";
 import type { PredictionVersionDetailDto } from "../../api/predictions";
 
-const version = (id: string, name: string, value: number): PredictionVersionDetailDto => ({
+const version = (
+  id: string,
+  name: string,
+  value: number,
+  scenarioId = "future"
+): PredictionVersionDetailDto => ({
   id, name, startDate: "2026-01-01", endDate: "2026-02-01", cutoffMode: "asOfStart",
   createdTime: "2026-01-01T00:00:00Z", modelConfiguration: {}, targets: [{
-    scenarioId: "future", realityScenarioId: "reality", metricId: "revenue", metricName: "Revenue",
+    scenarioId, metricId: "revenue", metricName: "Revenue",
     timeUnit: "month", unit: "EUR", status: "eligible", reason: null, seasonalPeriod: null,
     seasonalPeriodSource: null, sourceSnapshot: {}, inputSnapshot: {}, results: [{
       kind: "naive", status: "available", reason: null, crossValidationStatus: "unavailable",
@@ -32,6 +37,24 @@ describe("buildPredictionMetricCharts", () => {
       "Second version · Future plan · naive"
     ]);
     expect(charts[0].lines[0].provenance).toMatch(/manually entered realized data/i);
+  });
+
+  it("keeps a Reality-targeted saved prediction distinct from live Reality", () => {
+    const charts = buildPredictionMetricCharts({
+      versions: [version("reality-version", "Reality forecast", 10, "reality")],
+      selectedVersionIds: new Set(["reality-version"]), selectedScenarioIds: new Set(["reality"]),
+      selectedModelKinds: new Set(["naive"]), selectedMetricIds: new Set(["revenue"]),
+      scenarioNames: new Map([["reality", "Reality"]]), startDate: "2026-01-01", endDate: "2026-02-01",
+      includeReality: true,
+      realityTimeseries: [{ id: "revenue", name: "Revenue", description: "", unit: "EUR", timeUnit: "month", valueUnit: "number", values: [{ date: "2026-01-01", value: 9 }] }]
+    });
+
+    expect(charts[0].lines.map((line) => [line.id, line.label])).toEqual([
+      ["reality:revenue", "Current Reality · manually entered realized data · Revenue"],
+      ["reality-version:reality:revenue:naive", "Reality forecast · Reality · naive"]
+    ]);
+    expect(charts[0].lines[0].provenance).toMatch(/not part of the saved prediction/i);
+    expect(charts[0].lines[1].provenance).toMatch(/saved prediction/i);
   });
 
   it("identifies selected models without points in the chosen date range", () => {

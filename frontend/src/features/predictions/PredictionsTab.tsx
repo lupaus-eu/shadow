@@ -83,7 +83,7 @@ export default function PredictionsTab(props: { orgId: string }) {
   const [realityError, setRealityError] = useState("");
 
   const targetScenarios = useMemo(
-    () => scenarios.filter((scenario) => !scenario.protected && scenario.id !== "reality"),
+    () => scenarios,
     [scenarios]
   );
   const comparisonScenarios = useMemo(() => {
@@ -93,9 +93,7 @@ export default function PredictionsTab(props: { orgId: string }) {
         names.set(target.scenarioId, `Deleted scenario (${target.scenarioId})`);
       }
     }
-    return [...names.entries()]
-      .filter(([id]) => id !== "reality")
-      .sort((left, right) => left[1].localeCompare(right[1]));
+    return [...names.entries()].sort((left, right) => left[1].localeCompare(right[1]));
   }, [scenarios, versions]);
   const realityScenario = useMemo(
     () => scenarios.find((scenario) => scenario.protected || scenario.id === "reality"),
@@ -154,7 +152,6 @@ export default function PredictionsTab(props: { orgId: string }) {
         setEvents(data.events);
         setVersions(data.versions);
         const targets = data.scenarios
-          .filter((scenario) => !scenario.protected && scenario.id !== "reality")
           .map((scenario) => scenario.id);
         setTargetScenarioIds(new Set(targets));
         setSelectedScenarioFilter(new Set([
@@ -314,13 +311,13 @@ export default function PredictionsTab(props: { orgId: string }) {
   if (error) return <section className="predictions-tab"><h1 className="page-title">Predictions</h1><div className="alert alert--danger" role="alert"><p className="alert__title">Predictions could not be loaded</p><p className="alert__text">{error}</p><button className="btn btn--secondary" type="button" onClick={() => setRefreshVersion((current) => current + 1)}>Try again</button></div></section>;
 
   return <section className="predictions-tab" aria-labelledby="predictions-heading">
-    <header><p className="eyebrow">Forecasting</p><h1 id="predictions-heading" className="page-title">Predictions</h1><p className="muted">Create immutable, comparable model outputs. Reality remains live manually entered realized data and is never a prediction target.</p></header>
+    <header><p className="eyebrow">Forecasting</p><h1 id="predictions-heading" className="page-title">Predictions</h1><p className="muted">Create immutable, comparable model outputs from each selected scenario's own data. Reality can also remain visible as live manually entered comparison data.</p></header>
     <div className="predictions-layout">
       <section className="predictions-panel" aria-labelledby="generation-heading">
         <h2 id="generation-heading">Generate a prediction version</h2>
         <label className="form-row"><span className="form-label form-label--required">Version name</span><input className="input" value={name} onChange={(event) => { setName(event.target.value); }} /></label>
         <ScenarioMultiSelect borderless required items={targetScenarios.map((scenario) => [scenario.id, scenario.name])} selected={targetScenarioIds} onChange={(selected) => { setTargetScenarioIds(selected); invalidatePreflight(); }} />
-        {!targetScenarios.length ? <p className="alert alert--info" role="status">No active non-Reality scenarios are available for prediction.</p> : null}
+        {!targetScenarios.length ? <p className="alert alert--info" role="status">No active scenarios are available for prediction.</p> : null}
         <div className="predictions-date-grid">
           <label className="form-row"><span className="form-label form-label--required">Start date</span><input className="input" type="date" value={startDate} onChange={(event) => updateStartDate(event.target.value)} /></label>
           <label className="form-row"><span className="form-label form-label--required">End date</span><input className="input" type="date" value={endDate} onChange={(event) => updateEndDate(event.target.value)} /></label>
@@ -328,7 +325,7 @@ export default function PredictionsTab(props: { orgId: string }) {
           <label className="form-row"><span className="form-label">End event</span><select className="select" value={endEventId} onChange={(event) => selectEndEvent(event.target.value)}><option value="">No event selected</option>{availableEndEvents.map((event) => <option value={event.selectionId} key={event.selectionId}>{event.targetDate} · {event.scenarioName} · {event.name}</option>)}</select></label>
         </div>
         {invalidDates ? <p className="alert alert--danger" role="alert">The start date must be earlier than the end date.</p> : null}
-        <fieldset className="predictions-fieldset"><legend className="form-label form-label--required">Reality cutoff</legend><label className="predictions-check"><input type="radio" name="cutoff" checked={cutoffMode === "asOfStart"} onChange={() => { setCutoffMode("asOfStart"); invalidatePreflight(); }} /> As of start — excludes observations on and after the first predicted period.</label><label className="predictions-check"><input type="radio" name="cutoff" checked={cutoffMode === "allCurrentReality"} onChange={() => { setCutoffMode("allCurrentReality"); invalidatePreflight(); }} /> All current Reality — retrospective predictions can leak future knowledge. Historical values entered for the target scenario can still override same-period Reality values.</label></fieldset>
+        <fieldset className="predictions-fieldset"><legend className="form-label form-label--required">Observation cutoff</legend><label className="predictions-check"><input type="radio" name="cutoff" checked={cutoffMode === "asOfStart"} onChange={() => { setCutoffMode("asOfStart"); invalidatePreflight(); }} /> As of start — excludes observations on and after the first predicted period.</label><label className="predictions-check"><input type="radio" name="cutoff" checked={cutoffMode === "allCurrentScenario"} onChange={() => { setCutoffMode("allCurrentScenario"); invalidatePreflight(); }} /> All current scenario — retrospective predictions can use later values from the selected scenario.</label></fieldset>
         <div className="form-actions"><button className="btn btn--secondary" type="button" disabled={submitting || invalidDates} onClick={() => void handlePreflight()}>Run preflight</button><button className="btn btn--primary" type="button" disabled={submitting || invalidDates || !preflight || !preflight.metrics.length} onClick={() => void handleCreate()}>Create immutable version</button></div>
         {formError ? <p className="alert alert--danger" role="alert">{formError}</p> : null}
         {preflight ? <PreflightResults preflight={preflight} manualPeriods={manualPeriods} onManualPeriodChange={(metricId, value) => setManualPeriods((current) => ({ ...current, [metricId]: value }))} /> : null}

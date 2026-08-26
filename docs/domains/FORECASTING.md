@@ -6,7 +6,7 @@ Status: persistence and synchronous backend API implemented by TASK-041B
 
 The Forecasting Domain produces and stores auditable, immutable predictions for
 scenario metrics. It keeps derived model output distinct from manually entered
-Reality timeseries values and does not change source scenario data.
+scenario timeseries values and does not change source scenario data.
 
 ## Responsibilities
 
@@ -22,7 +22,7 @@ Provides:
 
 - named, comparable forecast versions for one organisation
 - prediction-method provenance and cross-validation metadata
-- a clear distinction between manual Reality values and derived predictions
+- a clear distinction between manual scenario values and derived predictions
 
 Does NOT Own:
 
@@ -34,18 +34,15 @@ Does NOT Own:
 
 ## Domain Rules
 
-### Observation Sources And Target Overrides
+### Scenario-Owned Observation Sources
 
-The active protected scenario with stable key `reality` supplies the baseline
-observed values for Forecasting. Every target metric must match an active
-Reality metric by stable timeserie key and use compatible time-unit and display
-unit metadata.
+Each selected target scenario supplies its own observed metric values. A target
+metric needs no Reality counterpart, and Forecasting never reads, merges,
+falls back to or imputes from Reality or another scenario's values. Reality is
+an eligible target scenario and, when selected, uses only its own values.
 
-For a selected prediction target, its own matching metric value overrides
-Reality for the same metric period. This supports approved possible-pasts use
-cases. Values from every other scenario remain prohibited as targets, training
-data, baseline data or gap-imputation data. Forecasting does not write into
-`timeserie_values` and does not turn its results into manual Reality data.
+Forecasting does not write into `timeserie_values` or turn derived predictions
+into manual scenario values.
 
 ### Scenario-Isolated Explanatory Inputs
 
@@ -55,16 +52,15 @@ event counts, active graph node/edge totals, type counts and target-metric
 linked node counts. Graph visibility uses the Organisation Twin Structure
 Domain's logical lifetime rules.
 
-The domain never combines a target scenario's model inputs or values with
-another non-Reality scenario's metric values, events or graph structure.
+The domain never combines a target scenario's model inputs or values with any
+other scenario's metric values, events or graph structure.
 
 ### Eligible Metrics And Date Grid
 
-Only number-valued timeseries are eligible. The effective history, formed from
-Reality with same-period target-scenario overrides, must be contiguous on the
-matching metric time-unit grid; no missing observation is interpolated or
-forward-filled. Non-numeric, unmatched, incompatible, incomplete or
-insufficient metrics are normal ineligible states with a saved reason.
+Only number-valued target timeseries are eligible. The target scenario's own
+effective history must be contiguous on the matching metric time-unit grid; no
+missing observation is interpolated or forward-filled. Non-numeric, incomplete
+or insufficient metrics are normal ineligible states with a saved reason.
 
 Prediction requests provide a start and end date. Each target metric produces
 only the valid day, week, month or year starts that fall inside that inclusive
@@ -72,13 +68,12 @@ range. The request requires the start date to be earlier than the end date.
 
 ### Training Cutoff Modes
 
-Each version records one selected truth cutoff mode:
+Each version records one selected observation cutoff mode:
 
 - `asOfStart` uses only effective permitted observations strictly before the
   first predicted metric period. It supports non-leaking historical forecasts.
-- `allCurrentReality` retains its public API name but uses all currently active
-  effective permitted observations. A caller must disclose its future-knowledge
-  risk and the target-scenario override policy for a past prediction range.
+- `allCurrentScenario` uses all currently active target-scenario observations.
+  A caller must disclose its future-knowledge risk for a past prediction range.
 
 ### Result Kinds
 
@@ -108,8 +103,8 @@ A prediction version has an organisation-local, case-insensitively unique
 name. Saved versions are immutable and cannot be overwritten; a new execution
 needs a new name.
 
-Every saved result retains creator and creation metadata, target and Reality
-identifiers, cutoff mode, seasonal period/source, deterministic model
+Every saved result retains creator and creation metadata, target identity,
+cutoff mode, seasonal period/source, deterministic model
 configuration and seed, validation information, source-input snapshots
 including each effective observation source, and result points. This keeps
 results auditable after source rows change or are soft-deleted.
@@ -125,8 +120,8 @@ Forecasting runs synchronously in the authenticated backend request. There is
 no background worker, queue, scheduler, retry mechanism or progress-polling
 protocol in this MVP.
 
-One request permits at most 50 numeric target scenario/metric candidates with
-compatible Reality metadata, 366 generated periods per pair, 10,000 contiguous
+One request permits at most 50 numeric target scenario/metric candidates, 366
+generated periods per pair, 10,000 contiguous
 effective observations per pair, and 100,000 persisted prediction points across
 the version. Detailed eligibility is evaluated only within the candidate bound.
 A request that exceeds a limit is rejected rather than truncated.
@@ -157,7 +152,7 @@ actor; list and detail follow the existing authenticated organisation boundary.
 Depends On:
 
 - Organisations Domain for organisation scope
-- Organisation States Domain for Reality, scenarios, events and timeseries
+- Organisation States Domain for scenarios, events and timeseries
 - Organisation Twin Structure Domain for graph-history inputs
 - Users Domain for audit actors
 
@@ -170,18 +165,15 @@ Referenced By:
 ### Generate A Prediction Version
 
 1. Validate organisation and selected active target scenarios.
-2. Resolve the active protected Reality scenario.
-3. Match active numeric target metrics to compatible Reality metrics by stable
-   key.
-4. Merge Reality history with same-period target-scenario overrides, validate
-   continuity and construct only the target scenario's known event and graph
-   inputs.
-5. Detect seasonality or request a manual period where detection is
+2. Resolve active numeric metrics and their own target-scenario history.
+3. Validate continuity and construct only the target scenario's known event and
+   graph inputs.
+4. Detect seasonality or request a manual period where detection is
    inconclusive.
-6. Fit and evaluate the requested models within the synchronous work limits.
-7. Persist the immutable named version, result metadata, points and source
+5. Fit and evaluate the requested models within the synchronous work limits.
+6. Persist the immutable named version, result metadata, points and source
    snapshot; persist normal ineligibility states alongside valid outputs.
-8. Roll back the entire version when an unexpected generation error occurs.
+7. Roll back the entire version when an unexpected generation error occurs.
 
 ## AI Agent Guidance
 
@@ -190,6 +182,7 @@ Before changing Forecasting behavior, read:
 ```text
 docs/decisions/ADR-007-predictions-forecasting-domain.md
 docs/decisions/ADR-008-target-scenario-observation-overrides.md
+docs/decisions/ADR-009-scenario-owned-prediction-inputs.md
 docs/domains/FORECASTING.md
 docs/domains/ORG_STATES.md
 docs/domains/ORG_TWIN_STRUCTURE.md
@@ -198,7 +191,7 @@ docs/data/DATABASE.md
 db/migrations/README.md
 ```
 
-- Keep manual Reality values and derived prediction values in separate storage
+- Keep manual scenario values and derived prediction values in separate storage
   and presentation paths.
 - Enforce source-data isolation in backend services; frontend selection is not
   the security boundary.

@@ -27,7 +27,7 @@ const version: PredictionVersionDetailDto = {
   id: "version-1", name: "January plan", startDate: "2026-01-10", endDate: "2026-02-10",
   cutoffMode: "asOfStart", createdTime: "2026-01-01T12:00:00Z", modelConfiguration: {},
   targets: [{
-    scenarioId: "future", realityScenarioId: "reality", metricId: "revenue", metricName: "Revenue",
+    scenarioId: "future", metricId: "revenue", metricName: "Revenue",
     timeUnit: "month", unit: "EUR", status: "eligible", reason: null, seasonalPeriod: 12,
     seasonalPeriodSource: "automatic", sourceSnapshot: {}, inputSnapshot: {}, results: [{
       kind: "naive", status: "available", reason: null, crossValidationStatus: "unavailable",
@@ -37,7 +37,7 @@ const version: PredictionVersionDetailDto = {
       crossValidationMae: null, configuration: {}, points: []
     }]
   }, {
-    scenarioId: "future", realityScenarioId: "reality", metricId: "notes", metricName: "Notes",
+    scenarioId: "future", metricId: "notes", metricName: "Notes",
     timeUnit: "month", unit: null, status: "ineligible", reason: "Only numeric metrics can be forecast.", seasonalPeriod: null,
     seasonalPeriodSource: null, sourceSnapshot: {}, inputSnapshot: {}, results: [{
       kind: "naive", status: "ineligible", reason: "Only numeric metrics can be forecast.", crossValidationStatus: "unavailable",
@@ -71,14 +71,14 @@ describe("PredictionsTab", () => {
     api.fetchTimeseries.mockResolvedValue([{ id: "revenue", name: "Revenue", description: "", unit: "EUR", timeUnit: "month", valueUnit: "number", values: [{ date: "2026-01-10", value: 28 }] }]);
   });
 
-  it("renders without global workspace selection, excludes Reality targets, and synchronizes event dates", async () => {
+  it("renders without global workspace selection, includes Reality targets, and synchronizes event dates", async () => {
     render(<PredictionsTab orgId="acme" />);
 
-    await waitFor(() => expect(screen.getByText(/Reality remains live manually entered/i)).toBeVisible());
-    expect(screen.getByText(/Reality remains live manually entered/i)).toBeVisible();
+    await waitFor(() => expect(screen.getByText(/selected scenario's own data/i)).toBeVisible());
+    expect(screen.getByText(/selected scenario's own data/i)).toBeVisible();
     const targetSelector = screen.getAllByRole("group", { name: "Target scenarios" })[0];
     expect(within(targetSelector).getByLabelText("Future plan")).toBeChecked();
-    expect(within(targetSelector).queryByLabelText("Reality")).not.toBeInTheDocument();
+    expect(within(targetSelector).getByLabelText("Reality")).toBeChecked();
     expect(within(screen.getByLabelText("Start event")).getByRole("option", { name: /Reality · Reality event/ })).toBeVisible();
 
     fireEvent.change(screen.getByLabelText("Start event"), { target: { value: "future:start" } });
@@ -100,6 +100,7 @@ describe("PredictionsTab", () => {
     fireEvent.change(screen.getByLabelText("Version name"), { target: { value: "Created plan" } });
     fireEvent.change(screen.getAllByLabelText("Start date")[0], { target: { value: "2026-01-10" } });
     fireEvent.change(screen.getAllByLabelText("End date")[0], { target: { value: "2026-02-10" } });
+    fireEvent.click(screen.getByLabelText(/All current scenario/));
     fireEvent.click(screen.getByRole("button", { name: "Run preflight" }));
 
     expect(await screen.findByText("Preflight eligibility")).toBeVisible();
@@ -109,7 +110,8 @@ describe("PredictionsTab", () => {
     await waitFor(() => expect(api.createPrediction).toHaveBeenCalledWith(
       "acme",
       expect.objectContaining({
-        name: "Created plan", targetScenarioIds: ["future"], manualSeasonalPeriods: { revenue: 12 }
+        name: "Created plan", targetScenarioIds: ["reality", "future"],
+        manualSeasonalPeriods: { revenue: 12 }, cutoffMode: "allCurrentScenario"
       })
     ));
     expect(screen.getAllByText(/Saved prediction: January plan/i).some((element) => element.tagName === "SMALL")).toBe(true);
@@ -123,7 +125,7 @@ describe("PredictionsTab", () => {
 
   it("selects and deselects all numeric metrics for comparison", async () => {
     render(<PredictionsTab orgId="acme" />);
-    await screen.findByText(/Reality remains live manually entered/i);
+    await screen.findByText(/selected scenario's own data/i);
 
     const metrics = screen.getByRole("group", { name: "Numeric metrics" });
     const allMetrics = within(metrics).getByLabelText("All numeric metrics");
@@ -151,7 +153,8 @@ describe("PredictionsTab", () => {
     ]);
     render(<PredictionsTab orgId="acme" />);
 
-    expect(await screen.findByText(/No active non-Reality scenarios/i)).toBeVisible();
+    await screen.findByText(/selected scenario's own data/i);
+    expect(within(screen.getAllByRole("group", { name: "Target scenarios" })[0]).getByLabelText("Reality")).toBeChecked();
     const comparisonSelector = screen.getAllByRole("group", { name: "Target scenarios" })[1];
     expect(within(comparisonSelector).getByLabelText("Deleted scenario (future)")).toBeChecked();
     expect(screen.getByRole("img", { name: "Revenue prediction comparison chart in EUR" })).toBeVisible();

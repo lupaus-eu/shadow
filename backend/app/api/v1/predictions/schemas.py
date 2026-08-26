@@ -5,7 +5,7 @@ from pydantic import Field, field_validator, model_validator
 
 from app.core.schemas import StrictBaseModel
 
-CutoffMode = Literal["asOfStart", "allCurrentReality"]
+CutoffMode = Literal["asOfStart", "allCurrentScenario"]
 
 
 class PredictionRequestBase(StrictBaseModel):
@@ -102,7 +102,6 @@ class PredictionModelResultResponse(StrictBaseModel):
 
 class PredictionTargetResponse(StrictBaseModel):
     scenario_id: str = Field(alias="scenarioId")
-    reality_scenario_id: str = Field(alias="realityScenarioId")
     metric_id: str = Field(alias="metricId")
     metric_name: str = Field(alias="metricName")
     time_unit: str = Field(alias="timeUnit")

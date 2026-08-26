@@ -205,8 +205,8 @@ Related Documents:
 
 ## Forecasting Domain
 
-Status: accepted in ADR-007; implementation is deferred to TASK-041B and
-TASK-041C.
+Status: implemented by TASK-041B/TASK-041C; scenario-owned observation inputs
+amended by ADR-009.
 
 Responsible for:
 
@@ -222,12 +222,12 @@ Does NOT Own:
 
 - organisations, scenarios, events or timeserie values
 - graph nodes, graph edges or metamodels
-- manually entered Reality data
+- manually entered scenario data
 
 Depends On:
 
 - Organisations Domain
-- Organisation States Domain for Reality values, target scenarios and events
+- Organisation States Domain for target-scenario values, scenarios and events
 - Organisation Twin Structure Domain for target-scenario graph history
 - Users Domain for audit references
 
@@ -239,6 +239,7 @@ Primary APIs:
 Related Documents:
 
 - `docs/decisions/ADR-007-predictions-forecasting-domain.md`
+- `docs/decisions/ADR-009-scenario-owned-prediction-inputs.md`
 - `docs/domains/FORECASTING.md`
 
 ---

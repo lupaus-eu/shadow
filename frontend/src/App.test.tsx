@@ -936,7 +936,7 @@ describe("Schatten UI shell", () => {
 
     renderAt("/schatten/acme/predictions");
 
-    expect(await screen.findByText(/Reality remains live manually entered/i)).toBeVisible();
+    expect(await screen.findByText(/selected scenario's own data/i)).toBeVisible();
     expect(screen.getByRole("link", { name: "Predictions" })).toHaveClass(
       "tab-link--active"
     );

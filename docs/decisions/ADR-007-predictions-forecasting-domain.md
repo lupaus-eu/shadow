@@ -1,8 +1,17 @@
 # ADR-007: Predictions Forecasting Domain
 
-Status: Accepted; observed-value sourcing amended by ADR-008
+Status: Accepted; observed-value sourcing superseded by ADR-009
 
 Date: 2026-08-24
+
+---
+
+# Amendment
+
+ADR-009 supersedes this ADR's Reality-baseline, compatible-Reality-metric,
+merged-history and `allCurrentReality` decisions. Those sections remain as the
+historical basis for the original Forecasting implementation; ADR-009 is the
+current decision for prediction observation sources and cutoff naming.
 
 ---
 
@@ -204,6 +213,7 @@ Costs and constraints:
 
 - `docs/decisions/ADR-001-tech-stack.md`
 - `docs/decisions/ADR-008-target-scenario-observation-overrides.md`
+- `docs/decisions/ADR-009-scenario-owned-prediction-inputs.md`
 - `docs/domains/FORECASTING.md`
 - `docs/domains/ORG_STATES.md`
 - `docs/domains/ORG_TWIN_STRUCTURE.md`
