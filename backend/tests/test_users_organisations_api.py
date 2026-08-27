@@ -700,6 +700,20 @@ def test_scenario_copy_copies_selected_org_state_and_graph_snapshot(
             time_unit="year",
             value_unit="number",
         )
+        future_primary_timeserie = Timeserie(
+            scenario_id=source_scenario.scenario_id,
+            timeserie_key="future_primary_timeserie",
+            name="Future primary timeserie",
+            time_unit="month",
+            value_unit="number",
+        )
+        future_secondary_timeserie = Timeserie(
+            scenario_id=source_scenario.scenario_id,
+            timeserie_key="future_secondary_timeserie",
+            name="Future secondary timeserie",
+            time_unit="month",
+            value_unit="number",
+        )
         deleted_timeserie = Timeserie(
             scenario_id=source_scenario.scenario_id,
             timeserie_key="deleted_timeserie",
@@ -715,6 +729,8 @@ def test_scenario_copy_copies_selected_org_state_and_graph_snapshot(
                 secondary_timeserie,
                 string_timeserie,
                 empty_timeserie,
+                future_primary_timeserie,
+                future_secondary_timeserie,
                 deleted_timeserie,
             ],
         )
@@ -785,6 +801,16 @@ def test_scenario_copy_copies_selected_org_state_and_graph_snapshot(
                     date=date(2030, 1, 30),
                     value={"value": "ready"},
                 ),
+                TimeserieValue(
+                    timeserie_id=future_primary_timeserie.timeserie_id,
+                    date=date(2030, 3, 1),
+                    value={"value": 400},
+                ),
+                TimeserieValue(
+                    timeserie_id=future_secondary_timeserie.timeserie_id,
+                    date=date(2030, 3, 1),
+                    value={"value": 500},
+                ),
             ],
         )
         _add_graph_snapshot(
@@ -804,6 +830,19 @@ def test_scenario_copy_copies_selected_org_state_and_graph_snapshot(
             node_key="node_boundary",
             timeserie_id=primary_timeserie.timeserie_id,
             timeserie_secondary_id=secondary_timeserie.timeserie_id,
+        )
+        session.add_all(
+            [
+                GraphNode(
+                    scenario_id=source_scenario.scenario_id,
+                    node_key="node_future_primary",
+                    name="Future primary graph",
+                    node_type_id=node_type.node_type_id,
+                    create_date=date(2030, 3, 1),
+                    timeserie_id=future_primary_timeserie.timeserie_id,
+                    timeserie_secondary_id=future_secondary_timeserie.timeserie_id,
+                ),
+            ],
         )
         session.commit()
 
@@ -828,6 +867,20 @@ def test_scenario_copy_copies_selected_org_state_and_graph_snapshot(
         "name": "Copied scenario",
         "description": "Copied",
         "protected": False,
+    }
+    copied_timeseries_response = client.get(
+        f"/api/v1/organisations/{organisation_key}/scenarios/{copied_key}/timeseries",
+    )
+    assert copied_timeseries_response.status_code == 200
+    assert {
+        timeserie["id"] for timeserie in copied_timeseries_response.json()
+    } == {
+        "empty_timeserie",
+        "future_primary_timeserie",
+        "future_secondary_timeserie",
+        "secondary_timeserie",
+        "source_timeserie",
+        "status_timeserie",
     }
 
     with session_factory() as session:
@@ -900,6 +953,8 @@ def test_scenario_copy_copies_selected_org_state_and_graph_snapshot(
         }
         assert set(copied_timeseries) == {
             "empty_timeserie",
+            "future_primary_timeserie",
+            "future_secondary_timeserie",
             "secondary_timeserie",
             "source_timeserie",
             "status_timeserie",
@@ -948,6 +1003,8 @@ def test_scenario_copy_copies_selected_org_state_and_graph_snapshot(
         }
         assert copied_values == {
             "empty_timeserie": [],
+            "future_primary_timeserie": [],
+            "future_secondary_timeserie": [],
             "secondary_timeserie": [
                 (date(2030, 1, 29), {"value": False}, TEST_ACTOR_USER_ID),
             ],
