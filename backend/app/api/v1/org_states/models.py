@@ -181,6 +181,7 @@ class Timeserie(Base):
     )
     timeserie_key: Mapped[str] = mapped_column(Text)
     name: Mapped[str] = mapped_column(Text)
+    short_name: Mapped[str | None] = mapped_column(Text, nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     unit: Mapped[str | None] = mapped_column(Text, nullable=True)
     time_unit: Mapped[str] = mapped_column(Text)

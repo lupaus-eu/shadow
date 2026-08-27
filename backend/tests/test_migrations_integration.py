@@ -160,6 +160,10 @@ def test_rejects_non_latest_and_unapplied_down_migrations(
         )
 
     execute_command(
+        DownCommand("012_add_timeserie_short_name.down.sql"),
+        database_url=migration_database_url,
+    )
+    execute_command(
         DownCommand("011_alter_prediction_target_observation_source.down.sql"),
         database_url=migration_database_url,
     )
@@ -242,9 +246,9 @@ def test_existing_schema_requires_explicit_baseline(
         "SELECT to_regclass('schema_migrations') IS NOT NULL",
     )
 
-    execute_command(BaselineCommand(11), database_url=migration_database_url)
+    execute_command(BaselineCommand(12), database_url=migration_database_url)
     assert (
-        _scalar(migration_database_url, "SELECT count(*) FROM schema_migrations") == 11
+        _scalar(migration_database_url, "SELECT count(*) FROM schema_migrations") == 12
     )
     execute_command(UpCommand(), database_url=migration_database_url)
 
@@ -298,7 +302,7 @@ def test_migration_nine_upgrades_an_empty_version_eight_database(
             migration_database_url,
             "SELECT max(version) FROM schema_migrations",
         )
-        == 11
+        == 12
     )
     assert _scalar(
         migration_database_url,
@@ -369,6 +373,10 @@ def test_migration_nine_constraints_and_down_scope(
                 (replacement[0],),
             )
 
+    execute_command(
+        DownCommand("012_add_timeserie_short_name.down.sql"),
+        database_url=migration_database_url,
+    )
     execute_command(
         DownCommand("011_alter_prediction_target_observation_source.down.sql"),
         database_url=migration_database_url,
@@ -506,6 +514,10 @@ def test_prediction_observation_source_migration_replaces_schema(
             )
 
     execute_command(
+        DownCommand("012_add_timeserie_short_name.down.sql"),
+        database_url=migration_database_url,
+    )
+    execute_command(
         DownCommand("011_alter_prediction_target_observation_source.down.sql"),
         database_url=migration_database_url,
     )
@@ -573,6 +585,133 @@ def test_migration_four_down_fails_atomically_when_mapping_is_ambiguous(
             "SELECT max(version) FROM schema_migrations",
         )
         == 4
+    )
+
+
+def test_timeserie_name_and_short_name_indexes_enforce_active_scope(
+    migration_database_url: str,
+) -> None:
+    execute_command(UpCommand(), database_url=migration_database_url)
+
+    with psycopg.connect(migration_database_url) as connection:
+        user = connection.execute(
+            """
+            INSERT INTO users (name, email, role)
+            VALUES ('Migration Tester', 'migration@example.test', 'admin')
+            RETURNING user_id
+            """
+        ).fetchone()
+        assert user is not None
+        organisation = connection.execute(
+            """
+            INSERT INTO organisations (organisation_key, name, created_by)
+            VALUES ('migration-org', 'Migration Org', %s)
+            RETURNING organisation_id
+            """,
+            (user[0],),
+        ).fetchone()
+        assert organisation is not None
+        scenario = connection.execute(
+            """
+            INSERT INTO scenarios (organisation_id, scenario_key, name, created_by)
+            VALUES (%s, 'migration-scenario', 'Migration Scenario', %s)
+            RETURNING scenario_id
+            """,
+            (organisation[0], user[0]),
+        ).fetchone()
+        assert scenario is not None
+        connection.execute(
+            """
+            INSERT INTO timeseries (
+                scenario_id, timeserie_key, name, short_name, time_unit,
+                value_unit, created_by
+            ) VALUES (%s, 'revenue', 'Revenue', 'revenue_monthly', 'month',
+                'number', %s)
+            """,
+            (scenario[0], user[0]),
+        )
+        connection.commit()
+
+        with pytest.raises(psycopg.errors.UniqueViolation):
+            connection.execute(
+                """
+                INSERT INTO timeseries (
+                    scenario_id, timeserie_key, name, time_unit, value_unit,
+                    created_by
+                ) VALUES (%s, 'revenue-copy', 'revenue', 'month', 'number', %s)
+                """,
+                (scenario[0], user[0]),
+            )
+        connection.rollback()
+
+        with pytest.raises(psycopg.errors.UniqueViolation):
+            connection.execute(
+                """
+                INSERT INTO timeseries (
+                    scenario_id, timeserie_key, name, time_unit, value_unit,
+                    created_by
+                ) VALUES (%s, 'revenue-whitespace-copy', ' Revenue ', 'month',
+                    'number', %s)
+                """,
+                (scenario[0], user[0]),
+            )
+        connection.rollback()
+
+        with pytest.raises(psycopg.errors.UniqueViolation):
+            connection.execute(
+                """
+                INSERT INTO timeseries (
+                    scenario_id, timeserie_key, name, short_name, time_unit,
+                    value_unit, created_by
+                ) VALUES (%s, 'revenue-short-name-copy', 'Revenue copy',
+                    'revenue_monthly', 'month', 'number', %s)
+                """,
+                (scenario[0], user[0]),
+            )
+        connection.rollback()
+
+        connection.execute(
+            """
+            UPDATE timeseries
+            SET deleted_time = now()
+            WHERE scenario_id = %s AND timeserie_key = 'revenue'
+            """,
+            (scenario[0],),
+        )
+        connection.execute(
+            """
+            INSERT INTO timeseries (
+                scenario_id, timeserie_key, name, short_name, time_unit,
+                value_unit, created_by
+            ) VALUES (%s, 'revenue-replacement', 'REVENUE',
+                'revenue_monthly', 'month', 'number', %s)
+            """,
+            (scenario[0], user[0]),
+        )
+        connection.commit()
+
+    execute_command(
+        DownCommand("012_add_timeserie_short_name.down.sql"),
+        database_url=migration_database_url,
+    )
+    assert not _scalar(
+        migration_database_url,
+        """
+        SELECT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = current_schema()
+              AND table_name = 'timeseries'
+              AND column_name = 'short_name'
+        )
+        """,
+    )
+    assert not _scalar(
+        migration_database_url,
+        "SELECT to_regclass('ux_timeseries_scenario_short_name_active') IS NOT NULL",
+    )
+    assert not _scalar(
+        migration_database_url,
+        "SELECT to_regclass('ux_timeseries_scenario_name_active') IS NOT NULL",
     )
 
 

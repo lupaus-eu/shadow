@@ -37,7 +37,6 @@ vi.mock("../../api/timeseries", async (importOriginal) => {
   return {
     ...actual,
     createTimeserie: vi.fn(),
-    fetchTimeserie: vi.fn(),
     fetchTimeserieExists: vi.fn(),
     deleteTimeserie: vi.fn()
   };
@@ -253,6 +252,78 @@ const catalog: GraphTypeCatalogDto = {
   ]
 };
 
+const ruleGraph: GraphDto = {
+  ...graph,
+  nodes: [
+    ...graph.nodes,
+    {
+      id: "node_goal",
+      name: "Grow revenue",
+      description: "Revenue growth goal",
+      nodeTypeId: "nt_goal",
+      createDate: null,
+      deleteDate: null,
+      position: { x: 260, y: 20 },
+      attributes: {},
+      timeserieId: null,
+      timeserieSecondaryId: null
+    }
+  ],
+  edges: [
+    ...graph.edges,
+    {
+      id: "edge_team_goal",
+      name: "Has goal",
+      description: "",
+      edgeTypeId: "et_has",
+      sourceNodeId: "node_sales",
+      targetNodeId: "node_goal",
+      createDate: null,
+      deleteDate: null,
+      attributes: {}
+    },
+    {
+      id: "edge_goal_metric",
+      name: "Measures",
+      description: "",
+      edgeTypeId: "et_has",
+      sourceNodeId: "node_goal",
+      targetNodeId: "node_revenue",
+      createDate: null,
+      deleteDate: null,
+      attributes: {}
+    }
+  ]
+};
+
+const ruleCatalog: GraphTypeCatalogDto = {
+  ...catalog,
+  nodeTypes: [
+    ...catalog.nodeTypes,
+    {
+      id: "nt_goal",
+      name: "goal",
+      displayName: "Goal",
+      color: "#e9d5ff",
+      shape: "rectangle",
+      timeserieId: null,
+      timeserieSecondaryId: null,
+      timeserieIdRule: null
+    }
+  ],
+  edgeTypes: [
+    ...catalog.edgeTypes,
+    {
+      id: "et_has",
+      name: "has",
+      displayName: "Has",
+      style: "solid",
+      sourceEnd: "none",
+      targetEnd: "arrow"
+    }
+  ]
+};
+
 type WorkspaceValue = NonNullable<ContextType<typeof WorkspaceSelectionContext>>;
 
 function workspaceValue(
@@ -328,13 +399,15 @@ describe("StructureTab", () => {
     vi.mocked(timeseriesApi.fetchTimeserieExists).mockImplementation(
       async (_orgId, _scenarioId, timeserieId) => ({
         id: timeserieId,
-        exists: timeserieId === "id1"
+        exists: timeserieId === "id1",
+        shortName: timeserieId === "id1" ? "revenue_monthly" : ""
       })
     );
     vi.mocked(timeseriesApi.createTimeserie).mockImplementation(
       async (_orgId, _scenarioId, payload) => ({
         id: payload.id,
         name: payload.name,
+        shortName: payload.shortName ?? "",
         description: payload.description ?? "",
         unit: payload.unit ?? "",
         timeUnit: payload.timeUnit,
@@ -656,6 +729,95 @@ describe("StructureTab", () => {
     });
   });
 
+  it("shows rule context and the selected metric as an explicit link source", async () => {
+    vi.mocked(structureApi.fetchGraph).mockResolvedValue(ruleGraph);
+    vi.mocked(structureApi.fetchGraphTypeCatalog).mockResolvedValue(ruleCatalog);
+    renderStructureTab();
+    await screen.findByRole("region", { name: "Person nodes" });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Select revenue node in graph" })
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Timeserie" }));
+
+    const panel = screen.getByRole("region", { name: "Timeserie" });
+    expect(panel).toHaveTextContent("Measured by from Grow revenue (Goal)");
+    expect(panel).toHaveTextContent("Has goal from Sales (Team)");
+
+    fireEvent.change(within(panel).getByLabelText("Primary link"), {
+      target: { value: "id1" }
+    });
+    const primary = within(panel).getByRole("region", { name: "Primary timeserie" });
+    await waitFor(() => {
+      expect(within(primary).getByText("Revenue (Metric)")).toBeInTheDocument();
+    });
+  });
+
+  it("shows an explicit missing rule-context fallback", async () => {
+    vi.mocked(structureApi.fetchGraph).mockResolvedValue({
+      ...graph,
+      edges: [graph.edges[0]]
+    });
+    renderStructureTab();
+    await screen.findByRole("region", { name: "Person nodes" });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Select revenue node in graph" })
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Timeserie" }));
+
+    expect(screen.getByRole("region", { name: "Timeserie" })).toHaveTextContent(
+      "Measured by from No linked goal"
+    );
+  });
+
+  it("shows an explicit ambiguous rule-context fallback", async () => {
+    vi.mocked(structureApi.fetchGraph).mockResolvedValue({
+      ...ruleGraph,
+      nodes: [
+        ...ruleGraph.nodes,
+        {
+          id: "node_goal_secondary",
+          name: "Improve margin",
+          description: "Secondary goal",
+          nodeTypeId: "nt_goal",
+          createDate: null,
+          deleteDate: null,
+          position: { x: 280, y: 80 },
+          attributes: {},
+          timeserieId: null,
+          timeserieSecondaryId: null
+        }
+      ],
+      edges: [
+        ...ruleGraph.edges,
+        {
+          id: "edge_goal_secondary_metric",
+          name: "Measures secondary",
+          description: "",
+          edgeTypeId: "et_has",
+          sourceNodeId: "node_goal_secondary",
+          targetNodeId: "node_revenue",
+          createDate: null,
+          deleteDate: null,
+          attributes: {}
+        }
+      ]
+    });
+    vi.mocked(structureApi.fetchGraphTypeCatalog).mockResolvedValue(ruleCatalog);
+    renderStructureTab();
+    await screen.findByRole("region", { name: "Person nodes" });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Select revenue node in graph" })
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Timeserie" }));
+
+    expect(screen.getByRole("region", { name: "Timeserie" })).toHaveTextContent(
+      "Measured by from Multiple linked goals"
+    );
+  });
+
   it("shows effective timeserie states and creates a missing record", async () => {
     renderStructureTab();
     await screen.findByRole("region", { name: "Person nodes" });
@@ -679,6 +841,9 @@ describe("StructureTab", () => {
     fireEvent.change(within(secondary).getByLabelText("Name"), {
       target: { value: "Revenue secondary" }
     });
+    fireEvent.change(within(secondary).getByLabelText("Short name"), {
+      target: { value: "revenue_secondary" }
+    });
     fireEvent.change(within(secondary).getByLabelText("Unit"), {
       target: { value: "%" }
     });
@@ -699,6 +864,7 @@ describe("StructureTab", () => {
         {
           id: "id2",
           name: "Revenue secondary",
+          shortName: "revenue_secondary",
           description: null,
           unit: "%",
           timeUnit: "year",

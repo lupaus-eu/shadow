@@ -268,6 +268,7 @@ Timeserie responses use:
 {
   "id": "revenue",
   "name": "Revenue",
+  "shortName": "revenue_monthly",
   "description": "Monthly revenue",
   "unit": "EUR",
   "timeUnit": "month",
@@ -283,7 +284,8 @@ Timeserie exists responses use:
 ```json
 {
   "id": "revenue",
-  "exists": true
+  "exists": true,
+  "shortName": "revenue_monthly"
 }
 ```
 
@@ -312,12 +314,19 @@ Event create requires `name` and `targetDate`. Event patch may update `name`,
 it cannot be `null`.
 
 Timeserie create requires stable `id`, `name`, `timeUnit` and `valueUnit`.
+`shortName` is optional; when supplied it is a trimmed equation-safe ASCII
+identifier that starts with a letter and otherwise contains only letters,
+numbers and underscores. Timeserie responses return `shortName` as an empty
+string when it is absent. Active Timeserie names are unique after trimming and
+case-insensitive comparison inside one scenario, and supplied active short
+names are unique inside one scenario. Soft-deleted Timeseries do not prevent
+reuse of either value.
 Supported `timeUnit` values are `day`, `week`, `month` and `year`. Supported
 `valueUnit` values are `number`, `string` and `boolean`. Duplicate active
-timeserie ids inside one scenario return HTTP `409`. Timeserie delete is a soft
-delete and also soft-deletes active owned values. Active graph node links to the
-deleted timeserie are cleared through the Organisation Twin Structure Domain
-service boundary.
+timeserie ids, names or supplied short names inside one scenario return HTTP
+`409`. Timeserie delete is a soft delete and also soft-deletes active owned
+values. Active graph node links to the deleted timeserie are cleared through
+the Organisation Twin Structure Domain service boundary.
 
 Scenario timeseries list returns active timeseries sorted by stable timeserie
 id. Timeserie `values` contain active values sorted by `date`; soft-deleted
@@ -428,8 +437,10 @@ Flow:
 
 1. Validate organisation exists and is active.
 2. Validate scenario exists and is active.
-3. Validate stable `timeserie_key`, `name`, `time_unit` and `value_unit`.
-4. Validate active `timeserie_key` uniqueness inside the scenario.
+3. Validate stable `timeserie_key`, `name`, optional `short_name`, `time_unit`
+   and `value_unit`.
+4. Validate active scenario-local uniqueness for `timeserie_key`,
+   case-insensitive `name` and supplied `short_name`.
 5. Create timeserie row.
 
 Timeserie CRUD does not create timeserie values.
@@ -440,10 +451,11 @@ Flow:
 
 1. Validate organisation exists and is active.
 2. Validate scenario exists and is active.
-3. Return whether an active timeserie with the requested stable key exists.
+3. Return whether an active timeserie with the requested stable key exists and,
+   when it does, its short name.
 
-Missing timeseries return `{ "exists": false }` from the exists endpoint and
-HTTP `404` from the get endpoint.
+Missing timeseries return `{ "exists": false, "shortName": "" }` from the
+exists endpoint and HTTP `404` from the get endpoint.
 
 ## Clean Organisation States
 

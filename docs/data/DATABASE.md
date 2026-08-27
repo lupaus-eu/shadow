@@ -79,7 +79,7 @@ db/migrations/011_alter_prediction_target_observation_source.sql
 | `allowed_connections` | Allowed source/target node type pairs for edge types | One row per edge/source/target combination. |
 | `graph_nodes` | Scenario graph nodes | `create_date` and nullable `delete_date` define the logical lifetime; dynamic attributes use `JSONB`; timeserie references are nullable FKs. |
 | `graph_edges` | Scenario graph edges | References source and target graph nodes and has a logical `create_date`/`delete_date` lifetime. |
-| `timeseries` | Scenario-specific timeseries definitions | Supports `day`, `week`, `month`, `year` time units. |
+| `timeseries` | Scenario-specific timeseries definitions | Supports `day`, `week`, `month`, `year` time units and nullable equation-safe `short_name`. |
 | `timeserie_values` | Timeseries values by date | No `name` column; value is stored as `JSONB` with the public scalar under `value`. |
 | `prediction_versions` | Immutable named Forecasting executions | Organisation-local case-insensitive name and stable `prediction_key`; persists range, cutoff and deterministic configuration. |
 | `prediction_targets` | Saved scenario/metric Forecasting targets | Stores stable target key, eligibility, seasonality and immutable target-source JSON snapshots; source scenario/metric IDs are snapshots, not FKs. |
@@ -147,6 +147,10 @@ back.
   Organisation Twin Structure service.
 - `timeseries.time_unit` is constrained to `day`, `week`, `month` or `year`.
 - `timeseries.value_unit` is constrained to `number`, `string` or `boolean`.
+- Active Timeserie names are unique after trimming and case-insensitive
+  comparison within a scenario.
+  Supplied active `timeseries.short_name` values are unique within a scenario;
+  both constraints exclude soft-deleted rows.
 - `prediction_versions.name` is non-blank and unique case-insensitively per
   organisation; its date range is ordered and cutoff mode is constrained.
 - Prediction target/model/result-point rows are privately owned by the
@@ -188,6 +192,8 @@ The migration defines:
   per-browser live-flow cap
 - application session User and absolute-expiry indexes
 - active stable-key uniqueness for organisations, scenarios, org states, events, node types, edge types, graph nodes, graph edges and timeseries
+- active scenario-local case-insensitive Timeserie name uniqueness and
+  active scenario-local Timeserie short-name uniqueness when supplied
 - active case-insensitive organisation name uniqueness
 - one active default metamodel
 - one active metamodel per organisation

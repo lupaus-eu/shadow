@@ -5,8 +5,10 @@ from typing import cast
 
 import pytest
 from auth_helpers import TEST_ACTOR_USER_ID, authenticate_test_client
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from sqlalchemy import StaticPool, create_engine, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.api.v1.org_states import org_states_service
@@ -17,6 +19,7 @@ from app.api.v1.org_states.models import (
     Timeserie,
     TimeserieValue,
 )
+from app.api.v1.org_states.schemas import TimeserieCreateRequest
 from app.api.v1.org_twin_structure.models import (
     AllowedConnection,
     EdgeType,
@@ -670,6 +673,7 @@ def test_scenario_copy_copies_selected_org_state_and_graph_snapshot(
             scenario_id=source_scenario.scenario_id,
             timeserie_key="source_timeserie",
             name="Source timeserie",
+            short_name="source_metric",
             description="Primary source metric",
             unit="EUR",
             time_unit="month",
@@ -974,6 +978,7 @@ def test_scenario_copy_copies_selected_org_state_and_graph_snapshot(
         )
         assert (
             copied_primary_timeserie.name,
+            copied_primary_timeserie.short_name,
             copied_primary_timeserie.description,
             copied_primary_timeserie.unit,
             copied_primary_timeserie.time_unit,
@@ -981,6 +986,7 @@ def test_scenario_copy_copies_selected_org_state_and_graph_snapshot(
             copied_primary_timeserie.created_by,
         ) == (
             "Source timeserie",
+            "source_metric",
             "Primary source metric",
             "EUR",
             "month",
@@ -1571,6 +1577,7 @@ def test_timeserie_crud_uses_stable_keys_and_validates_units(
         json={
             "id": "revenue",
             "name": "  Revenue  ",
+            "shortName": "  revenue_monthly  ",
             "description": "  Monthly revenue  ",
             "unit": "  EUR  ",
             "timeUnit": "month",
@@ -1582,6 +1589,7 @@ def test_timeserie_crud_uses_stable_keys_and_validates_units(
     assert create_response.json() == {
         "id": "revenue",
         "name": "Revenue",
+        "shortName": "revenue_monthly",
         "description": "Monthly revenue",
         "unit": "EUR",
         "timeUnit": "month",
@@ -1592,10 +1600,12 @@ def test_timeserie_crud_uses_stable_keys_and_validates_units(
     assert client.get(f"{path}/revenue/exists").json() == {
         "id": "revenue",
         "exists": True,
+        "shortName": "revenue_monthly",
     }
     assert client.get(f"{path}/missing/exists").json() == {
         "id": "missing",
         "exists": False,
+        "shortName": "",
     }
     assert client.get(f"{path}/missing").status_code == 404
     assert (
@@ -1610,6 +1620,30 @@ def test_timeserie_crud_uses_stable_keys_and_validates_units(
         ).status_code
         == 409
     )
+    duplicate_name_response = client.post(
+        path,
+        json={
+            "id": "revenue_duplicate_name",
+            "name": "  revenue  ",
+            "timeUnit": "month",
+            "valueUnit": "number",
+        },
+    )
+    assert duplicate_name_response.status_code == 409
+    assert duplicate_name_response.json() == {
+        "detail": "An active timeserie with this name already exists."
+    }
+    duplicate_short_name_response = client.post(
+        path,
+        json={
+            "id": "revenue_duplicate_short_name",
+            "name": "Revenue duplicate",
+            "shortName": "revenue_monthly",
+            "timeUnit": "month",
+            "valueUnit": "number",
+        },
+    )
+    assert duplicate_short_name_response.status_code == 409
     assert (
         client.post(
             path,
@@ -1617,6 +1651,19 @@ def test_timeserie_crud_uses_stable_keys_and_validates_units(
                 "id": "bad_unit",
                 "name": "Bad unit",
                 "timeUnit": "quarter",
+                "valueUnit": "number",
+            },
+        ).status_code
+        == 422
+    )
+    assert (
+        client.post(
+            path,
+            json={
+                "id": "bad_short_name",
+                "name": "Bad short name",
+                "shortName": "bad-short-name",
+                "timeUnit": "month",
                 "valueUnit": "number",
             },
         ).status_code
@@ -1634,6 +1681,104 @@ def test_timeserie_crud_uses_stable_keys_and_validates_units(
         ).status_code
         == 422
     )
+
+
+def test_timeserie_name_can_be_reused_in_another_scenario_or_after_soft_delete(
+    client: TestClient,
+) -> None:
+    organisation_key = _create_organisation(client)
+    reality_path = (
+        f"/api/v1/organisations/{organisation_key}/scenarios/reality/timeseries"
+    )
+    assert (
+        client.post(
+            reality_path,
+            json={
+                "id": "revenue",
+                "name": "Revenue",
+                "timeUnit": "month",
+                "valueUnit": "number",
+            },
+        ).status_code
+        == 201
+    )
+
+    scenario_response = client.post(
+        f"/api/v1/organisations/{organisation_key}/scenarios",
+        json={"name": "Forecast"},
+    )
+    assert scenario_response.status_code == 201
+    scenario_key = scenario_response.json()["id"]
+    other_scenario_path = (
+        f"/api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/timeseries"
+    )
+    assert (
+        client.post(
+            other_scenario_path,
+            json={
+                "id": "revenue",
+                "name": " revenue ",
+                "timeUnit": "month",
+                "valueUnit": "number",
+            },
+        ).status_code
+        == 201
+    )
+
+    assert client.delete(f"{reality_path}/revenue").status_code == 204
+    assert (
+        client.post(
+            reality_path,
+            json={
+                "id": "revenue_replacement",
+                "name": "REVENUE",
+                "timeUnit": "month",
+                "valueUnit": "number",
+            },
+        ).status_code
+        == 201
+    )
+
+
+def test_timeserie_create_maps_database_uniqueness_races_to_conflict(
+    session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with session_factory() as session:
+        organisation = Organisation(organisation_key="acme", name="Acme")
+        session.add(organisation)
+        session.flush()
+        scenario = Scenario(
+            organisation_id=organisation.organisation_id,
+            scenario_key="reality",
+            name="Reality",
+        )
+        session.add(scenario)
+        session.commit()
+
+        def raise_unique_violation() -> None:
+            raise IntegrityError("INSERT", {}, Exception("duplicate key"))
+
+        monkeypatch.setattr(session, "commit", raise_unique_violation)
+
+        with pytest.raises(HTTPException) as error:
+            org_states_service.create_timeserie(
+                session,
+                "acme",
+                "reality",
+                TimeserieCreateRequest(
+                    id="revenue",
+                    name="Revenue",
+                    timeUnit="month",
+                    valueUnit="number",
+                ),
+                TEST_ACTOR_USER_ID,
+            )
+
+        assert error.value.status_code == 409
+        assert error.value.detail == (
+            "An active timeserie with this id, name, or short name already exists."
+        )
 
 
 def test_timeseries_list_returns_sorted_rows_and_active_sorted_values(
@@ -1981,6 +2126,7 @@ def test_timeserie_delete_soft_deletes_values_and_clears_graph_node_links(
     assert client.get(f"{path}/capacity/exists").json() == {
         "id": "capacity",
         "exists": False,
+        "shortName": "",
     }
 
     with session_factory() as session:

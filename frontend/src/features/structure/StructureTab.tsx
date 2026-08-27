@@ -844,6 +844,10 @@ export default function StructureTab(props: { orgId: string }) {
               scenarioId={selectedScenario?.id ?? ""}
               node={selectedNode}
               nodeType={selectedNodeType}
+              nodes={graph?.nodes ?? []}
+              edges={graph?.edges ?? []}
+              nodeTypes={catalog?.nodeTypes ?? []}
+              edgeTypes={catalog?.edgeTypes ?? []}
               saving={isMutatingEntity}
               disabled={loading || !selectedScenario}
               onUpdateLinks={updateNode}

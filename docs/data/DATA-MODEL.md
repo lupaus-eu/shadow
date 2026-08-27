@@ -110,6 +110,10 @@ Lue nämä yhdessä datamallin kanssa:
 - Graph edges reference source and target graph nodes.
 - A graph edge lifetime must remain inside both endpoint node lifetimes.
 - A timeserie belongs to one scenario and owns dated values.
+- An active Timeserie name is unique after trimming and case-insensitive
+  comparison within its scenario.
+  An optional `short_name` is an equation-safe identifier and is unique within
+  its active scenario when present; both values are reusable after soft delete.
 - Active timeserie values must use dates that are valid starts for the owning
   timeserie's time unit and typed values that match the owning timeserie's value
   unit.

@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import type { SubmitEvent } from "react";
 import type {
+  GraphEdgeDto,
   GraphNodeDto,
   GraphNodeUpdateRequest,
-  NodeTypeMetadataDto
+  NodeTypeMetadataDto,
+  EdgeTypeMetadataDto
 } from "../../api/orgTwinStructure";
 import {
   createTimeserie,
@@ -31,7 +33,7 @@ type EffectiveTimeserieItem = {
 
 type ExistenceStatus =
   | { state: "loading" }
-  | { state: "exists" }
+  | { state: "exists"; shortName: string }
   | { state: "missing" }
   | { state: "error"; message: string };
 
@@ -68,11 +70,105 @@ function statusClass(status: ExistenceStatus | undefined, id: string): string {
   return "badge badge--neutral";
 }
 
+function displayNodeLabel(
+  node: GraphNodeDto,
+  nodeTypes: NodeTypeMetadataDto[]
+): string {
+  const nodeType = nodeTypes.find((item) => item.id === node.nodeTypeId);
+  return `${node.name} (${nodeType?.displayName ?? node.nodeTypeId})`;
+}
+
+function hasRelationshipEdgeTypeIds(edgeTypes: EdgeTypeMetadataDto[]): Set<string> {
+  return new Set(
+    edgeTypes
+      .filter((edgeType) => trimmed(edgeType.displayName).toLowerCase() === "has")
+      .map((edgeType) => edgeType.id)
+  );
+}
+
+function matchingSourceNodes(
+  targetNodeId: string,
+  edges: GraphEdgeDto[],
+  nodesById: Map<string, GraphNodeDto>,
+  hasEdgeTypeIds: Set<string>
+): GraphNodeDto[] {
+  const sourceNodesById = new Map<string, GraphNodeDto>();
+  for (const edge of edges) {
+    if (
+      edge.targetNodeId === targetNodeId &&
+      hasEdgeTypeIds.has(edge.edgeTypeId)
+    ) {
+      const sourceNode = nodesById.get(edge.sourceNodeId);
+      if (sourceNode) sourceNodesById.set(sourceNode.id, sourceNode);
+    }
+  }
+  return [...sourceNodesById.values()];
+}
+
+function ruleLineValue(
+  candidates: GraphNodeDto[],
+  nodeTypes: NodeTypeMetadataDto[],
+  singularFallback: string,
+  pluralFallback: string
+): string {
+  if (candidates.length === 1) return displayNodeLabel(candidates[0], nodeTypes);
+  return candidates.length === 0 ? singularFallback : pluralFallback;
+}
+
+function ruleLinesForNode(props: {
+  node: GraphNodeDto;
+  nodes: GraphNodeDto[];
+  edges: GraphEdgeDto[];
+  nodeTypes: NodeTypeMetadataDto[];
+  edgeTypes: EdgeTypeMetadataDto[];
+}): string[] {
+  const nodesById = new Map(props.nodes.map((node) => [node.id, node]));
+  const hasEdgeTypeIds = hasRelationshipEdgeTypeIds(props.edgeTypes);
+  const goalCandidates = matchingSourceNodes(
+    props.node.id,
+    props.edges,
+    nodesById,
+    hasEdgeTypeIds
+  );
+  const goalLineValue = ruleLineValue(
+    goalCandidates,
+    props.nodeTypes,
+    "No linked goal",
+    "Multiple linked goals"
+  );
+  const organisationCandidates =
+    goalCandidates.length === 1
+      ? matchingSourceNodes(
+          goalCandidates[0].id,
+          props.edges,
+          nodesById,
+          hasEdgeTypeIds
+        )
+      : [];
+  const organisationLineValue = ruleLineValue(
+    organisationCandidates,
+    props.nodeTypes,
+    goalCandidates.length === 1
+      ? "No linked organisation node"
+      : "No unambiguous linked organisation node",
+    "Multiple linked organisation nodes"
+  );
+
+  return [
+    `Measured by from ${goalLineValue}`,
+    `Has goal from ${organisationLineValue}`
+  ];
+}
+
 export default function TimeseriePanel(props: {
   orgId: string;
   scenarioId: string;
   node: GraphNodeDto;
   nodeType: NodeTypeMetadataDto | undefined;
+  nodes: GraphNodeDto[];
+  edges: GraphEdgeDto[];
+  nodeTypes: NodeTypeMetadataDto[];
+  edgeTypes: EdgeTypeMetadataDto[];
   saving: boolean;
   disabled?: boolean;
   onUpdateLinks: (payload: GraphNodeUpdateRequest) => Promise<void>;
@@ -124,6 +220,18 @@ export default function TimeseriePanel(props: {
   );
   const effectiveIdSignature = effectiveIds.join("\n");
   const formDisabled = props.disabled || props.saving;
+  const ruleLines = useMemo(
+    () =>
+      ruleLinesForNode({
+        node: props.node,
+        nodes: props.nodes,
+        edges: props.edges,
+        nodeTypes: props.nodeTypes,
+        edgeTypes: props.edgeTypes
+      }),
+    [props.edgeTypes, props.edges, props.node, props.nodeTypes, props.nodes]
+  );
+  const nodeSourceLabel = displayNodeLabel(props.node, props.nodeTypes);
 
   useEffect(() => {
     const ids = effectiveIdSignature ? effectiveIdSignature.split("\n") : [];
@@ -134,9 +242,17 @@ export default function TimeseriePanel(props: {
     for (const id of ids) {
       void fetchTimeserieExists(props.orgId, props.scenarioId, id, ac.signal)
         .then((response) => {
+          if (!response.exists) {
+            setExistenceById((current) => ({
+              ...current,
+              [id]: { state: "missing" }
+            }));
+            return;
+          }
+
           setExistenceById((current) => ({
             ...current,
-            [id]: { state: response.exists ? "exists" : "missing" }
+            [id]: { state: "exists", shortName: response.shortName }
           }));
         })
         .catch((error) => {
@@ -173,7 +289,10 @@ export default function TimeseriePanel(props: {
       await createTimeserie(props.orgId, props.scenarioId, payload);
       setExistenceById((current) => ({
         ...current,
-        [payload.id]: { state: "exists" }
+        [payload.id]: {
+          state: "exists",
+          shortName: payload.shortName?.trim() ?? ""
+        }
       }));
     } catch (error) {
       setPanelError(messageFromError(error));
@@ -245,7 +364,14 @@ export default function TimeseriePanel(props: {
         <dl className="detail-meta">
           <div className="detail-meta__row">
             <dt>Rule</dt>
-            <dd>{props.nodeType.timeserieIdRule}</dd>
+            <dd>
+              {ruleLines.map((line, index) => (
+                <Fragment key={line}>
+                  {index > 0 ? <br /> : null}
+                  {line}
+                </Fragment>
+              ))}
+            </dd>
           </div>
         </dl>
       ) : null}
@@ -278,16 +404,24 @@ export default function TimeseriePanel(props: {
                   {statusLabel(status, item.id)}
                 </span>
               </div>
-              {item.source !== "none" ? (
+              {item.source !== "none" || status?.state === "exists" ? (
                 <dl className="detail-meta">
-                  <div className="detail-meta__row">
-                    <dt>Source</dt>
-                    <dd>{item.source === "node" ? "Node link" : "Type default"}</dd>
-                  </div>
+                  {item.source !== "none" ? (
+                    <div className="detail-meta__row">
+                      <dt>Source</dt>
+                      <dd>{item.source === "node" ? nodeSourceLabel : "Type default"}</dd>
+                    </div>
+                  ) : null}
                   {item.inheritedId && item.source === "node" ? (
                     <div className="detail-meta__row">
                       <dt>Default</dt>
                       <dd>{item.inheritedId}</dd>
+                    </div>
+                  ) : null}
+                  {status?.state === "exists" ? (
+                    <div className="detail-meta__row">
+                      <dt>Short name</dt>
+                      <dd>{status.shortName || "Not set"}</dd>
                     </div>
                   ) : null}
                 </dl>
@@ -364,6 +498,7 @@ function MissingTimeserieForm(props: {
   onCreate: (payload: TimeserieCreateRequest) => Promise<void>;
 }) {
   const [name, setName] = useState(`${props.nodeName} ${props.slotLabel}`);
+  const [shortName, setShortName] = useState("");
   const [description, setDescription] = useState("");
   const [unit, setUnit] = useState("");
   const [timeUnit, setTimeUnit] = useState<TimeserieTimeUnit>("month");
@@ -379,6 +514,7 @@ function MissingTimeserieForm(props: {
       await props.onCreate({
         id: props.timeserieId,
         name: name.trim(),
+        shortName: inputValueToPayload(shortName),
         description: inputValueToPayload(description),
         unit: inputValueToPayload(unit),
         timeUnit,
@@ -405,6 +541,18 @@ function MissingTimeserieForm(props: {
           className="input"
           value={name}
           onChange={(event) => setName(event.target.value)}
+          disabled={props.disabled}
+        />
+      </div>
+      <div className="form-row">
+        <label className="form-label" htmlFor={`${props.idPrefix}-short-name`}>
+          Short name
+        </label>
+        <input
+          id={`${props.idPrefix}-short-name`}
+          className="input"
+          value={shortName}
+          onChange={(event) => setShortName(event.target.value)}
           disabled={props.disabled}
         />
       </div>

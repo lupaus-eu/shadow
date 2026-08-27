@@ -151,6 +151,11 @@ soft-deleted or cross-scenario timeseries.
 Type catalog node type metadata exposes `timeserieId`,
 `timeserieSecondaryId` and `timeserieIdRule` so the Structure UI can identify
 timeseries-capable node types and display inherited timeserie metadata.
+When a selected timeseries-capable node has rule metadata, the Structure UI
+derives its displayed Rule context from visible directed `Has` edges: source
+node -> goal node -> selected metric node. It displays connected node names and
+the type catalog's actual `displayName`; missing or ambiguous paths are shown
+explicitly instead of selecting an arbitrary node.
 
 Scenario history responses expose stable node and edge keys plus `createDate`
 and nullable `deleteDate`. They include logical history but exclude rows with a

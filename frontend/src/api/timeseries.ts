@@ -12,6 +12,7 @@ export type TimeserieValueDto = {
 export type TimeserieDto = {
   id: string;
   name: string;
+  shortName?: string;
   description: string;
   unit: string;
   timeUnit: TimeserieTimeUnit;
@@ -22,6 +23,7 @@ export type TimeserieDto = {
 export type TimeserieCreateRequest = {
   id: string;
   name: string;
+  shortName?: string | null;
   description?: string | null;
   unit?: string | null;
   timeUnit: TimeserieTimeUnit;
@@ -31,6 +33,7 @@ export type TimeserieCreateRequest = {
 export type TimeserieExistsDto = {
   id: string;
   exists: boolean;
+  shortName: string;
 };
 
 export type TimeserieValuesUpdateRequest = {
@@ -151,6 +154,7 @@ function normalizeTimeserie(payload: unknown, index = 0): TimeserieDto {
   return {
     id: id || name,
     name,
+    shortName: pickString(item, ["shortName", "short_name"]),
     description: pickString(item, ["description", "details", "desc"]),
     unit: pickString(item, ["unit", "valueLabel", "value_label"]),
     timeUnit: normalizeTimeUnit(pickString(item, ["timeUnit", "time_unit"])),

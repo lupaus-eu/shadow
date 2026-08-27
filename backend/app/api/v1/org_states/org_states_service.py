@@ -7,7 +7,8 @@ from typing import cast
 from uuid import uuid4
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.v1.org_states.models import (
@@ -224,6 +225,7 @@ def copy_scenario(
             scenario_id=copied_scenario.scenario_id,
             timeserie_key=source_timeserie.timeserie_key,
             name=source_timeserie.name,
+            short_name=source_timeserie.short_name,
             description=source_timeserie.description,
             unit=source_timeserie.unit,
             time_unit=source_timeserie.time_unit,
@@ -713,15 +715,19 @@ def timeserie_exists(
         "Timeserie id must not be blank.",
     )
 
-    timeserie_id = session.scalar(
-        select(Timeserie.timeserie_id).where(
+    timeserie = session.scalar(
+        select(Timeserie).where(
             Timeserie.scenario_id == scenario.scenario_id,
             Timeserie.timeserie_key == normalised_key,
             Timeserie.deleted_time.is_(None),
         ),
     )
 
-    return TimeserieExistsResponse(id=normalised_key, exists=timeserie_id is not None)
+    return TimeserieExistsResponse(
+        id=normalised_key,
+        exists=timeserie is not None,
+        shortName=(timeserie.short_name or "") if timeserie is not None else "",
+    )
 
 
 def create_timeserie(
@@ -734,11 +740,14 @@ def create_timeserie(
     organisation = _get_active_organisation(session, organisation_key)
     scenario = _get_active_scenario(session, organisation, scenario_key)
     _ensure_timeserie_key_available(session, scenario, payload.id)
+    _ensure_timeserie_name_available(session, scenario, payload.name)
+    _ensure_timeserie_short_name_available(session, scenario, payload.short_name)
 
     timeserie = Timeserie(
         scenario_id=scenario.scenario_id,
         timeserie_key=payload.id,
         name=payload.name,
+        short_name=payload.short_name,
         description=payload.description,
         unit=payload.unit,
         time_unit=payload.time_unit,
@@ -746,7 +755,17 @@ def create_timeserie(
         created_by=actor_user_id,
     )
     session.add(timeserie)
-    session.commit()
+    try:
+        session.commit()
+    except IntegrityError as exc:
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "An active timeserie with this id, name, or short name already "
+                "exists."
+            ),
+        ) from exc
     session.refresh(timeserie)
 
     return to_timeserie_response(timeserie)
@@ -888,6 +907,7 @@ def to_timeserie_response(
     return TimeserieResponse(
         id=timeserie.timeserie_key,
         name=timeserie.name,
+        shortName=timeserie.short_name or "",
         description=timeserie.description or "",
         unit=timeserie.unit or "",
         timeUnit=cast(TimeserieTimeUnit, timeserie.time_unit),
@@ -1237,6 +1257,47 @@ def _ensure_timeserie_key_available(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="An active timeserie with this id already exists.",
+        )
+
+
+def _ensure_timeserie_name_available(
+    session: Session,
+    scenario: Scenario,
+    name: str,
+) -> None:
+    timeserie_id = session.scalar(
+        select(Timeserie.timeserie_id).where(
+            Timeserie.scenario_id == scenario.scenario_id,
+            func.lower(func.trim(Timeserie.name)) == name.lower(),
+            Timeserie.deleted_time.is_(None),
+        ),
+    )
+    if timeserie_id is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="An active timeserie with this name already exists.",
+        )
+
+
+def _ensure_timeserie_short_name_available(
+    session: Session,
+    scenario: Scenario,
+    short_name: str | None,
+) -> None:
+    if short_name is None:
+        return
+
+    timeserie_id = session.scalar(
+        select(Timeserie.timeserie_id).where(
+            Timeserie.scenario_id == scenario.scenario_id,
+            Timeserie.short_name == short_name,
+            Timeserie.deleted_time.is_(None),
+        ),
+    )
+    if timeserie_id is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="An active timeserie with this short name already exists.",
         )
 
 

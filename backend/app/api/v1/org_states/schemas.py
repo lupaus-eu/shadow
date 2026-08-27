@@ -1,4 +1,5 @@
 import math
+import re
 from datetime import date as dt_date
 from typing import Literal
 
@@ -9,6 +10,8 @@ from app.core.schemas import StrictBaseModel
 type TimeserieTimeUnit = Literal["day", "week", "month", "year"]
 type TimeserieValueUnit = Literal["number", "string", "boolean"]
 type TimeserieCellValue = int | float | str | bool
+
+EQUATION_SAFE_IDENTIFIER = re.compile(r"[A-Za-z][A-Za-z0-9_]*")
 
 
 class ScenarioCreateRequest(StrictBaseModel):
@@ -226,6 +229,11 @@ class EventResponse(StrictBaseModel):
 class TimeserieCreateRequest(StrictBaseModel):
     id: str = Field(min_length=1, description="Stable timeserie key.")
     name: str = Field(min_length=1, description="Timeserie display name.")
+    short_name: str | None = Field(
+        default=None,
+        alias="shortName",
+        description="Optional equation-safe timeserie identifier.",
+    )
     description: str | None = Field(
         default=None,
         description="Timeserie description.",
@@ -259,6 +267,22 @@ class TimeserieCreateRequest(StrictBaseModel):
 
         stripped = value.strip()
         return stripped or None
+
+    @field_validator("short_name")
+    @classmethod
+    def short_name_must_be_equation_safe(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+
+        stripped = value.strip()
+        if not stripped:
+            return None
+        if EQUATION_SAFE_IDENTIFIER.fullmatch(stripped) is None:
+            raise ValueError(
+                "Short name must start with a letter and contain only letters, "
+                "numbers and underscores."
+            )
+        return stripped
 
 
 class TimeserieValueRequest(StrictBaseModel):
@@ -295,6 +319,10 @@ class TimeserieValueResponse(StrictBaseModel):
 class TimeserieResponse(StrictBaseModel):
     id: str = Field(description="Stable timeserie key.")
     name: str = Field(description="Timeserie display name.")
+    short_name: str = Field(
+        alias="shortName",
+        description="Optional equation-safe timeserie identifier.",
+    )
     description: str = Field(description="Timeserie description.")
     unit: str = Field(description="Human-readable unit label.")
     time_unit: TimeserieTimeUnit = Field(
@@ -313,3 +341,7 @@ class TimeserieResponse(StrictBaseModel):
 class TimeserieExistsResponse(StrictBaseModel):
     id: str = Field(description="Stable timeserie key.")
     exists: bool = Field(description="Whether an active timeserie exists.")
+    short_name: str = Field(
+        alias="shortName",
+        description="Optional equation-safe timeserie identifier when it exists.",
+    )
