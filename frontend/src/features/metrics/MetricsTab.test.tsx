@@ -117,6 +117,14 @@ function mockUpdateWithPayloadValues(sourceRows = baseTimeseries) {
   );
 }
 
+function csvFile(contents: string, name = "values.csv"): File {
+  const file = new File([contents], name, { type: "text/csv" });
+  Object.defineProperty(file, "text", {
+    value: vi.fn().mockResolvedValue(contents)
+  });
+  return file;
+}
+
 describe("MetricsTab", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -207,6 +215,56 @@ describe("MetricsTab", () => {
         expect.any(AbortSignal)
       );
     });
+  });
+
+  it("discards an import that finishes after the workspace scenario changes", async () => {
+    const view = renderMetricsTab();
+    const revenueRow = (await screen.findByText("Revenue")).closest("tr");
+    expect(revenueRow).not.toBeNull();
+    const csvPicker = within(revenueRow as HTMLElement).getByLabelText(
+      "CSV file for Revenue"
+    );
+    let resolveFileText!: (text: string) => void;
+    const pendingFile = new File([""], "values.csv", { type: "text/csv" });
+    Object.defineProperty(pendingFile, "text", {
+      value: vi.fn(
+        () => new Promise<string>((resolve) => {
+          resolveFileText = resolve;
+        })
+      )
+    });
+
+    fireEvent.change(csvPicker, { target: { files: [pendingFile] } });
+    await waitFor(() => expect(pendingFile.text).toHaveBeenCalledOnce());
+
+    let resolveAlternateMetrics!: (rows: TimeserieDto[]) => void;
+    vi.mocked(timeseriesApi.fetchTimeseries).mockImplementationOnce(
+      () =>
+        new Promise<TimeserieDto[]>((resolve) => {
+          resolveAlternateMetrics = resolve;
+        })
+    );
+    view.rerender(
+      <WorkspaceSelectionContext.Provider
+        value={{
+          selectedScenario: { id: "alternate", name: "Alternate" },
+          setSelectedScenario: vi.fn(),
+          selectedOrgState: null,
+          setSelectedOrgState: vi.fn(),
+          setWorkspaceSelection: vi.fn()
+        }}
+      >
+        <MetricsTab orgId="acme" />
+      </WorkspaceSelectionContext.Provider>
+    );
+    expect(await screen.findByText("Loading metrics...")).toBeInTheDocument();
+
+    resolveFileText("2030-03-01,3000");
+    resolveAlternateMetrics(baseTimeseries);
+
+    expect(await screen.findByText("3 timeserie(s)")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Revenue 2030-03-01")).not.toBeInTheDocument();
+    expect(screen.queryByText("Imported 1 value(s) for Revenue.")).not.toBeInTheDocument();
   });
 
   it("sorts metric rows by every toolbar option", async () => {
@@ -367,7 +425,12 @@ describe("MetricsTab", () => {
     expect(screen.getByLabelText("Date column")).toBeDisabled();
     expect(screen.getByRole("button", { name: "Refresh" })).toBeDisabled();
     expect(
-      within(revenueRow as HTMLElement).getByLabelText("CSV import for Revenue")
+      within(revenueRow as HTMLElement).getByLabelText("CSV file for Revenue")
+    ).toBeDisabled();
+    expect(
+      within(revenueRow as HTMLElement).getByRole("button", {
+        name: "Import CSV"
+      })
     ).toBeDisabled();
     expect(
       within(revenueRow as HTMLElement).getByRole("button", {
@@ -482,70 +545,65 @@ describe("MetricsTab", () => {
     expect(screen.getByLabelText("Status 2030-01-01")).toBeEnabled();
   });
 
-  it("imports CSV values into one row and validates imported dates", async () => {
+  it("imports a selected CSV file into one row and validates its contents", async () => {
     renderMetricsTab();
 
     const revenueRow = (await screen.findByText("Revenue")).closest("tr");
     expect(revenueRow).not.toBeNull();
-    const csvInput = within(revenueRow as HTMLElement).getByLabelText(
-      "CSV import for Revenue"
-    );
+    const row = revenueRow as HTMLElement;
+    const csvPicker = within(row).getByLabelText("CSV file for Revenue");
+    const importButton = within(row).getByRole("button", { name: "Import CSV" });
 
-    fireEvent.change(csvInput, {
-      target: { value: "2030-03-01,3000\n2030-04-01;4000" }
-    });
-    fireEvent.click(
-      within(revenueRow as HTMLElement).getByRole("button", {
-        name: "Import CSV"
-      })
-    );
+    expect(within(row).queryByLabelText("CSV import for Revenue")).toBeNull();
+    expect(csvPicker).toHaveAttribute("type", "file");
+    expect(csvPicker).toHaveAttribute("accept", ".csv,text/csv");
 
-    expect(screen.getByLabelText("Revenue 2030-03-01")).toHaveValue(3000);
+    const openPicker = vi.spyOn(csvPicker, "click");
+    fireEvent.click(importButton);
+    expect(openPicker).toHaveBeenCalledOnce();
+    openPicker.mockRestore();
+
+    fireEvent.change(csvPicker, { target: { files: [] } });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+
+    const validFile = csvFile("2030-03-01,3000\n2030-04-01;4000");
+    fireEvent.change(csvPicker, { target: { files: [validFile] } });
+
+    expect(await screen.findByLabelText("Revenue 2030-03-01")).toHaveValue(3000);
     expect(screen.getByLabelText("Revenue 2030-04-01")).toHaveValue(4000);
+    expect(csvPicker).toHaveValue("");
+    expect(validFile.text).toHaveBeenCalledOnce();
 
-    fireEvent.change(csvInput, {
-      target: { value: "2030-04-02,5000" }
+    fireEvent.change(csvPicker, { target: { files: [validFile] } });
+    await waitFor(() => expect(validFile.text).toHaveBeenCalledTimes(2));
+    expect(csvPicker).toHaveValue("");
+
+    fireEvent.change(csvPicker, {
+      target: { files: [csvFile("2030-02-30,5000")] }
     });
-    fireEvent.click(
-      within(revenueRow as HTMLElement).getByRole("button", {
-        name: "Import CSV"
-      })
-    );
+    expect(
+      await screen.findByText("2030-02-30 is not a valid date.")
+    ).toBeInTheDocument();
 
-    const validationMessage = await screen.findByText(
-      "2030-04-02 is not valid for Revenue month values."
-    );
-    const errorNotice = validationMessage.closest('[role="alert"]');
-    expect(errorNotice).not.toBeNull();
-    fireEvent.click(
-      within(errorNotice as HTMLElement).getByRole("button", {
-        name: "Dismiss Action error notice"
-      })
-    );
-    expect(validationMessage).not.toBeInTheDocument();
-
-    fireEvent.change(csvInput, {
-      target: { value: "2030-04-01,not-a-number" }
+    fireEvent.change(csvPicker, {
+      target: { files: [csvFile("2030-04-02,5000")] }
     });
-    fireEvent.click(
-      within(revenueRow as HTMLElement).getByRole("button", {
-        name: "Import CSV"
-      })
-    );
+    expect(
+      await screen.findByText("2030-04-02 is not valid for Revenue month values.")
+    ).toBeInTheDocument();
+
+    fireEvent.change(csvPicker, {
+      target: { files: [csvFile("2030-04-01,not-a-number")] }
+    });
     expect(
       await screen.findByText(
         "Revenue has an invalid number CSV value for 2030-04-01."
       )
     ).toBeInTheDocument();
 
-    fireEvent.change(csvInput, {
-      target: { value: "2030-04-01,4000,unexpected" }
+    fireEvent.change(csvPicker, {
+      target: { files: [csvFile("2030-04-01,4000,unexpected")] }
     });
-    fireEvent.click(
-      within(revenueRow as HTMLElement).getByRole("button", {
-        name: "Import CSV"
-      })
-    );
     expect(
       await screen.findByText("CSV rows must contain date and value.")
     ).toBeInTheDocument();

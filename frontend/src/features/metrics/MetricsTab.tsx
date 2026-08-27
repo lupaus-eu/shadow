@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState
+} from "react";
 import type { ChangeEvent } from "react";
 import EmptyTab from "../../components/EmptyTab";
 import {
@@ -15,7 +22,6 @@ import type {
 import { useWorkspaceSelection } from "../../workspace/WorkspaceSelectionContext";
 
 type DraftState = Record<string, Record<string, string>>;
-type CsvDraftState = Record<string, string>;
 type SavingRowsState = Record<string, boolean>;
 type ParsedDateParts = {
   year: number;
@@ -387,12 +393,16 @@ function parseCsvImport(
 
 export default function MetricsTab(props: { orgId: string }) {
   const { selectedScenario } = useWorkspaceSelection();
+  const selectedScenarioId = selectedScenario?.id ?? null;
+  const activeScenarioIdRef = useRef<string | null>(selectedScenarioId);
+  useLayoutEffect(() => {
+    activeScenarioIdRef.current = selectedScenarioId;
+  }, [selectedScenarioId]);
   const [timeseries, setTimeseries] = useState<TimeserieDto[]>([]);
   const [draftValues, setDraftValues] = useState<DraftState>({});
   const [manualDate, setManualDate] = useState("");
   const [manualDates, setManualDates] = useState<string[]>([]);
   const [manualDateError, setManualDateError] = useState("");
-  const [csvDrafts, setCsvDrafts] = useState<CsvDraftState>({});
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [actionError, setActionError] = useState("");
@@ -424,7 +434,6 @@ export default function MetricsTab(props: { orgId: string }) {
         setManualDates([]);
         setManualDate("");
         setManualDateError("");
-        setCsvDrafts({});
         setActionError("");
         setActionMessage("");
       }
@@ -608,14 +617,20 @@ export default function MetricsTab(props: { orgId: string }) {
     }
   }
 
-  function updateCsvDraft(timeserieId: string, value: string) {
-    setCsvDrafts((current) => ({ ...current, [timeserieId]: value }));
-    setActionError("");
-    setActionMessage("");
-  }
+  async function importCsv(timeserie: TimeserieDto, file: File) {
+    const sourceScenarioId = selectedScenarioId;
+    let text: string;
+    try {
+      text = await file.text();
+    } catch {
+      if (activeScenarioIdRef.current !== sourceScenarioId) return;
+      setActionError(`Could not read CSV file ${file.name}.`);
+      return;
+    }
 
-  function importCsv(timeserie: TimeserieDto) {
-    const parsed = parseCsvImport(csvDrafts[timeserie.id] ?? "", timeserie);
+    if (activeScenarioIdRef.current !== sourceScenarioId) return;
+
+    const parsed = parseCsvImport(text, timeserie);
     if ("error" in parsed) {
       setActionError(parsed.error);
       return;
@@ -631,7 +646,6 @@ export default function MetricsTab(props: { orgId: string }) {
         ...parsed.values
       }
     }));
-    setCsvDrafts((current) => ({ ...current, [timeserie.id]: "" }));
     setActionError("");
     setActionMessage(`Imported ${parsed.dates.length} value(s) for ${timeserie.name}.`);
   }
@@ -757,14 +771,12 @@ export default function MetricsTab(props: { orgId: string }) {
           timeseries={displayedTimeseries}
           dateColumns={dateColumns}
           draftValues={draftValues}
-          csvDrafts={csvDrafts}
           dirtyRows={new Set(dirtyRows.map((timeserie) => timeserie.id))}
           savingRows={savingRows}
           isSaving={isSaving}
           onDraftChange={updateDraftValue}
           onSaveRow={saveRow}
           onAddNextDate={onAddNextDate}
-          onCsvDraftChange={updateCsvDraft}
           onImportCsv={importCsv}
         />
       ) : null}
@@ -776,16 +788,21 @@ function MetricsGrid(props: {
   timeseries: TimeserieDto[];
   dateColumns: string[];
   draftValues: DraftState;
-  csvDrafts: CsvDraftState;
   dirtyRows: Set<string>;
   savingRows: SavingRowsState;
   isSaving: boolean;
   onDraftChange: (timeserieId: string, date: string, value: string) => void;
   onSaveRow: (timeserie: TimeserieDto) => Promise<void>;
   onAddNextDate: (timeserie: TimeserieDto) => void;
-  onCsvDraftChange: (timeserieId: string, value: string) => void;
-  onImportCsv: (timeserie: TimeserieDto) => void;
+  onImportCsv: (timeserie: TimeserieDto, file: File) => Promise<void>;
 }) {
+  const csvFileInputs = useRef<Record<string, HTMLInputElement | null>>({});
+
+  function onCsvFileChange(timeserie: TimeserieDto, file: File | undefined) {
+    if (!file) return;
+    void props.onImportCsv(timeserie, file);
+  }
+
   return (
     <div className="metrics-grid-shell" aria-label="Metrics grid">
       <table className="metrics-grid">
@@ -853,23 +870,26 @@ function MetricsGrid(props: {
                     >
                       Add next date
                     </button>
-                    <textarea
-                      className="textarea textarea--code metrics-grid__csv"
-                      placeholder="CSV-data to import..."
-                      aria-label={`CSV import for ${timeserie.name}`}
-                      value={props.csvDrafts[timeserie.id] ?? ""}
+                    <input
+                      ref={(element) => {
+                        csvFileInputs.current[timeserie.id] = element;
+                      }}
+                      className="visually-hidden"
+                      type="file"
+                      accept=".csv,text/csv"
+                      aria-label={`CSV file for ${timeserie.name}`}
                       disabled={props.isSaving}
-                      onChange={(event: ChangeEvent<HTMLTextAreaElement>) =>
-                        props.onCsvDraftChange(timeserie.id, event.target.value)
-                      }
+                      onChange={(event: ChangeEvent<HTMLInputElement>) => {
+                        const file = event.target.files?.[0];
+                        event.target.value = "";
+                        onCsvFileChange(timeserie, file);
+                      }}
                     />
                     <button
                       className="btn btn--secondary btn--compact"
                       type="button"
-                      onClick={() => props.onImportCsv(timeserie)}
-                      disabled={
-                        props.isSaving || !props.csvDrafts[timeserie.id]?.trim()
-                      }
+                      onClick={() => csvFileInputs.current[timeserie.id]?.click()}
+                      disabled={props.isSaving}
                     >
                       Import CSV
                     </button>
