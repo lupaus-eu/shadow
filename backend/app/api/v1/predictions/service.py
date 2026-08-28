@@ -18,7 +18,18 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.api.v1.org_states.models import Event, Scenario, Timeserie, TimeserieValue
+from app.api.v1.org_states.derived_metrics import (
+    FormulaError,
+    evaluate_formula,
+    parse_formula,
+)
+from app.api.v1.org_states.models import (
+    DerivedMetricEquation,
+    Event,
+    Scenario,
+    Timeserie,
+    TimeserieValue,
+)
 from app.api.v1.org_twin_structure.models import (
     EdgeType,
     GraphEdge,
@@ -185,6 +196,7 @@ class _PreparedTarget:
         history_features: list[dict[str, float]],
         periods: list[dt_date],
         features: list[dict[str, float]],
+        equation: DerivedMetricEquation | None = None,
     ) -> None:
         self.scenario = scenario
         self.metric = metric
@@ -196,10 +208,11 @@ class _PreparedTarget:
         self.history_features = history_features
         self.periods = periods
         self.features = features
+        self.equation = equation
 
     @property
     def source_snapshot(self) -> dict[str, object]:
-        return {
+        snapshot: dict[str, object] = {
             "targetScenarioId": self.scenario.scenario_key,
             "observationPolicy": "targetScenarioOnly",
             "metric": {
@@ -212,6 +225,10 @@ class _PreparedTarget:
                 for day, value, source in self.history
             ],
         }
+        if self.equation is not None:
+            snapshot["derivedFormula"] = self.equation.formula
+            snapshot["referencedTimeserieIds"] = self.equation.referenced_timeserie_ids
+        return snapshot
 
     @property
     def input_snapshot(self) -> dict[str, object]:
@@ -277,12 +294,25 @@ def _prepare_targets(
             )
             .order_by(Timeserie.timeserie_key)
         ).all()
-        for metric in metrics:
-            if _is_model_candidate(metric):
+        equations = {
+            equation.derived_timeserie_id: equation
+            for equation in session.scalars(
+                select(DerivedMetricEquation).where(
+                    DerivedMetricEquation.scenario_id == scenario.scenario_id,
+                    DerivedMetricEquation.deleted_time.is_(None),
+                )
+            ).all()
+        }
+        for metric in [
+            item for item in metrics if item.timeserie_id not in equations
+        ] + [item for item in metrics if item.timeserie_id in equations]:
+            if _is_model_candidate(metric) and metric.timeserie_id not in equations:
                 candidate_count += 1
                 if candidate_count > MAX_PAIRS:
                     raise _pair_limit_exception()
-            row = _prepare_metric(session, scenario, metric, payload)
+            row = _prepare_metric(
+                session, scenario, metric, payload, equations.get(metric.timeserie_id)
+            )
             prepared.append(row)
     return prepared
 
@@ -296,6 +326,7 @@ def _prepare_metric(
     scenario: Scenario,
     metric: Timeserie,
     payload: PredictionRequestBase,
+    equation: DerivedMetricEquation | None = None,
 ) -> _PreparedTarget:
     def empty(current_status: str, current_reason: str) -> _PreparedTarget:
         return _PreparedTarget(
@@ -322,12 +353,25 @@ def _prepare_metric(
         return empty(
             "ineligible", f"Prediction range exceeds the {MAX_PERIODS} period limit."
         )
+    if equation is not None:
+        return _PreparedTarget(
+            scenario,
+            metric,
+            "eligible",
+            None,
+            None,
+            None,
+            [],
+            [],
+            periods,
+            [{} for _ in periods],
+            equation,
+        )
     history = _target_history(session, metric, payload, periods[0])
     if not history:
         return empty(
             "ineligible",
-            "Target scenario has no observations available under the selected "
-            "cutoff.",
+            "Target scenario has no observations available under the selected cutoff.",
         )
     if len(history) > MAX_HISTORY:
         return empty(
@@ -489,6 +533,9 @@ def _persist_result_set(
     row: _PreparedTarget,
     actor_user_id: int,
 ) -> None:
+    if row.equation is not None:
+        _persist_derived_result_set(session, target, row, actor_user_id)
+        return
     if row.status != "eligible":
         for kind in RESULT_KINDS:
             session.add(
@@ -547,6 +594,106 @@ def _persist_result_set(
         sarima_points,
         actor_user_id,
     )
+
+
+def _persist_derived_result_set(
+    session: Session,
+    target: PredictionTarget,
+    row: _PreparedTarget,
+    actor_user_id: int,
+) -> None:
+    assert row.equation is not None
+    references = session.scalars(
+        select(Timeserie).where(
+            Timeserie.timeserie_id.in_(row.equation.referenced_timeserie_ids)
+        )
+    ).all()
+    try:
+        parsed = parse_formula(row.equation.formula)
+    except FormulaError as error:
+        for kind in RESULT_KINDS:
+            _save_result(
+                session,
+                target,
+                kind,
+                "ineligible",
+                str(error),
+                "not_applicable",
+                None,
+                [],
+                actor_user_id,
+            )
+        return
+    for kind in RESULT_KINDS:
+        values_by_name: dict[str, dict[dt_date, float]] = {}
+        failure: str | None = None
+        for reference in references:
+            source_target = session.scalar(
+                select(PredictionTarget).where(
+                    PredictionTarget.prediction_version_id
+                    == target.prediction_version_id,
+                    PredictionTarget.target_scenario_id == target.target_scenario_id,
+                    PredictionTarget.metric_key == reference.timeserie_key,
+                )
+            )
+            if source_target is None:
+                failure = (
+                    f"Referenced metric {reference.timeserie_key} has no "
+                    "prediction target."
+                )
+                break
+            source_result = session.scalar(
+                select(PredictionModelResult).where(
+                    PredictionModelResult.prediction_target_id
+                    == source_target.prediction_target_id,
+                    PredictionModelResult.result_kind == kind,
+                )
+            )
+            if source_result is None or source_result.status != "available":
+                failure = (
+                    f"Referenced metric {reference.timeserie_key} has no available "
+                    f"{kind} result."
+                )
+                break
+            points = session.scalars(
+                select(PredictionPoint).where(
+                    PredictionPoint.prediction_model_result_id
+                    == source_result.prediction_model_result_id
+                )
+            ).all()
+            if reference.short_name is not None:
+                values_by_name[reference.short_name] = {
+                    point.date: point.value for point in points
+                }
+        values: list[float] = []
+        if failure is None:
+            for period in row.periods:
+                try:
+                    values.append(
+                        evaluate_formula(
+                            parsed,
+                            {
+                                name: points[period]
+                                for name, points in values_by_name.items()
+                            },
+                        )
+                    )
+                except (FormulaError, KeyError):
+                    failure = (
+                        f"Derived formula cannot be evaluated for {period.isoformat()}."
+                    )
+                    break
+        _save_result(
+            session,
+            target,
+            kind,
+            "available" if failure is None else "ineligible",
+            failure,
+            "not_applicable",
+            None,
+            values if failure is None else [],
+            actor_user_id,
+        )
 
 
 def _save_result(

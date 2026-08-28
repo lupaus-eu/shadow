@@ -9,6 +9,8 @@ from app.api.v1.auth.dependencies import (
 )
 from app.api.v1.org_states import org_states_service
 from app.api.v1.org_states.schemas import (
+    DerivedMetricCreateRequest,
+    DerivedMetricPatchRequest,
     EventCreateRequest,
     EventPatchRequest,
     EventResponse,
@@ -23,6 +25,7 @@ from app.api.v1.org_states.schemas import (
     TimeserieCreateRequest,
     TimeserieExistsResponse,
     TimeserieResponse,
+    TimeserieShortNamePatchRequest,
     TimeserieValuesPatchRequest,
 )
 from app.core.database import get_db_session
@@ -144,6 +147,45 @@ def create_timeserie(
     )
 
 
+@router.post(
+    "/{organisation_key}/scenarios/{scenario_key}/derived-metrics",
+    response_model=TimeserieResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_derived_metric(
+    organisation_key: str,
+    scenario_key: str,
+    payload: DerivedMetricCreateRequest,
+    session: SessionDependency,
+    active: UnsafeRequestDependency,
+) -> TimeserieResponse:
+    return org_states_service.create_derived_metric(
+        session, organisation_key, scenario_key, payload, active.user.user_id
+    )
+
+
+@router.patch(
+    "/{organisation_key}/scenarios/{scenario_key}/derived-metrics/{timeserie_key}",
+    response_model=TimeserieResponse,
+)
+def update_derived_metric(
+    organisation_key: str,
+    scenario_key: str,
+    timeserie_key: str,
+    payload: DerivedMetricPatchRequest,
+    session: SessionDependency,
+    active: UnsafeRequestDependency,
+) -> TimeserieResponse:
+    return org_states_service.update_derived_metric(
+        session,
+        organisation_key,
+        scenario_key,
+        timeserie_key,
+        payload,
+        active.user.user_id,
+    )
+
+
 @router.get(
     "/{organisation_key}/scenarios/{scenario_key}/timeseries",
     response_model=list[TimeserieResponse],
@@ -193,6 +235,28 @@ def timeserie_exists(
         organisation_key,
         scenario_key,
         timeserie_key,
+    )
+
+
+@router.patch(
+    "/{organisation_key}/scenarios/{scenario_key}/timeseries/{timeserie_key}/short-name",
+    response_model=TimeserieResponse,
+)
+def update_timeserie_short_name(
+    organisation_key: str,
+    scenario_key: str,
+    timeserie_key: str,
+    payload: TimeserieShortNamePatchRequest,
+    session: SessionDependency,
+    active: UnsafeRequestDependency,
+) -> TimeserieResponse:
+    return org_states_service.update_timeserie_short_name(
+        session,
+        organisation_key,
+        scenario_key,
+        timeserie_key,
+        payload,
+        active.user.user_id,
     )
 
 

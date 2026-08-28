@@ -216,6 +216,16 @@ entity "timeserie_values" as timeserie_values {
   timeserie_id : BIGINT
   date : DATE
   value : JSONB
+  is_derived : BOOLEAN
+}
+
+entity "derived_metrics_equations" as derived_metrics_equations {
+  * derived_metric_equation_id : BIGINT
+  --
+  scenario_id : BIGINT
+  derived_timeserie_id : BIGINT
+  formula : TEXT
+  referenced_timeserie_ids : JSONB
 }
 
 entity "prediction_versions" as prediction_versions {
@@ -293,6 +303,8 @@ edge_types ||--o{ graph_edges
 graph_nodes ||--o{ graph_edges : source
 graph_nodes ||--o{ graph_edges : target
 timeseries ||--o{ timeserie_values
+scenarios ||--o{ derived_metrics_equations
+timeseries ||--o| derived_metrics_equations : derived
 organisations ||--o{ prediction_versions
 prediction_versions ||--o{ prediction_targets
 prediction_targets ||--o{ prediction_model_results

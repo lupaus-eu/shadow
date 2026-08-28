@@ -1,0 +1,7 @@
+DROP INDEX idx_derived_metrics_equations_references_active;
+DROP INDEX idx_derived_metrics_equations_scenario_active;
+DROP INDEX ux_derived_metrics_equations_derived_timeserie_active;
+DROP TABLE derived_metrics_equations;
+
+ALTER TABLE timeserie_values
+    DROP COLUMN is_derived;

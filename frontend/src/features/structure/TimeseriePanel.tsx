@@ -10,7 +10,8 @@ import type {
 import {
   createTimeserie,
   deleteTimeserie,
-  fetchTimeserieExists
+  fetchTimeserieExists,
+  updateTimeserieShortName
 } from "../../api/timeseries";
 import type {
   TimeserieCreateRequest,
@@ -33,7 +34,7 @@ type EffectiveTimeserieItem = {
 
 type ExistenceStatus =
   | { state: "loading" }
-  | { state: "exists"; shortName: string }
+  | { state: "exists"; shortName: string; shortNameEditable: boolean }
   | { state: "missing" }
   | { state: "error"; message: string };
 
@@ -184,6 +185,8 @@ export default function TimeseriePanel(props: {
   const [panelError, setPanelError] = useState("");
   const [busyTimeserieId, setBusyTimeserieId] = useState<string | null>(null);
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
+  const [editingShortNameId, setEditingShortNameId] = useState<string | null>(null);
+  const [shortNameDraft, setShortNameDraft] = useState("");
 
   const effectiveItems = useMemo<EffectiveTimeserieItem[]>(() => {
     const inheritedPrimaryId = trimmed(props.nodeType?.timeserieId);
@@ -252,7 +255,11 @@ export default function TimeseriePanel(props: {
 
           setExistenceById((current) => ({
             ...current,
-            [id]: { state: "exists", shortName: response.shortName }
+            [id]: {
+              state: "exists",
+              shortName: response.shortName,
+              shortNameEditable: response.shortNameEditable !== false
+            }
           }));
         })
         .catch((error) => {
@@ -291,7 +298,8 @@ export default function TimeseriePanel(props: {
         ...current,
         [payload.id]: {
           state: "exists",
-          shortName: payload.shortName?.trim() ?? ""
+          shortName: payload.shortName?.trim() ?? "",
+          shortNameEditable: true
         }
       }));
     } catch (error) {
@@ -313,6 +321,32 @@ export default function TimeseriePanel(props: {
       }));
       props.onTimeserieDeleted(timeserieId);
       setConfirmingDeleteId(null);
+    } catch (error) {
+      setPanelError(messageFromError(error));
+    } finally {
+      setBusyTimeserieId(null);
+    }
+  }
+
+  async function saveShortName(timeserieId: string) {
+    try {
+      setPanelError("");
+      setBusyTimeserieId(timeserieId);
+      const updated = await updateTimeserieShortName(
+        props.orgId,
+        props.scenarioId,
+        timeserieId,
+        inputValueToPayload(shortNameDraft)
+      );
+      setExistenceById((current) => ({
+        ...current,
+        [timeserieId]: {
+          state: "exists",
+          shortName: updated.shortName ?? "",
+          shortNameEditable: updated.shortNameEditable !== false
+        }
+      }));
+      setEditingShortNameId(null);
     } catch (error) {
       setPanelError(messageFromError(error));
     } finally {
@@ -425,6 +459,48 @@ export default function TimeseriePanel(props: {
                     </div>
                   ) : null}
                 </dl>
+              ) : null}
+              {item.id && status?.state === "exists" ? (
+                <div className="form-actions">
+                  {status.shortNameEditable ? (
+                    editingShortNameId === item.id ? (
+                      <>
+                        <label className="visually-hidden" htmlFor={`short-name-${item.slot}`}>
+                          Short name for {item.label}
+                        </label>
+                        <input
+                          id={`short-name-${item.slot}`}
+                          className="input"
+                          value={shortNameDraft}
+                          onChange={(event) => setShortNameDraft(event.target.value)}
+                          disabled={isBusy || formDisabled}
+                        />
+                        <button
+                          className="btn btn--secondary"
+                          type="button"
+                          disabled={isBusy || formDisabled}
+                          onClick={() => void saveShortName(item.id)}
+                        >
+                          {isBusy ? "Saving..." : "Save shortname"}
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        className="btn btn--secondary"
+                        type="button"
+                        disabled={formDisabled || Boolean(busyTimeserieId)}
+                        onClick={() => {
+                          setShortNameDraft(status.shortName);
+                          setEditingShortNameId(item.id);
+                        }}
+                      >
+                        Set shortname
+                      </button>
+                    )
+                  ) : (
+                    <span className="muted">Short name is locked by a derived metric.</span>
+                  )}
+                </div>
               ) : null}
               {status?.state === "error" ? (
                 <p className="muted">{status.message}</p>

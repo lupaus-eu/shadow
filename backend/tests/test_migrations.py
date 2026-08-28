@@ -172,4 +172,4 @@ def test_rejects_history_longer_than_repository(tmp_path: Path) -> None:
 def test_repository_migrations_are_complete_pairs() -> None:
     migrations = discover_migrations()
 
-    assert [migration.version for migration in migrations] == list(range(1, 13))
+    assert [migration.version for migration in migrations] == list(range(1, 14))

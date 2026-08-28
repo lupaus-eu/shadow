@@ -6,13 +6,16 @@ import {
   useRef,
   useState
 } from "react";
-import type { ChangeEvent } from "react";
+import type { ChangeEvent, FormEvent } from "react";
 import EmptyTab from "../../components/EmptyTab";
 import {
+  createDerivedMetric,
   fetchTimeseries,
+  updateDerivedMetric,
   updateTimeserieValues
 } from "../../api/timeseries";
 import type {
+  DerivedMetricCreateRequest,
   TimeserieCellValue,
   TimeserieDto,
   TimeserieTimeUnit,
@@ -410,14 +413,28 @@ export default function MetricsTab(props: { orgId: string }) {
   const [savingRows, setSavingRows] = useState<SavingRowsState>({});
   const [savingAll, setSavingAll] = useState(false);
   const [sortValue, setSortValue] = useState<MetricsSortValue>("");
+  const [showManualMetrics, setShowManualMetrics] = useState(true);
+  const [showDerivedMetrics, setShowDerivedMetrics] = useState(true);
+  const [isDerivedMetricEditorVisible, setDerivedMetricEditorVisible] =
+    useState(false);
+  const [editingDerivedMetric, setEditingDerivedMetric] =
+    useState<TimeserieDto | null>(null);
 
   const dateColumns = useMemo(
     () => buildDateColumns(timeseries, manualDates),
     [manualDates, timeseries]
   );
   const displayedTimeseries = useMemo(
-    () => sortTimeseriesForDisplay(timeseries, sortValue),
-    [sortValue, timeseries]
+    () =>
+      sortTimeseriesForDisplay(
+        timeseries.filter(
+          (timeserie) =>
+            (showManualMetrics || timeserie.isDerived) &&
+            (showDerivedMetrics || !timeserie.isDerived)
+        ),
+        sortValue
+      ),
+    [showDerivedMetrics, showManualMetrics, sortValue, timeseries]
   );
   const dirtyRows = useMemo(
     () =>
@@ -436,6 +453,8 @@ export default function MetricsTab(props: { orgId: string }) {
         setManualDateError("");
         setActionError("");
         setActionMessage("");
+        setEditingDerivedMetric(null);
+        setDerivedMetricEditorVisible(false);
       }
 
       if (!selectedScenario) {
@@ -541,6 +560,9 @@ export default function MetricsTab(props: { orgId: string }) {
         ...current,
         [updated.id]: draftForUpdatedTimeserie(updated)
       }));
+      if (timeseries.some((item) => item.isDerived)) {
+        await loadMetrics();
+      }
       setActionMessage(`Saved ${updated.name}.`);
     } catch (error) {
       setActionError(saveErrorMessage(error));
@@ -599,6 +621,9 @@ export default function MetricsTab(props: { orgId: string }) {
           ])
         )
       }));
+      if (updatedRows.length > 0 && timeseries.some((item) => item.isDerived)) {
+        await loadMetrics();
+      }
 
       if (failedResults.length > 0) {
         const savedSummary =
@@ -650,6 +675,47 @@ export default function MetricsTab(props: { orgId: string }) {
     setActionMessage(`Imported ${parsed.dates.length} value(s) for ${timeserie.name}.`);
   }
 
+  async function saveDerivedMetric(
+    payload: DerivedMetricCreateRequest,
+    current: TimeserieDto | null
+  ) {
+    if (isSaving) return;
+    try {
+      setSavingAll(true);
+      setActionError("");
+      const updated = current
+        ? await updateDerivedMetric(
+            props.orgId,
+            selectedScenario?.id ?? "",
+            current.id,
+            payload
+          )
+        : await createDerivedMetric(
+            props.orgId,
+            selectedScenario?.id ?? "",
+            payload
+          );
+      setTimeseries((items) =>
+        sortTimeseries(
+          current
+            ? items.map((item) => (item.id === updated.id ? updated : item))
+            : [...items, updated]
+        )
+      );
+      setDraftValues((items) => ({
+        ...items,
+        [updated.id]: draftForUpdatedTimeserie(updated)
+      }));
+      setEditingDerivedMetric(null);
+      setDerivedMetricEditorVisible(false);
+      setActionMessage(`${current ? "Updated" : "Created"} ${updated.name}.`);
+    } catch (error) {
+      setActionError(messageFromError(error));
+    } finally {
+      setSavingAll(false);
+    }
+  }
+
   if (!selectedScenario) {
     return (
       <EmptyTab
@@ -669,57 +735,6 @@ export default function MetricsTab(props: { orgId: string }) {
           <span className="scenarios-toolbar__count">
             {metricsCountText(timeseries.length)}
           </span>
-        </div>
-        <div className="metrics-toolbar__actions">
-          <select
-            className="select metrics-toolbar__sort-select"
-            aria-label="Sort metrics"
-            value={sortValue}
-            disabled={isSaving}
-            onChange={(event) =>
-              setSortValue(event.target.value as MetricsSortValue)
-            }
-          >
-            <option value="">Sort by:</option>
-            {METRICS_SORT_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-          <input
-            className="input metrics-toolbar__date-input"
-            type="date"
-            aria-label="Date column"
-            value={manualDate}
-            disabled={isSaving}
-            onChange={(event) => setManualDate(event.target.value)}
-          />
-          <button
-            className="btn btn--secondary"
-            type="button"
-            onClick={onAddManualDate}
-            disabled={!manualDate || isSaving}
-          >
-            Add date
-          </button>
-          <button
-            className="btn btn--primary"
-            type="button"
-            onClick={() => void saveAllChanges()}
-            disabled={saveAllDisabled}
-            aria-busy={savingAll}
-          >
-            {savingAll ? <SavingLabel /> : "Save changes"}
-          </button>
-          <button
-            className="btn btn--secondary"
-            type="button"
-            onClick={() => void loadMetrics()}
-            disabled={loading || isSaving}
-          >
-            {loading ? "Refreshing..." : "Refresh"}
-          </button>
         </div>
       </section>
 
@@ -754,6 +769,104 @@ export default function MetricsTab(props: { orgId: string }) {
         ) : null}
       </div>
 
+      {isDerivedMetricEditorVisible ? (
+        <DerivedMetricEditor
+          key={editingDerivedMetric?.id ?? "new"}
+          editing={editingDerivedMetric}
+          disabled={isSaving}
+          normalMetrics={timeseries.filter(
+            (item) => !item.isDerived && item.valueUnit === "number" && item.shortName
+          )}
+          onSave={saveDerivedMetric}
+          onCancel={() => {
+            setEditingDerivedMetric(null);
+            setDerivedMetricEditorVisible(false);
+          }}
+        />
+      ) : (
+        <button
+          className="btn btn--secondary metrics-create-derived-button"
+          type="button"
+          onClick={() => setDerivedMetricEditorVisible(true)}
+        >
+          Create derived metric
+        </button>
+      )}
+
+      <div className="metrics-toolbar__actions">
+        <div className="metrics-toolbar__visibility-toggles">
+          <label className="metrics-toolbar__derived-toggle">
+            <input
+              type="checkbox"
+              checked={showManualMetrics}
+              onChange={(event) => setShowManualMetrics(event.target.checked)}
+            />
+            Show manual metrics timeseries
+          </label>
+          <label className="metrics-toolbar__derived-toggle">
+            <input
+              type="checkbox"
+              checked={showDerivedMetrics}
+              onChange={(event) => setShowDerivedMetrics(event.target.checked)}
+            />
+            Show derived metrics timeseries
+          </label>
+        </div>
+        <select
+          className="select metrics-toolbar__sort-select"
+          aria-label="Sort metrics"
+          value={sortValue}
+          disabled={isSaving}
+          onChange={(event) =>
+            setSortValue(event.target.value as MetricsSortValue)
+          }
+        >
+          <option value="">Sort by:</option>
+          {METRICS_SORT_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        <div className="metrics-toolbar__date-actions">
+          <input
+            className="input metrics-toolbar__date-input"
+            type="date"
+            aria-label="Date column"
+            value={manualDate}
+            disabled={isSaving}
+            onChange={(event) => setManualDate(event.target.value)}
+          />
+          <button
+            className="btn btn--secondary"
+            type="button"
+            onClick={onAddManualDate}
+            disabled={!manualDate || isSaving}
+          >
+            Add date
+          </button>
+        </div>
+        <div className="metrics-toolbar__save-actions">
+          <button
+            className="btn btn--primary"
+            type="button"
+            onClick={() => void saveAllChanges()}
+            disabled={saveAllDisabled}
+            aria-busy={savingAll}
+          >
+            {savingAll ? <SavingLabel /> : "Save changes"}
+          </button>
+          <button
+            className="btn btn--secondary"
+            type="button"
+            onClick={() => void loadMetrics()}
+            disabled={loading || isSaving}
+          >
+            {loading ? "Refreshing..." : "Refresh"}
+          </button>
+        </div>
+      </div>
+
       {loading ? <p className="muted metrics-loading">Loading metrics...</p> : null}
 
       {!loading && !loadError && timeseries.length === 0 ? (
@@ -778,9 +891,81 @@ export default function MetricsTab(props: { orgId: string }) {
           onSaveRow={saveRow}
           onAddNextDate={onAddNextDate}
           onImportCsv={importCsv}
+          onEditDerived={(timeserie) => {
+            setEditingDerivedMetric(timeserie);
+            setDerivedMetricEditorVisible(true);
+          }}
         />
       ) : null}
     </div>
+  );
+}
+
+function DerivedMetricEditor(props: {
+  editing: TimeserieDto | null;
+  disabled: boolean;
+  normalMetrics: TimeserieDto[];
+  onSave: (
+    payload: DerivedMetricCreateRequest,
+    current: TimeserieDto | null
+  ) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [name, setName] = useState(props.editing?.name ?? "");
+  const [unit, setUnit] = useState(props.editing?.unit ?? "");
+  const [formula, setFormula] = useState(props.editing?.derivedFormula ?? "");
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await props.onSave(
+      { name: name.trim(), unit: unit.trim() || null, formula: formula.trim() },
+      props.editing
+    );
+  }
+
+  return (
+    <section className="detail-card derived-metric-editor" aria-labelledby="derived-metric-title">
+      <div className="detail-card__header">
+        <h2 id="derived-metric-title" className="section-title">
+          {props.editing ? "Edit derived metric" : "Create derived metric"}
+        </h2>
+      </div>
+      <form onSubmit={(event) => void submit(event)}>
+        <div className="form-row">
+          <label className="form-label form-label--required" htmlFor="derived-metric-name">
+            Name
+          </label>
+          <input id="derived-metric-name" className="input derived-metric-editor__name" value={name} disabled={props.disabled}
+            onChange={(event) => setName(event.target.value)} />
+        </div>
+        <div className="form-row">
+          <label className="form-label" htmlFor="derived-metric-unit">Unit</label>
+          <input id="derived-metric-unit" className="input derived-metric-editor__unit" value={unit} disabled={props.disabled}
+            onChange={(event) => setUnit(event.target.value)} />
+        </div>
+        <div className="form-row">
+          <label className="form-label form-label--required" htmlFor="derived-metric-formula">
+            Formula
+          </label>
+          <input id="derived-metric-formula" className="input" value={formula} disabled={props.disabled}
+            onChange={(event) => setFormula(event.target.value)} />
+          <small className="muted">Use +, -, *, /, ** or ^ and normal metric short names.</small>
+        </div>
+        {props.normalMetrics.length > 0 ? (
+          <p className="muted">
+            Available short names: {props.normalMetrics.map((item) => item.shortName).join(", ")}
+          </p>
+        ) : null}
+        <div className="form-actions">
+          <button className="btn btn--primary" type="submit" disabled={props.disabled || !name.trim() || !formula.trim()}>
+            {props.editing ? "Save derived metric" : "Create derived metric"}
+          </button>
+          <button className="btn btn--secondary" type="button" disabled={props.disabled} onClick={props.onCancel}>
+            Cancel
+          </button>
+        </div>
+      </form>
+    </section>
   );
 }
 
@@ -795,6 +980,7 @@ function MetricsGrid(props: {
   onSaveRow: (timeserie: TimeserieDto) => Promise<void>;
   onAddNextDate: (timeserie: TimeserieDto) => void;
   onImportCsv: (timeserie: TimeserieDto, file: File) => Promise<void>;
+  onEditDerived: (timeserie: TimeserieDto) => void;
 }) {
   const csvFileInputs = useRef<Record<string, HTMLInputElement | null>>({});
 
@@ -825,11 +1011,15 @@ function MetricsGrid(props: {
           {props.timeseries.map((timeserie) => {
             const rowIsDirty = props.dirtyRows.has(timeserie.id);
             const rowSaving = Boolean(props.savingRows[timeserie.id]);
+            const isDerived = timeserie.isDerived === true;
 
             return (
               <tr
                 key={timeserie.id}
-                className={rowIsDirty ? "metrics-grid__row--dirty" : undefined}
+                className={[
+                  rowIsDirty ? "metrics-grid__row--dirty" : "",
+                  isDerived ? "metrics-grid__row--derived" : ""
+                ].filter(Boolean).join(" ") || undefined}
               >
                 <th scope="row" className="metrics-grid__metric-cell">
                   <div className="metrics-grid__metric">
@@ -839,7 +1029,12 @@ function MetricsGrid(props: {
                         <span className="badge badge--accent">Changed</span>
                       ) : null}
                     </span>
-                    <code>{timeserie.id}</code>
+                    {!isDerived ? <code>{timeserie.id}</code> : null}
+                    {timeserie.shortName ? (
+                      <span className="metrics-grid__short-name">
+                        Short name: <code>{timeserie.shortName}</code>
+                      </span>
+                    ) : null}
                     <span className="muted">
                       {timeserie.timeUnit} / {timeserie.valueUnit}
                       {timeserie.unit ? ` / ${timeserie.unit}` : ""}
@@ -849,50 +1044,67 @@ function MetricsGrid(props: {
                         {timeserie.description}
                       </span>
                     ) : null}
+                    {timeserie.derivedFormula ? (
+                      <code>{timeserie.derivedFormula}</code>
+                    ) : null}
                   </div>
                 </th>
                 <td className="metrics-grid__actions-cell">
                   <div className="metrics-row-actions">
-                    <button
-                      className="btn btn--secondary btn--compact"
-                      type="button"
-                      onClick={() => void props.onSaveRow(timeserie)}
-                      disabled={!rowIsDirty || props.isSaving}
-                      aria-busy={rowSaving}
-                    >
-                      {rowSaving ? <SavingLabel /> : "Save row"}
-                    </button>
-                    <button
-                      className="btn btn--secondary btn--compact"
-                      type="button"
-                      onClick={() => props.onAddNextDate(timeserie)}
-                      disabled={props.isSaving}
-                    >
-                      Add next date
-                    </button>
-                    <input
-                      ref={(element) => {
-                        csvFileInputs.current[timeserie.id] = element;
-                      }}
-                      className="visually-hidden"
-                      type="file"
-                      accept=".csv,text/csv"
-                      aria-label={`CSV file for ${timeserie.name}`}
-                      disabled={props.isSaving}
-                      onChange={(event: ChangeEvent<HTMLInputElement>) => {
-                        const file = event.target.files?.[0];
-                        event.target.value = "";
-                        onCsvFileChange(timeserie, file);
-                      }}
-                    />
-                    <button
-                      className="btn btn--secondary btn--compact"
-                      type="button"
-                      onClick={() => csvFileInputs.current[timeserie.id]?.click()}
-                      disabled={props.isSaving}
-                    >
-                      Import CSV
-                    </button>
+                    {isDerived ? (
+                      <button
+                        className="btn btn--secondary btn--compact"
+                        type="button"
+                        onClick={() => props.onEditDerived(timeserie)}
+                        disabled={props.isSaving}
+                      >
+                        Edit derived metric
+                      </button>
+                    ) : null}
+                    {!isDerived ? (
+                      <>
+                        <button
+                          className="btn btn--secondary btn--compact"
+                          type="button"
+                          onClick={() => void props.onSaveRow(timeserie)}
+                          disabled={!rowIsDirty || props.isSaving}
+                          aria-busy={rowSaving}
+                        >
+                          {rowSaving ? <SavingLabel /> : "Save row"}
+                        </button>
+                        <button
+                          className="btn btn--secondary btn--compact"
+                          type="button"
+                          onClick={() => props.onAddNextDate(timeserie)}
+                          disabled={props.isSaving}
+                        >
+                          Add next date
+                        </button>
+                        <input
+                          ref={(element) => {
+                            csvFileInputs.current[timeserie.id] = element;
+                          }}
+                          className="visually-hidden"
+                          type="file"
+                          accept=".csv,text/csv"
+                          aria-label={`CSV file for ${timeserie.name}`}
+                          disabled={props.isSaving}
+                          onChange={(event: ChangeEvent<HTMLInputElement>) => {
+                            const file = event.target.files?.[0];
+                            event.target.value = "";
+                            onCsvFileChange(timeserie, file);
+                          }}
+                        />
+                        <button
+                          className="btn btn--secondary btn--compact"
+                          type="button"
+                          onClick={() => csvFileInputs.current[timeserie.id]?.click()}
+                          disabled={props.isSaving}
+                        >
+                          Import CSV
+                        </button>
+                      </>
+                    ) : null}
                   </div>
                 </td>
                 {props.dateColumns.map((date) => (
@@ -908,7 +1120,7 @@ function MetricsGrid(props: {
                       onChange={(value) =>
                         props.onDraftChange(timeserie.id, date, value)
                       }
-                      disabled={props.isSaving}
+                      disabled={isDerived || props.isSaving}
                     />
                   </td>
                 ))}

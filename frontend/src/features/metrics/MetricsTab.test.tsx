@@ -189,6 +189,165 @@ describe("MetricsTab", () => {
     ).toBeInTheDocument();
   });
 
+  it("shows derived metrics by default and can hide them", async () => {
+    vi.mocked(timeseriesApi.fetchTimeseries).mockResolvedValueOnce([
+      ...baseTimeseries,
+      {
+        ...baseTimeseries[0],
+        id: "average-revenue",
+        name: "Average revenue",
+        isDerived: true,
+        derivedFormula: "revenue / 2"
+      }
+    ]);
+    renderMetricsTab();
+
+    const toggle = await screen.findByRole("checkbox", {
+      name: "Show derived metrics timeseries"
+    });
+    expect(toggle).toBeChecked();
+    expect(screen.getByText("Average revenue")).toBeInTheDocument();
+
+    fireEvent.click(toggle);
+
+    expect(toggle).not.toBeChecked();
+    expect(screen.queryByText("Average revenue")).not.toBeInTheDocument();
+  });
+
+  it("shows manual metrics by default and can hide them", async () => {
+    renderMetricsTab();
+
+    const toggle = await screen.findByRole("checkbox", {
+      name: "Show manual metrics timeseries"
+    });
+    expect(toggle).toBeChecked();
+    expect(screen.getByText("Revenue")).toBeInTheDocument();
+
+    fireEvent.click(toggle);
+
+    expect(toggle).not.toBeChecked();
+    expect(screen.queryByText("Revenue")).not.toBeInTheDocument();
+  });
+
+  it("refreshes derived values after saving a referenced manual metric", async () => {
+    const derivedMetric: TimeserieDto = {
+      ...baseTimeseries[0],
+      id: "double-revenue",
+      name: "Double revenue",
+      isDerived: true,
+      derivedFormula: "revenue * 2",
+      values: [
+        { date: "2030-01-01", value: 2000 },
+        { date: "2030-02-01", value: 4000 }
+      ]
+    };
+    const refreshedMetrics: TimeserieDto[] = [
+      {
+        ...baseTimeseries[0],
+        values: [
+          { date: "2030-01-01", value: 1500 },
+          { date: "2030-02-01", value: 2000 }
+        ]
+      },
+      baseTimeseries[1],
+      baseTimeseries[2],
+      {
+        ...derivedMetric,
+        values: [
+          { date: "2030-01-01", value: 3000 },
+          { date: "2030-02-01", value: 4000 }
+        ]
+      }
+    ];
+    vi.mocked(timeseriesApi.fetchTimeseries)
+      .mockResolvedValueOnce([...baseTimeseries, derivedMetric])
+      .mockResolvedValueOnce(refreshedMetrics);
+    vi.mocked(timeseriesApi.updateTimeserieValues).mockResolvedValue(
+      refreshedMetrics[0]
+    );
+    renderMetricsTab();
+
+    const revenueInput = await screen.findByLabelText("Revenue 2030-01-01");
+    fireEvent.change(revenueInput, { target: { value: "1500" } });
+    fireEvent.click(
+      within(revenueInput.closest("tr") as HTMLElement).getByRole("button", {
+        name: "Save row"
+      })
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText("Double revenue 2030-01-01")
+      ).toHaveValue(3000);
+    });
+  });
+
+  it("shows and hides the derived-metric editor on demand", async () => {
+    renderMetricsTab();
+
+    expect(
+      screen.queryByRole("heading", { name: "Create derived metric" })
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Create derived metric" })
+    );
+    expect(
+      screen.getByRole("heading", { name: "Create derived metric" })
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(
+      screen.queryByRole("heading", { name: "Create derived metric" })
+    ).not.toBeInTheDocument();
+  });
+
+  it("closes a derived-metric editor when the scenario changes", async () => {
+    const derivedMetric: TimeserieDto = {
+      ...baseTimeseries[0],
+      id: "double-revenue",
+      name: "Double revenue",
+      isDerived: true,
+      derivedFormula: "revenue * 2"
+    };
+    vi.mocked(timeseriesApi.fetchTimeseries)
+      .mockResolvedValueOnce([...baseTimeseries, derivedMetric])
+      .mockResolvedValueOnce(baseTimeseries);
+    const view = renderMetricsTab();
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Edit derived metric" })
+    );
+    expect(
+      screen.getByRole("heading", { name: "Edit derived metric" })
+    ).toBeInTheDocument();
+
+    view.rerender(
+      <WorkspaceSelectionContext.Provider
+        value={{
+          selectedScenario: { id: "alternate", name: "Alternate" },
+          setSelectedScenario: vi.fn(),
+          selectedOrgState: null,
+          setSelectedOrgState: vi.fn(),
+          setWorkspaceSelection: vi.fn()
+        }}
+      >
+        <MetricsTab orgId="acme" />
+      </WorkspaceSelectionContext.Provider>
+    );
+
+    await waitFor(() => {
+      expect(timeseriesApi.fetchTimeseries).toHaveBeenCalledWith(
+        "acme",
+        "alternate",
+        expect.any(AbortSignal)
+      );
+    });
+    expect(
+      screen.queryByRole("heading", { name: "Edit derived metric" })
+    ).not.toBeInTheDocument();
+  });
+
   it("refetches metrics when workspace scenario changes in place", async () => {
     const view = renderMetricsTab();
     await screen.findByText("3 timeserie(s)");

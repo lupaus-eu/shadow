@@ -229,6 +229,9 @@ class TimeserieValue(Base):
     )
     date: Mapped[dt_date] = mapped_column(Date)
     value: Mapped[dict[str, object]] = mapped_column(JSON)
+    is_derived: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false"
+    )
     created_by: Mapped[int | None] = mapped_column(
         BigInteger,
         ForeignKey("users.user_id"),
@@ -255,4 +258,38 @@ class TimeserieValue(Base):
     deleted_time: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
+    )
+
+
+class DerivedMetricEquation(Base):
+    __tablename__ = "derived_metrics_equations"
+
+    derived_metric_equation_id: Mapped[int] = mapped_column(
+        BigIntPrimaryKey, primary_key=True, autoincrement=True
+    )
+    scenario_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("scenarios.scenario_id", ondelete="CASCADE")
+    )
+    derived_timeserie_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("timeseries.timeserie_id", ondelete="CASCADE")
+    )
+    formula: Mapped[str] = mapped_column(Text)
+    referenced_timeserie_ids: Mapped[list[int]] = mapped_column(JSON, default=list)
+    created_by: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("users.user_id"), nullable=True
+    )
+    created_time: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    modified_by: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("users.user_id"), nullable=True
+    )
+    modified_time: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    deleted_by: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("users.user_id"), nullable=True
+    )
+    deleted_time: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )

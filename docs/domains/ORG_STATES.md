@@ -211,7 +211,10 @@ POST /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/timeserie
 GET /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/timeseries/{timeserie_key}
 GET /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/timeseries/{timeserie_key}/exists
 PATCH /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/timeseries/{timeserie_key}/values
+PATCH /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/timeseries/{timeserie_key}/short-name
 DELETE /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/timeseries/{timeserie_key}
+POST /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/derived-metrics
+PATCH /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/derived-metrics/{timeserie_key}
 ```
 
 The API uses stable text keys in paths and response `id` fields:
@@ -352,6 +355,12 @@ Values must match the timeserie `valueUnit`: `number` requires a finite number,
 valid starts for the timeserie `timeUnit`: `day` accepts every date, `week`
 starts on Monday, `month` starts on day 1 and `year` starts on January 1.
 Invalid value types or invalid time-unit start dates return HTTP `422`.
+Derived Metrics are numeric scenario Timeseries whose values are materialized
+from one stored formula. Formulas use normal numeric Timeserie short names from
+the same scenario and may use `+`, `-`, `*`, `/`, `**` or `^`. Referenced short
+names and whole source Timeseries are locked from editing/deletion while the
+equation is active; normal source values remain editable and trigger a
+transactional recalculation. Derived values are read-only.
 
 Graph element creation and logical deletion use the selected organisation
 state's target date through Organisation Twin Structure Domain. Organisation

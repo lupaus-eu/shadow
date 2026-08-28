@@ -18,6 +18,9 @@ export type TimeserieDto = {
   timeUnit: TimeserieTimeUnit;
   valueUnit: TimeserieValueUnit;
   values: TimeserieValueDto[];
+  isDerived?: boolean;
+  derivedFormula?: string | null;
+  shortNameEditable?: boolean;
 };
 
 export type TimeserieCreateRequest = {
@@ -34,11 +37,20 @@ export type TimeserieExistsDto = {
   id: string;
   exists: boolean;
   shortName: string;
+  shortNameEditable?: boolean;
 };
 
 export type TimeserieValuesUpdateRequest = {
   values: TimeserieValueDto[];
 };
+
+export type DerivedMetricCreateRequest = {
+  name: string;
+  unit: string | null;
+  formula: string;
+};
+
+export type DerivedMetricUpdateRequest = Partial<DerivedMetricCreateRequest>;
 
 export class ApiError extends Error {
   status: number;
@@ -161,7 +173,16 @@ function normalizeTimeserie(payload: unknown, index = 0): TimeserieDto {
     valueUnit: normalizeValueUnit(pickString(item, ["valueUnit", "value_unit"])),
     values: pickArray(item.values, ["values", "items", "data"]).map(
       normalizeTimeserieValue
-    )
+    ),
+    isDerived: item.isDerived === true || item.is_derived === true,
+    derivedFormula:
+      typeof item.derivedFormula === "string"
+        ? item.derivedFormula
+        : typeof item.derived_formula === "string"
+          ? item.derived_formula
+          : null,
+    shortNameEditable:
+      item.shortNameEditable !== false && item.short_name_editable !== false
   };
 }
 
@@ -171,10 +192,14 @@ function normalizeTimeseries(payload: unknown): TimeserieDto[] {
   );
 }
 
-function timeseriesPath(orgId: string, scenarioId: string) {
+function scenarioPath(orgId: string, scenarioId: string) {
   return `/api/v1/organisations/${encodeURIComponent(orgId)}/scenarios/${encodeURIComponent(
     scenarioId
-  )}/timeseries`;
+  )}`;
+}
+
+function timeseriesPath(orgId: string, scenarioId: string) {
+  return `${scenarioPath(orgId, scenarioId)}/timeseries`;
 }
 
 function timeseriePath(orgId: string, scenarioId: string, timeserieId: string) {
@@ -268,6 +293,53 @@ export async function updateTimeserieValues(
         method: "PATCH",
         body: JSON.stringify(payload)
       },
+      signal
+    )
+  );
+}
+
+export async function updateTimeserieShortName(
+  orgId: string,
+  scenarioId: string,
+  timeserieId: string,
+  shortName: string | null,
+  signal?: AbortSignal
+): Promise<TimeserieDto> {
+  return normalizeTimeserie(
+    await requestJson<unknown>(
+      `${timeseriePath(orgId, scenarioId, timeserieId)}/short-name`,
+      { method: "PATCH", body: JSON.stringify({ shortName }) },
+      signal
+    )
+  );
+}
+
+export async function createDerivedMetric(
+  orgId: string,
+  scenarioId: string,
+  payload: DerivedMetricCreateRequest,
+  signal?: AbortSignal
+): Promise<TimeserieDto> {
+  return normalizeTimeserie(
+    await requestJson<unknown>(
+      `${scenarioPath(orgId, scenarioId)}/derived-metrics`,
+      { method: "POST", body: JSON.stringify(payload) },
+      signal
+    )
+  );
+}
+
+export async function updateDerivedMetric(
+  orgId: string,
+  scenarioId: string,
+  timeserieId: string,
+  payload: DerivedMetricUpdateRequest,
+  signal?: AbortSignal
+): Promise<TimeserieDto> {
+  return normalizeTimeserie(
+    await requestJson<unknown>(
+      `${scenarioPath(orgId, scenarioId)}/derived-metrics/${encodeURIComponent(timeserieId)}`,
+      { method: "PATCH", body: JSON.stringify(payload) },
       signal
     )
   );

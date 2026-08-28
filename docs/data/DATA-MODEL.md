@@ -48,6 +48,7 @@ Lue nämä yhdessä datamallin kanssa:
 | Graph Edge | Scenario-owned connection whose logical lifetime must remain inside both endpoint node lifetimes. |
 | Timeserie | Scenario-specific timeseries definition. |
 | Timeserie Value | Date-specific value for a timeserie. |
+| Derived Metric Equation | Scenario-owned formula defining one derived numeric Timeserie. |
 | Prediction Version | Immutable, organisation-owned named execution with its cutoff and model configuration snapshot. |
 | Prediction Target | One target scenario and metric in a saved version, including effective-observation/source snapshots and metric eligibility. |
 | Prediction Model Result | One persisted requested output kind with eligibility and cross-validation metadata. |
@@ -110,6 +111,10 @@ Lue nämä yhdessä datamallin kanssa:
 - Graph edges reference source and target graph nodes.
 - A graph edge lifetime must remain inside both endpoint node lifetimes.
 - A timeserie belongs to one scenario and owns dated values.
+- A derived metric equation belongs to one scenario and one derived Timeserie.
+  It references normal numeric Timeseries in the same scenario by their locked
+  short names. Derived values are materialized only for the referenced-value
+  date intersection and are marked `is_derived`.
 - An active Timeserie name is unique after trimming and case-insensitive
   comparison within its scenario.
   An optional `short_name` is an equation-safe identifier and is unique within
@@ -117,6 +122,8 @@ Lue nämä yhdessä datamallin kanssa:
 - Active timeserie values must use dates that are valid starts for the owning
   timeserie's time unit and typed values that match the owning timeserie's value
   unit.
+- A normal Timeserie value replacement recalculates all active derived metrics
+  that reference it. Derived Timeserie values are never manually replaced.
 - Graph nodes may reference primary and secondary timeseries owned by the same
   scenario.
 - Scenario copy remaps copied graph-node timeserie references to the matching

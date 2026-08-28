@@ -11,7 +11,14 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.api.v1.org_states.derived_metrics import (
+    FormulaError,
+    ParsedFormula,
+    evaluate_formula,
+    parse_formula,
+)
 from app.api.v1.org_states.models import (
+    DerivedMetricEquation,
     Event,
     OrgState,
     Scenario,
@@ -19,6 +26,8 @@ from app.api.v1.org_states.models import (
     TimeserieValue,
 )
 from app.api.v1.org_states.schemas import (
+    DerivedMetricCreateRequest,
+    DerivedMetricPatchRequest,
     EventCreateRequest,
     EventPatchRequest,
     EventResponse,
@@ -33,6 +42,7 @@ from app.api.v1.org_states.schemas import (
     TimeserieCreateRequest,
     TimeserieExistsResponse,
     TimeserieResponse,
+    TimeserieShortNamePatchRequest,
     TimeserieTimeUnit,
     TimeserieValueResponse,
     TimeserieValuesPatchRequest,
@@ -253,9 +263,34 @@ def copy_scenario(
                     timeserie_id=copied_timeserie.timeserie_id,
                     date=source_value.date,
                     value=deepcopy(source_value.value),
+                    is_derived=source_value.is_derived,
                     created_by=actor_user_id,
                 ),
             )
+
+    source_equations = _active_derived_equations(session, source_scenario)
+    for source_equation in source_equations:
+        copied_derived_id = copied_timeserie_id_by_source_id.get(
+            source_equation.derived_timeserie_id
+        )
+        copied_references = [
+            copied_timeserie_id_by_source_id[source_id]
+            for source_id in _equation_reference_ids(source_equation)
+            if source_id in copied_timeserie_id_by_source_id
+        ]
+        if copied_derived_id is None or len(copied_references) != len(
+            _equation_reference_ids(source_equation)
+        ):
+            continue
+        session.add(
+            DerivedMetricEquation(
+                scenario_id=copied_scenario.scenario_id,
+                derived_timeserie_id=copied_derived_id,
+                formula=source_equation.formula,
+                referenced_timeserie_ids=copied_references,
+                created_by=actor_user_id,
+            )
+        )
 
     org_twin_structure_service.copy_graph_snapshots_for_org_states(
         session,
@@ -670,7 +705,13 @@ def get_timeserie(
     )
 
     values = _active_timeserie_values(session, timeserie)
-    return to_timeserie_response(timeserie, values)
+    equation = _active_derived_equation_for_timeserie(session, timeserie)
+    return to_timeserie_response(
+        timeserie,
+        values,
+        equation=equation,
+        short_name_editable=not _is_timeserie_referenced(session, scenario, timeserie),
+    )
 
 
 def list_scenario_timeseries(
@@ -693,10 +734,21 @@ def list_scenario_timeseries(
         [timeserie.timeserie_id for timeserie in timeseries],
     )
 
+    equations = _active_derived_equations(session, scenario)
+    equation_by_derived_id = {
+        equation.derived_timeserie_id: equation for equation in equations
+    }
+    referenced_ids = {
+        reference_id
+        for equation in equations
+        for reference_id in _equation_reference_ids(equation)
+    }
     return [
         to_timeserie_response(
             timeserie,
             values_by_timeserie_id.get(timeserie.timeserie_id, []),
+            equation=equation_by_derived_id.get(timeserie.timeserie_id),
+            short_name_editable=timeserie.timeserie_id not in referenced_ids,
         )
         for timeserie in timeseries
     ]
@@ -727,6 +779,11 @@ def timeserie_exists(
         id=normalised_key,
         exists=timeserie is not None,
         shortName=(timeserie.short_name or "") if timeserie is not None else "",
+        shortNameEditable=(
+            not _is_timeserie_referenced(session, scenario, timeserie)
+            if timeserie is not None
+            else True
+        ),
     )
 
 
@@ -762,13 +819,139 @@ def create_timeserie(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
-                "An active timeserie with this id, name, or short name already "
-                "exists."
+                "An active timeserie with this id, name, or short name already exists."
             ),
         ) from exc
     session.refresh(timeserie)
 
     return to_timeserie_response(timeserie)
+
+
+def update_timeserie_short_name(
+    session: Session,
+    organisation_key: str,
+    scenario_key: str,
+    timeserie_key: str,
+    payload: TimeserieShortNamePatchRequest,
+    actor_user_id: int,
+) -> TimeserieResponse:
+    organisation = _get_active_organisation(session, organisation_key)
+    scenario = _get_active_scenario(session, organisation, scenario_key)
+    timeserie = _get_active_timeserie(session, scenario, timeserie_key, for_update=True)
+    if _is_timeserie_referenced(session, scenario, timeserie):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A referenced timeserie short name cannot be changed.",
+        )
+    _ensure_timeserie_short_name_available(
+        session,
+        scenario,
+        payload.short_name,
+        excluding_timeserie_id=timeserie.timeserie_id,
+    )
+    timeserie.short_name = payload.short_name
+    timeserie.modified_time = datetime.now(UTC)
+    timeserie.modified_by = actor_user_id
+    try:
+        session.commit()
+    except IntegrityError as exc:
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="An active timeserie with this short name already exists.",
+        ) from exc
+    session.refresh(timeserie)
+    return to_timeserie_response(timeserie)
+
+
+def create_derived_metric(
+    session: Session,
+    organisation_key: str,
+    scenario_key: str,
+    payload: DerivedMetricCreateRequest,
+    actor_user_id: int,
+) -> TimeserieResponse:
+    organisation = _get_active_organisation(session, organisation_key)
+    scenario = _get_active_scenario(session, organisation, scenario_key)
+    _ensure_timeserie_name_available(session, scenario, payload.name)
+    parsed, references, time_unit = _resolve_derived_formula(
+        session, scenario, payload.formula
+    )
+    timeserie = Timeserie(
+        scenario_id=scenario.scenario_id,
+        timeserie_key=f"derived_{uuid4().hex}",
+        name=payload.name,
+        unit=payload.unit,
+        time_unit=time_unit,
+        value_unit="number",
+        created_by=actor_user_id,
+    )
+    session.add(timeserie)
+    session.flush()
+    equation = DerivedMetricEquation(
+        scenario_id=scenario.scenario_id,
+        derived_timeserie_id=timeserie.timeserie_id,
+        formula=parsed.source,
+        referenced_timeserie_ids=[item.timeserie_id for item in references],
+        created_by=actor_user_id,
+    )
+    session.add(equation)
+    _materialize_derived_metric(
+        session, equation, timeserie, parsed, references, actor_user_id
+    )
+    session.commit()
+    session.refresh(timeserie)
+    return to_timeserie_response(
+        timeserie, _active_timeserie_values(session, timeserie), equation=equation
+    )
+
+
+def update_derived_metric(
+    session: Session,
+    organisation_key: str,
+    scenario_key: str,
+    timeserie_key: str,
+    payload: DerivedMetricPatchRequest,
+    actor_user_id: int,
+) -> TimeserieResponse:
+    organisation = _get_active_organisation(session, organisation_key)
+    scenario = _get_active_scenario(session, organisation, scenario_key)
+    timeserie = _get_active_timeserie(session, scenario, timeserie_key, for_update=True)
+    equation = _active_derived_equation_for_timeserie(session, timeserie)
+    if equation is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Derived metric not found."
+        )
+    update_data = payload.model_dump(exclude_unset=True)
+    if "name" in update_data and payload.name is not None:
+        _ensure_timeserie_name_available(
+            session,
+            scenario,
+            payload.name,
+            excluding_timeserie_id=timeserie.timeserie_id,
+        )
+        timeserie.name = payload.name
+    if "unit" in update_data:
+        timeserie.unit = payload.unit
+    if "formula" in update_data and payload.formula is not None:
+        parsed, references, time_unit = _resolve_derived_formula(
+            session, scenario, payload.formula
+        )
+        equation.formula = parsed.source
+        equation.referenced_timeserie_ids = [item.timeserie_id for item in references]
+        equation.modified_time = datetime.now(UTC)
+        equation.modified_by = actor_user_id
+        timeserie.time_unit = time_unit
+        _materialize_derived_metric(
+            session, equation, timeserie, parsed, references, actor_user_id
+        )
+    timeserie.modified_time = datetime.now(UTC)
+    timeserie.modified_by = actor_user_id
+    session.commit()
+    session.refresh(timeserie)
+    return to_timeserie_response(
+        timeserie, _active_timeserie_values(session, timeserie), equation=equation
+    )
 
 
 def replace_timeserie_values(
@@ -787,6 +970,11 @@ def replace_timeserie_values(
         _normalise_stable_key(timeserie_key, "Timeserie id must not be blank."),
         for_update=True,
     )
+    if _active_derived_equation_for_timeserie(session, timeserie) is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Derived timeserie values are calculated from its formula.",
+        )
 
     replacement_values: dict[dt_date, TimeserieCellValue] = {}
     time_unit = cast(TimeserieTimeUnit, timeserie.time_unit)
@@ -835,11 +1023,17 @@ def replace_timeserie_values(
 
     timeserie.modified_time = now
     timeserie.modified_by = actor_user_id
+    session.flush()
+    _recalculate_dependent_derived_metrics(session, scenario, timeserie, actor_user_id)
     session.commit()
     session.refresh(timeserie)
 
     values = _active_timeserie_values(session, timeserie)
-    return to_timeserie_response(timeserie, values)
+    return to_timeserie_response(
+        timeserie,
+        values,
+        short_name_editable=not _is_timeserie_referenced(session, scenario, timeserie),
+    )
 
 
 def soft_delete_timeserie(
@@ -856,6 +1050,12 @@ def soft_delete_timeserie(
         scenario,
         _normalise_stable_key(timeserie_key, "Timeserie id must not be blank."),
     )
+    equation = _active_derived_equation_for_timeserie(session, timeserie)
+    if equation is None and _is_timeserie_referenced(session, scenario, timeserie):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A timeserie referenced by a derived metric cannot be deleted.",
+        )
     now = datetime.now(UTC)
 
     org_twin_structure_service.clear_timeserie_references(
@@ -866,6 +1066,11 @@ def soft_delete_timeserie(
         actor_user_id,
     )
     _soft_delete_timeserie_values(session, timeserie, now, actor_user_id)
+    if equation is not None:
+        equation.deleted_time = now
+        equation.deleted_by = actor_user_id
+        equation.modified_time = now
+        equation.modified_by = actor_user_id
     timeserie.deleted_time = now
     timeserie.deleted_by = actor_user_id
     timeserie.modified_time = now
@@ -903,6 +1108,9 @@ def to_event_response(event: Event) -> EventResponse:
 def to_timeserie_response(
     timeserie: Timeserie,
     values: list[TimeserieValue] | None = None,
+    *,
+    equation: DerivedMetricEquation | None = None,
+    short_name_editable: bool = True,
 ) -> TimeserieResponse:
     return TimeserieResponse(
         id=timeserie.timeserie_key,
@@ -919,6 +1127,9 @@ def to_timeserie_response(
             )
             for value in (values or [])
         ],
+        isDerived=equation is not None,
+        derivedFormula=equation.formula if equation is not None else None,
+        shortNameEditable=short_name_editable,
     )
 
 
@@ -1068,6 +1279,191 @@ def _active_values_by_timeserie_id(
     return values_by_timeserie_id
 
 
+def _active_derived_equations(
+    session: Session, scenario: Scenario
+) -> list[DerivedMetricEquation]:
+    return list(
+        session.scalars(
+            select(DerivedMetricEquation)
+            .where(
+                DerivedMetricEquation.scenario_id == scenario.scenario_id,
+                DerivedMetricEquation.deleted_time.is_(None),
+            )
+            .order_by(DerivedMetricEquation.derived_metric_equation_id)
+        ).all()
+    )
+
+
+def _active_derived_equation_for_timeserie(
+    session: Session, timeserie: Timeserie
+) -> DerivedMetricEquation | None:
+    return session.scalar(
+        select(DerivedMetricEquation).where(
+            DerivedMetricEquation.derived_timeserie_id == timeserie.timeserie_id,
+            DerivedMetricEquation.deleted_time.is_(None),
+        )
+    )
+
+
+def _equation_reference_ids(equation: DerivedMetricEquation) -> list[int]:
+    return list(equation.referenced_timeserie_ids)
+
+
+def _is_timeserie_referenced(
+    session: Session, scenario: Scenario, timeserie: Timeserie
+) -> bool:
+    return any(
+        timeserie.timeserie_id in _equation_reference_ids(equation)
+        for equation in _active_derived_equations(session, scenario)
+    )
+
+
+def _resolve_derived_formula(
+    session: Session, scenario: Scenario, formula: str
+) -> tuple[ParsedFormula, list[Timeserie], str]:
+    try:
+        parsed = parse_formula(formula)
+    except FormulaError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)
+        ) from error
+    candidates = session.scalars(
+        select(Timeserie).where(
+            Timeserie.scenario_id == scenario.scenario_id,
+            Timeserie.deleted_time.is_(None),
+            Timeserie.short_name.in_(parsed.identifiers),
+        )
+    ).all()
+    candidate_by_short_name = {
+        item.short_name: item for item in candidates if item.short_name is not None
+    }
+    if len(candidate_by_short_name) != len(parsed.identifiers):
+        missing = sorted(set(parsed.identifiers) - set(candidate_by_short_name))
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"Unknown timeserie short name(s): {', '.join(missing)}.",
+        )
+    derived_ids = {
+        equation.derived_timeserie_id
+        for equation in _active_derived_equations(session, scenario)
+    }
+    references = [candidate_by_short_name[name] for name in parsed.identifiers]
+    if any(item.timeserie_id in derived_ids for item in references):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Derived metrics cannot be referenced by another derived formula.",
+        )
+    if any(item.value_unit != "number" for item in references):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Derived formulas can reference only numeric timeseries.",
+        )
+    time_units = {item.time_unit for item in references}
+    if len(time_units) != 1:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Derived formula references must have the same time unit.",
+        )
+    return parsed, references, time_units.pop()
+
+
+def _materialize_derived_metric(
+    session: Session,
+    equation: DerivedMetricEquation,
+    derived: Timeserie,
+    parsed: ParsedFormula,
+    references: list[Timeserie],
+    actor_user_id: int,
+) -> None:
+    session.flush()
+    values_by_reference: dict[str, dict[dt_date, float]] = {}
+    for reference in references:
+        if reference.short_name is None:
+            continue
+        values: dict[dt_date, float] = {}
+        for item in _active_timeserie_values(session, reference):
+            value = item.value.get("value")
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                if math.isfinite(float(value)):
+                    values[item.date] = float(value)
+        values_by_reference[reference.short_name] = values
+    date_sets: list[set[dt_date]] = [
+        set(values) for values in values_by_reference.values()
+    ]
+    dates: set[dt_date] = set(date_sets[0])
+    for date_set in date_sets[1:]:
+        dates.intersection_update(date_set)
+    replacement: dict[dt_date, float] = {}
+    for value_date in dates:
+        try:
+            replacement[value_date] = evaluate_formula(
+                parsed,
+                {
+                    name: values[value_date]
+                    for name, values in values_by_reference.items()
+                },
+            )
+        except FormulaError:
+            continue
+    now = datetime.now(UTC)
+    existing = session.scalars(
+        select(TimeserieValue).where(
+            TimeserieValue.timeserie_id == derived.timeserie_id
+        )
+    ).all()
+    existing_by_date = {item.date: item for item in existing}
+    for item in existing:
+        if item.deleted_time is None and item.date not in replacement:
+            item.deleted_time = now
+            item.deleted_by = actor_user_id
+            item.modified_time = now
+            item.modified_by = actor_user_id
+    for value_date, value in replacement.items():
+        item = existing_by_date.get(value_date)
+        if item is None:
+            session.add(
+                TimeserieValue(
+                    timeserie_id=derived.timeserie_id,
+                    date=value_date,
+                    value={"value": value},
+                    is_derived=True,
+                    created_by=actor_user_id,
+                )
+            )
+            continue
+        item.value = {"value": value}
+        item.is_derived = True
+        item.deleted_time = None
+        item.deleted_by = None
+        item.modified_time = now
+        item.modified_by = actor_user_id
+
+
+def _recalculate_dependent_derived_metrics(
+    session: Session, scenario: Scenario, source: Timeserie, actor_user_id: int
+) -> None:
+    for equation in _active_derived_equations(session, scenario):
+        if source.timeserie_id not in _equation_reference_ids(equation):
+            continue
+        derived = session.get(Timeserie, equation.derived_timeserie_id)
+        if derived is None or derived.deleted_time is not None:
+            continue
+        references = list(
+            session.scalars(
+                select(Timeserie).where(
+                    Timeserie.timeserie_id.in_(_equation_reference_ids(equation))
+                )
+            ).all()
+        )
+        try:
+            parsed = parse_formula(equation.formula)
+        except FormulaError:
+            continue
+        _materialize_derived_metric(
+            session, equation, derived, parsed, references, actor_user_id
+        )
+
+
 def _ensure_timeserie_value_date_is_valid(
     time_unit: TimeserieTimeUnit,
     value_date: dt_date,
@@ -1195,6 +1591,12 @@ def _soft_delete_timeseries(
         timeserie.modified_time = deleted_time
         timeserie.modified_by = actor_user_id
 
+    for equation in _active_derived_equations(session, scenario):
+        equation.deleted_time = deleted_time
+        equation.deleted_by = actor_user_id
+        equation.modified_time = deleted_time
+        equation.modified_by = actor_user_id
+
 
 def _soft_delete_timeserie_values(
     session: Session,
@@ -1264,14 +1666,16 @@ def _ensure_timeserie_name_available(
     session: Session,
     scenario: Scenario,
     name: str,
+    excluding_timeserie_id: int | None = None,
 ) -> None:
-    timeserie_id = session.scalar(
-        select(Timeserie.timeserie_id).where(
-            Timeserie.scenario_id == scenario.scenario_id,
-            func.lower(func.trim(Timeserie.name)) == name.lower(),
-            Timeserie.deleted_time.is_(None),
-        ),
+    query = select(Timeserie.timeserie_id).where(
+        Timeserie.scenario_id == scenario.scenario_id,
+        func.lower(func.trim(Timeserie.name)) == name.lower(),
+        Timeserie.deleted_time.is_(None),
     )
+    if excluding_timeserie_id is not None:
+        query = query.where(Timeserie.timeserie_id != excluding_timeserie_id)
+    timeserie_id = session.scalar(query)
     if timeserie_id is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -1283,17 +1687,19 @@ def _ensure_timeserie_short_name_available(
     session: Session,
     scenario: Scenario,
     short_name: str | None,
+    excluding_timeserie_id: int | None = None,
 ) -> None:
     if short_name is None:
         return
 
-    timeserie_id = session.scalar(
-        select(Timeserie.timeserie_id).where(
-            Timeserie.scenario_id == scenario.scenario_id,
-            Timeserie.short_name == short_name,
-            Timeserie.deleted_time.is_(None),
-        ),
+    query = select(Timeserie.timeserie_id).where(
+        Timeserie.scenario_id == scenario.scenario_id,
+        Timeserie.short_name == short_name,
+        Timeserie.deleted_time.is_(None),
     )
+    if excluding_timeserie_id is not None:
+        query = query.where(Timeserie.timeserie_id != excluding_timeserie_id)
+    timeserie_id = session.scalar(query)
     if timeserie_id is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

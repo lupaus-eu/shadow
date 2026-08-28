@@ -483,9 +483,12 @@ def test_scenario_crud_uses_stable_keys_and_excludes_soft_deleted_rows(
         ).json()
         == created_scenario
     )
-    assert created_scenario in client.get(
-        f"/api/v1/organisations/{organisation_key}/scenarios",
-    ).json()
+    assert (
+        created_scenario
+        in client.get(
+            f"/api/v1/organisations/{organisation_key}/scenarios",
+        ).json()
+    )
 
     patch_response = client.patch(
         f"/api/v1/organisations/{organisation_key}/scenarios/{scenario_key}",
@@ -876,9 +879,7 @@ def test_scenario_copy_copies_selected_org_state_and_graph_snapshot(
         f"/api/v1/organisations/{organisation_key}/scenarios/{copied_key}/timeseries",
     )
     assert copied_timeseries_response.status_code == 200
-    assert {
-        timeserie["id"] for timeserie in copied_timeseries_response.json()
-    } == {
+    assert {timeserie["id"] for timeserie in copied_timeseries_response.json()} == {
         "empty_timeserie",
         "future_primary_timeserie",
         "future_secondary_timeserie",
@@ -1060,8 +1061,7 @@ def test_scenario_copy_copies_selected_org_state_and_graph_snapshot(
         )
         assert copied_boundary_node.attributes == {"name": "node_boundary"}
         assert (
-            copied_boundary_node.timeserie_id
-            == copied_primary_timeserie.timeserie_id
+            copied_boundary_node.timeserie_id == copied_primary_timeserie.timeserie_id
         )
         assert (
             copied_boundary_node.timeserie_secondary_id
@@ -1115,7 +1115,9 @@ def test_scenario_copy_copies_selected_org_state_and_graph_snapshot(
         assert source_primary_timeserie is not None
         assert copied_primary_timeserie is not None
         source_primary_value = session.scalar(
-            select(TimeserieValue).join(Timeserie).where(
+            select(TimeserieValue)
+            .join(Timeserie)
+            .where(
                 Timeserie.scenario_id == source_scenario.scenario_id,
                 Timeserie.timeserie_key == "source_timeserie",
                 TimeserieValue.date == date(2029, 12, 1),
@@ -1282,9 +1284,12 @@ def test_org_state_crud_uses_stable_keys_and_excludes_soft_deleted_rows(
         ).json()
         == created_org_state
     )
-    assert created_org_state in client.get(
-        f"/api/v1/organisations/{organisation_key}/scenarios/reality/org-states",
-    ).json()
+    assert (
+        created_org_state
+        in client.get(
+            f"/api/v1/organisations/{organisation_key}/scenarios/reality/org-states",
+        ).json()
+    )
 
     patch_response = client.patch(
         f"/api/v1/organisations/{organisation_key}/scenarios/reality/"
@@ -1429,9 +1434,12 @@ def test_event_crud_uses_stable_keys_and_excludes_soft_deleted_rows(
         ).json()
         == created_event
     )
-    assert created_event in client.get(
-        f"/api/v1/organisations/{organisation_key}/scenarios/reality/events",
-    ).json()
+    assert (
+        created_event
+        in client.get(
+            f"/api/v1/organisations/{organisation_key}/scenarios/reality/events",
+        ).json()
+    )
 
     patch_response = client.patch(
         f"/api/v1/organisations/{organisation_key}/scenarios/reality/"
@@ -1595,17 +1603,22 @@ def test_timeserie_crud_uses_stable_keys_and_validates_units(
         "timeUnit": "month",
         "valueUnit": "number",
         "values": [],
+        "isDerived": False,
+        "derivedFormula": None,
+        "shortNameEditable": True,
     }
     assert client.get(f"{path}/revenue").json() == create_response.json()
     assert client.get(f"{path}/revenue/exists").json() == {
         "id": "revenue",
         "exists": True,
         "shortName": "revenue_monthly",
+        "shortNameEditable": True,
     }
     assert client.get(f"{path}/missing/exists").json() == {
         "id": "missing",
         "exists": False,
         "shortName": "",
+        "shortNameEditable": True,
     }
     assert client.get(f"{path}/missing").status_code == 404
     assert (
@@ -2127,6 +2140,7 @@ def test_timeserie_delete_soft_deletes_values_and_clears_graph_node_links(
         "id": "capacity",
         "exists": False,
         "shortName": "",
+        "shortNameEditable": True,
     }
 
     with session_factory() as session:
@@ -2156,6 +2170,74 @@ def test_timeserie_delete_soft_deletes_values_and_clears_graph_node_links(
         assert node.timeserie_secondary_id is None
 
 
+def test_derived_metrics_materialize_recalculate_and_lock_short_names(
+    client: TestClient,
+) -> None:
+    organisation_key = _create_organisation(client)
+    path = f"/api/v1/organisations/{organisation_key}/scenarios/reality/timeseries"
+    for metric_id, short_name in (("revenue", "revenue"), ("cost", "cost")):
+        response = client.post(
+            path,
+            json={
+                "id": metric_id,
+                "name": metric_id.title(),
+                "shortName": short_name,
+                "timeUnit": "month",
+                "valueUnit": "number",
+            },
+        )
+        assert response.status_code == 201
+        values = client.patch(
+            f"{path}/{metric_id}/values",
+            json={
+                "values": [
+                    {
+                        "date": "2030-01-01",
+                        "value": 100 if metric_id == "revenue" else 40,
+                    }
+                ]
+            },
+        )
+        assert values.status_code == 200
+
+    derived_path = (
+        f"/api/v1/organisations/{organisation_key}/scenarios/reality/derived-metrics"
+    )
+    created = client.post(
+        derived_path,
+        json={"name": "Average", "unit": "EUR", "formula": "(revenue + cost) / 2"},
+    )
+    assert created.status_code == 201
+    derived = created.json()
+    assert derived["isDerived"] is True
+    assert derived["derivedFormula"] == "(revenue + cost) / 2"
+    assert derived["unit"] == "EUR"
+    assert derived["values"] == [{"date": "2030-01-01", "value": 70.0}]
+
+    locked = client.patch(f"{path}/revenue/short-name", json={"shortName": "sales"})
+    assert locked.status_code == 409
+
+    removed = client.patch(f"{path}/cost/values", json={"values": []})
+    assert removed.status_code == 200
+    assert removed.json()["shortNameEditable"] is False
+    assert client.get(f"{path}/{derived['id']}").json()["values"] == []
+
+    updated = client.patch(
+        f"{derived_path}/{derived['id']}",
+        json={"name": "Revenue only", "unit": "USD", "formula": "revenue"},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["name"] == "Revenue only"
+    assert updated.json()["unit"] == "USD"
+    assert updated.json()["values"] == [{"date": "2030-01-01", "value": 100.0}]
+    assert (
+        client.patch(
+            f"{path}/cost/short-name", json={"shortName": "expenses"}
+        ).status_code
+        == 200
+    )
+
+
 def test_clean_org_states_service_soft_deletes_active_states_and_clears_initial_state(
     client: TestClient,
     session_factory: sessionmaker[Session],
@@ -2170,18 +2252,15 @@ def test_clean_org_states_service_soft_deletes_active_states_and_clears_initial_
     scenario_key = cast(str, scenario_response.json()["id"])
 
     first_state_response = client.post(
-        f"/api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/"
-        "org-states",
+        f"/api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/org-states",
         json={"name": "First state", "targetDate": "2032-01-01"},
     )
     second_state_response = client.post(
-        f"/api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/"
-        "org-states",
+        f"/api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/org-states",
         json={"name": "Second state", "targetDate": "2032-02-01"},
     )
     deleted_state_response = client.post(
-        f"/api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/"
-        "org-states",
+        f"/api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/org-states",
         json={"name": "Deleted state", "targetDate": "2032-03-01"},
     )
     assert first_state_response.status_code == 201
@@ -2375,13 +2454,11 @@ def test_org_states_clean_endpoint_returns_count_and_refreshable_state(
     scenario_key = cast(str, scenario_response.json()["id"])
 
     first_state_response = client.post(
-        f"/api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/"
-        "org-states",
+        f"/api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/org-states",
         json={"name": "State one", "targetDate": "2033-01-01"},
     )
     second_state_response = client.post(
-        f"/api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/"
-        "org-states",
+        f"/api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/org-states",
         json={"name": "State two", "targetDate": "2033-02-01"},
     )
     assert first_state_response.status_code == 201
@@ -2437,8 +2514,7 @@ def test_scenario_soft_delete_propagates_to_active_owned_rows(
     assert isinstance(scenario_key_value, str)
     scenario_key = scenario_key_value
     org_state_response = client.post(
-        f"/api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/"
-        "org-states",
+        f"/api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/org-states",
         json={"name": "Propagation state", "targetDate": "2035-01-01"},
     )
     assert org_state_response.status_code == 201

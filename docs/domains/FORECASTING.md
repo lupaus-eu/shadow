@@ -44,6 +44,11 @@ an eligible target scenario and, when selected, uses only its own values.
 Forecasting does not write into `timeserie_values` or turn derived predictions
 into manual scenario values.
 
+Derived metric targets are not model-fitted. Forecasting first creates normal
+metric results, then evaluates a derived metric equation independently for each
+matching result kind using its normal input result points. Missing, unavailable
+or invalid inputs produce an ineligible derived result with saved provenance.
+
 ### Scenario-Isolated Explanatory Inputs
 
 For a target scenario, Forecasting may use only that scenario's own known

@@ -181,6 +181,36 @@ def test_preflight_is_read_only_and_create_persists_target_scenario_history(
         assert point is not None and point.created_by == 0
 
 
+def test_create_prediction_persists_derived_target_without_seasonal_source(
+    client: TestClient,
+) -> None:
+    organisation_key = _create_organisation(client)
+    target_key = _create_target_and_metrics(client, organisation_key)
+    timeseries_path = (
+        f"/api/v1/organisations/{organisation_key}/scenarios/{target_key}/timeseries"
+    )
+    short_name = client.patch(
+        f"{timeseries_path}/revenue/short-name",
+        json={"shortName": "revenue"},
+    )
+    assert short_name.status_code == 200
+    derived = client.post(
+        f"/api/v1/organisations/{organisation_key}/scenarios/{target_key}/derived-metrics",
+        json={"name": "Double revenue", "unit": "EUR", "formula": "revenue * 2"},
+    )
+    assert derived.status_code == 201
+
+    created = client.post(
+        f"/api/v1/organisations/{organisation_key}/predictions",
+        json=_prediction_payload(target_key, name="Derived forecast"),
+    )
+
+    assert created.status_code == 201
+    targets = {item["metricId"]: item for item in created.json()["targets"]}
+    assert targets[derived.json()["id"]]["seasonalPeriod"] is None
+    assert targets[derived.json()["id"]]["seasonalPeriodSource"] is None
+
+
 def test_prediction_rejects_duplicate_name_and_cross_organisation_target(
     client: TestClient,
 ) -> None:

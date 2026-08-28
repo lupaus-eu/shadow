@@ -26,6 +26,9 @@ Päätetty tekninen perusrakenne:
 - production-only deployment: Coolify Docker Compose with a Caddy same-origin
   frontend ingress
 - release migrations: one-shot job using the same backend image as the API
+- derived metrics: Organisation States owns equations and materialized values;
+  Forecasting derives prediction result points from normal-metric results
+  according to ADR-010
 
 Tarkemmat toteutusyksityiskohdat täsmentyvät taskien ja tarvittaessa uusien ADR:ien kautta.
 

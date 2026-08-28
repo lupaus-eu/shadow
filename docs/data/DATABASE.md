@@ -80,7 +80,8 @@ db/migrations/011_alter_prediction_target_observation_source.sql
 | `graph_nodes` | Scenario graph nodes | `create_date` and nullable `delete_date` define the logical lifetime; dynamic attributes use `JSONB`; timeserie references are nullable FKs. |
 | `graph_edges` | Scenario graph edges | References source and target graph nodes and has a logical `create_date`/`delete_date` lifetime. |
 | `timeseries` | Scenario-specific timeseries definitions | Supports `day`, `week`, `month`, `year` time units and nullable equation-safe `short_name`. |
-| `timeserie_values` | Timeseries values by date | No `name` column; value is stored as `JSONB` with the public scalar under `value`. |
+| `timeserie_values` | Timeseries values by date | No `name` column; value is stored as `JSONB` with the public scalar under `value`; `is_derived` distinguishes materialized equation output. |
+| `derived_metrics_equations` | Derived-metric formulas | One active formula per derived Timeserie, with internal referenced Timeserie IDs for recalculation and source short-name locking. |
 | `prediction_versions` | Immutable named Forecasting executions | Organisation-local case-insensitive name and stable `prediction_key`; persists range, cutoff and deterministic configuration. |
 | `prediction_targets` | Saved scenario/metric Forecasting targets | Stores stable target key, eligibility, seasonality and immutable target-source JSON snapshots; source scenario/metric IDs are snapshots, not FKs. |
 | `prediction_model_results` | One result per target/model kind | Persists availability, safe ineligibility reason, cross-validation state and configuration. |
@@ -146,6 +147,8 @@ back.
 - Edge lifetime containment inside endpoint node lifetimes is enforced in the
   Organisation Twin Structure service.
 - `timeseries.time_unit` is constrained to `day`, `week`, `month` or `year`.
+- `derived_metrics_equations` is scenario-owned and soft-deletable; physical
+  foreign-key cascades are cleanup behavior only.
 - `timeseries.value_unit` is constrained to `number`, `string` or `boolean`.
 - Active Timeserie names are unique after trimming and case-insensitive
   comparison within a scenario.
@@ -201,6 +204,7 @@ The migration defines:
 - scenario-local active stable-key uniqueness for graph nodes and graph edges
 - scenario/lifetime lookup indexes for persistence-active graph nodes and edges
 - one timeserie value per `(timeserie_id, date)`
+- one active derived equation per derived Timeserie and active scenario/formula-reference lookups
 - graph traversal indexes for source and target graph node lookups
 - parent lookup indexes for common list views
 - non-deleted customer lookup by status and case-insensitive name

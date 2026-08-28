@@ -160,6 +160,10 @@ def test_rejects_non_latest_and_unapplied_down_migrations(
         )
 
     execute_command(
+        DownCommand("013_create_derived_metrics.down.sql"),
+        database_url=migration_database_url,
+    )
+    execute_command(
         DownCommand("012_add_timeserie_short_name.down.sql"),
         database_url=migration_database_url,
     )
@@ -246,9 +250,9 @@ def test_existing_schema_requires_explicit_baseline(
         "SELECT to_regclass('schema_migrations') IS NOT NULL",
     )
 
-    execute_command(BaselineCommand(12), database_url=migration_database_url)
+    execute_command(BaselineCommand(13), database_url=migration_database_url)
     assert (
-        _scalar(migration_database_url, "SELECT count(*) FROM schema_migrations") == 12
+        _scalar(migration_database_url, "SELECT count(*) FROM schema_migrations") == 13
     )
     execute_command(UpCommand(), database_url=migration_database_url)
 
@@ -302,7 +306,7 @@ def test_migration_nine_upgrades_an_empty_version_eight_database(
             migration_database_url,
             "SELECT max(version) FROM schema_migrations",
         )
-        == 12
+        == 13
     )
     assert _scalar(
         migration_database_url,
@@ -373,6 +377,10 @@ def test_migration_nine_constraints_and_down_scope(
                 (replacement[0],),
             )
 
+    execute_command(
+        DownCommand("013_create_derived_metrics.down.sql"),
+        database_url=migration_database_url,
+    )
     execute_command(
         DownCommand("012_add_timeserie_short_name.down.sql"),
         database_url=migration_database_url,
@@ -513,6 +521,10 @@ def test_prediction_observation_source_migration_replaces_schema(
                 """
             )
 
+    execute_command(
+        DownCommand("013_create_derived_metrics.down.sql"),
+        database_url=migration_database_url,
+    )
     execute_command(
         DownCommand("012_add_timeserie_short_name.down.sql"),
         database_url=migration_database_url,
@@ -690,6 +702,10 @@ def test_timeserie_name_and_short_name_indexes_enforce_active_scope(
         )
         connection.commit()
 
+    execute_command(
+        DownCommand("013_create_derived_metrics.down.sql"),
+        database_url=migration_database_url,
+    )
     execute_command(
         DownCommand("012_add_timeserie_short_name.down.sql"),
         database_url=migration_database_url,

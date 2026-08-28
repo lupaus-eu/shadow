@@ -22,6 +22,7 @@ package "Organisation States Domain" {
   entity "Event" as event
   entity "Timeserie" as timeserie
   entity "Timeserie Value" as timeserie_value
+  entity "Derived Metric Equation" as derived_metric_equation
 }
 
 package "Organisation Twin Structure Domain" {
@@ -70,6 +71,8 @@ edge_type ||--o{ graph_edge
 graph_node ||--o{ graph_edge : source
 graph_node ||--o{ graph_edge : target
 timeserie ||--o{ timeserie_value
+scenario ||--o{ derived_metric_equation
+timeserie ||--o| derived_metric_equation : derived
 organisation ||--o{ prediction_version
 prediction_version ||--o{ prediction_target
 prediction_target ||--o{ prediction_model_result

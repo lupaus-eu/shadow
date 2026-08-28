@@ -3,7 +3,7 @@ import re
 from datetime import date as dt_date
 from typing import Literal
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 
 from app.core.schemas import StrictBaseModel
 
@@ -311,6 +311,79 @@ class TimeserieValuesPatchRequest(StrictBaseModel):
     )
 
 
+class TimeserieShortNamePatchRequest(StrictBaseModel):
+    short_name: str | None = Field(alias="shortName")
+
+    @field_validator("short_name")
+    @classmethod
+    def short_name_must_be_equation_safe(cls, value: str | None) -> str | None:
+        return TimeserieCreateRequest.short_name_must_be_equation_safe(value)
+
+
+class DerivedMetricCreateRequest(StrictBaseModel):
+    name: str = Field(min_length=1)
+    unit: str | None = None
+    formula: str = Field(min_length=1)
+
+    @field_validator("name")
+    @classmethod
+    def name_must_not_be_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Derived metric name must not be blank.")
+        return value
+
+    @field_validator("unit")
+    @classmethod
+    def unit_is_trimmed(cls, value: str | None) -> str | None:
+        return value.strip() or None if value is not None else None
+
+    @field_validator("formula")
+    @classmethod
+    def formula_must_not_be_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Formula must not be blank.")
+        return value
+
+
+class DerivedMetricPatchRequest(StrictBaseModel):
+    name: str | None = None
+    unit: str | None = None
+    formula: str | None = None
+
+    @field_validator("name")
+    @classmethod
+    def name_must_not_be_blank(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        if not value:
+            raise ValueError("Derived metric name must not be blank.")
+        return value
+
+    @field_validator("unit")
+    @classmethod
+    def unit_is_trimmed(cls, value: str | None) -> str | None:
+        return value.strip() or None if value is not None else None
+
+    @field_validator("formula")
+    @classmethod
+    def formula_must_not_be_blank(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        if not value:
+            raise ValueError("Formula must not be blank.")
+        return value
+
+    @model_validator(mode="after")
+    def must_update_something(self) -> "DerivedMetricPatchRequest":
+        if not self.model_fields_set:
+            raise ValueError("Provide at least one derived metric field to update.")
+        return self
+
+
 class TimeserieValueResponse(StrictBaseModel):
     date: dt_date = Field(description="Value start date.")
     value: TimeserieCellValue = Field(description="Typed cell value.")
@@ -336,6 +409,9 @@ class TimeserieResponse(StrictBaseModel):
     values: list[TimeserieValueResponse] = Field(
         description="Active values sorted by start date.",
     )
+    is_derived: bool = Field(default=False, alias="isDerived")
+    derived_formula: str | None = Field(default=None, alias="derivedFormula")
+    short_name_editable: bool = Field(default=True, alias="shortNameEditable")
 
 
 class TimeserieExistsResponse(StrictBaseModel):
@@ -345,3 +421,4 @@ class TimeserieExistsResponse(StrictBaseModel):
         alias="shortName",
         description="Optional equation-safe timeserie identifier when it exists.",
     )
+    short_name_editable: bool = Field(default=True, alias="shortNameEditable")
