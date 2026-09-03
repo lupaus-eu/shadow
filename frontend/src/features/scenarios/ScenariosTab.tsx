@@ -87,6 +87,7 @@ export default function ScenariosTab(props: { orgId: string }) {
   const selectedOrgStateIdRef = useRef<string | null>(
     selectedOrgState?.id ?? null
   );
+  const forkSourceScenarioIdRef = useRef("");
   const hydratedScenarioIdRef = useRef<string | null>(null);
   const hydratedOrgStateIdRef = useRef<string | null>(null);
 
@@ -109,7 +110,11 @@ export default function ScenariosTab(props: { orgId: string }) {
 
   const [forkName, setForkName] = useState("");
   const [forkDescription, setForkDescription] = useState("");
+  const [forkSourceScenarioId, setForkSourceScenarioId] = useState("");
+  const [forkSourceOrgStates, setForkSourceOrgStates] = useState<OrgStateDto[]>([]);
   const [forkSourceOrgStateId, setForkSourceOrgStateId] = useState("");
+  const [loadingForkSourceOrgStates, setLoadingForkSourceOrgStates] =
+    useState(false);
   const [forkError, setForkError] = useState("");
 
   const [stateCreateName, setStateCreateName] = useState("");
@@ -142,11 +147,22 @@ export default function ScenariosTab(props: { orgId: string }) {
       null,
     [orgStates, selectedOrgState?.id]
   );
+  const forkSourceScenarioDto = useMemo(
+    () =>
+      scenarios.find((scenario) => scenario.id === forkSourceScenarioId) ??
+      null,
+    [forkSourceScenarioId, scenarios]
+  );
+  const availableForkSourceOrgStates =
+    forkSourceScenarioId === selectedScenarioDto?.id
+      ? orgStates
+      : forkSourceOrgStates;
   const forkSourceOrgStateDto = useMemo(
     () =>
-      orgStates.find((orgState) => orgState.id === forkSourceOrgStateId) ??
-      null,
-    [forkSourceOrgStateId, orgStates]
+      availableForkSourceOrgStates.find(
+        (orgState) => orgState.id === forkSourceOrgStateId
+      ) ?? null,
+    [availableForkSourceOrgStates, forkSourceOrgStateId]
   );
 
   useEffect(() => {
@@ -165,7 +181,11 @@ export default function ScenariosTab(props: { orgId: string }) {
       setStateEditName(orgState?.name ?? "");
       setStateEditDescription(orgState?.description ?? "");
       setStateEditTargetDate(orgState?.targetDate ?? "");
-      setForkSourceOrgStateId(orgState?.id ?? "");
+      if (
+        forkSourceScenarioIdRef.current === selectedScenarioIdRef.current
+      ) {
+        setForkSourceOrgStateId(orgState?.id ?? "");
+      }
       setOrgStateActionError("");
       setOrgStateDeleteConfirmation("");
     },
@@ -179,6 +199,10 @@ export default function ScenariosTab(props: { orgId: string }) {
     ) => {
       selectedScenarioIdRef.current = scenario?.id ?? null;
       hydratedScenarioIdRef.current = scenario?.id ?? null;
+      forkSourceScenarioIdRef.current = scenario?.id ?? "";
+      setForkSourceScenarioId(scenario?.id ?? "");
+      setForkSourceOrgStates([]);
+      setLoadingForkSourceOrgStates(false);
       setSelectedScenario(
         scenario ? { id: scenario.id, name: scenario.name } : null
       );
@@ -215,6 +239,10 @@ export default function ScenariosTab(props: { orgId: string }) {
     queueMicrotask(() => {
       if (cancelled) return;
       hydratedScenarioIdRef.current = scenarioId;
+      forkSourceScenarioIdRef.current = scenarioId ?? "";
+      setForkSourceScenarioId(scenarioId ?? "");
+      setForkSourceOrgStates([]);
+      setLoadingForkSourceOrgStates(false);
       setScenarioEditName(scenario?.name ?? "");
       setScenarioEditDescription(scenario?.description ?? "");
       setForkName(scenario ? `Fork of ${scenario.name}` : "");
@@ -246,7 +274,11 @@ export default function ScenariosTab(props: { orgId: string }) {
       setStateEditName(orgState?.name ?? "");
       setStateEditDescription(orgState?.description ?? "");
       setStateEditTargetDate(orgState?.targetDate ?? "");
-      setForkSourceOrgStateId(orgState?.id ?? "");
+      if (
+        forkSourceScenarioIdRef.current === selectedScenarioIdRef.current
+      ) {
+        setForkSourceOrgStateId(orgState?.id ?? "");
+      }
       setOrgStateActionError("");
       setOrgStateDeleteConfirmation("");
     });
@@ -363,6 +395,52 @@ export default function ScenariosTab(props: { orgId: string }) {
     selectedScenario?.id
   ]);
 
+  useEffect(() => {
+    if (
+      !forkSourceScenarioId ||
+      forkSourceScenarioId === selectedScenario?.id
+    ) {
+      return;
+    }
+    const activeForkSourceScenarioId = forkSourceScenarioId;
+    const ac = new AbortController();
+    let ignore = false;
+
+    async function loadForkSourceOrgStates() {
+      try {
+        setLoadingForkSourceOrgStates(true);
+        setForkError("");
+        setForkSourceOrgStates([]);
+        setForkSourceOrgStateId("");
+        const items = sortOrgStates(
+          await fetchOrgStates(
+            props.orgId,
+            activeForkSourceScenarioId,
+            ac.signal
+          )
+        );
+        if (ignore) return;
+        setForkSourceOrgStates(items);
+        setForkSourceOrgStateId(items[0]?.id ?? "");
+      } catch (error) {
+        const err = error as { name?: string };
+        if (ignore || err.name === "AbortError") return;
+        setForkError(
+          `Could not load source states. ${messageFromError(error)}`
+        );
+      } finally {
+        if (!ignore) setLoadingForkSourceOrgStates(false);
+      }
+    }
+
+    void loadForkSourceOrgStates();
+
+    return () => {
+      ignore = true;
+      ac.abort();
+    };
+  }, [forkSourceScenarioId, props.orgId, selectedScenario?.id]);
+
   function resetScenarioActionState() {
     setScenarioAction(null);
     setScenarioActionError("");
@@ -376,6 +454,21 @@ export default function ScenariosTab(props: { orgId: string }) {
 
   function selectScenario(scenario: ScenarioDto) {
     applySelectedScenario(scenario);
+  }
+
+  function selectForkSourceScenario(scenario: ScenarioDto) {
+    forkSourceScenarioIdRef.current = scenario.id;
+    setForkSourceScenarioId(scenario.id);
+    setForkSourceOrgStates([]);
+    setLoadingForkSourceOrgStates(false);
+    setForkSourceOrgStateId(
+      scenario.id === selectedScenarioDto?.id
+        ? selectedOrgStateDto?.id ?? orgStates[0]?.id ?? ""
+        : ""
+    );
+    setForkName(`Fork of ${scenario.name}`);
+    setForkDescription(scenario.description);
+    setForkError("");
   }
 
   function selectOrgState(orgState: OrgStateDto) {
@@ -434,8 +527,10 @@ export default function ScenariosTab(props: { orgId: string }) {
       });
       setScenarioEditName(updatedScenario.name);
       setScenarioEditDescription(updatedScenario.description);
-      setForkName(`Fork of ${updatedScenario.name}`);
-      setForkDescription(updatedScenario.description);
+      if (forkSourceScenarioIdRef.current === updatedScenario.id) {
+        setForkName(`Fork of ${updatedScenario.name}`);
+        setForkDescription(updatedScenario.description);
+      }
       setOrgStates(sortedOrgStates);
       const stillSelected = sortedOrgStates.find(
         (orgState) => orgState.id === selectedOrgState?.id
@@ -476,8 +571,10 @@ export default function ScenariosTab(props: { orgId: string }) {
       setSelectedScenario({ id: updated.id, name: updated.name });
       setScenarioEditName(updated.name);
       setScenarioEditDescription(updated.description);
-      setForkName(`Fork of ${updated.name}`);
-      setForkDescription(updated.description);
+      if (forkSourceScenarioIdRef.current === updated.id) {
+        setForkName(`Fork of ${updated.name}`);
+        setForkDescription(updated.description);
+      }
       setScenarioAction(null);
     } catch (error) {
       setScenarioActionError(messageFromError(error));
@@ -488,7 +585,7 @@ export default function ScenariosTab(props: { orgId: string }) {
 
   async function onForkSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!selectedScenarioDto) return;
+    if (!forkSourceScenarioDto) return;
     if (!forkSourceOrgStateDto) {
       setForkError("Select an org state to choose the fork target date.");
       return;
@@ -499,7 +596,7 @@ export default function ScenariosTab(props: { orgId: string }) {
       setSaving(true);
       setForkError("");
       const created = await copyScenario(props.orgId, {
-        sourceScenarioId: selectedScenarioDto.id,
+        sourceScenarioId: forkSourceScenarioDto.id,
         sourceOrgStateId: forkSourceOrgStateDto.id,
         ...(name ? { name } : {}),
         description: forkDescription.trim()
@@ -511,6 +608,9 @@ export default function ScenariosTab(props: { orgId: string }) {
       setScenarioEditDescription(created.description);
       setForkName(`Fork of ${created.name}`);
       setForkDescription(created.description);
+      forkSourceScenarioIdRef.current = created.id;
+      setForkSourceScenarioId(created.id);
+      setForkSourceOrgStates([]);
       setForkSourceOrgStateId("");
       setDetailMode("scenario");
     } catch (error) {
@@ -545,6 +645,9 @@ export default function ScenariosTab(props: { orgId: string }) {
       setScenarioEditDescription("");
       setForkName("");
       setForkDescription("");
+      forkSourceScenarioIdRef.current = "";
+      setForkSourceScenarioId("");
+      setForkSourceOrgStates([]);
       setForkSourceOrgStateId("");
       setScenarioAction(null);
     } catch (error) {
@@ -700,11 +803,11 @@ export default function ScenariosTab(props: { orgId: string }) {
     !selectedScenarioDto || selectedScenarioDto.protected || cleaningStates;
 
   return (
-    <div className="scenarios-tab">
-      <section className="scenarios-toolbar" aria-label="Scenario overview">
-        <div className="scenarios-toolbar__title">
+    <div className="management-tab">
+      <section className="tab-toolbar" aria-label="Scenario overview">
+        <div className="tab-toolbar__title">
           <h1 className="page-title">Scenarios</h1>
-          <span className="scenarios-toolbar__count">
+          <span className="tab-toolbar__count">
             {scenarioCountText(scenarios.length)}
           </span>
         </div>
@@ -718,13 +821,13 @@ export default function ScenariosTab(props: { orgId: string }) {
         </button>
       </section>
 
-      <div className="scenario-control-grid">
+      <div className="main-detail-layout">
         <aside
-          className="scenario-side-panel"
+          className="main-detail-sidebar"
           aria-label="Scenario and org state selection"
         >
-          <section className="scenario-side-section">
-            <h3 className="secondary__title">Scenarios</h3>
+          <section className="sidebar-section">
+            <h3 className="secondary-title">Scenarios</h3>
             {loadingScenarios ? (
               <p className="muted">Loading scenarios...</p>
             ) : null}
@@ -786,7 +889,7 @@ export default function ScenariosTab(props: { orgId: string }) {
           </section>
         </aside>
 
-        <section className="scenario-workspace" aria-label="Selected item">
+        <section className="detail-workspace" aria-label="Selected item">
           <div className="detail-mode-switch-panel">
             <div className="detail-mode-switch" aria-label="Detail view">
               <button
@@ -835,7 +938,7 @@ export default function ScenariosTab(props: { orgId: string }) {
           />
 
           {detailMode === "scenario" ? (
-            <div className="scenario-detail-grid">
+            <div className="detail-grid">
               <ScenarioDetail
                 scenario={selectedScenarioDto}
                 action={scenarioAction}
@@ -855,15 +958,19 @@ export default function ScenariosTab(props: { orgId: string }) {
               />
               <ForkScenarioForm
                 scenarios={scenarios}
-                orgStates={orgStates}
-                scenario={selectedScenarioDto}
+                orgStates={availableForkSourceOrgStates}
+                scenario={forkSourceScenarioDto}
                 orgState={forkSourceOrgStateDto}
                 name={forkName}
                 description={forkDescription}
                 error={forkError}
                 saving={saving}
-                loadingOrgStates={loadingOrgStates}
-                onSourceScenarioChange={selectScenario}
+                loadingOrgStates={
+                  forkSourceScenarioId === selectedScenarioDto?.id
+                    ? loadingOrgStates
+                    : loadingForkSourceOrgStates
+                }
+                onSourceScenarioChange={selectForkSourceScenario}
                 onSourceOrgStateChange={(orgState) =>
                   setForkSourceOrgStateId(orgState.id)
                 }
@@ -873,7 +980,7 @@ export default function ScenariosTab(props: { orgId: string }) {
               />
             </div>
           ) : (
-            <div className="scenario-detail-grid">
+            <div className="detail-grid">
               <OrgStateDetail
                 scenario={selectedScenarioDto}
                 orgState={selectedOrgStateDto}
@@ -1277,7 +1384,7 @@ function OrgStateDetail(props: {
               disabled={saveOrgStateDisabled}
             />
           </form>
-          <form className="state-delete-form" onSubmit={props.onDeleteSubmit}>
+          <form className="destructive-action-section" onSubmit={props.onDeleteSubmit}>
             <label className="form-label" htmlFor="org-state-delete-confirm">
               Confirmation
             </label>
@@ -1447,7 +1554,7 @@ function OrgStateFields(props: {
       </label>
       <input
         id={targetDateId}
-        className="input"
+        className="input date-input"
         type="date"
         value={props.targetDate}
         onChange={(event) => props.onTargetDateChange(event.target.value)}

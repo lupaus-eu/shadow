@@ -180,6 +180,26 @@
   margin-top: var(--space-4);
 }
 
+.field-stack {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.date-input {
+  width: auto;
+  max-width: 100%;
+  justify-self: start;
+}
+
+.metadata-code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--color-text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--text-meta-size);
+  line-height: var(--text-meta-lh);
+}
+
 .form-label {
   color: var(--color-text-secondary);
   font-size: var(--text-label-size);
@@ -408,15 +428,6 @@
   margin-top: var(--space-2);
 }
 
-.panel-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-3);
-  margin-bottom: var(--space-4);
-}
-
-.panel-actions,
 .form-actions {
   display: flex;
   flex-wrap: wrap;
@@ -523,7 +534,7 @@
   white-space: nowrap;
 }
 
-.entity-row__description {
+.clamped-description {
   display: -webkit-box;
   overflow: hidden;
   color: var(--color-text-secondary);
@@ -597,7 +608,7 @@
   background: var(--color-bg-subtle);
 }
 
-.state-delete-form {
+.destructive-action-section {
   display: grid;
   gap: var(--space-2);
   margin-top: var(--space-2);
@@ -632,14 +643,9 @@
   align-items: start;
 }
 
-.predictions-panel {
-  display: grid;
-  gap: var(--space-3);
-  padding: var(--space-5);
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-md);
-  background: var(--color-bg-surface);
-  box-shadow: var(--shadow-xs);
+.detail-card.predictions-panel {
+  min-width: auto;
+  align-content: normal;
 }
 
 .predictions-panel h2,
@@ -683,12 +689,6 @@
   grid-template-columns: repeat(2, max-content);
   gap: var(--space-3);
   justify-content: start;
-}
-
-.predictions-date-grid .input,
-.predictions-plot-dates .input {
-  width: auto;
-  justify-self: start;
 }
 
 .predictions-plot-dates {

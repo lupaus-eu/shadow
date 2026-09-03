@@ -137,10 +137,10 @@ export default function OrgStateDropdown(props: { orgId: string }) {
     : "None";
 
   return (
-    <div className="context-dropdown org-state-dropdown" ref={rootRef}>
+    <div className="dropdown-shell context-dropdown org-state-dropdown" ref={rootRef}>
       <button
         ref={triggerRef}
-        className="context-chip context-chip--interactive context-dropdown__trigger"
+        className="context-chip context-chip--interactive dropdown-trigger context-dropdown__trigger"
         type="button"
         title={`Org state: ${displayedValue}`}
         aria-label="Change org state"
@@ -165,7 +165,7 @@ export default function OrgStateDropdown(props: { orgId: string }) {
       {open ? (
         <div
           id={panelId}
-          className="context-dropdown__panel org-state-dropdown__panel"
+          className="dropdown-panel org-state-dropdown__panel"
           role="dialog"
           aria-label="Org state selector"
           ref={panelRef}
@@ -203,7 +203,7 @@ export default function OrgStateDropdown(props: { orgId: string }) {
               return (
                 <button
                   key={orgState.id}
-                  className={`context-dropdown__option${
+                  className={`dropdown-option context-dropdown__option${
                     isActive ? " context-dropdown__option--selected" : ""
                   }`}
                   type="button"
@@ -235,7 +235,7 @@ export default function OrgStateDropdown(props: { orgId: string }) {
 function ChevronIcon() {
   return (
     <svg
-      className="context-dropdown__chevron"
+      className="dropdown-chevron"
       viewBox="0 0 24 24"
       aria-hidden="true"
     >

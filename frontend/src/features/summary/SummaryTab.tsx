@@ -487,7 +487,7 @@ function TimelineHeader(props: { bounds: TimelineBounds; width: number; pixelsPe
 
 function TimelineLabel(props: { row: TimelineRow; height?: number; collapsed: boolean; onToggle: () => void }) {
   const className = `summary-label summary-label--${props.row.kind}${props.collapsed ? " summary-label--collapsed" : ""}`;
-  return <div className={className} style={props.height ? { height: props.height } : undefined} title={props.row.details}><span className="summary-label__content">{props.row.label}</span><button className={`summary-row-caret${props.collapsed ? " summary-row-caret--collapsed" : ""}`} type="button" onClick={props.onToggle} aria-expanded={!props.collapsed} aria-label={props.collapsed ? `Expand ${props.row.label} row` : `Collapse ${props.row.label} row`}><span aria-hidden="true">▾</span></button></div>;
+  return <div className={className} style={props.height ? { height: props.height } : undefined} title={props.row.details}><span className="summary-label__content">{props.row.label}</span><button className={`disclosure-button${props.collapsed ? " disclosure-button--collapsed" : ""}`} type="button" onClick={props.onToggle} aria-expanded={!props.collapsed} aria-label={props.collapsed ? `Expand ${props.row.label} row` : `Collapse ${props.row.label} row`}><span aria-hidden="true">▾</span></button></div>;
 }
 
 function TimelineRowView(props: { row: TimelineRow; bounds: TimelineBounds; width: number; pixelsPerDay: number; timeserieHeight: number; collapsed: boolean; showMonthGridLines: boolean }) {

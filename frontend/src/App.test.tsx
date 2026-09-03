@@ -1414,6 +1414,58 @@ describe("Schatten UI shell", () => {
     });
   });
 
+  it("chooses a fork source scenario without changing the active workspace scenario", async () => {
+    const fetchMock = mockSchattenApi();
+
+    renderAt("/schatten/acme/org-states");
+
+    await screen.findByRole("button", { name: /Today/ });
+    const forkForm = screen.getByRole("form", { name: "Fork from existing" });
+
+    fireEvent.change(within(forkForm).getByLabelText("Source scenario"), {
+      target: { value: "future" }
+    });
+
+    await waitFor(() => {
+      expect(within(forkForm).getByLabelText("Source state")).toHaveValue(
+        "draft"
+      );
+    });
+
+    expect(screen.getByTitle("Scenario: Reality")).toBeInTheDocument();
+    expect(
+      screen.getByTitle("Org state: Today (2026-06-23)")
+    ).toBeInTheDocument();
+    expect(within(forkForm).getByLabelText(/Name/)).toHaveValue(
+      "Fork of Future plan"
+    );
+    expect(within(forkForm).getByLabelText(/Description/)).toHaveValue(
+      "A possible future"
+    );
+
+    fireEvent.click(within(forkForm).getByRole("button", { name: "Fork scenario" }));
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(([input, init]) => {
+          return (
+            String(input).endsWith(
+              "/api/v1/organisations/acme/scenarios/copy"
+            ) &&
+            init?.method === "POST" &&
+            init.body ===
+              JSON.stringify({
+                sourceScenarioId: "future",
+                sourceOrgStateId: "draft",
+                name: "Fork of Future plan",
+                description: "A possible future"
+              })
+          );
+        })
+      ).toBe(true);
+    });
+  });
+
   it("shows states under the selected scenario and auto-selects the first state", async () => {
     mockSchattenApi();
 

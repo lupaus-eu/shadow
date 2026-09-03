@@ -349,10 +349,10 @@ export default function OrganisationDropdown(props: OrganisationDropdownProps) {
     trimmedRenameName === currentOrganisation.name;
 
   return (
-    <div className="organisation-dropdown" ref={rootRef}>
+    <div className="dropdown-shell organisation-dropdown" ref={rootRef}>
       <button
         ref={triggerRef}
-        className="context-chip context-chip--interactive organisation-dropdown__trigger"
+        className="context-chip context-chip--interactive dropdown-trigger"
         type="button"
         title={`Organisation: ${displayedName}`}
         aria-label={`Organisation: ${displayedName}`}
@@ -377,7 +377,7 @@ export default function OrganisationDropdown(props: OrganisationDropdownProps) {
       {open ? (
         <div
           id="organisation-dropdown-panel"
-          className="organisation-dropdown__panel"
+          className="dropdown-panel organisation-dropdown__panel"
           role="dialog"
           aria-label="Organisation selector"
           ref={panelRef}
@@ -397,7 +397,7 @@ export default function OrganisationDropdown(props: OrganisationDropdownProps) {
                   key={organisation.id}
                 >
                   <button
-                    className="organisation-dropdown__option"
+                    className="dropdown-option organisation-dropdown__option"
                     type="button"
                     data-organisation-option
                     aria-current={isCurrent ? "true" : undefined}
@@ -601,7 +601,7 @@ function ActionError(props: { message: string }) {
 function ChevronIcon() {
   return (
     <svg
-      className="organisation-dropdown__chevron"
+      className="dropdown-chevron"
       viewBox="0 0 24 24"
       aria-hidden="true"
     >

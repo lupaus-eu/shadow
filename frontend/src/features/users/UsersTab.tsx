@@ -238,11 +238,11 @@ export default function UsersTab(props: {
   const busy = loading || saving;
 
   return (
-    <div className="scenarios-tab users-tab">
-      <section className="scenarios-toolbar" aria-label="Users overview">
-        <div className="scenarios-toolbar__title">
+    <div className="management-tab users-tab">
+      <section className="tab-toolbar" aria-label="Users overview">
+        <div className="tab-toolbar__title">
           <h1 className="page-title">Users</h1>
-          <span className="scenarios-toolbar__count">
+          <span className="tab-toolbar__count">
             {userCountText(users.length)}
           </span>
         </div>
@@ -256,10 +256,10 @@ export default function UsersTab(props: {
         </button>
       </section>
 
-      <div className="scenario-control-grid">
-        <aside className="scenario-side-panel" aria-label="User selection">
-          <section className="scenario-side-section">
-            <h2 className="secondary__title">Active users</h2>
+      <div className="main-detail-layout">
+        <aside className="main-detail-sidebar" aria-label="User selection">
+          <section className="sidebar-section">
+            <h2 className="secondary-title">Active users</h2>
             {loading && users.length === 0 ? (
               <p className="muted">Loading users...</p>
             ) : null}
@@ -298,7 +298,7 @@ export default function UsersTab(props: {
                   >
                     <span className="entity-row__main">
                       <span className="entity-row__title">{user.name}</span>
-                      <span className="entity-row__description">
+                      <span className="clamped-description">
                         {user.email} · User ID {user.id}
                       </span>
                     </span>
@@ -312,8 +312,8 @@ export default function UsersTab(props: {
           </section>
         </aside>
 
-        <section className="scenario-workspace" aria-label="User management">
-          <div className="scenario-detail-grid">
+        <section className="detail-workspace" aria-label="User management">
+          <div className="detail-grid">
             <section
               className="detail-card"
               aria-labelledby="selected-user-title"
@@ -357,7 +357,7 @@ export default function UsersTab(props: {
                   </form>
 
                   <section
-                    className="state-delete-form"
+                    className="destructive-action-section"
                     aria-label="User session revocation"
                   >
                     {!confirmingRevoke ? (
@@ -406,7 +406,7 @@ export default function UsersTab(props: {
                     )}
                   </section>
 
-                  <section className="state-delete-form" aria-label="User deletion">
+                  <section className="destructive-action-section" aria-label="User deletion">
                     {!confirmingDelete ? (
                       <div className="form-actions">
                         <button
@@ -513,7 +513,7 @@ function UserFields(props: {
   const roleId = `${props.idPrefix}-role`;
 
   return (
-    <div className="user-fields">
+    <div className="field-stack">
       <label className="form-label form-label--required" htmlFor={nameId}>
         Name
       </label>

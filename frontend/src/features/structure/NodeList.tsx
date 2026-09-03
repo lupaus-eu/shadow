@@ -63,9 +63,9 @@ export default function NodeList(props: {
 
   return (
     <aside className="structure-side-panel" aria-label="Structure nodes">
-      <section className="scenario-side-section">
-        <div className="scenario-side-section__header">
-          <h3 className="secondary__title">Node types</h3>
+      <section className="sidebar-section">
+        <div className="sidebar-section__header">
+          <h3 className="secondary-title">Node types</h3>
         </div>
         <div className="structure-filter-actions">
           <button
@@ -127,8 +127,8 @@ export default function NodeList(props: {
                       </span>
                     </label>
                     <button
-                      className={`structure-type-caret${
-                        isCollapsed ? " structure-type-caret--collapsed" : ""
+                      className={`disclosure-button structure-type-caret${
+                        isCollapsed ? " disclosure-button--collapsed" : ""
                       }`}
                       type="button"
                       onClick={() =>
@@ -165,7 +165,7 @@ export default function NodeList(props: {
                         >
                           <span className="entity-row__main">
                             <span className="entity-row__title">{node.name}</span>
-                            <span className="entity-row__description">
+                            <span className="clamped-description">
                               {node.description || "" }
                             </span>
                           </span>

@@ -236,11 +236,11 @@ export default function EventsTab(props: { orgId: string }) {
   const today = todayDateValue();
 
   return (
-    <div className="scenarios-tab">
-      <section className="scenarios-toolbar" aria-label="Events overview">
-        <div className="scenarios-toolbar__title">
+    <div className="management-tab">
+      <section className="tab-toolbar" aria-label="Events overview">
+        <div className="tab-toolbar__title">
           <h1 className="page-title">Events</h1>
-          <span className="scenarios-toolbar__count">
+          <span className="tab-toolbar__count">
             {eventCountText(events.length)}
           </span>
         </div>
@@ -254,10 +254,10 @@ export default function EventsTab(props: { orgId: string }) {
         </button>
       </section>
 
-      <div className="scenario-control-grid">
-        <aside className="scenario-side-panel" aria-label="Event selection">
-          <section className="scenario-side-section">
-            <h3 className="secondary__title">Events</h3>
+      <div className="main-detail-layout">
+        <aside className="main-detail-sidebar" aria-label="Event selection">
+          <section className="sidebar-section">
+            <h3 className="secondary-title">Events</h3>
             {selectedScenario ? (
               <p className="muted">{selectedScenario.name}</p>
             ) : (
@@ -300,7 +300,7 @@ export default function EventsTab(props: { orgId: string }) {
                     <span className="entity-row__title event-row__title">
                       {event.name}
                     </span>
-                    <span className="entity-row__description event-row__description">
+                    <span className="clamped-description event-row__description">
                       {event.eventDetails || "No details"}
                     </span>
                   </button>
@@ -310,8 +310,8 @@ export default function EventsTab(props: { orgId: string }) {
           </section>
         </aside>
 
-        <section className="scenario-workspace" aria-label="Selected event">
-          <div className="scenario-detail-grid">
+        <section className="detail-workspace" aria-label="Selected event">
+          <div className="detail-grid">
             <EventDetail
               scenarioName={selectedScenario?.name ?? ""}
               event={selectedEvent}
@@ -415,7 +415,7 @@ function EventDetail(props: {
               </button>
             </div>
           </form>
-          <section className="state-delete-form" aria-label="Event deletion">
+          <section className="destructive-action-section" aria-label="Event deletion">
             <div className="form-actions">
               {!confirmingDelete ? (
                 <button
@@ -545,7 +545,7 @@ function EventFields(props: {
       </label>
       <input
         id={targetDateId}
-        className="input"
+        className="input date-input"
         type="date"
         value={props.targetDate}
         onChange={(event) => props.onTargetDateChange(event.target.value)}

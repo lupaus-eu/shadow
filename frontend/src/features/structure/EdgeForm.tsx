@@ -258,7 +258,7 @@ export default function EdgeForm(props: {
         </div>
       </form>
       {canDelete ? (
-        <section className="state-delete-form" aria-label="Edge deletion">
+        <section className="destructive-action-section" aria-label="Edge deletion">
           <div className="form-actions">
             {!confirmingDelete ? (
               <button

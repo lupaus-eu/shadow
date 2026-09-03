@@ -221,10 +221,10 @@ export default function ScenarioDropdown(props: { orgId: string }) {
   );
 
   return (
-    <div className="context-dropdown scenario-dropdown" ref={rootRef}>
+    <div className="dropdown-shell context-dropdown scenario-dropdown" ref={rootRef}>
       <button
         ref={triggerRef}
-        className="context-chip context-chip--interactive context-dropdown__trigger"
+        className="context-chip context-chip--interactive dropdown-trigger context-dropdown__trigger"
         type="button"
         title={`Scenario: ${displayedName}`}
         aria-label="Change scenario"
@@ -244,7 +244,7 @@ export default function ScenarioDropdown(props: { orgId: string }) {
       {open ? (
         <div
           id={panelId}
-          className="context-dropdown__panel scenario-dropdown__panel"
+          className="dropdown-panel scenario-dropdown__panel"
           role="dialog"
           aria-label="Scenario and org state selector"
           ref={panelRef}
@@ -279,7 +279,7 @@ export default function ScenarioDropdown(props: { orgId: string }) {
                   return (
                     <button
                       key={scenario.id}
-                      className={`context-dropdown__option${
+                      className={`dropdown-option context-dropdown__option${
                         isDraft ? " context-dropdown__option--selected" : ""
                       }`}
                       type="button"
@@ -333,7 +333,7 @@ export default function ScenarioDropdown(props: { orgId: string }) {
                   return (
                     <button
                       key={orgState.id}
-                      className={`context-dropdown__option${
+                      className={`dropdown-option context-dropdown__option${
                         isDraft ? " context-dropdown__option--selected" : ""
                       }`}
                       type="button"
@@ -397,7 +397,7 @@ function LoadError(props: {
 function ChevronIcon() {
   return (
     <svg
-      className="context-dropdown__chevron"
+      className="dropdown-chevron"
       viewBox="0 0 24 24"
       aria-hidden="true"
     >

@@ -432,7 +432,7 @@ export default function TimeseriePanel(props: {
               <div className="timeserie-status-card__header">
                 <div className="timeserie-status-card__title">
                   <h3>{item.label}</h3>
-                  <code>{item.id || "No id"}</code>
+                  <code className="metadata-code">{item.id || "No id"}</code>
                 </div>
                 <span className={statusClass(status, item.id)}>
                   {statusLabel(status, item.id)}
@@ -518,7 +518,7 @@ export default function TimeseriePanel(props: {
                 />
               ) : null}
               {item.id && status?.state === "exists" ? (
-                <section className="state-delete-form" aria-label={`${item.label} deletion`}>
+                <section className="destructive-action-section" aria-label={`${item.label} deletion`}>
                   <div className="form-actions">
                     {!isDeleting ? (
                       <button

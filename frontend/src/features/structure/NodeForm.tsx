@@ -142,7 +142,7 @@ export default function NodeForm(props: {
         </div>
       </form>
       {canDelete ? (
-        <section className="state-delete-form" aria-label="Node deletion">
+        <section className="destructive-action-section" aria-label="Node deletion">
           <div className="form-actions">
             {!confirmingDelete ? (
               <button

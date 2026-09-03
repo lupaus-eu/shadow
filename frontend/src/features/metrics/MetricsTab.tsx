@@ -729,10 +729,10 @@ export default function MetricsTab(props: { orgId: string }) {
 
   return (
     <div className="metrics-tab">
-      <section className="scenarios-toolbar" aria-label="Metrics overview">
-        <div className="scenarios-toolbar__title">
+      <section className="tab-toolbar" aria-label="Metrics overview">
+        <div className="tab-toolbar__title">
           <h1 className="page-title">Metrics</h1>
-          <span className="scenarios-toolbar__count">
+          <span className="tab-toolbar__count">
             {metricsCountText(timeseries.length)}
           </span>
         </div>
@@ -830,7 +830,7 @@ export default function MetricsTab(props: { orgId: string }) {
         </select>
         <div className="metrics-toolbar__date-actions">
           <input
-            className="input metrics-toolbar__date-input"
+            className="input date-input"
             type="date"
             aria-label="Date column"
             value={manualDate}
@@ -1029,10 +1029,10 @@ function MetricsGrid(props: {
                         <span className="badge badge--accent">Changed</span>
                       ) : null}
                     </span>
-                    {!isDerived ? <code>{timeserie.id}</code> : null}
+                    {!isDerived ? <code className="metadata-code">{timeserie.id}</code> : null}
                     {timeserie.shortName ? (
                       <span className="metrics-grid__short-name">
-                        Short name: <code>{timeserie.shortName}</code>
+                        Short name: <code className="metadata-code">{timeserie.shortName}</code>
                       </span>
                     ) : null}
                     <span className="muted">
@@ -1040,12 +1040,12 @@ function MetricsGrid(props: {
                       {timeserie.unit ? ` / ${timeserie.unit}` : ""}
                     </span>
                     {timeserie.description ? (
-                      <span className="metrics-grid__description">
+                      <span className="clamped-description">
                         {timeserie.description}
                       </span>
                     ) : null}
                     {timeserie.derivedFormula ? (
-                      <code>{timeserie.derivedFormula}</code>
+                      <code className="metadata-code">{timeserie.derivedFormula}</code>
                     ) : null}
                   </div>
                 </th>

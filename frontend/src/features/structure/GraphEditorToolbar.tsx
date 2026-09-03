@@ -20,10 +20,10 @@ export default function GraphEditorToolbar(props: {
   onRefresh: () => void;
 }) {
   return (
-    <section className="structure-toolbar" aria-label="Structure overview">
-      <div className="structure-toolbar__title">
+    <section className="tab-toolbar structure-toolbar" aria-label="Structure overview">
+      <div className="tab-toolbar__title structure-toolbar__title">
         <h1 className="page-title">Structure</h1>
-        <span className="scenarios-toolbar__count">
+        <span className="tab-toolbar__count">
           {props.nodeCount} node(s), {props.edgeCount} edge(s)
         </span>
       </div>
