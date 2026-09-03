@@ -1,11 +1,17 @@
+import { lazy, Suspense } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { AuthProvider } from "./auth/AuthProvider";
 import { useAuth } from "./auth/AuthContext";
 import LoginPage from "./auth/LoginPage";
 import SessionControls from "./auth/SessionControls";
+import {
+  RouteErrorBoundary,
+  RouteLoadingFallback
+} from "./components/DeferredRoute";
 import HomePage from "./pages/HomePage";
 import NotFound from "./pages/NotFound";
-import Workspace from "./pages/Workspace";
+
+const Workspace = lazy(() => import("./pages/Workspace"));
 
 export default function App() {
   return (
@@ -50,7 +56,23 @@ function AuthenticatedApplication() {
       <div className="authenticated-shell__content">
         <Routes>
           <Route path="/" element={<HomePage />} />
-          <Route path="/schatten/:orgId/*" element={<Workspace />} />
+          <Route
+            path="/schatten/:orgId/*"
+            element={
+              <RouteErrorBoundary
+                title="Unable to load workspace"
+                resetKey={location.pathname}
+              >
+                <Suspense
+                  fallback={
+                    <RouteLoadingFallback message="Loading workspace..." />
+                  }
+                >
+                  <Workspace />
+                </Suspense>
+              </RouteErrorBoundary>
+            }
+          />
           <Route path="/404" element={<NotFound />} />
           <Route path="*" element={<Navigate to="/404" replace />} />
         </Routes>

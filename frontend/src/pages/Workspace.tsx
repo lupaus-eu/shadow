@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useLayoutEffect, useMemo, useState } from "react";
 import {
   NavLink,
   Navigate,
@@ -9,20 +9,27 @@ import {
 } from "react-router-dom";
 import EmptyTab from "../components/EmptyTab";
 import { useAuth } from "../auth/AuthContext";
+import {
+  RouteErrorBoundary,
+  RouteLoadingFallback
+} from "../components/DeferredRoute";
 import OrganisationDropdown from "../components/OrganisationDropdown";
 import OrgStateDropdown from "../components/OrgStateDropdown";
 import ScenarioDropdown from "../components/ScenarioDropdown";
-import EventsTab from "../features/events/EventsTab";
-import MetricsTab from "../features/metrics/MetricsTab";
-import ScenariosTab from "../features/scenarios/ScenariosTab";
-import StructureTab from "../features/structure/StructureTab";
-import SummaryTab from "../features/summary/SummaryTab";
-import CustomersTab from "../features/customers/CustomersTab";
-import PredictionsTab from "../features/predictions/PredictionsTab";
-import UsersTab from "../features/users/UsersTab";
 import { useWorkspaceSelection } from "../workspace/WorkspaceSelectionContext";
 import WorkspaceSelectionProvider from "../workspace/WorkspaceSelectionProvider";
 import { WORKSPACE_TABS, type WorkspaceTab } from "../workspace/workspaceTabs";
+
+const ScenariosTab = lazy(() => import("../features/scenarios/ScenariosTab"));
+const StructureTab = lazy(() => import("../features/structure/StructureTab"));
+const EventsTab = lazy(() => import("../features/events/EventsTab"));
+const MetricsTab = lazy(() => import("../features/metrics/MetricsTab"));
+const SummaryTab = lazy(() => import("../features/summary/SummaryTab"));
+const PredictionsTab = lazy(
+  () => import("../features/predictions/PredictionsTab")
+);
+const CustomersTab = lazy(() => import("../features/customers/CustomersTab"));
+const UsersTab = lazy(() => import("../features/users/UsersTab"));
 
 type WorkspaceNavState = {
   organisationName?: string;
@@ -109,43 +116,54 @@ function WorkspaceShell(props: {
             : ""
         }`}
       >
-        <Routes>
-          <Route
-            index
-            element={
-              <Navigate to="org-states" replace state={forwardedState} />
+        <RouteErrorBoundary
+          title="Unable to load workspace tab"
+          resetKey={location.pathname}
+        >
+          <Suspense
+            fallback={
+              <RouteLoadingFallback message="Loading workspace tab..." />
             }
-          />
-          {WORKSPACE_TABS.filter(
-            (tab) => tab.signature !== "users" || user?.role === "admin"
-          ).map((tab) => (
-            <Route
-              key={tab.signature}
-              path={tab.signature}
-              element={<WorkspaceTabContent tab={tab} orgId={props.orgId} />}
-            />
-          ))}
-          {user?.role !== "admin" ? (
-            <Route
-              path="users"
-              element={
-                <Navigate
-                  to={`/schatten/${props.orgId}/org-states`}
-                  replace
-                />
-              }
-            />
-          ) : null}
-          <Route
-            path="*"
-            element={
-              <EmptyTab
-                title="Not found"
-                description="This workspace tab does not exist."
+          >
+            <Routes>
+              <Route
+                index
+                element={
+                  <Navigate to="org-states" replace state={forwardedState} />
+                }
               />
-            }
-          />
-        </Routes>
+              {WORKSPACE_TABS.filter(
+                (tab) => tab.signature !== "users" || user?.role === "admin"
+              ).map((tab) => (
+                <Route
+                  key={tab.signature}
+                  path={tab.signature}
+                  element={<WorkspaceTabContent tab={tab} orgId={props.orgId} />}
+                />
+              ))}
+              {user?.role !== "admin" ? (
+                <Route
+                  path="users"
+                  element={
+                    <Navigate
+                      to={`/schatten/${props.orgId}/org-states`}
+                      replace
+                    />
+                  }
+                />
+              ) : null}
+              <Route
+                path="*"
+                element={
+                  <EmptyTab
+                    title="Not found"
+                    description="This workspace tab does not exist."
+                  />
+                }
+              />
+            </Routes>
+          </Suspense>
+        </RouteErrorBoundary>
       </main>
     </div>
   );

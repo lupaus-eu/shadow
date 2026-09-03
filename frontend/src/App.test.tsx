@@ -927,7 +927,9 @@ describe("Schatten UI shell", () => {
     expect(await screen.findByRole("link", { name: "Summary" })).toHaveClass(
       "tab-link--active"
     );
-    expect(screen.getByRole("heading", { name: "Summary" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "Summary" })
+    ).toBeInTheDocument();
     expect(screen.getByText(/Select a scenario/)).toBeInTheDocument();
   });
 
