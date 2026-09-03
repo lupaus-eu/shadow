@@ -239,6 +239,7 @@ def test_failed_migration_is_atomic(
 def test_existing_schema_requires_explicit_baseline(
     migration_database_url: str,
 ) -> None:
+    migrations = discover_migrations()
     with psycopg.connect(migration_database_url) as connection:
         connection.execute("CREATE TABLE preexisting (id INTEGER)")
 
@@ -250,9 +251,12 @@ def test_existing_schema_requires_explicit_baseline(
         "SELECT to_regclass('schema_migrations') IS NOT NULL",
     )
 
-    execute_command(BaselineCommand(13), database_url=migration_database_url)
+    execute_command(
+        BaselineCommand(migrations[-1].version), database_url=migration_database_url
+    )
     assert (
-        _scalar(migration_database_url, "SELECT count(*) FROM schema_migrations") == 13
+        _scalar(migration_database_url, "SELECT count(*) FROM schema_migrations")
+        == len(migrations)
     )
     execute_command(UpCommand(), database_url=migration_database_url)
 
@@ -280,9 +284,10 @@ def test_migration_nine_upgrades_an_empty_version_eight_database(
     migration_database_url: str,
     tmp_path: Path,
 ) -> None:
+    migrations = discover_migrations()
     migration_copy = tmp_path / "migrations_through_008"
     migration_copy.mkdir()
-    for migration in discover_migrations()[:8]:
+    for migration in migrations[:8]:
         shutil.copy2(migration.up_path, migration_copy / migration.up_name)
         shutil.copy2(migration.down_path, migration_copy / migration.down_name)
 
@@ -306,7 +311,7 @@ def test_migration_nine_upgrades_an_empty_version_eight_database(
             migration_database_url,
             "SELECT max(version) FROM schema_migrations",
         )
-        == 13
+        == migrations[-1].version
     )
     assert _scalar(
         migration_database_url,
@@ -377,26 +382,10 @@ def test_migration_nine_constraints_and_down_scope(
                 (replacement[0],),
             )
 
-    execute_command(
-        DownCommand("013_create_derived_metrics.down.sql"),
-        database_url=migration_database_url,
-    )
-    execute_command(
-        DownCommand("012_add_timeserie_short_name.down.sql"),
-        database_url=migration_database_url,
-    )
-    execute_command(
-        DownCommand("011_alter_prediction_target_observation_source.down.sql"),
-        database_url=migration_database_url,
-    )
-    execute_command(
-        DownCommand("010_create_prediction_schema.down.sql"),
-        database_url=migration_database_url,
-    )
-    execute_command(
-        DownCommand("009_add_auth_identity_session_schema.down.sql"),
-        database_url=migration_database_url,
-    )
+    for migration in reversed(discover_migrations()[8:]):
+        execute_command(
+            DownCommand(migration.down_name), database_url=migration_database_url
+        )
 
     assert (
         _scalar(

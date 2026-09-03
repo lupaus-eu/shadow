@@ -146,12 +146,17 @@ jobs:
           .
 
       - name: Verify packaged migrations
-        run: >-
-          docker run --rm
-          --workdir /tmp
-          --entrypoint python
-          schatten-backend:${{ github.sha }}
-          -c "import importlib.util, os; from app.core.migrations import discover_migrations; migrations = discover_migrations(); assert len(migrations) == 9; assert importlib.util.find_spec('pytest') is None; assert os.getuid() == 10001; assert os.getgid() == 10001"
+        run: |
+          export EXPECTED_UP_MIGRATIONS="$(
+            find db/migrations -maxdepth 1 -type f -name '*.sql' ! -name '*.down.sql' -printf '%f\n' \
+              | LC_ALL=C sort
+          )"
+          docker run --rm \
+            --env EXPECTED_UP_MIGRATIONS \
+            --workdir /tmp \
+            --entrypoint python \
+            schatten-backend:${{ github.sha }} \
+            -c "import importlib.util, os; from app.core.migrations import discover_migrations; migrations = discover_migrations(); assert [migration.up_name for migration in migrations] == os.environ['EXPECTED_UP_MIGRATIONS'].splitlines(); assert importlib.util.find_spec('pytest') is None; assert os.getuid() == 10001; assert os.getgid() == 10001"
 
       - name: Verify release migration and production API
         env:
