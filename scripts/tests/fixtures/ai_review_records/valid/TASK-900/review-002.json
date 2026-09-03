@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-900/review-002",
+  "task": {
+    "id": "TASK-900",
+    "path": "tasks/TASK-900-example.md"
+  },
+  "round": 2,
+  "reviewed_at": "2026-09-03T11:00:00Z",
+  "reviewer": {
+    "label": "example-agent"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "1111111111111111111111111111111111111111",
+    "head_sha": "3333333333333333333333333333333333333333",
+    "comparison": "1111111111111111111111111111111111111111...3333333333333333333333333333333333333333",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "The original test gap is fixed; one new test finding remains.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "missing_test",
+        "severity": "low",
+        "summary": "The import path lacks an edge-case test.",
+        "rationale": "The adjacent path still has no focused coverage.",
+        "recommendation": "Add a focused edge-case test.",
+        "locations": [
+          {
+            "path": "frontend/src/editor.ts",
+            "line": 28
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-900/review-001",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "The negative-case test is present in the reviewed revision.",
+        "validated_by": {
+          "review_id": "TASK-900/review-002",
+          "commit": "3333333333333333333333333333333333333333"
+        }
+      },
+      {
+        "record_id": "TASK-900/review-001",
+        "finding_id": "F-002",
+        "disposition": "accepted_risk",
+        "rationale": "The developer documented the bounded follow-up for human review.",
+        "validated_by": {
+          "review_id": "TASK-900/review-002",
+          "commit": "3333333333333333333333333333333333333333"
+        }
+      }
+    ]
+  }
+}

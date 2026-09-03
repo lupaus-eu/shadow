@@ -227,7 +227,30 @@ AI-reviewn pitää etsiä:
 - dokumentaatiopuutteita
 - taskin ulkopuolista scopea
 
-Jos AI-review löytää korjattavaa, tee korjaukset ja palaa vaiheeseen 8.
+Tallenna jokainen review-kierros versionhallittuna JSON-recordina hakemistoon
+`docs/ai-reviews/TASK-XXX/review-NNN.json`. Recordissa on reviewattu committed
+`base_sha`- ja `head_sha`, lopputulos, redaktoidut findingit ja mahdolliset
+aiempien findingien dispositionit. Lue tarkka schema, redaktointisäännöt ja
+komennot tiedostosta `docs/AI-REVIEW-RECORDS.md`.
+
+Rajaa review'sta `docs/ai-reviews/**`, jotta recordin commitointi ei käynnistä
+metadatarecordin rekursiivista review'ta. Aja ennen pushia:
+
+```bash
+python3 scripts/ai_review_records.py validate
+```
+
+Jos AI-review löytää korjattavaa, tee korjaukset, aja vaiheen 8 tarkistukset ja
+tee uusi AI-review-kierros. Uusi record dispositionoi aiemmat findingit; älä
+kirjoita alkuperäistä recordia uudelleen. Ennen human review'ta voit luoda
+neuvoa-antavan koosteen:
+
+```bash
+python3 scripts/ai_review_records.py summarize --format json
+```
+
+Kooste ei ole CI- tai merge-gate eikä agentti saa sen perusteella tehdä
+päätöksiä, taskia tai ADR:ää ilman kehittäjän hyväksyntää.
 
 ## 14. Human Review
 

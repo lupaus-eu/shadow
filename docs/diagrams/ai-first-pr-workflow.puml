@@ -33,8 +33,9 @@ else (no)
   :10. Push branch;
 endif
 
-if (13. AI review passed?) then (yes)
-else (no)
+:13. AI review, save and validate JSON record;
+if (13. Findings?) then (no)
+else (yes)
   :13F. Fix AI review findings;
   :8. Run local verification;
   :9. Update branch from main;

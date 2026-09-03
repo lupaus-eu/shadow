@@ -27,6 +27,23 @@ Commands run:
 
 ```
 
+## AI Review
+
+- [ ] AI review completed
+- [ ] Review record validated with `python3 scripts/ai_review_records.py validate`
+
+Review record(s):
+
+```text
+docs/ai-reviews/TASK-XXX/review-NNN.json
+```
+
+Open findings or accepted risks for human review:
+
+```text
+
+```
+
 ## Documentation
 
 - [ ] Documentation updated

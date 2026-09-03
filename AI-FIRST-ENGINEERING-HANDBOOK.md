@@ -537,6 +537,25 @@ AI-review tarkistaa:
 - onko tietoturvaongelmia
 - onko dokumentaatio päivittämättä
 
+Jokainen AI-review-kierros tallennetaan versionhallittuna, redaktoituna JSON-
+recordina `docs/ai-reviews/TASK-XXX/review-NNN.json`. Record säilyttää
+reviewatun committed diffin SHA-viitteet, lopputuloksen, findingit ja myöhemmän
+kierroksen dispositionit. Tarkka schema, redaktointisäännöt ja validointi ovat
+`docs/AI-REVIEW-RECORDS.md`:ssä.
+
+Review rajaa `docs/ai-reviews/**` pois omasta scopestaan, jotta metadatarecordin
+commitointi ei aiheuta rekursiivista review'ta. Jos findingeja korjataan, tee
+uusi review-kierros ja dispositionoi aiemmat findingit siinä; älä kirjoita
+alkuperäistä recordia uudelleen. Aja ennen pushia:
+
+```bash
+python3 scripts/ai_review_records.py validate
+```
+
+`summarize`-komennolla tehty analyysi on neuvoa-antava. Se ei ole CI- tai
+merge-gate eikä AI-agentti saa luoda tai hyväksyä follow-up-työtä ilman
+kehittäjän päätöstä.
+
 ## 14. Human Review
 
 Ihminen tarkistaa:
@@ -687,6 +706,14 @@ Suositus:
 
 - [ ] Dokumentaatio päivitetty tarvittaessa
 - [ ] ADR lisätty tarvittaessa
+
+## AI Review Record
+
+- [ ] Jokaisesta AI-review-kierroksesta on validoitu record
+      `docs/ai-reviews/TASK-XXX/review-NNN.json`
+- [ ] Record ei sisällä promptia, raakaa model outputia, patchia, salaisuutta,
+      tokenia, henkilötietoa tai query-parametreja sisältävää URL:ia
+- [ ] Avoimet findingit ja accepted riskit on nostettu human review'hun
 ```
 
 ---
@@ -897,8 +924,10 @@ Kun juniorikoodari käyttää AI-agenttia:
 6. Pyydä agenttia ajamaan testit ja kertomaan tulokset.
 7. Tarkista diff itse ennen pushia.
 8. Avaa PR käyttäen templatea.
-9. Pyydä AI-review PR:stä tai diffistä.
-10. Korjaa löydökset.
+9. Pyydä AI-review PR:stä tai diffistä, tallenna validi redaktoitu record ja
+   lisää sen polku PR:ään.
+10. Korjaa löydökset, dokumentoi niiden dispositionit seuraavassa
+    review-recordissa ja pyydä uusi review.
 11. Pyydä human review.
 
 Hyvä agenttiprompti:

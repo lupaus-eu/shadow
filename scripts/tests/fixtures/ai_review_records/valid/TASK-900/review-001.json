@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-900/review-001",
+  "task": {
+    "id": "TASK-900",
+    "path": "tasks/TASK-900-example.md"
+  },
+  "round": 1,
+  "reviewed_at": "2026-09-03T10:00:00Z",
+  "reviewer": {
+    "label": "example-agent"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "1111111111111111111111111111111111111111",
+    "head_sha": "2222222222222222222222222222222222222222",
+    "comparison": "1111111111111111111111111111111111111111...2222222222222222222222222222222222222222",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "The review found a test gap and a security follow-up.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "missing_test",
+        "severity": "high",
+        "summary": "The edit path lacks a negative-case test.",
+        "rationale": "A validation failure can regress without coverage.",
+        "recommendation": "Add a focused negative-case test.",
+        "locations": [
+          {
+            "path": "frontend/src/editor.ts",
+            "line": 12
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "security",
+        "severity": "medium",
+        "summary": "Authorization review needs explicit human confirmation.",
+        "rationale": "The change touches a protected boundary.",
+        "recommendation": "Document the reviewed authorization decision.",
+        "locations": [
+          {
+            "path": "backend/app/access.py",
+            "line": 42
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": []
+  }
+}

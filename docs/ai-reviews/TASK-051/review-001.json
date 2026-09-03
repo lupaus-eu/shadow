@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-051/review-001",
+  "task": {
+    "id": "TASK-051",
+    "path": "tasks/TASK-051-ai-review-records-and-analysis.md"
+  },
+  "round": 1,
+  "reviewed_at": "2026-09-03T12:39:42Z",
+  "reviewer": {
+    "label": "codex"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "f338829a8b6f7241c08d46202ed7f39d417f7fbc",
+    "head_sha": "2b59cfb139d4ca66dc47dad174c6b08f49ffd593",
+    "comparison": "f338829a8b6f7241c08d46202ed7f39d417f7fbc...2b59cfb139d4ca66dc47dad174c6b08f49ffd593",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "One schema-validation defect was identified in the reviewed diff.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "bug",
+        "severity": "low",
+        "summary": "Boolean JSON values are accepted for integer-only record fields.",
+        "rationale": "Python treats booleans as integers, so true can pass checks that require schema version, round, PR number, or location line integers.",
+        "recommendation": "Reject bool explicitly in every integer-field validator and add fixtures for boolean values.",
+        "locations": [
+          {
+            "path": "scripts/ai_review_records.py",
+            "line": 169
+          },
+          {
+            "path": "scripts/ai_review_records.py",
+            "line": 223
+          },
+          {
+            "path": "scripts/ai_review_records.py",
+            "line": 354
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": []
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-900/review-004",
+  "task": {
+    "id": "TASK-900",
+    "path": "tasks/TASK-900-example.md"
+  },
+  "round": 4,
+  "reviewed_at": "2026-09-03T13:00:00Z",
+  "reviewer": {
+    "label": "example-agent"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "1111111111111111111111111111111111111111",
+    "head_sha": "5555555555555555555555555555555555555555",
+    "comparison": "1111111111111111111111111111111111111111...5555555555555555555555555555555555555555",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "clean",
+    "summary": "No findings were identified in the reviewed committed diff.",
+    "findings": [],
+    "prior_finding_dispositions": []
+  }
+}

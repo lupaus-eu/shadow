@@ -138,6 +138,9 @@ GitHubin työnhallintaa ei käytetä työn lähteenä. Hyväksytystä AI-suunnit
 - Lisää tai päivitä testit, kun muutos koskee sovelluskoodia.
 - Jos et lisää testejä sovelluskoodin muutokselle, perustele miksi.
 - Päivitä dokumentaatio tarvittaessa.
+- Tallenna jokainen Step 13 AI-review-kierros validina, redaktoituna JSON-
+  recordina `docs/ai-reviews/`-hakemistoon ja noudata
+  `docs/AI-REVIEW-RECORDS.md`:n schemaa sekä analyysin advisory-rajausta.
 - Käytä olemassa olevia abstrahointeja.
 - Suosi pieniä muutoksia.
 - Kerro lopuksi mitä muutit ja miten tarkistit työn.
