@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-053/review-001",
+  "task": {
+    "id": "TASK-053",
+    "path": "tasks/TASK-053-metrics-predictions-filter-controls.md"
+  },
+  "round": 1,
+  "reviewed_at": "2026-09-04T11:10:26Z",
+  "reviewer": {
+    "label": "codex"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "3991c9acca8eb1090d39381eb3f3ff45fd072014",
+    "head_sha": "08d96a03333e4595962be547483c0e96c46aaaee",
+    "comparison": "3991c9acca8eb1090d39381eb3f3ff45fd072014...08d96a03333e4595962be547483c0e96c46aaaee",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "One low-severity Metrics toolbar-spacing mismatch was identified.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "bug",
+        "severity": "low",
+        "summary": "The sort-to-date control spacing exceeds the requested space-3 gap.",
+        "rationale": "The toolbar already supplies space-2 between adjacent controls, while an additional space-16 margin produces a 72px gap rather than the requested 12px total.",
+        "recommendation": "Use an additional space-1 margin so the shared space-2 gap totals space-3.",
+        "locations": [
+          {
+            "path": "frontend/src/styles/app.css",
+            "line": 956
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": []
+  }
+}

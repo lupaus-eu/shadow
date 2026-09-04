@@ -79,18 +79,56 @@ describe("PredictionsTab", () => {
     const targetSelector = screen.getAllByRole("group", { name: "Target scenarios" })[0];
     expect(within(targetSelector).getByLabelText("Future plan")).toBeChecked();
     expect(within(targetSelector).getByLabelText("Reality")).toBeChecked();
-    expect(within(screen.getByLabelText("Start event")).getByRole("option", { name: /Reality · Reality event/ })).toBeVisible();
+    const startEvents = screen.getByRole("group", { name: "Start event" });
+    const endEvents = screen.getByRole("group", { name: "End event" });
+    fireEvent.click(startEvents.querySelector("summary") as HTMLElement);
+    expect(within(startEvents).getByRole("button", { name: /Reality · Reality event/ })).toBeVisible();
 
-    fireEvent.change(screen.getByLabelText("Start event"), { target: { value: "future:start" } });
+    fireEvent.click(within(startEvents).getByRole("button", { name: /Future plan · Future start/ }));
     expect(screen.getAllByLabelText("Start date")[0]).toHaveValue("2026-01-05");
-    expect(within(screen.getByLabelText("End event")).queryByRole("option", { name: /Reality · Reality event/ })).not.toBeInTheDocument();
+    expect(within(endEvents).queryByRole("button", { name: /Reality · Reality event/ })).not.toBeInTheDocument();
 
     const plotDateRange = screen.getByText("Plot date range").parentElement;
     expect(within(plotDateRange!).getByText("Start date")).toBeVisible();
     expect(within(plotDateRange!).getByText("End date")).toBeVisible();
 
     fireEvent.change(screen.getAllByLabelText("Start date")[0], { target: { value: "2026-01-06" } });
-    expect(screen.getByLabelText("Start event")).toHaveValue("");
+    expect(within(startEvents).getAllByText("No event selected")[0]).toBeVisible();
+  });
+
+  it("searches dropdown options and initially selects only the first saved version", async () => {
+    const secondVersion = { ...version, id: "version-2", name: "February plan" };
+    api.fetchPredictions.mockResolvedValueOnce([version, secondVersion]);
+    api.fetchPrediction.mockImplementation((_orgId: string, id: string) =>
+      Promise.resolve(id === secondVersion.id ? secondVersion : version)
+    );
+    render(<PredictionsTab orgId="acme" />);
+
+    await screen.findByText(/selected scenario's own data/i);
+    expect(screen.getAllByPlaceholderText("Type to search...")).toHaveLength(6);
+    const versions = screen.getByRole("group", { name: "Versions" });
+    expect(within(versions).getByLabelText("January plan")).toBeChecked();
+    expect(within(versions).getByLabelText("February plan")).not.toBeChecked();
+
+    fireEvent.change(screen.getByLabelText("Search Versions"), { target: { value: "february" } });
+    expect(within(versions).queryByLabelText("January plan")).not.toBeInTheDocument();
+    expect(within(versions).getByLabelText("February plan")).not.toBeChecked();
+
+    const targets = screen.getAllByRole("group", { name: "Target scenarios" })[0];
+    fireEvent.change(within(targets).getByLabelText("Search Target scenarios"), { target: { value: "future" } });
+    expect(within(targets).queryByLabelText("Reality")).not.toBeInTheDocument();
+    expect(within(targets).getByLabelText("Future plan")).toBeChecked();
+
+    const startEvents = screen.getByRole("group", { name: "Start event" });
+    fireEvent.click(startEvents.querySelector("summary") as HTMLElement);
+    fireEvent.change(screen.getByLabelText("Search Start event"), { target: { value: "future start" } });
+    expect(within(startEvents).getByRole("button", { name: /Future start/ })).toBeVisible();
+    expect(within(startEvents).queryByRole("button", { name: /Reality event/ })).not.toBeInTheDocument();
+
+    const metrics = screen.getByRole("group", { name: "Numeric metrics" });
+    fireEvent.change(within(metrics).getByLabelText("Search Numeric metrics"), { target: { value: "revenue" } });
+    expect(within(metrics).getByLabelText("Revenue (EUR)")).toBeChecked();
+    expect(within(screen.getByRole("group", { name: "Models and baselines" })).queryByLabelText("Search Models and baselines")).not.toBeInTheDocument();
   });
 
   it("submits a preflight-backed create request with manual seasonality and renders provenance", async () => {
@@ -182,7 +220,7 @@ describe("PredictionsTab", () => {
 
     api.fetchPredictions.mockResolvedValueOnce([]);
     render(<PredictionsTab orgId="acme" />);
-    expect(await screen.findByText("No saved prediction versions yet.")).toBeVisible();
+    expect(await screen.findByText("Select saved versions, scenarios, models and metrics with available numeric points to plot them.")).toBeVisible();
 
     api.fetchScenarios.mockRejectedValueOnce(new Error("Service unavailable"));
     render(<PredictionsTab orgId="acme" />);

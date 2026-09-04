@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { RefObject } from "react";
 import { fetchEvents } from "../../api/events";
 import type { EventDto } from "../../api/events";
 import {
@@ -19,7 +20,6 @@ import {
   buildPredictionMetricCharts,
   formatModelKind,
   predictionChartAxisTicks,
-  predictionVersionStatus,
   type PredictionChartLine
 } from "./predictionChart";
 
@@ -158,7 +158,9 @@ export default function PredictionsTab(props: { orgId: string }) {
           ...targets,
           ...data.versions.flatMap((version) => version.targets.map((target) => target.scenarioId))
         ]));
-        setSelectedVersionIds(new Set(data.versions.map((version) => version.id)));
+        setSelectedVersionIds(
+          data.versions.length ? new Set([data.versions[0].id]) : new Set()
+        );
         setSelectedModelKinds(
           new Set(data.versions.flatMap((version) => version.targets.flatMap((target) => target.results.map((result) => result.kind))))
         );
@@ -321,8 +323,8 @@ export default function PredictionsTab(props: { orgId: string }) {
         <div className="predictions-date-grid">
           <label className="form-row"><span className="form-label form-label--required">Start date</span><input className="input date-input" type="date" value={startDate} onChange={(event) => updateStartDate(event.target.value)} /></label>
           <label className="form-row"><span className="form-label form-label--required">End date</span><input className="input date-input" type="date" value={endDate} onChange={(event) => updateEndDate(event.target.value)} /></label>
-          <label className="form-row"><span className="form-label">Start event</span><select className="select" value={startEventId} onChange={(event) => selectStartEvent(event.target.value)}><option value="">No event selected</option>{availableStartEvents.map((event) => <option value={event.selectionId} key={event.selectionId}>{event.targetDate} · {event.scenarioName} · {event.name}</option>)}</select></label>
-          <label className="form-row"><span className="form-label">End event</span><select className="select" value={endEventId} onChange={(event) => selectEndEvent(event.target.value)}><option value="">No event selected</option>{availableEndEvents.map((event) => <option value={event.selectionId} key={event.selectionId}>{event.targetDate} · {event.scenarioName} · {event.name}</option>)}</select></label>
+          <SearchableEventSelect title="Start event" items={availableStartEvents} value={startEventId} onChange={selectStartEvent} />
+          <SearchableEventSelect title="End event" items={availableEndEvents} value={endEventId} onChange={selectEndEvent} />
         </div>
         {invalidDates ? <p className="alert alert--danger" role="alert">The start date must be earlier than the end date.</p> : null}
         <fieldset className="predictions-fieldset"><legend className="form-label form-label--required">Observation cutoff</legend><label className="predictions-check"><input type="radio" name="cutoff" checked={cutoffMode === "asOfStart"} onChange={() => { setCutoffMode("asOfStart"); invalidatePreflight(); }} /> As of start — excludes observations on and after the first predicted period.</label><label className="predictions-check"><input type="radio" name="cutoff" checked={cutoffMode === "allCurrentScenario"} onChange={() => { setCutoffMode("allCurrentScenario"); invalidatePreflight(); }} /> All current scenario — retrospective predictions can use later values from the selected scenario.</label></fieldset>
@@ -330,9 +332,8 @@ export default function PredictionsTab(props: { orgId: string }) {
         {formError ? <p className="alert alert--danger" role="alert">{formError}</p> : null}
         {preflight ? <PreflightResults preflight={preflight} manualPeriods={manualPeriods} onManualPeriodChange={(metricId, value) => setManualPeriods((current) => ({ ...current, [metricId]: value }))} /> : null}
       </section>
-      <section className="detail-card detail-card--spacious predictions-panel" aria-labelledby="library-heading"><h2 id="library-heading">Saved versions</h2>{versions.length ? <div className="predictions-library">{versions.map((version) => <label className="predictions-version" key={version.id}><input type="checkbox" checked={selectedVersionIds.has(version.id)} onChange={() => setSelectedVersionIds((current) => toggleSet(current, version.id))} /><span><strong>{version.name}</strong><small>{new Date(version.createdTime).toLocaleString()} · {version.startDate} to {version.endDate} · {version.cutoffMode}</small><small>{version.targets.length} targets · {predictionVersionStatus(version)}</small></span></label>)}</div> : <div className="empty-state" role="status"><p>No saved prediction versions yet.</p></div>}</section>
     </div>
-    <section className="detail-card detail-card--spacious predictions-panel predictions-plots" aria-labelledby="plots-heading"><h2 id="plots-heading">Compare saved results</h2><div className="predictions-filters"><FilterGroup title="Versions" items={versions.map((version) => [version.id, version.name])} selected={selectedVersionIds} onToggle={(id) => setSelectedVersionIds((current) => toggleSet(current, id))} /><ScenarioMultiSelect items={comparisonScenarios} selected={selectedScenarioFilter} onChange={setSelectedScenarioFilter} /><FilterGroup title="Models and baselines" items={allModelKinds.map((kind) => [kind, formatModelKind(kind)])} selected={selectedModelKinds} onToggle={(id) => setSelectedModelKinds((current) => toggleSet(current, id))} /><NumericMetricFilter items={allMetrics.map(([id, metric]) => [id, `${metric.name} (${metric.unit ?? "no unit"})`])} selected={selectedMetricIds} onChange={setSelectedMetricIds} /><div><span className="form-label">Plot date range</span><div className="predictions-plot-dates"><label className="predictions-date-field">Start date<input aria-label="Plot start date" className="input date-input" type="date" value={plotStartDate} onChange={(event) => setPlotStartDate(event.target.value)} /></label><label className="predictions-date-field">End date<input aria-label="Plot end date" className="input date-input" type="date" value={plotEndDate} onChange={(event) => setPlotEndDate(event.target.value)} /></label></div><label className="predictions-check"><input type="checkbox" checked={includeReality} onChange={(event) => { setIncludeReality(event.target.checked); setRealityError(""); }} /> Include current Reality (manually entered realized data)</label></div></div>{realityError ? <p className="alert alert--danger" role="alert">{realityError}</p> : null}{charts.length ? <div className="predictions-chart-grid">{charts.map((chart) => <MetricChart key={chart.metricId} metricName={chart.metricName} unit={chart.unit} lines={chart.lines} missingModelKinds={chart.missingModelKinds} />)}</div> : <div className="empty-state" role="status"><p>Select saved versions, scenarios, models and metrics with available numeric points to plot them.</p></div>}</section>
+    <section className="detail-card detail-card--spacious predictions-panel predictions-plots" aria-labelledby="plots-heading"><h2 id="plots-heading">Compare saved results</h2><div className="predictions-filters"><div className="predictions-filter-groups"><MultiSelectDropdown title="Versions" searchable borderless items={versions.map((version) => [version.id, version.name])} selected={selectedVersionIds} onChange={setSelectedVersionIds} allLabel="All saved versions" allSelectedSummary="All saved versions" emptySummary="No saved versions selected" /><ScenarioMultiSelect borderless items={comparisonScenarios} selected={selectedScenarioFilter} onChange={setSelectedScenarioFilter} /><MultiSelectDropdown title="Models and baselines" borderless items={allModelKinds.map((kind) => [kind, formatModelKind(kind)])} selected={selectedModelKinds} onChange={setSelectedModelKinds} allLabel="All models and baselines" /><MultiSelectDropdown title="Numeric metrics" searchable borderless items={allMetrics.map(([id, metric]) => [id, `${metric.name} (${metric.unit ?? "no unit"})`])} selected={selectedMetricIds} onChange={setSelectedMetricIds} allLabel="All numeric metrics" allSelectedSummary="All numeric metrics" /></div><div className="predictions-plot-controls"><span className="form-label">Plot date range</span><div className="predictions-plot-dates"><label className="predictions-date-field">Start date<input aria-label="Plot start date" className="input date-input" type="date" value={plotStartDate} onChange={(event) => setPlotStartDate(event.target.value)} /></label><label className="predictions-date-field">End date<input aria-label="Plot end date" className="input date-input" type="date" value={plotEndDate} onChange={(event) => setPlotEndDate(event.target.value)} /></label></div><label className="predictions-check"><input type="checkbox" checked={includeReality} onChange={(event) => { setIncludeReality(event.target.checked); setRealityError(""); }} /> Include current Reality (manually entered realized data)</label></div></div>{realityError ? <p className="alert alert--danger" role="alert">{realityError}</p> : null}{charts.length ? <div className="predictions-chart-grid">{charts.map((chart) => <MetricChart key={chart.metricId} metricName={chart.metricName} unit={chart.unit} lines={chart.lines} missingModelKinds={chart.missingModelKinds} />)}</div> : <div className="empty-state" role="status"><p>Select saved versions, scenarios, models and metrics with available numeric points to plot them.</p></div>}</section>
   </section>;
 }
 
@@ -340,24 +341,7 @@ function PreflightResults(props: { preflight: PredictionPreflightDto; manualPeri
   return <section className="predictions-preflight" aria-live="polite"><h3>Preflight eligibility</h3>{props.preflight.metrics.length ? props.preflight.metrics.map((metric) => <div className="predictions-preflight__row" key={`${metric.scenarioId}:${metric.metricId}`}><strong>{metric.scenarioId} · {metric.metricId}</strong><span>{metric.status}{metric.reason ? ` — ${metric.reason}` : ""}</span>{metric.seasonalPeriod ? <span>Automatic seasonal period: {metric.seasonalPeriod} ({metric.seasonalPeriodSource})</span> : null}{metric.requiresManualSeasonalPeriod ? <label>Manual seasonal period <input aria-label={`Manual seasonal period for ${metric.metricId}`} className="input" type="number" min="2" value={props.manualPeriods[metric.metricId] ?? ""} onChange={(event) => props.onManualPeriodChange(metric.metricId, Number(event.target.value))} /></label> : null}</div>) : <p className="alert alert--info" role="status">No forecastable metrics were found for the selected scenarios and date range.</p>}</section>;
 }
 
-function FilterGroup(props: { title: string; items: Array<[string, string]>; selected: Set<string>; onToggle: (id: string) => void }) {
-  return <fieldset className="predictions-fieldset"><legend className="form-label">{props.title}</legend>{props.items.map(([id, label]) => <label className="predictions-check" key={id}><input type="checkbox" checked={props.selected.has(id)} onChange={() => props.onToggle(id)} /> {label}</label>)}</fieldset>;
-}
-
-function NumericMetricFilter(props: { items: Array<[string, string]>; selected: Set<string>; onChange: (selected: Set<string>) => void }) {
-  const allSelected = props.items.length > 0 && props.selected.size === props.items.length;
-  return <fieldset className="predictions-fieldset"><legend className="form-label">Numeric metrics</legend><label className="predictions-check"><input type="checkbox" checked={allSelected} onChange={(event) => props.onChange(new Set(event.target.checked ? props.items.map(([id]) => id) : []))} /> All numeric metrics</label>{props.items.map(([id, label]) => <label className="predictions-check" key={id}><input type="checkbox" checked={props.selected.has(id)} onChange={() => props.onChange(toggleSet(props.selected, id))} /> {label}</label>)}</fieldset>;
-}
-
-function ScenarioMultiSelect(props: { borderless?: boolean; required?: boolean; items: Array<[string, string]>; selected: Set<string>; onChange: (selected: Set<string>) => void }) {
-  const dropdownRef = useRef<HTMLDetailsElement>(null);
-  const allSelected = props.items.length > 0 && props.selected.size === props.items.length;
-  const summary = allSelected
-    ? "All active scenarios"
-    : props.selected.size
-      ? `${props.selected.size} scenario${props.selected.size === 1 ? "" : "s"} selected`
-      : "No scenarios selected";
-
+function useDropdownDismissal(dropdownRef: RefObject<HTMLDetailsElement | null>) {
   useEffect(() => {
     function closeWhenClickedOutside(event: PointerEvent) {
       if (!dropdownRef.current?.contains(event.target as Node)) {
@@ -377,9 +361,84 @@ function ScenarioMultiSelect(props: { borderless?: boolean; required?: boolean; 
       document.removeEventListener("pointerdown", closeWhenClickedOutside);
       document.removeEventListener("keydown", closeOnEscape);
     };
-  }, []);
+  }, [dropdownRef]);
+}
 
-  return <fieldset className={`predictions-fieldset${props.borderless ? " predictions-fieldset--borderless" : ""}`}><legend className={`form-label${props.required ? " form-label--required" : ""}`}>Target scenarios</legend><details ref={dropdownRef} className="predictions-multi-dropdown"><summary>{summary}</summary><div className="predictions-multi-dropdown__options"><label className="predictions-check"><input type="checkbox" checked={allSelected} onChange={(event) => props.onChange(new Set(event.target.checked ? props.items.map(([id]) => id) : []))} /> All active prediction scenarios</label>{props.items.map(([id, label]) => <label className="predictions-check" key={id}><input type="checkbox" checked={props.selected.has(id)} onChange={() => props.onChange(toggleSet(props.selected, id))} /> {label}</label>)}</div></details></fieldset>;
+function MultiSelectDropdown(props: {
+  title: string;
+  items: Array<[string, string]>;
+  selected: Set<string>;
+  onChange: (selected: Set<string>) => void;
+  searchable?: boolean;
+  borderless?: boolean;
+  required?: boolean;
+  allLabel?: string;
+  allSelectedSummary?: string;
+  emptySummary?: string;
+  hideLegend?: boolean;
+}) {
+  const dropdownRef = useRef<HTMLDetailsElement>(null);
+  const [query, setQuery] = useState("");
+  useDropdownDismissal(dropdownRef);
+  const allSelected = props.items.length > 0 && props.selected.size === props.items.length;
+  const summary = allSelected && props.allSelectedSummary
+    ? props.allSelectedSummary
+    : props.selected.size
+      ? `${props.selected.size} selected`
+      : props.emptySummary ?? `No ${props.title.toLowerCase()} selected`;
+  const filteredItems = props.searchable
+    ? props.items.filter(([, label]) => label.toLocaleLowerCase().includes(query.toLocaleLowerCase()))
+    : props.items;
+
+  return <fieldset className={`predictions-fieldset${props.borderless ? " predictions-fieldset--borderless" : ""}`}>
+    {props.hideLegend ? null : <legend className={`form-label${props.required ? " form-label--required" : ""}`}>{props.title}</legend>}
+    <details ref={dropdownRef} className="predictions-multi-dropdown">
+      <summary>{summary}</summary>
+      <div className="predictions-multi-dropdown__options">
+        {props.searchable ? <input className="input" type="search" aria-label={`Search ${props.title}`} placeholder="Type to search..." value={query} onChange={(event) => setQuery(event.target.value)} /> : null}
+        <label className="predictions-check">
+          <input type="checkbox" checked={allSelected} onChange={(event) => props.onChange(new Set(event.target.checked ? props.items.map(([id]) => id) : []))} />
+          {props.allLabel ?? `All ${props.title.toLowerCase()}`}
+        </label>
+        {filteredItems.map(([id, label]) => <label className="predictions-check" key={id}><input type="checkbox" checked={props.selected.has(id)} onChange={() => props.onChange(toggleSet(props.selected, id))} /> {label}</label>)}
+        {filteredItems.length === 0 ? <p className="muted">No matching options.</p> : null}
+      </div>
+    </details>
+  </fieldset>;
+}
+
+function ScenarioMultiSelect(props: { borderless?: boolean; required?: boolean; items: Array<[string, string]>; selected: Set<string>; onChange: (selected: Set<string>) => void }) {
+  return <MultiSelectDropdown title="Target scenarios" items={props.items} selected={props.selected} onChange={props.onChange} searchable borderless={props.borderless} required={props.required} allLabel="All active prediction scenarios" allSelectedSummary="All active scenarios" emptySummary="No scenarios selected" />;
+}
+
+function SearchableEventSelect(props: {
+  title: string;
+  items: EventOption[];
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const dropdownRef = useRef<HTMLDetailsElement>(null);
+  const [query, setQuery] = useState("");
+  useDropdownDismissal(dropdownRef);
+  const selected = props.items.find((item) => item.selectionId === props.value);
+  const filteredItems = props.items.filter((item) =>
+    `${item.targetDate} · ${item.scenarioName} · ${item.name}`
+      .toLocaleLowerCase()
+      .includes(query.toLocaleLowerCase())
+  );
+
+  return <fieldset className="predictions-event-select">
+    <legend className="form-label">{props.title}</legend>
+    <details ref={dropdownRef} className="predictions-multi-dropdown">
+      <summary>{selected ? `${selected.targetDate} · ${selected.scenarioName} · ${selected.name}` : "No event selected"}</summary>
+      <div className="predictions-multi-dropdown__options">
+        <input className="input" type="search" aria-label={`Search ${props.title}`} placeholder="Type to search..." value={query} onChange={(event) => setQuery(event.target.value)} />
+        <button className="btn btn--ghost predictions-dropdown-option" type="button" onClick={() => { props.onChange(""); dropdownRef.current?.removeAttribute("open"); }}>No event selected</button>
+        {filteredItems.map((item) => <button className="btn btn--ghost predictions-dropdown-option" type="button" key={item.selectionId} onClick={() => { props.onChange(item.selectionId); dropdownRef.current?.removeAttribute("open"); }}>{item.targetDate} · {item.scenarioName} · {item.name}</button>)}
+        {filteredItems.length === 0 ? <p className="muted">No matching events.</p> : null}
+      </div>
+    </details>
+  </fieldset>;
 }
 
 function formatSeriesList(items: string[]): string {

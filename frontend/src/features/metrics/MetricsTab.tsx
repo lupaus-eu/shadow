@@ -6,7 +6,7 @@ import {
   useRef,
   useState
 } from "react";
-import type { ChangeEvent, FormEvent } from "react";
+import type { ChangeEvent, CSSProperties, FormEvent } from "react";
 import EmptyTab from "../../components/EmptyTab";
 import {
   createDerivedMetric,
@@ -26,12 +26,32 @@ import { useWorkspaceSelection } from "../../workspace/WorkspaceSelectionContext
 
 type DraftState = Record<string, Record<string, string>>;
 type SavingRowsState = Record<string, boolean>;
+type MetricsFilterValue =
+  | "manual"
+  | "derived"
+  | TimeserieTimeUnit;
 type ParsedDateParts = {
   year: number;
   month: number;
   day: number;
   date: Date;
 };
+
+const METRICS_FILTER_OPTIONS: Array<[MetricsFilterValue, string]> = [
+  ["manual", "Manual metrics"],
+  ["derived", "Derived metrics"],
+  ["day", "Day"],
+  ["week", "Week"],
+  ["month", "Month"],
+  ["year", "Year"]
+];
+const DEFAULT_METRICS_FILTERS = new Set<MetricsFilterValue>(
+  METRICS_FILTER_OPTIONS.map(([value]) => value)
+);
+const DEFAULT_METRICS_CELL_WIDTH = 150;
+const MIN_METRICS_CELL_WIDTH = 90;
+const MAX_METRICS_CELL_WIDTH = 320;
+const METRICS_CELL_WIDTH_STEP = 10;
 
 const METRICS_SORT_OPTIONS = [
   { value: "name-asc", label: "Timeserie name, asc.", field: "name", direction: 1 },
@@ -282,6 +302,20 @@ function buildDateColumns(items: TimeserieDto[], manualDates: string[]): string[
   return [...dates].filter(isValidDateValue).sort();
 }
 
+function filterDateColumns(
+  columns: string[],
+  fromDate: string,
+  untilDate: string
+): string[] {
+  return columns.filter(
+    (date) => (!fromDate || date >= fromDate) && (!untilDate || date <= untilDate)
+  );
+}
+
+function clampMetricsCellWidth(value: number): number {
+  return Math.min(MAX_METRICS_CELL_WIDTH, Math.max(MIN_METRICS_CELL_WIDTH, value));
+}
+
 function parseDraftCellValue(
   valueUnit: TimeserieValueUnit,
   value: string
@@ -413,35 +447,43 @@ export default function MetricsTab(props: { orgId: string }) {
   const [savingRows, setSavingRows] = useState<SavingRowsState>({});
   const [savingAll, setSavingAll] = useState(false);
   const [sortValue, setSortValue] = useState<MetricsSortValue>("");
-  const [showManualMetrics, setShowManualMetrics] = useState(true);
-  const [showDerivedMetrics, setShowDerivedMetrics] = useState(true);
+  const [selectedFilters, setSelectedFilters] = useState<Set<MetricsFilterValue>>(
+    () => new Set(DEFAULT_METRICS_FILTERS)
+  );
+  const [fromDate, setFromDate] = useState("");
+  const [untilDate, setUntilDate] = useState("");
+  const [cellWidth, setCellWidth] = useState(DEFAULT_METRICS_CELL_WIDTH);
   const [isDerivedMetricEditorVisible, setDerivedMetricEditorVisible] =
     useState(false);
   const [editingDerivedMetric, setEditingDerivedMetric] =
     useState<TimeserieDto | null>(null);
 
-  const dateColumns = useMemo(
+  const allDateColumns = useMemo(
     () => buildDateColumns(timeseries, manualDates),
     [manualDates, timeseries]
+  );
+  const visibleDateColumns = useMemo(
+    () => filterDateColumns(allDateColumns, fromDate, untilDate),
+    [allDateColumns, fromDate, untilDate]
   );
   const displayedTimeseries = useMemo(
     () =>
       sortTimeseriesForDisplay(
         timeseries.filter(
           (timeserie) =>
-            (showManualMetrics || timeserie.isDerived) &&
-            (showDerivedMetrics || !timeserie.isDerived)
+            selectedFilters.has(timeserie.isDerived ? "derived" : "manual") &&
+            selectedFilters.has(timeserie.timeUnit)
         ),
         sortValue
       ),
-    [showDerivedMetrics, showManualMetrics, sortValue, timeseries]
+    [selectedFilters, sortValue, timeseries]
   );
   const dirtyRows = useMemo(
     () =>
       timeseries.filter((timeserie) =>
-        rowHasChanges(timeserie, dateColumns, draftValues)
+        rowHasChanges(timeserie, allDateColumns, draftValues)
       ),
-    [dateColumns, draftValues, timeseries]
+    [allDateColumns, draftValues, timeseries]
   );
   const isSaving = savingAll || Object.values(savingRows).some(Boolean);
 
@@ -528,14 +570,14 @@ export default function MetricsTab(props: { orgId: string }) {
   }
 
   function onAddNextDate(timeserie: TimeserieDto) {
-    const nextDate = nextValidDateForRow(timeserie, dateColumns);
+    const nextDate = nextValidDateForRow(timeserie, allDateColumns);
     addDateColumn(nextDate);
   }
 
   async function saveRow(timeserie: TimeserieDto) {
     if (isSaving) return;
 
-    const payload = buildSavePayload(timeserie, dateColumns, draftValues);
+    const payload = buildSavePayload(timeserie, allDateColumns, draftValues);
     if ("error" in payload) {
       setActionError(payload.error);
       return;
@@ -576,7 +618,7 @@ export default function MetricsTab(props: { orgId: string }) {
 
     const updates = dirtyRows.map((timeserie) => ({
       timeserie,
-      payload: buildSavePayload(timeserie, dateColumns, draftValues)
+      payload: buildSavePayload(timeserie, allDateColumns, draftValues)
     }));
     const invalid = updates.find((update) => "error" in update.payload);
     if (invalid && "error" in invalid.payload) {
@@ -794,23 +836,60 @@ export default function MetricsTab(props: { orgId: string }) {
       )}
 
       <div className="metrics-toolbar__actions">
-        <div className="metrics-toolbar__visibility-toggles">
-          <label className="metrics-toolbar__derived-toggle">
-            <input
-              type="checkbox"
-              checked={showManualMetrics}
-              onChange={(event) => setShowManualMetrics(event.target.checked)}
-            />
-            Show manual metrics timeseries
-          </label>
-          <label className="metrics-toolbar__derived-toggle">
-            <input
-              type="checkbox"
-              checked={showDerivedMetrics}
-              onChange={(event) => setShowDerivedMetrics(event.target.checked)}
-            />
-            Show derived metrics timeseries
-          </label>
+        <MetricsFilterDropdown
+          selected={selectedFilters}
+          disabled={isSaving}
+          onChange={setSelectedFilters}
+        />
+        <label className="metrics-toolbar__range-field">
+          <span>From</span>
+          <input
+            className="input date-input"
+            type="date"
+            value={fromDate}
+            disabled={isSaving}
+            onChange={(event) => setFromDate(event.target.value)}
+          />
+        </label>
+        <label className="metrics-toolbar__range-field">
+          <span>Until</span>
+          <input
+            className="input date-input"
+            type="date"
+            value={untilDate}
+            disabled={isSaving}
+            onChange={(event) => setUntilDate(event.target.value)}
+          />
+        </label>
+        <div className="metrics-toolbar__cell-width" role="group" aria-label="Timeserie value cell width">
+          <button
+            className="btn btn--secondary"
+            type="button"
+            aria-label="Decrease timeserie value cell width"
+            disabled={isSaving || cellWidth <= MIN_METRICS_CELL_WIDTH}
+            onClick={() => setCellWidth((value) => clampMetricsCellWidth(value - METRICS_CELL_WIDTH_STEP))}
+          >
+            −
+          </button>
+          <button
+            className="btn btn--secondary"
+            type="button"
+            aria-label="Increase timeserie value cell width"
+            disabled={isSaving || cellWidth >= MAX_METRICS_CELL_WIDTH}
+            onClick={() => setCellWidth((value) => clampMetricsCellWidth(value + METRICS_CELL_WIDTH_STEP))}
+          >
+            +
+          </button>
+          <input
+            aria-label="Timeserie value cell width"
+            type="range"
+            min={MIN_METRICS_CELL_WIDTH}
+            max={MAX_METRICS_CELL_WIDTH}
+            step={METRICS_CELL_WIDTH_STEP}
+            value={cellWidth}
+            disabled={isSaving}
+            onChange={(event) => setCellWidth(clampMetricsCellWidth(Number(event.target.value)))}
+          />
         </div>
         <select
           className="select metrics-toolbar__sort-select"
@@ -882,7 +961,8 @@ export default function MetricsTab(props: { orgId: string }) {
       {!loading && !loadError && timeseries.length > 0 ? (
         <MetricsGrid
           timeseries={displayedTimeseries}
-          dateColumns={dateColumns}
+          dateColumns={visibleDateColumns}
+          cellWidth={cellWidth}
           draftValues={draftValues}
           dirtyRows={new Set(dirtyRows.map((timeserie) => timeserie.id))}
           savingRows={savingRows}
@@ -898,6 +978,67 @@ export default function MetricsTab(props: { orgId: string }) {
         />
       ) : null}
     </div>
+  );
+}
+
+function MetricsFilterDropdown(props: {
+  selected: Set<MetricsFilterValue>;
+  disabled: boolean;
+  onChange: (selected: Set<MetricsFilterValue>) => void;
+}) {
+  const dropdownRef = useRef<HTMLDetailsElement>(null);
+  const summary =
+    props.selected.size === METRICS_FILTER_OPTIONS.length
+      ? "All metrics and time units"
+      : props.selected.size
+        ? `${props.selected.size} filters selected`
+        : "No filters selected";
+
+  useEffect(() => {
+    function closeWhenClickedOutside(event: PointerEvent) {
+      if (!dropdownRef.current?.contains(event.target as Node)) {
+        dropdownRef.current?.removeAttribute("open");
+      }
+    }
+
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key !== "Escape" || !dropdownRef.current?.open) return;
+      dropdownRef.current.open = false;
+      dropdownRef.current.querySelector("summary")?.focus();
+    }
+
+    document.addEventListener("pointerdown", closeWhenClickedOutside);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeWhenClickedOutside);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, []);
+
+  return (
+    <fieldset className="metrics-filter" disabled={props.disabled}>
+      <legend>Filter by</legend>
+      <details ref={dropdownRef} className="metrics-filter__dropdown">
+        <summary>{summary}</summary>
+        <div className="metrics-filter__options">
+          {METRICS_FILTER_OPTIONS.map(([value, label]) => (
+            <label key={value} className="metrics-filter__option">
+              <input
+                type="checkbox"
+                checked={props.selected.has(value)}
+                onChange={() => {
+                  const next = new Set(props.selected);
+                  if (next.has(value)) next.delete(value);
+                  else next.add(value);
+                  props.onChange(next);
+                }}
+              />
+              {label}
+            </label>
+          ))}
+        </div>
+      </details>
+    </fieldset>
   );
 }
 
@@ -972,6 +1113,7 @@ function DerivedMetricEditor(props: {
 function MetricsGrid(props: {
   timeseries: TimeserieDto[];
   dateColumns: string[];
+  cellWidth: number;
   draftValues: DraftState;
   dirtyRows: Set<string>;
   savingRows: SavingRowsState;
@@ -990,7 +1132,11 @@ function MetricsGrid(props: {
   }
 
   return (
-    <div className="metrics-grid-shell" aria-label="Metrics grid">
+    <div
+      className="metrics-grid-shell"
+      aria-label="Metrics grid"
+      style={{ "--metrics-date-cell-width": `${props.cellWidth}px` } as CSSProperties}
+    >
       <table className="metrics-grid">
         <thead>
           <tr>

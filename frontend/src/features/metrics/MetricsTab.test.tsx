@@ -189,7 +189,7 @@ describe("MetricsTab", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows derived metrics by default and can hide them", async () => {
+  it("filters manual and derived metrics by kind and time unit", async () => {
     vi.mocked(timeseriesApi.fetchTimeseries).mockResolvedValueOnce([
       ...baseTimeseries,
       {
@@ -202,31 +202,55 @@ describe("MetricsTab", () => {
     ]);
     renderMetricsTab();
 
-    const toggle = await screen.findByRole("checkbox", {
-      name: "Show derived metrics timeseries"
-    });
-    expect(toggle).toBeChecked();
+    const filters = await screen.findByRole("group", { name: "Filter by" });
+    const derived = within(filters).getByRole("checkbox", { name: "Derived metrics" });
+    const month = within(filters).getByRole("checkbox", { name: "Month" });
+    expect(derived).toBeChecked();
+    expect(month).toBeChecked();
     expect(screen.getByText("Average revenue")).toBeInTheDocument();
 
-    fireEvent.click(toggle);
+    fireEvent.click(derived);
 
-    expect(toggle).not.toBeChecked();
+    expect(derived).not.toBeChecked();
     expect(screen.queryByText("Average revenue")).not.toBeInTheDocument();
-  });
-
-  it("shows manual metrics by default and can hide them", async () => {
-    renderMetricsTab();
-
-    const toggle = await screen.findByRole("checkbox", {
-      name: "Show manual metrics timeseries"
-    });
-    expect(toggle).toBeChecked();
     expect(screen.getByText("Revenue")).toBeInTheDocument();
 
-    fireEvent.click(toggle);
+    fireEvent.click(month);
 
-    expect(toggle).not.toBeChecked();
     expect(screen.queryByText("Revenue")).not.toBeInTheDocument();
+  });
+
+  it("filters displayed dates without omitting hidden values from a row save", async () => {
+    renderMetricsTab();
+
+    await screen.findByLabelText("Revenue 2030-01-01");
+    fireEvent.change(screen.getByLabelText("From"), { target: { value: "2030-02-01" } });
+    expect(screen.queryByLabelText("Revenue 2030-01-01")).not.toBeInTheDocument();
+    const revenue = screen.getByLabelText("Revenue 2030-02-01");
+    fireEvent.change(revenue, { target: { value: "2500" } });
+    const row = screen.getByText("Revenue").closest("tr");
+    expect(row).not.toBeNull();
+    fireEvent.click(within(row as HTMLElement).getByRole("button", { name: "Save row" }));
+
+    await waitFor(() => expect(timeseriesApi.updateTimeserieValues).toHaveBeenCalledWith(
+      "acme",
+      "future",
+      "revenue",
+      { values: [{ date: "2030-01-01", value: 1000 }, { date: "2030-02-01", value: 2500 }] }
+    ));
+  });
+
+  it("adjusts date-cell width with the slider and buttons", async () => {
+    renderMetricsTab();
+
+    await screen.findByLabelText("Revenue 2030-01-01");
+    const width = screen.getByRole("slider", { name: "Timeserie value cell width" });
+    expect(width).toHaveValue("150");
+    fireEvent.click(screen.getByRole("button", { name: "Increase timeserie value cell width" }));
+    expect(width).toHaveValue("160");
+    fireEvent.change(width, { target: { value: "90" } });
+    expect(screen.getByRole("button", { name: "Decrease timeserie value cell width" })).toBeDisabled();
+    expect(screen.getByLabelText("Metrics grid")).toHaveStyle("--metrics-date-cell-width: 90px");
   });
 
   it("refreshes derived values after saving a referenced manual metric", async () => {
