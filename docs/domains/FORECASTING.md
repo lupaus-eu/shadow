@@ -1,6 +1,7 @@
 # Forecasting Domain
 
-Status: persistence and synchronous backend API implemented by TASK-041B
+Status: persistence and synchronous backend API implemented by TASK-041B;
+prediction-interval architecture accepted in ADR-011
 
 ## Purpose
 
@@ -22,6 +23,7 @@ Provides:
 
 - named, comparable forecast versions for one organisation
 - prediction-method provenance and cross-validation metadata
+- version-selected prediction intervals for supported fitted-model results
 - a clear distinction between manual scenario values and derived predictions
 
 Does NOT Own:
@@ -102,6 +104,48 @@ three validation windows. The result records MAE or an explicit unavailable
 state. Forecasting persists all result kinds rather than silently selecting one
 winner.
 
+### Prediction Intervals
+
+Each new prediction version records one user-selected integer prediction-
+interval level from 50 through 99 percent; the default is 80 percent. The level
+is selected before preflight and creation and applies to every supported result
+in that immutable version. It expresses nominal coverage for a future observed
+value, not guaranteed coverage and not a confidence interval around an
+estimated mean.
+
+Forecasting creates central, two-sided intervals only for directly fitted
+normal-metric results:
+
+- MLForecast uses conformal-error intervals with three one-step calibration
+  windows (`n_windows=3`, `h=1`). The one-step calibration gives a constant
+  interval width across the forecast horizon.
+- SARIMA uses the fitted Statsmodels forecast result's native interval with
+  `alpha = 1 - confidence_level / 100`.
+
+Naive, seasonal-naive and average baselines have point values only. Live Reality
+is observed comparison data and has no prediction interval. Formula-derived
+results also remain point-only, including their `mlforecast` and `sarima`
+result kinds; the domain does not propagate source bounds through equations.
+
+An interval state is `available`, `unavailable` or `not_applicable`. Directly
+fitted MLForecast and SARIMA results are unavailable when their point result is
+ineligible or no complete bounds can be calculated. Baseline and formula-derived
+results are not applicable. An available interval is complete: every result
+point has finite bounds satisfying
+`lower_bound <= point_value <= upper_bound`. Negative bounds are not clipped
+because numeric metrics have no general non-negative invariant. A result never
+stores only some of its bounds.
+
+An expected calibration, extraction or validation failure preserves valid point
+predictions and records the interval as unavailable with a safe reason. A
+directly fitted point-model failure retains its existing ineligible status and
+uses its safe model reason for the unavailable interval, while an unexpected
+generation failure still rolls back the whole version.
+
+No prediction data exists in production at the time of ADR-011. Its schema
+migration may discard development prediction versions rather than backfilling
+interval metadata or supporting a legacy display path.
+
 ### Versioning, Audit And Failures
 
 A prediction version has an organisation-local, case-insensitively unique
@@ -109,10 +153,11 @@ name. Saved versions are immutable and cannot be overwritten; a new execution
 needs a new name.
 
 Every saved result retains creator and creation metadata, target identity,
-cutoff mode, seasonal period/source, deterministic model
-configuration and seed, validation information, source-input snapshots
-including each effective observation source, and result points. This keeps
-results auditable after source rows change or are soft-deleted.
+cutoff mode, prediction-interval level and method where applicable, seasonal
+period/source, deterministic model configuration and seed, validation
+information, source-input snapshots including each effective observation
+source, and result points. This keeps results auditable after source rows change
+or are soft-deleted.
 
 Expected limitations are stored per metric/model with a machine-readable
 status and safe explanatory reason. They do not prevent other eligible
@@ -175,10 +220,13 @@ Referenced By:
    graph inputs.
 4. Detect seasonality or request a manual period where detection is
    inconclusive.
-5. Fit and evaluate the requested models within the synchronous work limits.
-6. Persist the immutable named version, result metadata, points and source
-   snapshot; persist normal ineligibility states alongside valid outputs.
-7. Roll back the entire version when an unexpected generation error occurs.
+5. Apply the version-selected prediction-interval level to supported directly
+   fitted MLForecast and SARIMA results.
+6. Fit and evaluate the requested models within the synchronous work limits.
+7. Persist the immutable named version, result and interval metadata, points,
+   available bounds and source snapshot; persist normal ineligibility and
+   interval-unavailable states alongside valid outputs.
+8. Roll back the entire version when an unexpected generation error occurs.
 
 ## AI Agent Guidance
 
@@ -188,6 +236,8 @@ Before changing Forecasting behavior, read:
 docs/decisions/ADR-007-predictions-forecasting-domain.md
 docs/decisions/ADR-008-target-scenario-observation-overrides.md
 docs/decisions/ADR-009-scenario-owned-prediction-inputs.md
+docs/decisions/ADR-010-derived-metrics.md
+docs/decisions/ADR-011-prediction-intervals.md
 docs/domains/FORECASTING.md
 docs/domains/ORG_STATES.md
 docs/domains/ORG_TWIN_STRUCTURE.md

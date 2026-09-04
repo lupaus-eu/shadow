@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-054A/review-001",
+  "task": {
+    "id": "TASK-054A",
+    "path": "tasks/TASK-054A-prediction-intervals-architecture.md"
+  },
+  "round": 1,
+  "reviewed_at": "2026-09-04T13:34:24Z",
+  "reviewer": {
+    "label": "codex"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "fba69408d6f14ecd552eab70d165d2ef8197fe48",
+    "head_sha": "f359e7bb2734bdb7c861d8dda486b2d9f5bfd9c5",
+    "comparison": "fba69408d6f14ecd552eab70d165d2ef8197fe48...f359e7bb2734bdb7c861d8dda486b2d9f5bfd9c5",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "The reviewed documentation satisfies the prediction-interval decision, but two referenced follow-up task files are absent from the committed tree.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "ADR-011 references follow-up task files that do not exist in the reviewed tree.",
+        "rationale": "The committed ADR names repository paths for TASK-054B and TASK-054C, but neither path exists in the branch or its origin/main base. These unresolved references weaken the permanent decision trail and prevent reviewers from verifying that the follow-up specifications implement the accepted decision without additional choices.",
+        "recommendation": "Add the approved TASK-054B and TASK-054C specifications before merge, or remove their concrete path references and defer the follow-up-task readiness claim until those files exist.",
+        "locations": [
+          {
+            "path": "docs/decisions/ADR-011-prediction-intervals.md",
+            "line": 169
+          },
+          {
+            "path": "docs/decisions/ADR-011-prediction-intervals.md",
+            "line": 170
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": []
+  }
+}

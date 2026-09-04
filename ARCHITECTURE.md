@@ -29,6 +29,10 @@ Päätetty tekninen perusrakenne:
 - derived metrics: Organisation States owns equations and materialized values;
   Forecasting derives prediction result points from normal-metric results
   according to ADR-010
+- prediction intervals: Forecasting owns one immutable version-level nominal
+  coverage selection and model-specific bounds for directly fitted MLForecast
+  and SARIMA results according to ADR-011; baselines, live Reality and
+  formula-derived results remain point-only
 
 Tarkemmat toteutusyksityiskohdat täsmentyvät taskien ja tarvittaessa uusien ADR:ien kautta.
 
