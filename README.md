@@ -62,6 +62,29 @@ Päätetty rakenne:
 - production-only deployment: one HTTPS origin through the frontend/Caddy
   service in Coolify Docker Compose (ADR-003/ADR-005)
 
+## Optional Make Convenience
+
+Repository root contains an optional Make interface for common local developer
+workflows. It requires GNU Make, Docker Compose, uv and pnpm to be installed;
+it does not install system tools or replace the direct commands documented
+below.
+
+```bash
+make help
+make install
+make check
+make dev-up
+make dev-down
+```
+
+`make dev-up` creates a missing `.env` and creates Authentik secrets only when
+`.env.authentik.local` is missing. Existing local Authentik secrets are reused,
+and the local TLS material is validated or created without overwriting it. The
+target then starts the local stack, applies pending migrations and applies the
+idempotent development seed. It uses local Docker resources only. Production,
+Entra, release, rollback, baseline, reset and destructive cleanup operations
+are intentionally not available through Make.
+
 Frontendin voi ajaa Dockerissa:
 
 ```bash

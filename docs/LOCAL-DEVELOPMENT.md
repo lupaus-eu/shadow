@@ -117,6 +117,35 @@ Paikallinen ympäristö ajetaan Docker-konteissa:
 - Authentik server and worker containers, loopback-only TLS Caddy plus a
   dedicated PostgreSQL container
 
+## Optional Make Convenience
+
+Repository-juuren `Makefile` kokoaa tavalliset paikalliset kehitysworkflowt
+valinnaisiksi convenience-targeteiksi. Se edellyttää GNU Makea, Docker Composea,
+uv:tä ja pnpm:ää; se ei asenna host-työkaluja eikä korvaa alla dokumentoituja
+suoria komentoja.
+
+```bash
+make help
+make install
+make check
+make dev-up
+make dev-down
+```
+
+`make dev-init` luo `.env`-tiedoston `.env.example`-pohjasta vain jos se
+puuttuu. Jos `.env.authentik.local` puuttuu, se luo Authentik-salaisuudet
+olemassa olevalla setup-skriptillä. Muussa tapauksessa se säilyttää olemassa
+olevat salaisuudet ja varmistaa paikallisen TLS-materiaalin. `make dev-up` ajaa
+dokumentoidun full-stack bootstrapin järjestyksessä: init,
+prerequisite-palvelut, migraatiot, dev-seed ja koko stack. `make dev-down`
+pysäyttää kontit mutta säilyttää volumet.
+
+Käytettävissä ovat myös `make db-up`, `make migrate`, `make seed`,
+`make preview-up`, `make diagrams`, `make auth-smoke` ja `make auth-verify`.
+`make seed` ajaa aina ensin migraatiot. Targetit käyttävät vain paikallista
+Compose-ympäristöä. Tuotanto-, Entra-, release-, rollback-, baseline-, reset-
+ja tuhoavia cleanup-toimintoja ei ole tarkoituksella Make-käyttöliittymässä.
+
 Tuoreesta checkoutista koko paikallinen ympäristö käynnistetään näin:
 
 ```bash

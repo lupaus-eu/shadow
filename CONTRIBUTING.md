@@ -115,6 +115,19 @@ uv run pytest
 uv run pyright
 ```
 
+Valinnaisena repository-juuren Make-käyttöliittymä kokoaa samat tarkistukset:
+
+```bash
+make backend-check
+make frontend-check
+make check
+```
+
+`make install` asentaa backend- ja frontend-riippuvuudet eksplisiittisesti.
+Tarkistustargetit eivät asenna riippuvuuksia automaattisesti. Säilytä yllä
+olevat suorat komennot ensisijaisena dokumentoituna lähteenä ja käytä
+`make help`-komentoa paikallisten, turvallisten kehitystargetien tarkasteluun.
+
 Frontendin oletustarkistukset:
 
 ```bash
