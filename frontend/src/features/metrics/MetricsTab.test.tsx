@@ -220,6 +220,69 @@ describe("MetricsTab", () => {
     expect(screen.queryByText("Revenue")).not.toBeInTheDocument();
   });
 
+  it("keeps a derived-value date visible only while derived metrics are shown", async () => {
+    const derivedOnly: TimeserieDto = {
+      ...baseTimeseries[0],
+      id: "derived-only",
+      name: "Derived only",
+      isDerived: true,
+      derivedFormula: "revenue * 2",
+      values: [{ date: "2030-03-01", value: 6000 }]
+    };
+    vi.mocked(timeseriesApi.fetchTimeseries).mockResolvedValueOnce([derivedOnly]);
+    renderMetricsTab();
+
+    const derivedCell = await screen.findByLabelText("Derived only 2030-03-01");
+    expect(derivedCell).toBeDisabled();
+    expect(
+      screen.getByRole("columnheader", { name: "2030-03-01" })
+    ).toBeInTheDocument();
+
+    const filters = screen.getByRole("group", { name: "Filter by" });
+    const derived = within(filters).getByRole("checkbox", { name: "Derived metrics" });
+    fireEvent.click(derived);
+
+    expect(
+      screen.queryByRole("columnheader", { name: "2030-03-01" })
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(derived);
+    expect(
+      screen.getByRole("columnheader", { name: "2030-03-01" })
+    ).toBeInTheDocument();
+  });
+
+  it("hides manually added dates that every visible timeserie treats as read-only", async () => {
+    vi.mocked(timeseriesApi.fetchTimeseries).mockResolvedValueOnce([
+      {
+        ...baseTimeseries[0],
+        id: "annual-revenue",
+        timeUnit: "year",
+        values: [{ date: "2030-01-01", value: 1000 }]
+      },
+      {
+        ...baseTimeseries[1],
+        id: "weekly-capacity",
+        values: [{ date: "2030-01-07", value: true }]
+      }
+    ]);
+    renderMetricsTab();
+
+    await screen.findByLabelText("Revenue 2030-01-01");
+    fireEvent.change(screen.getByLabelText("Date column"), {
+      target: { value: "2030-01-02" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add date" }));
+
+    expect(
+      screen.queryByRole("columnheader", { name: "2030-01-02" })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("columnheader", { name: "2030-01-01" })
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Revenue 2030-01-01")).toBeEnabled();
+  });
+
   it("filters displayed dates without omitting hidden values from a row save", async () => {
     renderMetricsTab();
 

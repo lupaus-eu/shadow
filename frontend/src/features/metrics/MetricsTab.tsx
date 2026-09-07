@@ -312,6 +312,33 @@ function filterDateColumns(
   );
 }
 
+function isDateCellEditable(timeserie: TimeserieDto, date: string): boolean {
+  return (
+    timeserie.isDerived !== true &&
+    isValidStartDateForTimeUnit(date, timeserie.timeUnit)
+  );
+}
+
+function hasDerivedValueForDate(timeserie: TimeserieDto, date: string): boolean {
+  return (
+    timeserie.isDerived === true &&
+    timeserie.values.some((value) => value.date === date)
+  );
+}
+
+function filterActionableDateColumns(
+  columns: string[],
+  timeseries: TimeserieDto[]
+): string[] {
+  return columns.filter((date) =>
+    timeseries.some(
+      (timeserie) =>
+        isDateCellEditable(timeserie, date) ||
+        hasDerivedValueForDate(timeserie, date)
+    )
+  );
+}
+
 function clampMetricsCellWidth(value: number): number {
   return Math.min(MAX_METRICS_CELL_WIDTH, Math.max(MIN_METRICS_CELL_WIDTH, value));
 }
@@ -462,10 +489,6 @@ export default function MetricsTab(props: { orgId: string }) {
     () => buildDateColumns(timeseries, manualDates),
     [manualDates, timeseries]
   );
-  const visibleDateColumns = useMemo(
-    () => filterDateColumns(allDateColumns, fromDate, untilDate),
-    [allDateColumns, fromDate, untilDate]
-  );
   const displayedTimeseries = useMemo(
     () =>
       sortTimeseriesForDisplay(
@@ -477,6 +500,14 @@ export default function MetricsTab(props: { orgId: string }) {
         sortValue
       ),
     [selectedFilters, sortValue, timeseries]
+  );
+  const visibleDateColumns = useMemo(
+    () =>
+      filterActionableDateColumns(
+        filterDateColumns(allDateColumns, fromDate, untilDate),
+        displayedTimeseries
+      ),
+    [allDateColumns, displayedTimeseries, fromDate, untilDate]
   );
   const dirtyRows = useMemo(
     () =>
@@ -1287,12 +1318,13 @@ function CellEditor(props: {
   disabled: boolean;
 }) {
   const label = `${props.timeserie.name} ${props.date}`;
-  const isEditable = isValidStartDateForTimeUnit(
+  const isEditable = isDateCellEditable(props.timeserie, props.date);
+  const isValidTimeUnitDate = isValidStartDateForTimeUnit(
     props.date,
     props.timeserie.timeUnit
   );
 
-  if (!isEditable) {
+  if (!isValidTimeUnitDate) {
     return (
       <span
         className="metrics-grid__readonly"
@@ -1311,7 +1343,7 @@ function CellEditor(props: {
         aria-label={label}
         value={props.value}
         onChange={(event) => props.onChange(event.target.value)}
-        disabled={props.disabled}
+        disabled={props.disabled || !isEditable}
       >
         <option value=""></option>
         <option value="true">true</option>
@@ -1329,7 +1361,7 @@ function CellEditor(props: {
       aria-label={label}
       value={props.value}
       onChange={(event) => props.onChange(event.target.value)}
-      disabled={props.disabled}
+      disabled={props.disabled || !isEditable}
     />
   );
 }

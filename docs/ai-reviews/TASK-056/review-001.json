@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-056/review-001",
+  "task": {
+    "id": "TASK-056",
+    "path": "tasks/TASK-056-hide-read-only-metrics-date-columns.md"
+  },
+  "round": 1,
+  "reviewed_at": "2026-09-07T14:32:34Z",
+  "reviewer": {
+    "label": "Codex self-review"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "3839d81693e56cb2d6deaad76a46a02058665c05",
+    "head_sha": "1662c90623debf0c1435a80c5a33397e44d2e67f",
+    "comparison": "3839d81693e56cb2d6deaad76a46a02058665c05...1662c90623debf0c1435a80c5a33397e44d2e67f",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "clean",
+    "summary": "No findings in the scoped Metrics date-column projection. Reviewed the visible-row filtering, derived-value exception, cell editability consistency, hidden-date save safety, task scope and frontend regressions. The change preserves the full date collection for drafts and replacement payloads, adds no dependencies or backend changes, and frontend lint, tests and build passed.",
+    "findings": [],
+    "prior_finding_dispositions": []
+  }
+}
