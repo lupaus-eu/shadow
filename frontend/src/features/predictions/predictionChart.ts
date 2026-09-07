@@ -27,27 +27,45 @@ export type PredictionMetricChart = {
   unit: string;
   lines: PredictionChartLine[];
   missingModelKinds: string[];
+  realityMessage: string | null;
 };
 
 export function formatModelKind(kind: string): string {
   return kind.replaceAll("_", " ");
 }
 
-export function predictionChartAxisTicks(dates: string[]): Array<{
+export function predictionChartAxisTicks(dates: string[], plotWidth = 646): Array<{
   date: string;
   label: string;
   isFirst: boolean;
   isYearBoundary: boolean;
   year: string;
+  showDateLabel: boolean;
+  showYearLabel: boolean;
 }> {
+  const spacing = dates.length > 1 ? plotWidth / (dates.length - 1) : 0;
+  let labelCount = Math.min(dates.length, 22);
+  // Rounding sampled indices must not squeeze adjacent labels below 36 units.
+  while (labelCount > 2 && Math.floor((dates.length - 1) / (labelCount - 1)) * spacing < 36) {
+    labelCount--;
+  }
+  const labelledIndices = new Set(Array.from({ length: labelCount }, (_, index) =>
+    labelCount < 2 ? 0 : Math.round(index * (dates.length - 1) / (labelCount - 1))
+  ));
+  let lastYearPosition = -Infinity;
   return dates.map((date, index) => {
     const year = date.slice(0, 4);
+    const isYearBoundary = index > 0 && year !== dates[index - 1].slice(0, 4);
+    const showYearLabel = (index === 0 || isYearBoundary) && index * spacing - lastYearPosition >= 36;
+    if (showYearLabel) lastYearPosition = index * spacing;
     return {
       date,
       label: date.slice(5, 10),
       isFirst: index === 0,
-      isYearBoundary: index > 0 && year !== dates[index - 1].slice(0, 4),
-      year
+      isYearBoundary,
+      year,
+      showDateLabel: labelledIndices.has(index),
+      showYearLabel
     };
   });
 }
@@ -123,6 +141,21 @@ export function buildPredictionMetricCharts(args: {
   realityTimeseries: TimeserieDto[];
   includeReality: boolean;
 }): PredictionMetricChart[] {
+  const ranges = new Map<string, { start: string; end: string }>();
+  for (const version of args.versions) {
+    if (!args.selectedVersionIds.has(version.id)) continue;
+    for (const target of version.targets) {
+      if (!args.selectedScenarioIds.has(target.scenarioId) || !args.selectedMetricIds.has(target.metricId)) continue;
+      const range = ranges.get(target.metricId);
+      ranges.set(target.metricId, {
+        start: range && range.start < version.startDate ? range.start : version.startDate,
+        end: range && range.end > version.endDate ? range.end : version.endDate
+      });
+    }
+  }
+  const includesPlotDate = (metricId: string, date: string) => includesDate(
+    date, args.startDate || ranges.get(metricId)!.start, args.endDate || ranges.get(metricId)!.end
+  );
   const charts = new Map<string, PredictionMetricChart>();
   for (const version of args.versions) {
     if (!args.selectedVersionIds.has(version.id)) continue;
@@ -138,7 +171,8 @@ export function buildPredictionMetricCharts(args: {
         metricName: target.metricName,
         unit: target.unit ?? "no unit",
         lines: [],
-        missingModelKinds: []
+        missingModelKinds: [],
+        realityMessage: null
       };
       charts.set(target.metricId, chart);
       for (const result of target.results) {
@@ -148,8 +182,8 @@ export function buildPredictionMetricCharts(args: {
           target,
           result,
           args.scenarioNames.get(target.scenarioId) ?? target.scenarioId,
-          args.startDate,
-          args.endDate
+          args.startDate || ranges.get(target.metricId)!.start,
+          args.endDate || ranges.get(target.metricId)!.end
         );
         if (line.points.length) chart.lines.push(line);
       }
@@ -161,14 +195,20 @@ export function buildPredictionMetricCharts(args: {
       const reality = args.realityTimeseries.find(
         (timeserie) => timeserie.id === chart.metricId && timeserie.valueUnit === "number"
       );
-      if (!reality) continue;
+      if (!reality) {
+        chart.realityMessage = "No matching numeric current Reality series for this metric.";
+        continue;
+      }
       const points = reality.values
         .filter(
           (point): point is { date: string; value: number } =>
-            typeof point.value === "number" && includesDate(point.date, args.startDate, args.endDate)
+            typeof point.value === "number" && Number.isFinite(point.value) && includesPlotDate(chart.metricId, point.date)
         )
         .map((point) => ({ date: point.date, value: point.value, lowerBound: null, upperBound: null }));
-      if (!points.length) continue;
+      if (!points.length) {
+        chart.realityMessage = "No current Reality observations in the displayed period.";
+        continue;
+      }
       chart.lines.unshift({
         id: `reality:${chart.metricId}`,
         label: `Current Reality · manually entered realized data · ${reality.name}`,

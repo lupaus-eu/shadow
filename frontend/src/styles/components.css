@@ -891,10 +891,8 @@
   gap: var(--space-3);
 }
 
-.prediction-chart > header span {
-  color: var(--color-text-secondary);
+.prediction-chart__unit {
   font-family: var(--font-mono);
-  font-size: var(--text-meta-size);
 }
 
 .prediction-chart svg {
@@ -940,6 +938,10 @@
 
 .prediction-chart__line--reality {
   stroke-width: 3.5;
+}
+
+.prediction-chart__point-hit-target {
+  pointer-events: all;
 }
 
 .prediction-chart__no-results {

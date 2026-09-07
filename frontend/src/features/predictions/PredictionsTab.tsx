@@ -83,8 +83,9 @@ export default function PredictionsTab(props: { orgId: string }) {
   const [plotStartDate, setPlotStartDate] = useState("");
   const [plotEndDate, setPlotEndDate] = useState("");
   const [includeReality, setIncludeReality] = useState(false);
-  const [realityTimeseries, setRealityTimeseries] = useState<TimeserieDto[]>([]);
-  const [realityError, setRealityError] = useState("");
+  const [realityResult, setRealityResult] = useState<{
+    orgId: string; scenarioId: string; timeseries: TimeserieDto[]; error: string;
+  } | null>(null);
 
   const targetScenarios = useMemo(
     () => scenarios,
@@ -103,6 +104,8 @@ export default function PredictionsTab(props: { orgId: string }) {
     () => scenarios.find((scenario) => scenario.protected || scenario.id === "reality"),
     [scenarios]
   );
+  const currentReality = includeReality && realityResult?.orgId === props.orgId &&
+    realityResult.scenarioId === realityScenario?.id ? realityResult : null;
   const scenarioNames = useMemo(
     () => new Map(comparisonScenarios),
     [comparisonScenarios]
@@ -188,14 +191,18 @@ export default function PredictionsTab(props: { orgId: string }) {
   useEffect(() => {
     if (!includeReality || !realityScenario) return;
     const controller = new AbortController();
+    let cancelled = false;
+    const source = { orgId: props.orgId, scenarioId: realityScenario.id };
     void fetchTimeseries(props.orgId, realityScenario.id, controller.signal)
-      .then(setRealityTimeseries)
+      .then((timeseries) => {
+        if (!cancelled) setRealityResult({ ...source, timeseries, error: "" });
+      })
       .catch((loadError: unknown) => {
-        if ((loadError as { name?: string }).name !== "AbortError") {
-          setRealityError(`Could not load current Reality data. ${errorMessage(loadError)}`);
+        if (!cancelled && (loadError as { name?: string }).name !== "AbortError") {
+          setRealityResult({ ...source, timeseries: [], error: `Could not load current Reality data. ${errorMessage(loadError)}` });
         }
       });
-    return () => controller.abort();
+    return () => { cancelled = true; controller.abort(); };
   }, [includeReality, props.orgId, realityScenario]);
 
   const allModelKinds = useMemo(
@@ -219,9 +226,9 @@ export default function PredictionsTab(props: { orgId: string }) {
     scenarioNames,
     startDate: plotStartDate,
     endDate: plotEndDate,
-    realityTimeseries,
-    includeReality
-  }), [includeReality, plotEndDate, plotStartDate, realityTimeseries, scenarioNames, selectedMetricIds, selectedModelKinds, selectedScenarioFilter, selectedVersionIds, versions]);
+    realityTimeseries: currentReality?.timeseries ?? [],
+    includeReality: currentReality !== null && !currentReality.error
+  }), [currentReality, plotEndDate, plotStartDate, scenarioNames, selectedMetricIds, selectedModelKinds, selectedScenarioFilter, selectedVersionIds, versions]);
 
   function invalidatePreflight() {
     setPreflight(null);
@@ -364,7 +371,7 @@ export default function PredictionsTab(props: { orgId: string }) {
         {preflight ? <PreflightResults preflight={preflight} manualPeriods={manualPeriods} onManualPeriodChange={(metricId, value) => setManualPeriods((current) => ({ ...current, [metricId]: value }))} /> : null}
       </section>
     </div>
-    <section className="detail-card detail-card--spacious predictions-panel predictions-plots" aria-labelledby="plots-heading"><h2 id="plots-heading">Compare saved results</h2><div className="predictions-filters"><div className="predictions-filter-groups"><MultiSelectDropdown title="Versions" searchable borderless items={versions.map((version) => [version.id, `${version.name} (${version.confidenceLevel}% prediction interval)`])} selected={selectedVersionIds} onChange={setSelectedVersionIds} allLabel="All saved versions" allSelectedSummary="All saved versions" emptySummary="No saved versions selected" /><ScenarioMultiSelect borderless items={comparisonScenarios} selected={selectedScenarioFilter} onChange={setSelectedScenarioFilter} /><MultiSelectDropdown title="Models and baselines" borderless items={allModelKinds.map((kind) => [kind, formatModelKind(kind)])} selected={selectedModelKinds} onChange={setSelectedModelKinds} allLabel="All models and baselines" /><MultiSelectDropdown title="Numeric metrics" searchable borderless items={allMetrics.map(([id, metric]) => [id, `${metric.name} (${metric.unit ?? "no unit"})`])} selected={selectedMetricIds} onChange={setSelectedMetricIds} allLabel="All numeric metrics" allSelectedSummary="All numeric metrics" /></div><div className="predictions-plot-controls"><span className="form-label">Plot date range</span><div className="predictions-plot-dates"><label className="predictions-date-field">Start date<input aria-label="Plot start date" className="input date-input" type="date" value={plotStartDate} onChange={(event) => setPlotStartDate(event.target.value)} /></label><label className="predictions-date-field">End date<input aria-label="Plot end date" className="input date-input" type="date" value={plotEndDate} onChange={(event) => setPlotEndDate(event.target.value)} /></label></div><label className="predictions-check"><input type="checkbox" checked={includeReality} onChange={(event) => { setIncludeReality(event.target.checked); setRealityError(""); }} /> Include current Reality (manually entered realized data)</label></div></div>{realityError ? <p className="alert alert--danger" role="alert">{realityError}</p> : null}{charts.length ? <div className="predictions-chart-grid">{charts.map((chart) => <MetricChart key={chart.metricId} metricName={chart.metricName} unit={chart.unit} lines={chart.lines} missingModelKinds={chart.missingModelKinds} />)}</div> : <div className="empty-state" role="status"><p>Select saved versions, scenarios, models and metrics with available numeric points to plot them.</p></div>}</section>
+    <section className="detail-card detail-card--spacious predictions-panel predictions-plots" aria-labelledby="plots-heading"><h2 id="plots-heading">Compare saved results</h2><div className="predictions-filters"><div className="predictions-filter-groups"><MultiSelectDropdown title="Versions" searchable borderless items={versions.map((version) => [version.id, `${version.name} (${version.confidenceLevel}% prediction interval)`])} selected={selectedVersionIds} onChange={setSelectedVersionIds} allLabel="All saved versions" allSelectedSummary="All saved versions" emptySummary="No saved versions selected" /><ScenarioMultiSelect borderless items={comparisonScenarios} selected={selectedScenarioFilter} onChange={setSelectedScenarioFilter} /><MultiSelectDropdown title="Models and baselines" borderless items={allModelKinds.map((kind) => [kind, formatModelKind(kind)])} selected={selectedModelKinds} onChange={setSelectedModelKinds} allLabel="All models and baselines" /><MultiSelectDropdown title="Numeric metrics" searchable borderless items={allMetrics.map(([id, metric]) => [id, `${metric.name} (${metric.unit ?? "no unit"})`])} selected={selectedMetricIds} onChange={setSelectedMetricIds} allLabel="All numeric metrics" allSelectedSummary="All numeric metrics" /></div><div className="predictions-plot-controls"><span className="form-label">Plot date range</span><div className="predictions-plot-dates"><label className="predictions-date-field">Start date<input aria-label="Plot start date" className="input date-input" type="date" value={plotStartDate} onChange={(event) => setPlotStartDate(event.target.value)} /></label><label className="predictions-date-field">End date<input aria-label="Plot end date" className="input date-input" type="date" value={plotEndDate} onChange={(event) => setPlotEndDate(event.target.value)} /></label></div><label className="predictions-check"><input type="checkbox" checked={includeReality} onChange={(event) => { setIncludeReality(event.target.checked); setRealityResult(null); }} /> Include current Reality (manually entered realized data)</label></div></div>{currentReality?.error ? <p className="alert alert--danger" role="alert">{currentReality.error}</p> : null}{includeReality && realityScenario && !currentReality ? <p role="status">Loading current Reality data…</p> : null}{charts.length ? <div className="predictions-chart-grid">{charts.map((chart) => <MetricChart key={chart.metricId} metricName={chart.metricName} unit={chart.unit} lines={chart.lines} missingModelKinds={chart.missingModelKinds} realityMessage={chart.realityMessage} />)}</div> : <div className="empty-state" role="status"><p>Select saved versions, scenarios, models and metrics with available numeric points to plot them.</p></div>}</section>
   </section>;
 }
 
@@ -478,10 +485,9 @@ function formatSeriesList(items: string[]): string {
   return `${items.slice(0, -1).join(", ")}, and ${items.at(-1)}`;
 }
 
-function MetricChart(props: { metricName: string; unit: string; lines: PredictionChartLine[]; missingModelKinds: string[] }) {
+function MetricChart(props: { metricName: string; unit: string; lines: PredictionChartLine[]; missingModelKinds: string[]; realityMessage: string | null }) {
   const points = props.lines.flatMap((line) => line.points.map((point) => ({ ...point, line })));
   const dates = [...new Set(points.map((point) => point.date))].sort();
-  const axisTicks = predictionChartAxisTicks(dates);
   const values = points.flatMap((point) => [
     point.value,
     ...(point.lowerBound === null || point.upperBound === null
@@ -489,7 +495,8 @@ function MetricChart(props: { metricName: string; unit: string; lines: Predictio
       : [point.lowerBound, point.upperBound])
   ]);
   const min = values.length ? Math.min(...values) : 0; const max = values.length ? Math.max(...values) : 1; const span = max - min || 1;
-  const width = 720; const height = 260; const padding = { top: 18, right: 18, bottom: 34, left: 56 };
+  const width = 720; const height = 260; const padding = { top: 38, right: 18, bottom: 34, left: 56 };
+  const axisTicks = predictionChartAxisTicks(dates, width - padding.left - padding.right);
   const x = (date: string) => padding.left + (dates.length < 2 ? (width - padding.left - padding.right) / 2 : (dates.indexOf(date) / (dates.length - 1)) * (width - padding.left - padding.right));
   const y = (value: number) => height - padding.bottom - ((value - min) / span) * (height - padding.top - padding.bottom);
   const lineColor = (line: PredictionChartLine, index: number) =>
@@ -502,11 +509,47 @@ function MetricChart(props: { metricName: string; unit: string; lines: Predictio
     return `${estimate}, lower bound ${point.lowerBound} ${props.unit}, upper bound ${point.upperBound} ${props.unit}, saved ${line.confidenceLevel}% prediction interval`;
   };
 
-  return <article className="prediction-chart"><header><h3>{props.metricName}</h3><span>{props.unit}</span></header><svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${props.metricName} prediction comparison chart in ${props.unit}`}><line className="prediction-chart__axis" x1={padding.left} x2={padding.left} y1={padding.top} y2={height - padding.bottom} /><line className="prediction-chart__axis" x1={padding.left} x2={width - padding.right} y1={height - padding.bottom} y2={height - padding.bottom} /><text x="4" y={padding.top + 4}>{max.toPrecision(5)}</text><text x="4" y={height - padding.bottom}>{min.toPrecision(5)}</text>{axisTicks.filter((tick) => tick.isYearBoundary).map((tick) => <line className="prediction-chart__year-boundary" key={`year-boundary:${tick.date}`} x1={x(tick.date)} x2={x(tick.date)} y1={padding.top} y2={height - padding.bottom} />)}{axisTicks.filter((tick) => tick.isFirst || tick.isYearBoundary).map((tick) => <text className="prediction-chart__year" key={`year:${tick.date}`} x={x(tick.date)} y={height - 4} textAnchor="middle">{tick.year}</text>)}{props.lines.map((line, index) => {
-    const bandPath = line.predictionIntervalStatus === "available" &&
-      (line.modelKind === "mlforecast" || line.modelKind === "sarima")
-      ? predictionIntervalBandPath(line.points, x, y)
-      : null;
-    return bandPath ? <path className="prediction-chart__interval-band" key={`band:${line.id}`} fill={lineColor(line, index)} d={bandPath}><title>{`${line.label}: saved ${line.confidenceLevel}% prediction interval.`}</title></path> : null;
-  })}{props.lines.map((line, index) => { const path = line.points.map((point, pointIndex) => `${pointIndex ? "L" : "M"}${x(point.date)} ${y(point.value)}`).join(" "); return <g key={line.id}><path className={line.kind === "reality" ? "prediction-chart__line prediction-chart__line--reality" : "prediction-chart__line"} stroke={lineColor(line, index)} strokeDasharray={line.strokeDasharray} d={path}><title>{line.provenance}</title></path>{line.points.map((point) => <circle key={`${line.id}:${point.date}`} cx={x(point.date)} cy={y(point.value)} r="3" fill={lineColor(line, index)}><title>{pointTitle(line, point)}</title></circle>)}</g>; })}{axisTicks.map((tick) => <text className="prediction-chart__date" key={tick.date} x={x(tick.date)} y={height - 18} textAnchor="middle">{tick.label}</text>)}</svg>{props.missingModelKinds.length ? <p className="prediction-chart__no-results" role="status">No results to show for: {formatSeriesList(props.missingModelKinds.map(formatModelKind))}.</p> : null}<ul className="prediction-chart__legend">{props.lines.map((line, index) => <li key={line.id}><span className={line.kind === "reality" ? "prediction-chart__swatch prediction-chart__swatch--reality" : "prediction-chart__swatch"} style={line.kind === "reality" ? undefined : { backgroundColor: lineColor(line, index) }} /> <strong>{line.label}</strong><small>{line.provenance}</small></li>)}</ul></article>;
+  return <article className="prediction-chart">
+    <header><h3>{props.metricName}</h3></header>
+    <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${props.metricName} prediction comparison chart in ${props.unit}`}>
+      <text className="prediction-chart__unit" x="8" y="18">{props.unit}</text>
+      <line className="prediction-chart__axis" x1={padding.left} x2={padding.left} y1={padding.top} y2={height - padding.bottom} />
+      <line className="prediction-chart__axis" x1={padding.left} x2={width - padding.right} y1={height - padding.bottom} y2={height - padding.bottom} />
+      <text x="4" y={padding.top + 4}>{max.toPrecision(5)}</text>
+      <text x="4" y={height - padding.bottom}>{min.toPrecision(5)}</text>
+      {axisTicks.filter((tick) => tick.isYearBoundary).map((tick) =>
+        <line className="prediction-chart__year-boundary" key={`year-boundary:${tick.date}`} x1={x(tick.date)} x2={x(tick.date)} y1={padding.top} y2={height - padding.bottom} />)}
+      {axisTicks.filter((tick) => tick.showYearLabel).map((tick) =>
+        <text className="prediction-chart__year" key={`year:${tick.date}`} x={x(tick.date)} y={height - 4} textAnchor="middle">{tick.year}</text>)}
+      {props.lines.map((line, index) => {
+        const bandPath = line.predictionIntervalStatus === "available" &&
+          (line.modelKind === "mlforecast" || line.modelKind === "sarima")
+          ? predictionIntervalBandPath(line.points, x, y)
+          : null;
+        return bandPath ? <path className="prediction-chart__interval-band" key={`band:${line.id}`} fill={lineColor(line, index)} d={bandPath}>
+          <title>{`${line.label}: saved ${line.confidenceLevel}% prediction interval.`}</title>
+        </path> : null;
+      })}
+      {props.lines.map((line, index) => {
+        const path = line.points.map((point, pointIndex) => `${pointIndex ? "L" : "M"}${x(point.date)} ${y(point.value)}`).join(" ");
+        const showDots = line.points.length < 100;
+        return <g key={line.id} data-series-id={line.id}>
+          <path className={line.kind === "reality" ? "prediction-chart__line prediction-chart__line--reality" : "prediction-chart__line"} stroke={lineColor(line, index)} strokeDasharray={line.strokeDasharray} d={path}>
+            <title>{line.provenance}</title>
+          </path>
+          {line.points.map((point) => <circle key={`${line.id}:${point.date}`} cx={x(point.date)} cy={y(point.value)} r="3" className={showDots ? "prediction-chart__point" : "prediction-chart__point-hit-target"} fill={showDots ? lineColor(line, index) : "transparent"}>
+            <title>{pointTitle(line, point)}</title>
+          </circle>)}
+        </g>;
+      })}
+      {axisTicks.filter((tick) => tick.showDateLabel).map((tick) =>
+        <text className="prediction-chart__date" key={tick.date} x={x(tick.date)} y={height - 18} textAnchor="middle">{tick.label}</text>)}
+    </svg>
+    {props.realityMessage ? <p className="prediction-chart__no-results" role="status">{props.realityMessage}</p> : null}
+    {props.missingModelKinds.length ? <p className="prediction-chart__no-results" role="status">No results to show for: {formatSeriesList(props.missingModelKinds.map(formatModelKind))}.</p> : null}
+    <ul className="prediction-chart__legend">{props.lines.map((line, index) => <li key={line.id}>
+      <span className={line.kind === "reality" ? "prediction-chart__swatch prediction-chart__swatch--reality" : "prediction-chart__swatch"} style={line.kind === "reality" ? undefined : { backgroundColor: lineColor(line, index) }} />
+      <strong>{line.label}</strong><small>{line.provenance}</small>
+    </li>)}</ul>
+  </article>;
 }

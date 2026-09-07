@@ -426,6 +426,38 @@ Manual QA:
 
 ---
 
+# Predictions Chart Comparison (TASK-055)
+
+Prediction charts retain every displayed point while thinning date labels to
+at most 22, at least 36 SVG units apart, including both endpoints. Year guides
+remain independent of date labels; colliding year captions are omitted. Each
+line hides visible dots at 100 filtered points but retains hover details.
+Units appear inside the white graph area above the plot.
+
+Each metric defaults to the earliest start and latest end of its selected
+versions in selected scenarios. Plot start/end inputs independently override
+these inclusive bounds for both predictions and live Reality. Reality empty
+messages appear only after a successful fetch; a matching numeric series with
+no displayed observations has a different message from a missing series.
+
+Manual/visual QA at desktop and narrow viewport widths:
+
+- Compare 23, 100 and 365 dates across a year boundary; check date/year labels,
+  endpoints, unit placement, complete lines and interval bands.
+- Compare sparse and dense prediction/Reality lines together; filter a dense
+  line below 100 points and confirm dots return. Hover to inspect dated values,
+  units, provenance and available interval bounds.
+- Enable Reality with dates before, within and after the forecast period.
+  Confirm overlapping values render and outside values do not stretch the
+  default range. Expand either plot bound, then toggle Reality off.
+- Select overlapping versions, change scenario/metric selections, and verify
+  per-metric ranges. Check missing-series, no-observation, loading and failed
+  request states without mistaking an empty result for a fetch failure.
+
+Run `pnpm lint`, `pnpm test` and `pnpm build` from `frontend/`.
+
+---
+
 # Test Levels
 
 Use the lightest useful test level.

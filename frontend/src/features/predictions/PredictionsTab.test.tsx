@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PredictionVersionDetailDto } from "../../api/predictions";
 import PredictionsTab from "./PredictionsTab";
@@ -297,4 +297,119 @@ describe("PredictionsTab", () => {
     unmount();
     expect(requestSignal?.aborted).toBe(true);
   });
+
+  it.each([99, 100, 101])("renders %i-point lines with independent marker thresholds and hover details", async (count) => {
+    const points = Array.from({ length: count }, (_, index) => ({
+      date: new Date(Date.UTC(2025, 11, 31 + index)).toISOString().slice(0, 10),
+      value: index + 30, lowerBound: index + 20, upperBound: index + 40
+    }));
+    const dense = {
+      ...version, startDate: points[0].date, endDate: points.at(-1)!.date,
+      targets: [{ ...version.targets[0], timeUnit: "day" as const, results: [
+        { ...version.targets[0].results[0], kind: "mlforecast", predictionIntervalStatus: "available" as const, points },
+        { ...version.targets[0].results[0], points: [points[0], points.at(-1)!] }
+      ] }]
+    };
+    api.fetchPredictions.mockResolvedValueOnce([dense]);
+    api.fetchPrediction.mockResolvedValueOnce(dense);
+    api.fetchTimeseries.mockResolvedValueOnce([{ id: "revenue", name: "Revenue", unit: "EUR",
+      valueUnit: "number", timeUnit: "day", values: points.map(({ date, value }) => ({ date, value: value - 1 })) }]);
+    const { container } = render(<PredictionsTab orgId="acme" />);
+    const svg = await screen.findByRole("img", { name: /Revenue prediction comparison chart/ });
+    const fitted = svg.querySelector('[data-series-id="version-1:future:revenue:mlforecast"]')!;
+    const sparse = svg.querySelector('[data-series-id="version-1:future:revenue:naive"]')!;
+    expect(fitted.querySelectorAll('.prediction-chart__point')).toHaveLength(count < 100 ? count : 0);
+    expect(fitted.querySelectorAll('.prediction-chart__point-hit-target')).toHaveLength(count >= 100 ? count : 0);
+    expect(sparse.querySelectorAll('.prediction-chart__point')).toHaveLength(2);
+    expect(fitted.querySelector('path')?.getAttribute('d')?.match(/[ML]/g)).toHaveLength(count);
+    expect(fitted.querySelector('circle')).toHaveAttribute('cx', '56');
+    expect(fitted.querySelector('circle')?.getAttribute('fill')).toBe(count >= 100 ? 'transparent' : '#c94a11');
+    expect(fitted.querySelector('circle title')).toHaveTextContent(/2025-12-31, point estimate 30 EUR, lower bound 20 EUR, upper bound 40 EUR, saved 80% prediction interval/);
+    const band = svg.querySelector('.prediction-chart__interval-band')!;
+    expect(band.compareDocumentPosition(fitted) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(svg.querySelector('.prediction-chart__unit')).toHaveTextContent('EUR');
+    expect(container.querySelector('.prediction-chart > header')).not.toHaveTextContent('EUR');
+    const labels = svg.querySelectorAll('.prediction-chart__date');
+    expect(labels.length).toBeLessThanOrEqual(22);
+    expect(labels[0]).toHaveTextContent('12-31');
+    expect(labels[labels.length - 1]).toHaveTextContent(points.at(-1)!.date.slice(5));
+    expect(svg.querySelectorAll('.prediction-chart__year-boundary')).toHaveLength(1);
+    expect(svg.querySelectorAll('.prediction-chart__year')).toHaveLength(1);
+
+    fireEvent.click(screen.getByLabelText(/Include current Reality/));
+    await waitFor(() => expect(svg.querySelector('[data-series-id="reality:revenue"]')).toBeInTheDocument());
+    const reality = svg.querySelector('[data-series-id="reality:revenue"]')!;
+    expect(reality.querySelectorAll('.prediction-chart__point')).toHaveLength(count < 100 ? count : 0);
+    expect(reality.querySelectorAll('.prediction-chart__point-hit-target')).toHaveLength(count >= 100 ? count : 0);
+    fireEvent.change(screen.getByLabelText('Plot end date'), { target: { value: points[1].date } });
+    expect(fitted.querySelectorAll('.prediction-chart__point')).toHaveLength(2);
+    expect(reality.querySelectorAll('.prediction-chart__point')).toHaveLength(2);
+    expect(sparse.querySelectorAll('.prediction-chart__point')).toHaveLength(1);
+  });
+
+  it("plots overlapping Reality observations despite extra dates and removes the layer when unchecked", async () => {
+    api.fetchTimeseries.mockResolvedValueOnce([{ id: "revenue", name: "Revenue", unit: "EUR",
+      valueUnit: "number", timeUnit: "day", values: [
+        { date: "2025-01-01", value: -100 }, { date: "2026-01-10", value: 28 },
+        { date: "2026-02-10", value: 32 }, { date: "2027-01-01", value: 1000 }
+      ] }]);
+    render(<PredictionsTab orgId="acme" />);
+    const svg = await screen.findByRole('img', { name: /Revenue prediction comparison chart/ });
+    const toggle = screen.getByLabelText(/Include current Reality/);
+    fireEvent.click(toggle);
+    await waitFor(() => expect(svg.querySelector('.prediction-chart__line--reality')).toBeInTheDocument());
+    expect(svg.querySelector('.prediction-chart__line--reality')).toHaveAttribute('d', 'M56 226 L702 100.66666666666667');
+    const dots = svg.querySelectorAll('[data-series-id="reality:revenue"] circle');
+    expect(dots).toHaveLength(2);
+    expect(dots[0]).toHaveAttribute('cx', '56');
+    expect(dots[1]).toHaveAttribute('cx', '702');
+    expect(svg.textContent).not.toContain('point estimate -100');
+    expect(svg.textContent).not.toContain('point estimate 1000');
+    fireEvent.change(screen.getByLabelText('Plot start date'), { target: { value: '2025-01-01' } });
+    expect(svg.querySelectorAll('[data-series-id="reality:revenue"] circle')).toHaveLength(3);
+    fireEvent.click(toggle);
+    expect(svg.querySelector('.prediction-chart__line--reality')).not.toBeInTheDocument();
+    expect(svg.textContent).not.toContain('Current Reality');
+  });
+
+  it("shows Reality empty feedback only after a successful load and clears errors on retry", async () => {
+    let resolve!: (value: unknown[]) => void;
+    api.fetchTimeseries.mockReturnValueOnce(new Promise((done) => { resolve = done; }));
+    render(<PredictionsTab orgId="acme" />);
+    await screen.findByRole('img', { name: /Revenue prediction comparison chart/ });
+    const toggle = screen.getByLabelText(/Include current Reality/);
+    fireEvent.click(toggle);
+    expect(screen.getByText('Loading current Reality data…')).toBeVisible();
+    expect(screen.queryByText(/No matching numeric current Reality/)).not.toBeInTheDocument();
+    await act(async () => resolve([]));
+    expect(screen.getByText(/No matching numeric current Reality/)).toBeVisible();
+    fireEvent.click(toggle);
+    api.fetchTimeseries.mockRejectedValueOnce(new Error('Unavailable'));
+    fireEvent.click(toggle);
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not load current Reality data. Unavailable');
+    expect(screen.queryByText(/No matching numeric current Reality/)).not.toBeInTheDocument();
+    fireEvent.click(toggle);
+    api.fetchTimeseries.mockResolvedValueOnce([{ id: 'revenue', name: 'Revenue', valueUnit: 'number', values: [{ date: '2025-01-01', value: 1 }] }]);
+    fireEvent.click(toggle);
+    expect(await screen.findByText('No current Reality observations in the displayed period.')).toBeVisible();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it("ignores a cancelled Reality response after a newer request succeeds", async () => {
+    let resolve!: (value: unknown[]) => void;
+    api.fetchTimeseries.mockReturnValueOnce(new Promise((done) => { resolve = done; }));
+    render(<PredictionsTab orgId="acme" />);
+    const svg = await screen.findByRole('img', { name: /Revenue prediction comparison chart/ });
+    const toggle = screen.getByLabelText(/Include current Reality/);
+    fireEvent.click(toggle);
+    const signal = api.fetchTimeseries.mock.calls[0][2] as AbortSignal;
+    fireEvent.click(toggle);
+    expect(signal.aborted).toBe(true);
+    fireEvent.click(toggle);
+    await waitFor(() => expect(svg.querySelector('.prediction-chart__line--reality')).toBeInTheDocument());
+    await act(async () => resolve([]));
+    expect(svg.querySelector('.prediction-chart__line--reality')).toBeInTheDocument();
+    expect(screen.queryByText(/No matching numeric current Reality/)).not.toBeInTheDocument();
+  });
+
 });

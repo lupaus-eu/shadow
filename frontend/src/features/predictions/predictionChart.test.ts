@@ -73,9 +73,9 @@ describe("buildPredictionMetricCharts", () => {
 
   it("formats dates as MM-dd and marks later year boundaries", () => {
     expect(predictionChartAxisTicks(["2026-12-31", "2027-01-01", "2027-02-15"])).toEqual([
-      { date: "2026-12-31", label: "12-31", isFirst: true, isYearBoundary: false, year: "2026" },
-      { date: "2027-01-01", label: "01-01", isFirst: false, isYearBoundary: true, year: "2027" },
-      { date: "2027-02-15", label: "02-15", isFirst: false, isYearBoundary: false, year: "2027" }
+      { date: "2026-12-31", label: "12-31", isFirst: true, isYearBoundary: false, year: "2026", showDateLabel: true, showYearLabel: true },
+      { date: "2027-01-01", label: "01-01", isFirst: false, isYearBoundary: true, year: "2027", showDateLabel: true, showYearLabel: true },
+      { date: "2027-02-15", label: "02-15", isFirst: false, isYearBoundary: false, year: "2027", showDateLabel: true, showYearLabel: false }
     ]);
   });
 
@@ -131,5 +131,79 @@ describe("buildPredictionMetricCharts", () => {
 
     expect(charts[0].lines[0].predictionIntervalStatus).toBe("unavailable");
     expect(charts[0].lines[0].provenance).toContain("SARIMA prediction interval is unavailable.");
+  });
+});
+
+
+describe("prediction chart readability", () => {
+  it.each([0, 1, 22, 23, 100, 365])("spaces labels without losing points for %i dates", (count) => {
+    const dates = Array.from({ length: count }, (_, index) =>
+      new Date(Date.UTC(2025, 11, 31 + index)).toISOString().slice(0, 10));
+    const ticks = predictionChartAxisTicks(dates);
+    const labels = ticks.filter((tick) => tick.showDateLabel);
+    expect(ticks.map((tick) => tick.date)).toEqual(dates);
+    expect(labels.length).toBeLessThanOrEqual(22);
+    if (!count) return;
+    expect(labels[0].date).toBe(dates[0]);
+    expect(labels.at(-1)?.date).toBe(dates.at(-1));
+    for (let index = 1; index < labels.length; index++) {
+      const gap = dates.indexOf(labels[index].date) - dates.indexOf(labels[index - 1].date);
+      expect(gap * 646 / (count - 1)).toBeGreaterThanOrEqual(36);
+    }
+    if (count > 1) expect(ticks[1].isYearBoundary).toBe(true);
+    if (count >= 22) expect(ticks[1].showYearLabel).toBe(false);
+  });
+
+  const args = () => ({
+    versions: [version("one", "First version", 10)],
+    selectedVersionIds: new Set(["one"]), selectedScenarioIds: new Set(["future"]),
+    selectedModelKinds: new Set(["naive"]), selectedMetricIds: new Set(["revenue"]),
+    scenarioNames: new Map([["future", "Future plan"]]), startDate: "", endDate: "",
+    includeReality: true,
+    realityTimeseries: [{ id: "revenue", name: "Revenue", description: "", unit: "EUR",
+      timeUnit: "month" as const, valueUnit: "number" as const,
+      values: ["2025-12-01", "2026-01-01", "2026-02-01", "2026-03-01"].map((date) => ({ date, value: 9 })) }]
+  });
+
+  it.each([
+    ["", "", ["2026-01-01", "2026-02-01"]],
+    ["2025-12-01", "", ["2025-12-01", "2026-01-01", "2026-02-01"]],
+    ["", "2026-03-01", ["2026-01-01", "2026-02-01", "2026-03-01"]],
+    ["2026-02-01", "2026-02-01", ["2026-02-01"]]
+  ])("filters both layers with independent plot overrides %s–%s", (startDate, endDate, expected) => {
+    const chart = buildPredictionMetricCharts({ ...args(), startDate, endDate })[0];
+    expect(chart.lines[0].points.map((point) => point.date)).toEqual(expected);
+    expect(chart.lines[1].points.map((point) => point.date)).toEqual(
+      ["2026-01-01", "2026-02-01"].filter((date) => expected.includes(date)));
+    expect(chart.realityMessage).toBeNull();
+  });
+
+  it("uses only selected versions with matching metrics and scenarios for each range", () => {
+    const input = args();
+    const later = { ...version("two", "Later", 20), startDate: "2026-02-01", endDate: "2026-03-01" };
+    const otherScenario = { ...version("other", "Other", 20, "excluded"), startDate: "2025-01-01" };
+    const otherMetric = { ...version("metric", "Other metric", 20), startDate: "2025-01-01" };
+    otherMetric.targets[0].metricId = "cost";
+    input.versions.push(later, otherScenario, otherMetric);
+    input.selectedVersionIds = new Set(["one", "two", "other", "metric"]);
+    expect(buildPredictionMetricCharts(input)[0].lines[0].points.map((point) => point.date))
+      .toEqual(["2026-01-01", "2026-02-01", "2026-03-01"]);
+    input.selectedVersionIds.delete("two");
+    expect(buildPredictionMetricCharts(input)[0].lines[0].points).toHaveLength(2);
+    input.selectedModelKinds.clear();
+    expect(buildPredictionMetricCharts(input)[0].lines[0].points).toHaveLength(2);
+  });
+
+  it("distinguishes missing matching Reality from observations outside the displayed period", () => {
+    const input = args();
+    input.realityTimeseries[0].id = "different-metric";
+    expect(buildPredictionMetricCharts(input)[0].realityMessage).toMatch(/No matching numeric/);
+    input.realityTimeseries[0].id = "revenue";
+    input.realityTimeseries[0].values = [{ date: "2025-12-01", value: 9 }];
+    expect(buildPredictionMetricCharts(input)[0].realityMessage).toMatch(/No current Reality observations/);
+    input.includeReality = false;
+    const chart = buildPredictionMetricCharts(input)[0];
+    expect(chart.realityMessage).toBeNull();
+    expect(chart.lines.every((line) => line.kind === "prediction")).toBe(true);
   });
 });
