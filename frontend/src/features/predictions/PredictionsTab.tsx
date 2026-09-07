@@ -20,6 +20,7 @@ import {
   buildPredictionMetricCharts,
   formatModelKind,
   predictionChartAxisTicks,
+  predictionIntervalBandPath,
   type PredictionChartLine
 } from "./predictionChart";
 
@@ -31,6 +32,7 @@ type EventOption = EventDto & {
 
 const lineColors = ["#c94a11", "#2563eb", "#8b5cf6", "#0f766e", "#b45309", "#be185d"];
 const NON_NUMERIC_METRIC_REASON = "Only numeric metrics can be forecast.";
+const DEFAULT_CONFIDENCE_LEVEL = "80";
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error";
@@ -68,6 +70,8 @@ export default function PredictionsTab(props: { orgId: string }) {
   const [startEventId, setStartEventId] = useState("");
   const [endEventId, setEndEventId] = useState("");
   const [cutoffMode, setCutoffMode] = useState<PredictionCutoffMode>("asOfStart");
+  const [confidenceLevel, setConfidenceLevel] = useState(DEFAULT_CONFIDENCE_LEVEL);
+  const [confidenceLevelError, setConfidenceLevelError] = useState("");
   const [preflight, setPreflight] = useState<PredictionPreflightDto | null>(null);
   const [manualPeriods, setManualPeriods] = useState<Record<string, number>>({});
   const [formError, setFormError] = useState("");
@@ -224,6 +228,26 @@ export default function PredictionsTab(props: { orgId: string }) {
     setFormError("");
   }
 
+  function selectedConfidenceLevel(): number | null {
+    if (!/^\d+$/.test(confidenceLevel)) {
+      setConfidenceLevelError("Enter a whole-number prediction interval level from 50 through 99.");
+      return null;
+    }
+    const value = Number(confidenceLevel);
+    if (value < 50 || value > 99) {
+      setConfidenceLevelError("Prediction interval level must be from 50 through 99.");
+      return null;
+    }
+    setConfidenceLevelError("");
+    return value;
+  }
+
+  function updateConfidenceLevel(value: string) {
+    setConfidenceLevel(value);
+    setConfidenceLevelError("");
+    invalidatePreflight();
+  }
+
   function updateStartDate(value: string) {
     setStartDate(value);
     setStartEventId("");
@@ -255,6 +279,8 @@ export default function PredictionsTab(props: { orgId: string }) {
   }
 
   async function handlePreflight() {
+    const selectedLevel = selectedConfidenceLevel();
+    if (selectedLevel === null) return;
     if (!targetScenarioIds.size) return setFormError("Select at least one prediction target scenario.");
     if (!startDate || !endDate) return setFormError("Choose both a start and an end date.");
     if (invalidDates) return setFormError("The start date must be earlier than the end date.");
@@ -263,6 +289,7 @@ export default function PredictionsTab(props: { orgId: string }) {
       setFormError("");
       const response = await preflightPredictions(props.orgId, {
         targetScenarioIds: [...targetScenarioIds], startDate, endDate, cutoffMode,
+        confidenceLevel: selectedLevel,
         manualSeasonalPeriods: manualPeriods
       });
       setPreflight(response);
@@ -279,6 +306,8 @@ export default function PredictionsTab(props: { orgId: string }) {
   }
 
   async function handleCreate() {
+    const selectedLevel = selectedConfidenceLevel();
+    if (selectedLevel === null) return;
     const missingManualPeriod = preflight?.metrics.some(
       (metric) => metric.requiresManualSeasonalPeriod && (manualPeriods[metric.metricId] ?? 0) < 2
     );
@@ -291,7 +320,7 @@ export default function PredictionsTab(props: { orgId: string }) {
       setFormError("");
       const created = await createPrediction(props.orgId, {
         name: name.trim(), targetScenarioIds: [...targetScenarioIds], startDate, endDate,
-        cutoffMode, manualSeasonalPeriods: manualPeriods
+        cutoffMode, confidenceLevel: selectedLevel, manualSeasonalPeriods: manualPeriods
       });
       setVersions((current) => [created, ...current]);
       setSelectedVersionIds((current) => new Set(current).add(created.id));
@@ -328,12 +357,14 @@ export default function PredictionsTab(props: { orgId: string }) {
         </div>
         {invalidDates ? <p className="alert alert--danger" role="alert">The start date must be earlier than the end date.</p> : null}
         <fieldset className="predictions-fieldset"><legend className="form-label form-label--required">Observation cutoff</legend><label className="predictions-check"><input type="radio" name="cutoff" checked={cutoffMode === "asOfStart"} onChange={() => { setCutoffMode("asOfStart"); invalidatePreflight(); }} /> As of start — excludes observations on and after the first predicted period.</label><label className="predictions-check"><input type="radio" name="cutoff" checked={cutoffMode === "allCurrentScenario"} onChange={() => { setCutoffMode("allCurrentScenario"); invalidatePreflight(); }} /> All current scenario — retrospective predictions can use later values from the selected scenario.</label></fieldset>
+        <label className="form-row"><span className="form-label form-label--required">Prediction interval level</span><input aria-label="Prediction interval level" aria-describedby={confidenceLevelError ? "prediction-interval-help prediction-interval-error" : "prediction-interval-help"} aria-invalid={confidenceLevelError ? "true" : undefined} className="input" type="number" min="50" max="99" step="1" required value={confidenceLevel} onChange={(event) => updateConfidenceLevel(event.target.value)} /><span id="prediction-interval-help" className="muted">50–99%. This is a nominal prediction interval for future observed values; higher percentages generally produce wider bands.</span></label>
+        {confidenceLevelError ? <p id="prediction-interval-error" className="alert alert--danger" role="alert">{confidenceLevelError}</p> : null}
         <div className="form-actions"><button className="btn btn--secondary" type="button" disabled={submitting || invalidDates} onClick={() => void handlePreflight()}>Run preflight</button><button className="btn btn--primary" type="button" disabled={submitting || invalidDates || !preflight || !preflight.metrics.length} onClick={() => void handleCreate()}>Create immutable version</button></div>
         {formError ? <p className="alert alert--danger" role="alert">{formError}</p> : null}
         {preflight ? <PreflightResults preflight={preflight} manualPeriods={manualPeriods} onManualPeriodChange={(metricId, value) => setManualPeriods((current) => ({ ...current, [metricId]: value }))} /> : null}
       </section>
     </div>
-    <section className="detail-card detail-card--spacious predictions-panel predictions-plots" aria-labelledby="plots-heading"><h2 id="plots-heading">Compare saved results</h2><div className="predictions-filters"><div className="predictions-filter-groups"><MultiSelectDropdown title="Versions" searchable borderless items={versions.map((version) => [version.id, version.name])} selected={selectedVersionIds} onChange={setSelectedVersionIds} allLabel="All saved versions" allSelectedSummary="All saved versions" emptySummary="No saved versions selected" /><ScenarioMultiSelect borderless items={comparisonScenarios} selected={selectedScenarioFilter} onChange={setSelectedScenarioFilter} /><MultiSelectDropdown title="Models and baselines" borderless items={allModelKinds.map((kind) => [kind, formatModelKind(kind)])} selected={selectedModelKinds} onChange={setSelectedModelKinds} allLabel="All models and baselines" /><MultiSelectDropdown title="Numeric metrics" searchable borderless items={allMetrics.map(([id, metric]) => [id, `${metric.name} (${metric.unit ?? "no unit"})`])} selected={selectedMetricIds} onChange={setSelectedMetricIds} allLabel="All numeric metrics" allSelectedSummary="All numeric metrics" /></div><div className="predictions-plot-controls"><span className="form-label">Plot date range</span><div className="predictions-plot-dates"><label className="predictions-date-field">Start date<input aria-label="Plot start date" className="input date-input" type="date" value={plotStartDate} onChange={(event) => setPlotStartDate(event.target.value)} /></label><label className="predictions-date-field">End date<input aria-label="Plot end date" className="input date-input" type="date" value={plotEndDate} onChange={(event) => setPlotEndDate(event.target.value)} /></label></div><label className="predictions-check"><input type="checkbox" checked={includeReality} onChange={(event) => { setIncludeReality(event.target.checked); setRealityError(""); }} /> Include current Reality (manually entered realized data)</label></div></div>{realityError ? <p className="alert alert--danger" role="alert">{realityError}</p> : null}{charts.length ? <div className="predictions-chart-grid">{charts.map((chart) => <MetricChart key={chart.metricId} metricName={chart.metricName} unit={chart.unit} lines={chart.lines} missingModelKinds={chart.missingModelKinds} />)}</div> : <div className="empty-state" role="status"><p>Select saved versions, scenarios, models and metrics with available numeric points to plot them.</p></div>}</section>
+    <section className="detail-card detail-card--spacious predictions-panel predictions-plots" aria-labelledby="plots-heading"><h2 id="plots-heading">Compare saved results</h2><div className="predictions-filters"><div className="predictions-filter-groups"><MultiSelectDropdown title="Versions" searchable borderless items={versions.map((version) => [version.id, `${version.name} (${version.confidenceLevel}% prediction interval)`])} selected={selectedVersionIds} onChange={setSelectedVersionIds} allLabel="All saved versions" allSelectedSummary="All saved versions" emptySummary="No saved versions selected" /><ScenarioMultiSelect borderless items={comparisonScenarios} selected={selectedScenarioFilter} onChange={setSelectedScenarioFilter} /><MultiSelectDropdown title="Models and baselines" borderless items={allModelKinds.map((kind) => [kind, formatModelKind(kind)])} selected={selectedModelKinds} onChange={setSelectedModelKinds} allLabel="All models and baselines" /><MultiSelectDropdown title="Numeric metrics" searchable borderless items={allMetrics.map(([id, metric]) => [id, `${metric.name} (${metric.unit ?? "no unit"})`])} selected={selectedMetricIds} onChange={setSelectedMetricIds} allLabel="All numeric metrics" allSelectedSummary="All numeric metrics" /></div><div className="predictions-plot-controls"><span className="form-label">Plot date range</span><div className="predictions-plot-dates"><label className="predictions-date-field">Start date<input aria-label="Plot start date" className="input date-input" type="date" value={plotStartDate} onChange={(event) => setPlotStartDate(event.target.value)} /></label><label className="predictions-date-field">End date<input aria-label="Plot end date" className="input date-input" type="date" value={plotEndDate} onChange={(event) => setPlotEndDate(event.target.value)} /></label></div><label className="predictions-check"><input type="checkbox" checked={includeReality} onChange={(event) => { setIncludeReality(event.target.checked); setRealityError(""); }} /> Include current Reality (manually entered realized data)</label></div></div>{realityError ? <p className="alert alert--danger" role="alert">{realityError}</p> : null}{charts.length ? <div className="predictions-chart-grid">{charts.map((chart) => <MetricChart key={chart.metricId} metricName={chart.metricName} unit={chart.unit} lines={chart.lines} missingModelKinds={chart.missingModelKinds} />)}</div> : <div className="empty-state" role="status"><p>Select saved versions, scenarios, models and metrics with available numeric points to plot them.</p></div>}</section>
   </section>;
 }
 
@@ -451,10 +482,31 @@ function MetricChart(props: { metricName: string; unit: string; lines: Predictio
   const points = props.lines.flatMap((line) => line.points.map((point) => ({ ...point, line })));
   const dates = [...new Set(points.map((point) => point.date))].sort();
   const axisTicks = predictionChartAxisTicks(dates);
-  const values = points.map((point) => point.value);
+  const values = points.flatMap((point) => [
+    point.value,
+    ...(point.lowerBound === null || point.upperBound === null
+      ? []
+      : [point.lowerBound, point.upperBound])
+  ]);
   const min = values.length ? Math.min(...values) : 0; const max = values.length ? Math.max(...values) : 1; const span = max - min || 1;
   const width = 720; const height = 260; const padding = { top: 18, right: 18, bottom: 34, left: 56 };
   const x = (date: string) => padding.left + (dates.length < 2 ? (width - padding.left - padding.right) / 2 : (dates.indexOf(date) / (dates.length - 1)) * (width - padding.left - padding.right));
   const y = (value: number) => height - padding.bottom - ((value - min) / span) * (height - padding.top - padding.bottom);
-  return <article className="prediction-chart"><header><h3>{props.metricName}</h3><span>{props.unit}</span></header><svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${props.metricName} prediction comparison chart in ${props.unit}`}><line className="prediction-chart__axis" x1={padding.left} x2={padding.left} y1={padding.top} y2={height - padding.bottom} /><line className="prediction-chart__axis" x1={padding.left} x2={width - padding.right} y1={height - padding.bottom} y2={height - padding.bottom} /><text x="4" y={padding.top + 4}>{max.toPrecision(5)}</text><text x="4" y={height - padding.bottom}>{min.toPrecision(5)}</text>{axisTicks.filter((tick) => tick.isYearBoundary).map((tick) => <line className="prediction-chart__year-boundary" key={`year-boundary:${tick.date}`} x1={x(tick.date)} x2={x(tick.date)} y1={padding.top} y2={height - padding.bottom} />)}{axisTicks.filter((tick) => tick.isFirst || tick.isYearBoundary).map((tick) => <text className="prediction-chart__year" key={`year:${tick.date}`} x={x(tick.date)} y={height - 4} textAnchor="middle">{tick.year}</text>)}{props.lines.map((line, index) => { const path = line.points.map((point, pointIndex) => `${pointIndex ? "L" : "M"}${x(point.date)} ${y(point.value)}`).join(" "); return <g key={line.id}><path className={line.kind === "reality" ? "prediction-chart__line prediction-chart__line--reality" : "prediction-chart__line"} stroke={line.kind === "reality" ? "#166534" : lineColors[index % lineColors.length]} strokeDasharray={line.strokeDasharray} d={path}><title>{line.provenance}</title></path>{line.points.map((point) => <circle key={`${line.id}:${point.date}`} cx={x(point.date)} cy={y(point.value)} r="3" fill={line.kind === "reality" ? "#166534" : lineColors[index % lineColors.length]}><title>{`${line.label}: ${point.date}, ${point.value} ${props.unit}`}</title></circle>)}</g>; })}{axisTicks.map((tick) => <text className="prediction-chart__date" key={tick.date} x={x(tick.date)} y={height - 18} textAnchor="middle">{tick.label}</text>)}</svg>{props.missingModelKinds.length ? <p className="prediction-chart__no-results" role="status">No results to show for: {formatSeriesList(props.missingModelKinds.map(formatModelKind))}.</p> : null}<ul className="prediction-chart__legend">{props.lines.map((line, index) => <li key={line.id}><span className={line.kind === "reality" ? "prediction-chart__swatch prediction-chart__swatch--reality" : "prediction-chart__swatch"} style={line.kind === "reality" ? undefined : { backgroundColor: lineColors[index % lineColors.length] }} /> <strong>{line.label}</strong><small>{line.provenance}</small></li>)}</ul></article>;
+  const lineColor = (line: PredictionChartLine, index: number) =>
+    line.kind === "reality" ? "#166534" : lineColors[index % lineColors.length];
+  const pointTitle = (line: PredictionChartLine, point: PredictionChartLine["points"][number]) => {
+    const estimate = `${line.label}: ${point.date}, point estimate ${point.value} ${props.unit}`;
+    if (line.predictionIntervalStatus !== "available" || point.lowerBound === null || point.upperBound === null) {
+      return estimate;
+    }
+    return `${estimate}, lower bound ${point.lowerBound} ${props.unit}, upper bound ${point.upperBound} ${props.unit}, saved ${line.confidenceLevel}% prediction interval`;
+  };
+
+  return <article className="prediction-chart"><header><h3>{props.metricName}</h3><span>{props.unit}</span></header><svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${props.metricName} prediction comparison chart in ${props.unit}`}><line className="prediction-chart__axis" x1={padding.left} x2={padding.left} y1={padding.top} y2={height - padding.bottom} /><line className="prediction-chart__axis" x1={padding.left} x2={width - padding.right} y1={height - padding.bottom} y2={height - padding.bottom} /><text x="4" y={padding.top + 4}>{max.toPrecision(5)}</text><text x="4" y={height - padding.bottom}>{min.toPrecision(5)}</text>{axisTicks.filter((tick) => tick.isYearBoundary).map((tick) => <line className="prediction-chart__year-boundary" key={`year-boundary:${tick.date}`} x1={x(tick.date)} x2={x(tick.date)} y1={padding.top} y2={height - padding.bottom} />)}{axisTicks.filter((tick) => tick.isFirst || tick.isYearBoundary).map((tick) => <text className="prediction-chart__year" key={`year:${tick.date}`} x={x(tick.date)} y={height - 4} textAnchor="middle">{tick.year}</text>)}{props.lines.map((line, index) => {
+    const bandPath = line.predictionIntervalStatus === "available" &&
+      (line.modelKind === "mlforecast" || line.modelKind === "sarima")
+      ? predictionIntervalBandPath(line.points, x, y)
+      : null;
+    return bandPath ? <path className="prediction-chart__interval-band" key={`band:${line.id}`} fill={lineColor(line, index)} d={bandPath}><title>{`${line.label}: saved ${line.confidenceLevel}% prediction interval.`}</title></path> : null;
+  })}{props.lines.map((line, index) => { const path = line.points.map((point, pointIndex) => `${pointIndex ? "L" : "M"}${x(point.date)} ${y(point.value)}`).join(" "); return <g key={line.id}><path className={line.kind === "reality" ? "prediction-chart__line prediction-chart__line--reality" : "prediction-chart__line"} stroke={lineColor(line, index)} strokeDasharray={line.strokeDasharray} d={path}><title>{line.provenance}</title></path>{line.points.map((point) => <circle key={`${line.id}:${point.date}`} cx={x(point.date)} cy={y(point.value)} r="3" fill={lineColor(line, index)}><title>{pointTitle(line, point)}</title></circle>)}</g>; })}{axisTicks.map((tick) => <text className="prediction-chart__date" key={tick.date} x={x(tick.date)} y={height - 18} textAnchor="middle">{tick.label}</text>)}</svg>{props.missingModelKinds.length ? <p className="prediction-chart__no-results" role="status">No results to show for: {formatSeriesList(props.missingModelKinds.map(formatModelKind))}.</p> : null}<ul className="prediction-chart__legend">{props.lines.map((line, index) => <li key={line.id}><span className={line.kind === "reality" ? "prediction-chart__swatch prediction-chart__swatch--reality" : "prediction-chart__swatch"} style={line.kind === "reality" ? undefined : { backgroundColor: lineColor(line, index) }} /> <strong>{line.label}</strong><small>{line.provenance}</small></li>)}</ul></article>;
 }

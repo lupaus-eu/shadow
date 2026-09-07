@@ -7,6 +7,7 @@ export type PredictionRequest = {
   startDate: string;
   endDate: string;
   cutoffMode: PredictionCutoffMode;
+  confidenceLevel: number;
   manualSeasonalPeriods: Record<string, number>;
 };
 
@@ -32,15 +33,23 @@ export type PredictionVersionDto = {
   startDate: string;
   endDate: string;
   cutoffMode: PredictionCutoffMode;
+  confidenceLevel: number;
   createdTime: string;
 };
 
-export type PredictionPointDto = { date: string; value: number };
+export type PredictionPointDto = {
+  date: string;
+  value: number;
+  lowerBound: number | null;
+  upperBound: number | null;
+};
 
 export type PredictionModelResultDto = {
   kind: string;
   status: string;
   reason: string | null;
+  predictionIntervalStatus: "available" | "unavailable" | "not_applicable";
+  predictionIntervalReason: string | null;
   crossValidationStatus: string;
   crossValidationMae: number | null;
   configuration: Record<string, unknown>;

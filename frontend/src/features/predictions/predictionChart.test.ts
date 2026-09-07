@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildPredictionMetricCharts, formatModelKind, predictionChartAxisTicks, predictionVersionStatus } from "./predictionChart";
+import { buildPredictionMetricCharts, formatModelKind, predictionChartAxisTicks, predictionIntervalBandPath, predictionVersionStatus } from "./predictionChart";
 import type { PredictionVersionDetailDto } from "../../api/predictions";
 
 const version = (
@@ -8,13 +8,13 @@ const version = (
   value: number,
   scenarioId = "future"
 ): PredictionVersionDetailDto => ({
-  id, name, startDate: "2026-01-01", endDate: "2026-02-01", cutoffMode: "asOfStart",
+  id, name, startDate: "2026-01-01", endDate: "2026-02-01", cutoffMode: "asOfStart", confidenceLevel: 80,
   createdTime: "2026-01-01T00:00:00Z", modelConfiguration: {}, targets: [{
     scenarioId, metricId: "revenue", metricName: "Revenue",
     timeUnit: "month", unit: "EUR", status: "eligible", reason: null, seasonalPeriod: null,
     seasonalPeriodSource: null, sourceSnapshot: {}, inputSnapshot: {}, results: [{
-      kind: "naive", status: "available", reason: null, crossValidationStatus: "unavailable",
-      crossValidationMae: null, configuration: {}, points: [{ date: "2026-01-01", value }, { date: "2026-02-01", value: value + 1 }]
+      kind: "naive", status: "available", reason: null, predictionIntervalStatus: "not_applicable", predictionIntervalReason: null, crossValidationStatus: "unavailable",
+      crossValidationMae: null, configuration: {}, points: [{ date: "2026-01-01", value, lowerBound: null, upperBound: null }, { date: "2026-02-01", value: value + 1, lowerBound: null, upperBound: null }]
     }]
   }]
 });
@@ -81,5 +81,55 @@ describe("buildPredictionMetricCharts", () => {
 
   it("recognises the backend's available result status as completed", () => {
     expect(predictionVersionStatus(version("one", "First version", 10))).toBe("Completed");
+  });
+
+  it("preserves complete bounds through filtering and builds a closed upper-then-lower band", () => {
+    const withInterval = version("one", "First version", 10);
+    withInterval.confidenceLevel = 90;
+    withInterval.targets[0].results[0] = {
+      ...withInterval.targets[0].results[0],
+      kind: "mlforecast",
+      predictionIntervalStatus: "available",
+      points: [
+        { date: "2026-01-01", value: 10, lowerBound: 8, upperBound: 12 },
+        { date: "2026-02-01", value: 11, lowerBound: 9, upperBound: 13 }
+      ]
+    };
+    const charts = buildPredictionMetricCharts({
+      versions: [withInterval], selectedVersionIds: new Set(["one"]), selectedScenarioIds: new Set(["future"]),
+      selectedModelKinds: new Set(["mlforecast"]), selectedMetricIds: new Set(["revenue"]),
+      scenarioNames: new Map([["future", "Future plan"]]), startDate: "2026-02-01", endDate: "2026-02-01",
+      includeReality: false, realityTimeseries: []
+    });
+
+    expect(charts[0].lines[0].points).toEqual([{ date: "2026-02-01", value: 11, lowerBound: 9, upperBound: 13 }]);
+    expect(charts[0].lines[0].provenance).toMatch(/90% prediction interval/i);
+    expect(predictionIntervalBandPath(withInterval.targets[0].results[0].points, (date) => date === "2026-01-01" ? 1 : 2, (value) => value)).toBe("M1 12 L2 13 L2 9 L1 8 Z");
+  });
+
+  it("does not construct a partial prediction band", () => {
+    expect(predictionIntervalBandPath([
+      { date: "2026-01-01", value: 10, lowerBound: 8, upperBound: 12 },
+      { date: "2026-02-01", value: 11, lowerBound: null, upperBound: null }
+    ], () => 0, (value) => value)).toBeNull();
+  });
+
+  it("keeps an unavailable fitted result as an unbanded line with its safe reason", () => {
+    const unavailable = version("one", "First version", 10);
+    unavailable.targets[0].results[0] = {
+      ...unavailable.targets[0].results[0],
+      kind: "sarima",
+      predictionIntervalStatus: "unavailable",
+      predictionIntervalReason: "SARIMA prediction interval is unavailable."
+    };
+    const charts = buildPredictionMetricCharts({
+      versions: [unavailable], selectedVersionIds: new Set(["one"]), selectedScenarioIds: new Set(["future"]),
+      selectedModelKinds: new Set(["sarima"]), selectedMetricIds: new Set(["revenue"]),
+      scenarioNames: new Map([["future", "Future plan"]]), startDate: "", endDate: "",
+      includeReality: false, realityTimeseries: []
+    });
+
+    expect(charts[0].lines[0].predictionIntervalStatus).toBe("unavailable");
+    expect(charts[0].lines[0].provenance).toContain("SARIMA prediction interval is unavailable.");
   });
 });

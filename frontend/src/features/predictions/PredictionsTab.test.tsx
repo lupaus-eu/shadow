@@ -25,22 +25,22 @@ vi.mock("../../api/timeseries", () => ({ fetchTimeseries: api.fetchTimeseries })
 
 const version: PredictionVersionDetailDto = {
   id: "version-1", name: "January plan", startDate: "2026-01-10", endDate: "2026-02-10",
-  cutoffMode: "asOfStart", createdTime: "2026-01-01T12:00:00Z", modelConfiguration: {},
+  cutoffMode: "asOfStart", confidenceLevel: 80, createdTime: "2026-01-01T12:00:00Z", modelConfiguration: {},
   targets: [{
     scenarioId: "future", metricId: "revenue", metricName: "Revenue",
     timeUnit: "month", unit: "EUR", status: "eligible", reason: null, seasonalPeriod: 12,
     seasonalPeriodSource: "automatic", sourceSnapshot: {}, inputSnapshot: {}, results: [{
-      kind: "naive", status: "available", reason: null, crossValidationStatus: "unavailable",
-      crossValidationMae: null, configuration: {}, points: [{ date: "2026-01-10", value: 30 }, { date: "2026-02-10", value: 34 }]
+      kind: "naive", status: "available", reason: null, predictionIntervalStatus: "not_applicable", predictionIntervalReason: null, crossValidationStatus: "unavailable",
+      crossValidationMae: null, configuration: {}, points: [{ date: "2026-01-10", value: 30, lowerBound: null, upperBound: null }, { date: "2026-02-10", value: 34, lowerBound: null, upperBound: null }]
     }, {
-      kind: "seasonal_naive", status: "ineligible", reason: "Insufficient seasonal history", crossValidationStatus: "unavailable",
+      kind: "seasonal_naive", status: "ineligible", reason: "Insufficient seasonal history", predictionIntervalStatus: "not_applicable", predictionIntervalReason: null, crossValidationStatus: "unavailable",
       crossValidationMae: null, configuration: {}, points: []
     }]
   }, {
     scenarioId: "future", metricId: "notes", metricName: "Notes",
     timeUnit: "month", unit: null, status: "ineligible", reason: "Only numeric metrics can be forecast.", seasonalPeriod: null,
     seasonalPeriodSource: null, sourceSnapshot: {}, inputSnapshot: {}, results: [{
-      kind: "naive", status: "ineligible", reason: "Only numeric metrics can be forecast.", crossValidationStatus: "unavailable",
+      kind: "naive", status: "ineligible", reason: "Only numeric metrics can be forecast.", predictionIntervalStatus: "not_applicable", predictionIntervalReason: null, crossValidationStatus: "unavailable",
       crossValidationMae: null, configuration: {}, points: []
     }]
   }]
@@ -107,12 +107,12 @@ describe("PredictionsTab", () => {
     await screen.findByText(/selected scenario's own data/i);
     expect(screen.getAllByPlaceholderText("Type to search...")).toHaveLength(6);
     const versions = screen.getByRole("group", { name: "Versions" });
-    expect(within(versions).getByLabelText("January plan")).toBeChecked();
-    expect(within(versions).getByLabelText("February plan")).not.toBeChecked();
+    expect(within(versions).getByLabelText("January plan (80% prediction interval)")).toBeChecked();
+    expect(within(versions).getByLabelText("February plan (80% prediction interval)")).not.toBeChecked();
 
     fireEvent.change(screen.getByLabelText("Search Versions"), { target: { value: "february" } });
-    expect(within(versions).queryByLabelText("January plan")).not.toBeInTheDocument();
-    expect(within(versions).getByLabelText("February plan")).not.toBeChecked();
+    expect(within(versions).queryByLabelText("January plan (80% prediction interval)")).not.toBeInTheDocument();
+    expect(within(versions).getByLabelText("February plan (80% prediction interval)")).not.toBeChecked();
 
     const targets = screen.getAllByRole("group", { name: "Target scenarios" })[0];
     fireEvent.change(within(targets).getByLabelText("Search Target scenarios"), { target: { value: "future" } });
@@ -133,7 +133,7 @@ describe("PredictionsTab", () => {
 
   it("submits a preflight-backed create request with manual seasonality and renders provenance", async () => {
     render(<PredictionsTab orgId="acme" />);
-    await screen.findAllByText("January plan");
+    await screen.findAllByText(/January plan \(80% prediction interval\)/);
 
     fireEvent.change(screen.getByLabelText("Version name"), { target: { value: "Created plan" } });
     fireEvent.change(screen.getAllByLabelText("Start date")[0], { target: { value: "2026-01-10" } });
@@ -149,7 +149,7 @@ describe("PredictionsTab", () => {
       "acme",
       expect.objectContaining({
         name: "Created plan", targetScenarioIds: ["reality", "future"],
-        manualSeasonalPeriods: { revenue: 12 }, cutoffMode: "allCurrentScenario"
+        manualSeasonalPeriods: { revenue: 12 }, cutoffMode: "allCurrentScenario", confidenceLevel: 80
       })
     ));
     expect(screen.getAllByText(/Saved prediction: January plan/i).some((element) => element.tagName === "SMALL")).toBe(true);
@@ -159,6 +159,64 @@ describe("PredictionsTab", () => {
       screen.getAllByText(/Current manually entered realized data from Reality/i).some((element) => element.tagName === "SMALL")
     ).toBe(true));
     expect(api.fetchTimeseries).toHaveBeenCalledWith("acme", "reality", expect.any(AbortSignal));
+  });
+
+  it("uses the visible default level, validates it, and invalidates stale preflight", async () => {
+    render(<PredictionsTab orgId="acme" />);
+    await screen.findByText(/selected scenario's own data/i);
+
+    const confidenceLevel = screen.getByLabelText("Prediction interval level");
+    expect(confidenceLevel).toHaveValue(80);
+    fireEvent.change(screen.getAllByLabelText("Start date")[0], { target: { value: "2026-01-10" } });
+    fireEvent.change(screen.getAllByLabelText("End date")[0], { target: { value: "2026-02-10" } });
+    fireEvent.click(screen.getByRole("button", { name: "Run preflight" }));
+    await waitFor(() => expect(api.preflightPredictions).toHaveBeenLastCalledWith(
+      "acme",
+      expect.objectContaining({ confidenceLevel: 80 })
+    ));
+    expect(screen.getByRole("button", { name: "Create immutable version" })).toBeEnabled();
+
+    fireEvent.change(confidenceLevel, { target: { value: "90" } });
+    expect(screen.getByRole("button", { name: "Create immutable version" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Run preflight" }));
+    await waitFor(() => expect(api.preflightPredictions).toHaveBeenLastCalledWith(
+      "acme",
+      expect.objectContaining({ confidenceLevel: 90 })
+    ));
+
+    for (const invalidLevel of ["", "80.5", "49", "100"]) {
+      fireEvent.change(confidenceLevel, { target: { value: invalidLevel } });
+      fireEvent.click(screen.getByRole("button", { name: "Run preflight" }));
+      expect(await screen.findByRole("alert")).toHaveTextContent(/whole-number|50 through 99/i);
+    }
+    expect(api.preflightPredictions).toHaveBeenCalledTimes(2);
+  });
+
+  it("renders available interval bands behind point lines with accessible bounds", async () => {
+    const intervalVersion: PredictionVersionDetailDto = {
+      ...version,
+      confidenceLevel: 90,
+      targets: [{
+        ...version.targets[0],
+        results: [{
+          ...version.targets[0].results[0],
+          kind: "mlforecast",
+          predictionIntervalStatus: "available",
+          points: [
+            { date: "2026-01-10", value: 30, lowerBound: 20, upperBound: 40 },
+            { date: "2026-02-10", value: 34, lowerBound: 24, upperBound: 44 }
+          ]
+        }]
+      }]
+    };
+    api.fetchPredictions.mockResolvedValueOnce([intervalVersion]);
+    api.fetchPrediction.mockResolvedValueOnce(intervalVersion);
+    const { container } = render(<PredictionsTab orgId="acme" />);
+
+    await screen.findByText(/selected scenario's own data/i);
+    expect(container.querySelector(".prediction-chart__interval-band")).toBeInTheDocument();
+    expect(container.querySelector("svg")?.textContent).toContain("44.000");
+    expect(screen.getByText(/point estimate 30 EUR, lower bound 20 EUR, upper bound 40 EUR, saved 90% prediction interval/i)).toBeInTheDocument();
   });
 
   it("selects and deselects all numeric metrics for comparison", async () => {
@@ -201,7 +259,7 @@ describe("PredictionsTab", () => {
   it("keeps creation unavailable when preflight finds no forecastable metrics", async () => {
     api.preflightPredictions.mockResolvedValueOnce({ metrics: [] });
     render(<PredictionsTab orgId="acme" />);
-    await screen.findAllByText("January plan");
+    await screen.findAllByText(/January plan \(80% prediction interval\)/);
 
     fireEvent.change(screen.getAllByLabelText("Start date")[0], { target: { value: "2026-01-10" } });
     fireEvent.change(screen.getAllByLabelText("End date")[0], { target: { value: "2026-02-10" } });

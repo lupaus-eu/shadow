@@ -933,6 +933,11 @@
   stroke-width: 2.5;
 }
 
+.prediction-chart__interval-band {
+  fill-opacity: 0.18;
+  pointer-events: none;
+}
+
 .prediction-chart__line--reality {
   stroke-width: 3.5;
 }

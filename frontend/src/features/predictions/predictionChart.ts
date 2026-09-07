@@ -11,7 +11,14 @@ export type PredictionChartLine = {
   kind: "prediction" | "reality";
   modelKind?: string;
   strokeDasharray?: string;
-  points: Array<{ date: string; value: number }>;
+  confidenceLevel?: number;
+  predictionIntervalStatus?: "available" | "unavailable" | "not_applicable";
+  points: Array<{
+    date: string;
+    value: number;
+    lowerBound: number | null;
+    upperBound: number | null;
+  }>;
 };
 
 export type PredictionMetricChart = {
@@ -53,6 +60,27 @@ export function predictionVersionStatus(version: PredictionVersionDetailDto): st
     : "Completed with ineligible metrics";
 }
 
+export function predictionIntervalBandPath(
+  points: PredictionChartLine["points"],
+  x: (date: string) => number,
+  y: (value: number) => number
+): string | null {
+  if (!points.length || points.some((point) =>
+    point.lowerBound === null || point.upperBound === null ||
+    !Number.isFinite(point.lowerBound) || !Number.isFinite(point.upperBound)
+  )) {
+    return null;
+  }
+
+  const upperPath = points.map((point, index) =>
+    `${index ? "L" : "M"}${x(point.date)} ${y(point.upperBound as number)}`
+  );
+  const lowerPath = [...points].reverse().map((point) =>
+    `L${x(point.date)} ${y(point.lowerBound as number)}`
+  );
+  return [...upperPath, ...lowerPath, "Z"].join(" ");
+}
+
 function includesDate(date: string, start: string, end: string): boolean {
   return (!start || date >= start) && (!end || date <= end);
 }
@@ -65,12 +93,19 @@ function targetLine(
   start: string,
   end: string
 ): PredictionChartLine {
+  const intervalDescription = result.predictionIntervalStatus === "available"
+    ? ` Saved ${version.confidenceLevel}% prediction interval is shown.`
+    : result.predictionIntervalStatus === "unavailable"
+      ? ` Prediction interval unavailable${result.predictionIntervalReason ? `: ${result.predictionIntervalReason}` : "."}`
+      : " This result has no prediction interval.";
   return {
     id: `${version.id}:${target.scenarioId}:${target.metricId}:${result.kind}`,
     label: `${version.name} · ${scenarioName} · ${formatModelKind(result.kind)}`,
-    provenance: `Saved prediction: ${version.name}; target scenario ${scenarioName}; model ${formatModelKind(result.kind)}.`,
+    provenance: `Saved prediction: ${version.name}; target scenario ${scenarioName}; model ${formatModelKind(result.kind)}; selected level ${version.confidenceLevel}%.${intervalDescription}`,
     kind: "prediction",
     modelKind: result.kind,
+    confidenceLevel: version.confidenceLevel,
+    predictionIntervalStatus: result.predictionIntervalStatus,
     strokeDasharray: result.kind === "naive" ? "7 4" : result.kind === "average" ? "2 4" : undefined,
     points: result.points.filter((point) => includesDate(point.date, start, end))
   };
@@ -132,7 +167,7 @@ export function buildPredictionMetricCharts(args: {
           (point): point is { date: string; value: number } =>
             typeof point.value === "number" && includesDate(point.date, args.startDate, args.endDate)
         )
-        .map((point) => ({ date: point.date, value: point.value }));
+        .map((point) => ({ date: point.date, value: point.value, lowerBound: null, upperBound: null }));
       if (!points.length) continue;
       chart.lines.unshift({
         id: `reality:${chart.metricId}`,
