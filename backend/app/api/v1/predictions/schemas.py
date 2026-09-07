@@ -1,7 +1,7 @@
 from datetime import date as dt_date
 from typing import Literal
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, StrictInt, field_validator, model_validator
 
 from app.core.schemas import StrictBaseModel
 
@@ -15,6 +15,9 @@ class PredictionRequestBase(StrictBaseModel):
     start_date: dt_date = Field(alias="startDate")
     end_date: dt_date = Field(alias="endDate")
     cutoff_mode: CutoffMode = Field(alias="cutoffMode")
+    confidence_level: StrictInt = Field(
+        default=80, ge=50, le=99, alias="confidenceLevel"
+    )
     manual_seasonal_periods: dict[str, int] = Field(
         default_factory=dict, alias="manualSeasonalPeriods"
     )
@@ -82,18 +85,23 @@ class PredictionVersionListResponse(StrictBaseModel):
     start_date: dt_date = Field(alias="startDate")
     end_date: dt_date = Field(alias="endDate")
     cutoff_mode: CutoffMode = Field(alias="cutoffMode")
+    confidence_level: int = Field(alias="confidenceLevel")
     created_time: str = Field(alias="createdTime")
 
 
 class PredictionPointResponse(StrictBaseModel):
     date: dt_date
     value: float
+    lower_bound: float | None = Field(alias="lowerBound")
+    upper_bound: float | None = Field(alias="upperBound")
 
 
 class PredictionModelResultResponse(StrictBaseModel):
     kind: str
     status: str
     reason: str | None = None
+    prediction_interval_status: str = Field(alias="predictionIntervalStatus")
+    prediction_interval_reason: str | None = Field(alias="predictionIntervalReason")
     cross_validation_status: str = Field(alias="crossValidationStatus")
     cross_validation_mae: float | None = Field(alias="crossValidationMae")
     configuration: dict[str, object]

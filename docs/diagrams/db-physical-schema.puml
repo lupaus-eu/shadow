@@ -235,6 +235,7 @@ entity "prediction_versions" as prediction_versions {
   prediction_key : TEXT
   name : TEXT
   cutoff_mode : TEXT
+  confidence_level : INT
   start_date : DATE
   end_date : DATE
   model_configuration : JSONB
@@ -261,6 +262,8 @@ entity "prediction_model_results" as prediction_model_results {
   prediction_target_id : BIGINT
   result_kind : TEXT
   status : TEXT
+  prediction_interval_status : TEXT
+  prediction_interval_reason : TEXT
   cross_validation_status : TEXT
   cross_validation_mae : DOUBLE
   configuration : JSONB
@@ -273,6 +276,8 @@ entity "prediction_points" as prediction_points {
   prediction_model_result_id : BIGINT
   date : DATE
   value : DOUBLE
+  lower_bound : DOUBLE
+  upper_bound : DOUBLE
   created_by : BIGINT
 }
 

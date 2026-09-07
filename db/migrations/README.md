@@ -91,6 +91,7 @@ The current ordered migration chain is:
 011_alter_prediction_target_observation_source.sql
 012_add_timeserie_short_name.sql
 013_create_derived_metrics.sql
+014_add_prediction_intervals.sql
 ```
 
 Jokaisella yllä olevalla tiedostolla on vastaava `.down.sql`-tiedosto.

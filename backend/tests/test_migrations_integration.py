@@ -160,6 +160,10 @@ def test_rejects_non_latest_and_unapplied_down_migrations(
         )
 
     execute_command(
+        DownCommand("014_add_prediction_intervals.down.sql"),
+        database_url=migration_database_url,
+    )
+    execute_command(
         DownCommand("013_create_derived_metrics.down.sql"),
         database_url=migration_database_url,
     )
@@ -254,10 +258,9 @@ def test_existing_schema_requires_explicit_baseline(
     execute_command(
         BaselineCommand(migrations[-1].version), database_url=migration_database_url
     )
-    assert (
-        _scalar(migration_database_url, "SELECT count(*) FROM schema_migrations")
-        == len(migrations)
-    )
+    assert _scalar(
+        migration_database_url, "SELECT count(*) FROM schema_migrations"
+    ) == len(migrations)
     execute_command(UpCommand(), database_url=migration_database_url)
 
 
@@ -451,9 +454,11 @@ def test_prediction_schema_rejects_non_finite_numbers(
         assert target is not None
         result = connection.execute(
             "INSERT INTO prediction_model_results ("
-            "prediction_target_id, result_kind, status, cross_validation_status, "
+            "prediction_target_id, result_kind, status, prediction_interval_status, "
+            "cross_validation_status, "
             "created_by"
-            ") VALUES (%s, 'naive', 'available', 'not_applicable', %s) "
+            ") VALUES (%s, 'naive', 'available', 'not_applicable', "
+            "'not_applicable', %s) "
             "RETURNING prediction_model_result_id",
             (target[0], user[0]),
         ).fetchone()
@@ -464,9 +469,11 @@ def test_prediction_schema_rejects_non_finite_numbers(
         with pytest.raises(psycopg.errors.CheckViolation):
             connection.execute(
                 "INSERT INTO prediction_model_results ("
-                "prediction_target_id, result_kind, status, cross_validation_status, "
+                "prediction_target_id, result_kind, status, "
+                "prediction_interval_status, "
+                "cross_validation_status, "
                 "cross_validation_mae, created_by"
-                ") VALUES (%s, 'mlforecast', 'available', 'available', "
+                ") VALUES (%s, 'mlforecast', 'available', 'unavailable', 'available', "
                 "'NaN'::float8, %s)",
                 (target[0], user[0]),
             )
@@ -479,6 +486,150 @@ def test_prediction_schema_rejects_non_finite_numbers(
                 ") VALUES (%s, DATE '2025-01-01', 'NaN'::float8, %s)",
                 (result[0], user[0]),
             )
+
+
+def test_prediction_interval_migration_resets_development_rows_and_constraints(
+    migration_database_url: str, tmp_path: Path
+) -> None:
+    migrations = discover_migrations()
+    migration_copy = tmp_path / "migrations_through_013"
+    migration_copy.mkdir()
+    for migration in migrations[:13]:
+        shutil.copy2(migration.up_path, migration_copy / migration.up_name)
+        shutil.copy2(migration.down_path, migration_copy / migration.down_name)
+    execute_command(
+        UpCommand(),
+        database_url=migration_database_url,
+        migrations_directory=migration_copy,
+    )
+
+    with psycopg.connect(migration_database_url) as connection:
+        connection.execute("CREATE TABLE migration_sentinel (value TEXT NOT NULL)")
+        connection.execute("INSERT INTO migration_sentinel (value) VALUES ('kept')")
+        user = connection.execute(
+            "INSERT INTO users (name, email, role) "
+            "VALUES ('Interval Tester', 'interval@example.local', 'admin') "
+            "RETURNING user_id"
+        ).fetchone()
+        assert user is not None
+        organisation = connection.execute(
+            "INSERT INTO organisations (organisation_key, name, created_by) "
+            "VALUES ('interval-org', 'Interval Org', %s) "
+            "RETURNING organisation_id",
+            (user[0],),
+        ).fetchone()
+        assert organisation is not None
+        connection.execute(
+            "INSERT INTO prediction_versions ("
+            "organisation_id, prediction_key, name, cutoff_mode, start_date, "
+            "end_date, created_by"
+            ") VALUES (%s, 'discarded-version', 'Discarded version', 'asOfStart', "
+            "DATE '2025-01-01', DATE '2025-02-01', %s)",
+            (organisation[0], user[0]),
+        )
+        connection.commit()
+
+    execute_command(UpCommand(), database_url=migration_database_url)
+    assert (
+        _scalar(migration_database_url, "SELECT count(*) FROM prediction_versions") == 0
+    )
+    assert (
+        _scalar(migration_database_url, "SELECT value FROM migration_sentinel")
+        == "kept"
+    )
+
+    with psycopg.connect(migration_database_url) as connection:
+        with pytest.raises(psycopg.errors.CheckViolation):
+            connection.execute(
+                "INSERT INTO prediction_versions ("
+                "organisation_id, prediction_key, name, cutoff_mode, "
+                "confidence_level, start_date, end_date, created_by"
+                ") VALUES (%s, 'invalid-level', 'Invalid level', 'asOfStart', "
+                "49, DATE '2025-01-01', DATE '2025-02-01', %s)",
+                (organisation[0], user[0]),
+            )
+        connection.rollback()
+        version = connection.execute(
+            "INSERT INTO prediction_versions ("
+            "organisation_id, prediction_key, name, cutoff_mode, start_date, "
+            "end_date, created_by"
+            ") VALUES (%s, 'interval-version', 'Interval version', 'asOfStart', "
+            "DATE '2025-01-01', DATE '2025-02-01', %s) "
+            "RETURNING prediction_version_id",
+            (organisation[0], user[0]),
+        ).fetchone()
+        assert version is not None
+        confidence_level = connection.execute(
+            "SELECT confidence_level FROM prediction_versions"
+        ).fetchone()
+        assert confidence_level == (80,)
+        target = connection.execute(
+            "INSERT INTO prediction_targets ("
+            "prediction_version_id, target_scenario_id, target_scenario_key, "
+            "metric_key, metric_name, time_unit, eligibility_status, created_by"
+            ") VALUES (%s, 1, 'target', 'revenue', 'Revenue', 'month', "
+            "'eligible', %s) RETURNING prediction_target_id",
+            (version[0], user[0]),
+        ).fetchone()
+        assert target is not None
+        result = connection.execute(
+            "INSERT INTO prediction_model_results ("
+            "prediction_target_id, result_kind, status, prediction_interval_status, "
+            "cross_validation_status, created_by"
+            ") VALUES (%s, 'mlforecast', 'available', 'available', "
+            "'not_applicable', %s) RETURNING prediction_model_result_id",
+            (target[0], user[0]),
+        ).fetchone()
+        assert result is not None
+        connection.execute(
+            "INSERT INTO prediction_points ("
+            "prediction_model_result_id, date, value, lower_bound, upper_bound, "
+            "created_by"
+            ") VALUES (%s, DATE '2025-01-01', 10, 9, 11, %s)",
+            (result[0], user[0]),
+        )
+        connection.commit()
+
+    invalid_bounds: list[tuple[float | None, float | None]] = [
+        (float("nan"), 11),
+        (9, None),
+        (11, 9),
+        (11, 12),
+    ]
+    for index, (lower_bound, upper_bound) in enumerate(invalid_bounds):
+        with psycopg.connect(migration_database_url) as connection:
+            with pytest.raises(psycopg.errors.CheckViolation):
+                connection.execute(
+                    "INSERT INTO prediction_points ("
+                    "prediction_model_result_id, date, value, lower_bound, "
+                    "upper_bound, created_by"
+                    ") VALUES (%s, %s, 10, %s, %s, %s)",
+                    (
+                        result[0],
+                        f"2025-01-0{index + 2}",
+                        lower_bound,
+                        upper_bound,
+                        user[0],
+                    ),
+                )
+
+    execute_command(
+        DownCommand("014_add_prediction_intervals.down.sql"),
+        database_url=migration_database_url,
+    )
+    assert (
+        _scalar(migration_database_url, "SELECT count(*) FROM prediction_versions") == 0
+    )
+    assert (
+        _scalar(migration_database_url, "SELECT value FROM migration_sentinel")
+        == "kept"
+    )
+    assert not _scalar(
+        migration_database_url,
+        "SELECT EXISTS (SELECT 1 FROM information_schema.columns "
+        "WHERE table_schema = current_schema() AND table_name = 'prediction_points' "
+        "AND column_name = 'lower_bound')",
+    )
 
 
 def test_prediction_observation_source_migration_replaces_schema(
@@ -510,6 +661,10 @@ def test_prediction_observation_source_migration_replaces_schema(
                 """
             )
 
+    execute_command(
+        DownCommand("014_add_prediction_intervals.down.sql"),
+        database_url=migration_database_url,
+    )
     execute_command(
         DownCommand("013_create_derived_metrics.down.sql"),
         database_url=migration_database_url,
@@ -691,6 +846,10 @@ def test_timeserie_name_and_short_name_indexes_enforce_active_scope(
         )
         connection.commit()
 
+    execute_command(
+        DownCommand("014_add_prediction_intervals.down.sql"),
+        database_url=migration_database_url,
+    )
     execute_command(
         DownCommand("013_create_derived_metrics.down.sql"),
         database_url=migration_database_url,

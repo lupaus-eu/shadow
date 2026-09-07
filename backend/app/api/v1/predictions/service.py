@@ -8,6 +8,7 @@ values and known inputs.
 import math
 import warnings
 from collections import Counter
+from dataclasses import dataclass
 from datetime import date as dt_date
 from statistics import mean
 from typing import cast
@@ -64,7 +65,7 @@ MAX_PAIRS = 50
 MAX_PERIODS = 366
 MAX_HISTORY = 10_000
 MAX_POINTS = 100_000
-MODEL_CONFIGURATION: dict[str, object] = {
+BASE_MODEL_CONFIGURATION: dict[str, object] = {
     "seed": 41,
     "mlforecast": {"lags": [1, 2, 3, 7], "randomForestEstimators": 50, "maxDepth": 8},
     "sarima": {
@@ -73,6 +74,36 @@ MODEL_CONFIGURATION: dict[str, object] = {
         "maxiter": 50,
     },
 }
+
+
+@dataclass(frozen=True)
+class _GeneratedResult:
+    values: list[float]
+    status: str
+    reason: str | None
+    cross_validation_status: str
+    cross_validation_mae: float | None
+    prediction_interval_status: str
+    prediction_interval_reason: str | None
+    bounds: list[tuple[float, float]] | None = None
+
+
+def _model_configuration(confidence_level: int) -> dict[str, object]:
+    return {
+        **BASE_MODEL_CONFIGURATION,
+        "predictionIntervals": {
+            "confidenceLevel": confidence_level,
+            "mlforecast": {
+                "method": "conformal_error",
+                "nWindows": 3,
+                "h": 1,
+            },
+            "sarima": {
+                "method": "native_forecast_result",
+                "alpha": round(1 - confidence_level / 100, 10),
+            },
+        },
+    }
 
 
 def preflight_predictions(
@@ -110,9 +141,10 @@ def create_prediction(
         prediction_key=f"prediction_{uuid4().hex}",
         name=payload.name,
         cutoff_mode=payload.cutoff_mode,
+        confidence_level=payload.confidence_level,
         start_date=payload.start_date,
         end_date=payload.end_date,
-        model_configuration=MODEL_CONFIGURATION,
+        model_configuration=_model_configuration(payload.confidence_level),
         created_by=actor_user_id,
     )
     try:
@@ -137,7 +169,9 @@ def create_prediction(
             )
             session.add(target)
             session.flush()
-            _persist_result_set(session, target, row, actor_user_id)
+            _persist_result_set(
+                session, target, row, payload.confidence_level, actor_user_id
+            )
         session.commit()
     except IntegrityError as exc:
         session.rollback()
@@ -531,21 +565,31 @@ def _persist_result_set(
     session: Session,
     target: PredictionTarget,
     row: _PreparedTarget,
+    confidence_level: int,
     actor_user_id: int,
 ) -> None:
     if row.equation is not None:
-        _persist_derived_result_set(session, target, row, actor_user_id)
+        _persist_derived_result_set(
+            session, target, row, confidence_level, actor_user_id
+        )
         return
     if row.status != "eligible":
         for kind in RESULT_KINDS:
+            interval_is_applicable = kind in ("mlforecast", "sarima")
             session.add(
                 PredictionModelResult(
                     prediction_target_id=target.prediction_target_id,
                     result_kind=kind,
                     status="ineligible",
                     reason=row.reason,
+                    prediction_interval_status=(
+                        "unavailable" if interval_is_applicable else "not_applicable"
+                    ),
+                    prediction_interval_reason=(
+                        row.reason if interval_is_applicable else None
+                    ),
                     cross_validation_status="unavailable",
-                    configuration=MODEL_CONFIGURATION,
+                    configuration=_model_configuration(confidence_level),
                     created_by=actor_user_id,
                 )
             )
@@ -563,35 +607,34 @@ def _persist_result_set(
             session,
             target,
             kind,
-            "available",
-            None,
-            "not_applicable",
-            None,
-            points_by_kind[kind],
+            _GeneratedResult(
+                points_by_kind[kind],
+                "available",
+                None,
+                "not_applicable",
+                None,
+                "not_applicable",
+                None,
+            ),
+            confidence_level,
             actor_user_id,
         )
-    ml_points, ml_status, ml_reason, ml_cv_status, ml_mae = _mlforecast_points(row)
+    ml_result = _mlforecast_result(row, confidence_level)
     _save_result(
         session,
         target,
         "mlforecast",
-        ml_status,
-        ml_reason,
-        ml_cv_status,
-        ml_mae,
-        ml_points,
+        ml_result,
+        confidence_level,
         actor_user_id,
     )
-    sarima_points, sarima_status, sarima_reason = _sarima_points(row)
+    sarima_result = _sarima_result(row, confidence_level)
     _save_result(
         session,
         target,
         "sarima",
-        sarima_status,
-        sarima_reason,
-        "not_applicable",
-        None,
-        sarima_points,
+        sarima_result,
+        confidence_level,
         actor_user_id,
     )
 
@@ -600,6 +643,7 @@ def _persist_derived_result_set(
     session: Session,
     target: PredictionTarget,
     row: _PreparedTarget,
+    confidence_level: int,
     actor_user_id: int,
 ) -> None:
     assert row.equation is not None
@@ -616,11 +660,16 @@ def _persist_derived_result_set(
                 session,
                 target,
                 kind,
-                "ineligible",
-                str(error),
-                "not_applicable",
-                None,
-                [],
+                _GeneratedResult(
+                    [],
+                    "ineligible",
+                    str(error),
+                    "not_applicable",
+                    None,
+                    "not_applicable",
+                    None,
+                ),
+                confidence_level,
                 actor_user_id,
             )
         return
@@ -687,11 +736,16 @@ def _persist_derived_result_set(
             session,
             target,
             kind,
-            "available" if failure is None else "ineligible",
-            failure,
-            "not_applicable",
-            None,
-            values if failure is None else [],
+            _GeneratedResult(
+                values if failure is None else [],
+                "available" if failure is None else "ineligible",
+                failure,
+                "not_applicable",
+                None,
+                "not_applicable",
+                None,
+            ),
+            confidence_level,
             actor_user_id,
         )
 
@@ -700,13 +754,18 @@ def _save_result(
     session: Session,
     target: PredictionTarget,
     kind: str,
-    result_status: str,
-    reason: str | None,
-    cv_status: str,
-    cv_mae: float | None,
-    values: list[float],
+    generated: _GeneratedResult,
+    confidence_level: int,
     actor_user_id: int,
 ) -> None:
+    result_status = generated.status
+    reason = generated.reason
+    cv_status = generated.cross_validation_status
+    cv_mae = generated.cross_validation_mae
+    values = generated.values
+    interval_status = generated.prediction_interval_status
+    interval_reason = generated.prediction_interval_reason
+    bounds = generated.bounds
     if result_status == "available":
         non_finite_reason = _non_finite_result_reason(kind, values, cv_mae)
         if non_finite_reason is not None:
@@ -715,14 +774,19 @@ def _save_result(
             cv_status = "unavailable"
             cv_mae = None
             values = []
+            interval_status = "unavailable"
+            interval_reason = reason
+            bounds = None
     result = PredictionModelResult(
         prediction_target_id=target.prediction_target_id,
         result_kind=kind,
         status=result_status,
         reason=reason,
+        prediction_interval_status=interval_status,
+        prediction_interval_reason=interval_reason,
         cross_validation_status=cv_status,
         cross_validation_mae=cv_mae,
-        configuration=MODEL_CONFIGURATION,
+        configuration=_model_configuration(confidence_level),
         created_by=actor_user_id,
     )
     session.add(result)
@@ -733,30 +797,33 @@ def _save_result(
                 prediction_model_result_id=result.prediction_model_result_id,
                 date=day,
                 value=value,
+                lower_bound=bounds[index][0] if bounds is not None else None,
+                upper_bound=bounds[index][1] if bounds is not None else None,
                 created_by=actor_user_id,
             )
-            for day, value in zip(
-                _current_periods(target.input_snapshot), values, strict=True
+            for index, (day, value) in enumerate(
+                zip(_current_periods(target.input_snapshot), values, strict=True)
             )
         )
 
 
-def _mlforecast_points(
-    row: _PreparedTarget,
-) -> tuple[list[float], str, str | None, str, float | None]:
+def _mlforecast_result(row: _PreparedTarget, confidence_level: int) -> _GeneratedResult:
     # The package is used for the actual fitting path. Short histories are a normal
     # per-model state, not a failed version.
     if len(row.history) < 12:
-        return (
+        return _GeneratedResult(
             [],
             "ineligible",
             "MLForecast needs at least 12 contiguous observations.",
             "unavailable",
             None,
+            "unavailable",
+            "MLForecast needs at least 12 contiguous observations.",
         )
     try:
         import pandas as pd
         from mlforecast import MLForecast
+        from mlforecast.utils import PredictionIntervals
         from sklearn.ensemble import RandomForestRegressor
 
         normalised = _normalised_features(row.history_features, row.features)
@@ -769,16 +836,20 @@ def _mlforecast_points(
             ]
         )
         history_frame["ds"] = pd.to_datetime(history_frame["ds"])
-        model = MLForecast(
-            models=[
-                RandomForestRegressor(
-                    n_estimators=50, max_depth=8, random_state=41, n_jobs=1
-                )
-            ],
-            freq=_mlforecast_frequency(row.metric.time_unit),
-            lags=[1, 2, 3, 7],
-            date_features=["year", "month", "dayofweek"],
-        )
+
+        def new_model() -> MLForecast:
+            return MLForecast(
+                models=[
+                    RandomForestRegressor(
+                        n_estimators=50, max_depth=8, random_state=41, n_jobs=1
+                    )
+                ],
+                freq=_mlforecast_frequency(row.metric.time_unit),
+                lags=[1, 2, 3, 7],
+                date_features=["year", "month", "dayofweek"],
+            )
+
+        model = new_model()
         model.fit(history_frame, static_features=[])
         future_features = normalised[len(row.history_features) :]
         future_frame = pd.DataFrame(
@@ -789,7 +860,7 @@ def _mlforecast_points(
         )
         future_frame["ds"] = pd.to_datetime(future_frame["ds"])
         prediction = model.predict(len(row.periods), X_df=future_frame)
-        values = [float(value) for value in prediction.iloc[:, -1].tolist()]
+        values = _named_prediction_values(prediction, "RandomForestRegressor")
         mae: float | None = None
         if len(row.history) >= 12:
             cross_validation = model.cross_validation(
@@ -799,31 +870,79 @@ def _mlforecast_points(
                 static_features=[],
             )
             mae = float(
-                (cross_validation["y"] - cross_validation.iloc[:, -1]).abs().mean()
+                (cross_validation["y"] - cross_validation["RandomForestRegressor"])
+                .abs()
+                .mean()
             )
-        return (
+        point_result = _GeneratedResult(
             values,
             "available",
             None,
             "available" if mae is not None else "unavailable",
             mae,
-        )
-    except ValueError as exc:
-        return (
-            [],
-            "ineligible",
-            f"MLForecast cannot fit this metric: {exc}",
             "unavailable",
-            None,
+            "MLForecast prediction interval is unavailable.",
+        )
+        try:
+            interval_model = new_model()
+            interval_model.fit(
+                history_frame,
+                static_features=[],
+                prediction_intervals=PredictionIntervals(
+                    n_windows=3, h=1, method="conformal_error"
+                ),
+            )
+            # ADR-011 intentionally uses one-step calibration, so MLForecast's
+            # horizon-constant-width notice is expected for multi-period output.
+            with warnings.catch_warnings():
+                warnings.filterwarnings(
+                    "ignore",
+                    message=(
+                        "Prediction intervals are calculated using 1-step ahead "
+                        "cross-validation, with a constant width for all horizons."
+                    ),
+                    category=UserWarning,
+                    module=r"mlforecast\.forecast",
+                )
+                interval_prediction = interval_model.predict(
+                    len(row.periods), X_df=future_frame, level=[confidence_level]
+                )
+            interval_values = _named_prediction_values(
+                interval_prediction, "RandomForestRegressor"
+            )
+            bounds = _validated_bounds(
+                interval_values,
+                _named_prediction_values(
+                    interval_prediction, f"RandomForestRegressor-lo-{confidence_level}"
+                ),
+                _named_prediction_values(
+                    interval_prediction, f"RandomForestRegressor-hi-{confidence_level}"
+                ),
+            )
+            return _GeneratedResult(
+                interval_values,
+                point_result.status,
+                point_result.reason,
+                point_result.cross_validation_status,
+                point_result.cross_validation_mae,
+                "available",
+                None,
+                bounds,
+            )
+        except (KeyError, TypeError, ValueError):
+            return point_result
+    except ValueError as exc:
+        reason = f"MLForecast cannot fit this metric: {exc}"
+        return _GeneratedResult(
+            [], "ineligible", reason, "unavailable", None, "unavailable", reason
         )
 
 
-def _sarima_points(row: _PreparedTarget) -> tuple[list[float], str, str | None]:
+def _sarima_result(row: _PreparedTarget, confidence_level: int) -> _GeneratedResult:
     if len(row.history) < max(8, (row.seasonal_period or 2) * 2):
-        return (
-            [],
-            "ineligible",
-            "SARIMA has insufficient history for the selected seasonal period.",
+        reason = "SARIMA has insufficient history for the selected seasonal period."
+        return _GeneratedResult(
+            [], "ineligible", reason, "not_applicable", None, "unavailable", reason
         )
     try:
         import numpy as np
@@ -861,17 +980,80 @@ def _sarima_points(row: _PreparedTarget) -> tuple[list[float], str, str | None]:
         mle_retvals = fitted.mle_retvals
         converged = bool(mle_retvals.get("converged", False))
         if emitted_convergence_warning or not converged:
-            return [], "ineligible", "SARIMA fitting did not converge."
-        return (
-            [
-                float(value)
-                for value in fitted.forecast(len(row.periods), exog=future_exog)
-            ],
+            reason = "SARIMA fitting did not converge."
+            return _GeneratedResult(
+                [], "ineligible", reason, "not_applicable", None, "unavailable", reason
+            )
+        values = [
+            float(value)
+            for value in fitted.forecast(len(row.periods), exog=future_exog)
+        ]
+        point_result = _GeneratedResult(
+            values,
             "available",
             None,
+            "not_applicable",
+            None,
+            "unavailable",
+            "SARIMA prediction interval is unavailable.",
         )
+        try:
+            forecast_result = fitted.get_forecast(len(row.periods), exog=future_exog)
+            interval_values = [float(value) for value in forecast_result.predicted_mean]
+            confidence_bounds = forecast_result.conf_int(
+                alpha=1 - confidence_level / 100
+            )
+            if hasattr(confidence_bounds, "iloc"):
+                lower_values = confidence_bounds.iloc[:, 0].tolist()
+                upper_values = confidence_bounds.iloc[:, 1].tolist()
+            else:
+                lower_values = [pair[0] for pair in confidence_bounds]
+                upper_values = [pair[1] for pair in confidence_bounds]
+            return _GeneratedResult(
+                interval_values,
+                point_result.status,
+                point_result.reason,
+                point_result.cross_validation_status,
+                point_result.cross_validation_mae,
+                "available",
+                None,
+                _validated_bounds(interval_values, lower_values, upper_values),
+            )
+        except (AttributeError, IndexError, KeyError, TypeError, ValueError):
+            return point_result
     except ValueError as exc:
-        return [], "ineligible", f"SARIMA cannot fit this metric: {exc}"
+        reason = f"SARIMA cannot fit this metric: {exc}"
+        return _GeneratedResult(
+            [], "ineligible", reason, "not_applicable", None, "unavailable", reason
+        )
+
+
+def _named_prediction_values(prediction: object, column: str) -> list[float]:
+    try:
+        values = prediction[column].tolist()  # type: ignore[index,union-attr]
+    except (KeyError, TypeError, AttributeError) as exc:
+        raise ValueError("MLForecast prediction columns are unavailable.") from exc
+    return [float(value) for value in values]
+
+
+def _validated_bounds(
+    values: list[float], lower_values: object, upper_values: object
+) -> list[tuple[float, float]]:
+    lower = [float(value) for value in lower_values]  # type: ignore[union-attr]
+    upper = [float(value) for value in upper_values]  # type: ignore[union-attr]
+    if len(values) != len(lower) or len(values) != len(upper):
+        raise ValueError("Prediction interval bounds are incomplete.")
+    bounds = list(zip(lower, upper, strict=True))
+    if any(
+        not math.isfinite(value)
+        or not math.isfinite(lower_bound)
+        or not math.isfinite(upper_bound)
+        or lower_bound > value
+        or value > upper_bound
+        for value, (lower_bound, upper_bound) in zip(values, bounds, strict=True)
+    ):
+        raise ValueError("Prediction interval bounds are invalid.")
+    return bounds
 
 
 def _seasonal_naive(values: list[float], amount: int, period: int) -> list[float]:
@@ -1014,6 +1196,7 @@ def _version_list_item(version: PredictionVersion) -> PredictionVersionListRespo
         startDate=version.start_date,
         endDate=version.end_date,
         cutoffMode=cast(CutoffMode, version.cutoff_mode),
+        confidenceLevel=version.confidence_level,
         createdTime=version.created_time.isoformat(),
     )
 
@@ -1074,11 +1257,18 @@ def _result_response(
         kind=result.result_kind,
         status=result.status,
         reason=result.reason,
+        predictionIntervalStatus=result.prediction_interval_status,
+        predictionIntervalReason=result.prediction_interval_reason,
         crossValidationStatus=result.cross_validation_status,
         crossValidationMae=result.cross_validation_mae,
         configuration=result.configuration,
         points=[
-            PredictionPointResponse(date=point.date, value=point.value)
+            PredictionPointResponse(
+                date=point.date,
+                value=point.value,
+                lowerBound=point.lower_bound,
+                upperBound=point.upper_bound,
+            )
             for point in points
         ],
     )

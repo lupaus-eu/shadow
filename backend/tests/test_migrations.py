@@ -79,9 +79,7 @@ def test_rejects_pair_with_different_stems(tmp_path: Path) -> None:
 
 def test_parses_supported_commands() -> None:
     assert parse_command(["up"]) == UpCommand()
-    assert parse_command(["001_first.down.sql"]) == DownCommand(
-        "001_first.down.sql"
-    )
+    assert parse_command(["001_first.down.sql"]) == DownCommand("001_first.down.sql")
     assert parse_command(["baseline", "008"]) == BaselineCommand(8)
 
 
@@ -172,4 +170,6 @@ def test_rejects_history_longer_than_repository(tmp_path: Path) -> None:
 def test_repository_migrations_are_complete_pairs() -> None:
     migrations = discover_migrations()
 
-    assert [migration.version for migration in migrations] == list(range(1, 14))
+    assert [migration.version for migration in migrations] == list(
+        range(1, len(discover_migrations()) + 1)
+    )

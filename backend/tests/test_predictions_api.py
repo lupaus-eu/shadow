@@ -1,5 +1,7 @@
+import warnings
 from collections.abc import Iterator
 from datetime import date
+from typing import Any, cast
 
 import pytest
 from auth_helpers import authenticate_test_client
@@ -153,6 +155,12 @@ def test_preflight_is_read_only_and_create_persists_target_scenario_history(
     assert created.status_code == 201
     detail = created.json()
     assert detail["name"] == "May forecast"
+    assert detail["confidenceLevel"] == 80
+    assert detail["modelConfiguration"]["predictionIntervals"] == {
+        "confidenceLevel": 80,
+        "mlforecast": {"method": "conformal_error", "nWindows": 3, "h": 1},
+        "sarima": {"method": "native_forecast_result", "alpha": 0.2},
+    }
     results = {result["kind"]: result for result in detail["targets"][0]["results"]}
     assert [point["value"] for point in results["naive"]["points"]] == [40.0, 40.0]
     assert [point["value"] for point in results["average"]["points"]] == [25.0, 25.0]
@@ -162,19 +170,26 @@ def test_preflight_is_read_only_and_create_persists_target_scenario_history(
     ]
     assert results["mlforecast"]["status"] == "ineligible"
     assert results["sarima"]["status"] == "ineligible"
+    assert all(
+        result["predictionIntervalStatus"] == "not_applicable"
+        and all(
+            point["lowerBound"] is None and point["upperBound"] is None
+            for point in result["points"]
+        )
+        for kind, result in results.items()
+        if kind in {"naive", "seasonal_naive", "average"}
+    )
 
     listed = client.get(f"/api/v1/organisations/{organisation_key}/predictions")
     assert listed.status_code == 200
     assert listed.json()[0]["id"] == detail["id"]
+    assert listed.json()[0]["confidenceLevel"] == 80
 
     with session_factory() as session:
         target = session.scalar(select(PredictionTarget))
         assert target is not None
         assert target.created_by == 0
-        assert (
-            target.source_snapshot["observationPolicy"]
-            == "targetScenarioOnly"
-        )
+        assert target.source_snapshot["observationPolicy"] == "targetScenarioOnly"
         result = session.scalar(select(PredictionModelResult))
         point = session.scalar(select(PredictionPoint))
         assert result is not None and result.created_by == 0
@@ -209,6 +224,14 @@ def test_create_prediction_persists_derived_target_without_seasonal_source(
     targets = {item["metricId"]: item for item in created.json()["targets"]}
     assert targets[derived.json()["id"]]["seasonalPeriod"] is None
     assert targets[derived.json()["id"]]["seasonalPeriodSource"] is None
+    assert all(
+        result["predictionIntervalStatus"] == "not_applicable"
+        and all(
+            point["lowerBound"] is None and point["upperBound"] is None
+            for point in result["points"]
+        )
+        for result in targets[derived.json()["id"]]["results"]
+    )
 
 
 def test_prediction_rejects_duplicate_name_and_cross_organisation_target(
@@ -237,6 +260,88 @@ def test_prediction_rejects_duplicate_name_and_cross_organisation_target(
         json=_prediction_payload(target_key),
     )
     assert cross_organisation.status_code == 404
+
+
+@pytest.mark.parametrize("confidence_level", [50, 99])
+def test_prediction_accepts_confidence_level_boundaries(
+    client: TestClient, confidence_level: int
+) -> None:
+    organisation_key = _create_organisation(client)
+    target_key = _create_target_and_metrics(client, organisation_key)
+
+    preflight = client.post(
+        f"/api/v1/organisations/{organisation_key}/predictions/preflight",
+        json=_prediction_payload(target_key, confidenceLevel=confidence_level),
+    )
+    assert preflight.status_code == 200
+    created = client.post(
+        f"/api/v1/organisations/{organisation_key}/predictions",
+        json=_prediction_payload(
+            target_key,
+            name=f"Level {confidence_level}",
+            confidenceLevel=confidence_level,
+        ),
+    )
+    assert created.status_code == 201
+    assert created.json()["confidenceLevel"] == confidence_level
+
+
+@pytest.mark.parametrize("confidence_level", [49, 100, 80.0, "80"])
+def test_prediction_rejects_invalid_confidence_levels(
+    client: TestClient, confidence_level: object
+) -> None:
+    organisation_key = _create_organisation(client)
+    target_key = _create_target_and_metrics(client, organisation_key)
+
+    response = client.post(
+        f"/api/v1/organisations/{organisation_key}/predictions/preflight",
+        json=_prediction_payload(target_key, confidenceLevel=confidence_level),
+    )
+    assert response.status_code == 422
+
+
+def test_mlforecast_selected_levels_produce_distinct_complete_bounds(
+    client: TestClient,
+) -> None:
+    organisation_key, target_key = _create_model_ready_target(client)
+
+    versions: list[dict[str, Any]] = []
+    with warnings.catch_warnings(record=True) as caught_warnings:
+        warnings.simplefilter("always")
+        for confidence_level in (50, 99):
+            response = client.post(
+                f"/api/v1/organisations/{organisation_key}/predictions",
+                json=_prediction_payload(
+                    target_key,
+                    name=f"MLForecast level {confidence_level}",
+                    confidenceLevel=confidence_level,
+                    startDate="2025-01-01",
+                    endDate="2025-02-28",
+                ),
+            )
+            assert response.status_code == 201
+            versions.append(cast(dict[str, Any], response.json()))
+
+    assert not any(
+        "Prediction intervals are calculated using 1-step ahead cross-validation"
+        in str(warning.message)
+        for warning in caught_warnings
+    )
+
+    bounds_by_level: list[list[tuple[float | None, float | None]]] = []
+    for version in versions:
+        targets = cast(list[dict[str, Any]], version["targets"])
+        results = {
+            item["kind"]: item
+            for item in cast(list[dict[str, Any]], targets[0]["results"])
+        }
+        result = results["mlforecast"]
+        assert result["predictionIntervalStatus"] == "available"
+        points = cast(list[dict[str, float | None]], result["points"])
+        bounds_by_level.append(
+            [(point["lowerBound"], point["upperBound"]) for point in points]
+        )
+    assert bounds_by_level[0] != bounds_by_level[1]
 
 
 def test_preflight_rejects_candidate_pair_limit_before_history_preparation(
@@ -280,12 +385,14 @@ def test_as_of_start_excludes_observations_at_or_after_first_period(
             f"/api/v1/organisations/{organisation_key}/scenarios/{target_key}/"
             "timeseries/revenue/values"
         ),
-        json={"values": [
-            {"date": "2025-01-01", "value": 10},
-            {"date": "2025-02-01", "value": 20},
-            {"date": "2025-03-01", "value": 30},
-            {"date": "2025-04-01", "value": 400},
-        ]},
+        json={
+            "values": [
+                {"date": "2025-01-01", "value": 10},
+                {"date": "2025-02-01", "value": 20},
+                {"date": "2025-03-01", "value": 30},
+                {"date": "2025-04-01", "value": 400},
+            ]
+        },
     )
     assert replacement.status_code == 200
     response = client.post(
@@ -312,13 +419,15 @@ def test_as_of_start_uses_first_generated_period_for_unaligned_ranges(
             f"/api/v1/organisations/{organisation_key}/scenarios/{target_key}/"
             "timeseries/revenue/values"
         ),
-        json={"values": [
-            {"date": "2025-01-01", "value": 10},
-            {"date": "2025-02-01", "value": 20},
-            {"date": "2025-03-01", "value": 30},
-            {"date": "2025-04-01", "value": 40},
-            {"date": "2025-05-01", "value": 500},
-        ]},
+        json={
+            "values": [
+                {"date": "2025-01-01", "value": 10},
+                {"date": "2025-02-01", "value": 20},
+                {"date": "2025-03-01", "value": 30},
+                {"date": "2025-04-01", "value": 40},
+                {"date": "2025-05-01", "value": 500},
+            ]
+        },
     )
     assert replacement.status_code == 200
 
@@ -347,12 +456,14 @@ def test_target_scenario_values_are_the_only_observed_history(
             f"/api/v1/organisations/{organisation_key}/scenarios/{target_key}/"
             "timeseries/revenue/values"
         ),
-        json={"values": [
-            {"date": "2025-01-01", "value": 100},
-            {"date": "2025-02-01", "value": 200},
-            {"date": "2025-03-01", "value": 300},
-            {"date": "2025-04-01", "value": 400},
-        ]},
+        json={
+            "values": [
+                {"date": "2025-01-01", "value": 100},
+                {"date": "2025-02-01", "value": 200},
+                {"date": "2025-03-01", "value": 300},
+                {"date": "2025-04-01", "value": 400},
+            ]
+        },
     )
     assert replacement.status_code == 200
 
@@ -572,10 +683,17 @@ def test_sarima_nonconvergence_is_saved_without_discarding_mlforecast(
     assert len(results["mlforecast"]["points"]) == 2
     assert results["mlforecast"]["crossValidationStatus"] == "available"
     assert results["mlforecast"]["crossValidationMae"] is not None
+    assert results["mlforecast"]["predictionIntervalStatus"] == "available"
+    assert all(
+        point["lowerBound"] <= point["value"] <= point["upperBound"]
+        for point in results["mlforecast"]["points"]
+    )
     assert results["sarima"] == {
         "kind": "sarima",
         "status": "ineligible",
         "reason": "SARIMA fitting did not converge.",
+        "predictionIntervalStatus": "unavailable",
+        "predictionIntervalReason": "SARIMA fitting did not converge.",
         "crossValidationStatus": "not_applicable",
         "crossValidationMae": None,
         "configuration": results["sarima"]["configuration"],
@@ -590,15 +708,22 @@ def test_non_finite_mlforecast_values_are_saved_as_ineligible(
 
     organisation_key, target_key = _create_model_ready_target(client)
 
-    def non_finite_mlforecast(
-        row: object,
-    ) -> tuple[list[float], str, str | None, str, float | None]:
-        del row
-        return [float("nan"), float("nan")], "available", None, "available", 1.0
+    def non_finite_mlforecast(row: object, confidence_level: int) -> object:
+        del row, confidence_level
+        return predictions_service._GeneratedResult(  # pyright: ignore[reportPrivateUsage]
+            [float("nan"), float("nan")],
+            "available",
+            None,
+            "available",
+            1.0,
+            "available",
+            None,
+            [(0.0, 1.0), (0.0, 1.0)],
+        )
 
     monkeypatch.setattr(
         predictions_service,
-        "_mlforecast_points",
+        "_mlforecast_result",
         non_finite_mlforecast,
     )  # pyright: ignore[reportPrivateUsage]
     response = client.post(
@@ -616,6 +741,8 @@ def test_non_finite_mlforecast_values_are_saved_as_ineligible(
         "kind": "mlforecast",
         "status": "ineligible",
         "reason": "MLForecast generated non-finite forecast values.",
+        "predictionIntervalStatus": "unavailable",
+        "predictionIntervalReason": "MLForecast generated non-finite forecast values.",
         "crossValidationStatus": "unavailable",
         "crossValidationMae": None,
         "configuration": results["mlforecast"]["configuration"],
@@ -630,15 +757,22 @@ def test_non_finite_mlforecast_mae_is_saved_as_ineligible(
 
     organisation_key, target_key = _create_model_ready_target(client)
 
-    def non_finite_mlforecast(
-        row: object,
-    ) -> tuple[list[float], str, str | None, str, float | None]:
-        del row
-        return [1.0, 1.0], "available", None, "available", float("nan")
+    def non_finite_mlforecast(row: object, confidence_level: int) -> object:
+        del row, confidence_level
+        return predictions_service._GeneratedResult(  # pyright: ignore[reportPrivateUsage]
+            [1.0, 1.0],
+            "available",
+            None,
+            "available",
+            float("nan"),
+            "available",
+            None,
+            [(0.0, 2.0), (0.0, 2.0)],
+        )
 
     monkeypatch.setattr(
         predictions_service,
-        "_mlforecast_points",
+        "_mlforecast_result",
         non_finite_mlforecast,
     )  # pyright: ignore[reportPrivateUsage]
     response = client.post(
@@ -656,6 +790,10 @@ def test_non_finite_mlforecast_mae_is_saved_as_ineligible(
         "kind": "mlforecast",
         "status": "ineligible",
         "reason": "MLForecast generated a non-finite cross-validation MAE.",
+        "predictionIntervalStatus": "unavailable",
+        "predictionIntervalReason": (
+            "MLForecast generated a non-finite cross-validation MAE."
+        ),
         "crossValidationStatus": "unavailable",
         "crossValidationMae": None,
         "configuration": results["mlforecast"]["configuration"],
@@ -670,15 +808,22 @@ def test_non_finite_sarima_values_are_saved_as_ineligible(
 
     organisation_key, target_key = _create_model_ready_target(client)
 
-    def non_finite_sarima(
-        row: object,
-    ) -> tuple[list[float], str, str | None]:
-        del row
-        return [float("nan"), float("nan")], "available", None
+    def non_finite_sarima(row: object, confidence_level: int) -> object:
+        del row, confidence_level
+        return predictions_service._GeneratedResult(  # pyright: ignore[reportPrivateUsage]
+            [float("nan"), float("nan")],
+            "available",
+            None,
+            "not_applicable",
+            None,
+            "available",
+            None,
+            [(0.0, 1.0), (0.0, 1.0)],
+        )
 
     monkeypatch.setattr(
         predictions_service,
-        "_sarima_points",
+        "_sarima_result",
         non_finite_sarima,
     )  # pyright: ignore[reportPrivateUsage]
     response = client.post(
@@ -696,6 +841,8 @@ def test_non_finite_sarima_values_are_saved_as_ineligible(
         "kind": "sarima",
         "status": "ineligible",
         "reason": "SARIMA generated non-finite forecast values.",
+        "predictionIntervalStatus": "unavailable",
+        "predictionIntervalReason": "SARIMA generated non-finite forecast values.",
         "crossValidationStatus": "unavailable",
         "crossValidationMae": None,
         "configuration": results["sarima"]["configuration"],
@@ -703,12 +850,19 @@ def test_non_finite_sarima_values_are_saved_as_ineligible(
     }
 
 
-def test_sarima_uses_the_selected_seasonal_period(
+def test_sarima_uses_native_prediction_bounds_and_selected_seasonal_period(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from app.api.v1.predictions import service as predictions_service
 
-    captured: dict[str, tuple[int, int, int, int]] = {}
+    captured: dict[str, object] = {}
+
+    class FakeForecastResult:
+        predicted_mean = [1.0]
+
+        def conf_int(self, *, alpha: float) -> list[tuple[float, float]]:
+            captured["alpha"] = alpha
+            return [(0.5, 1.5)]
 
     class FakeFittedModel:
         mle_retvals = {"converged": True}
@@ -716,6 +870,10 @@ def test_sarima_uses_the_selected_seasonal_period(
         def forecast(self, periods: int, exog: object) -> list[float]:
             del exog
             return [1.0] * periods
+
+        def get_forecast(self, periods: int, exog: object) -> FakeForecastResult:
+            del periods, exog
+            return FakeForecastResult()
 
     class FakeSarimax:
         def __init__(
@@ -733,11 +891,10 @@ def test_sarima_uses_the_selected_seasonal_period(
 
     monkeypatch.setattr("statsmodels.tsa.statespace.sarimax.SARIMAX", FakeSarimax)
     history = [
-        (date(2024, month, 1), float(month), "targetScenario")
-        for month in range(1, 9)
+        (date(2024, month, 1), float(month), "targetScenario") for month in range(1, 9)
     ]
     prepared_target = predictions_service._PreparedTarget  # pyright: ignore[reportPrivateUsage]
-    sarima_points = predictions_service._sarima_points  # pyright: ignore[reportPrivateUsage]
+    sarima_result = predictions_service._sarima_result  # pyright: ignore[reportPrivateUsage]
     row = prepared_target(
         Scenario(),
         Timeserie(time_unit="month"),
@@ -751,8 +908,57 @@ def test_sarima_uses_the_selected_seasonal_period(
         [{}],
     )
 
-    assert sarima_points(row) == ([1.0], "available", None)
+    result = sarima_result(row, 80)
+    assert result.values == [1.0]
+    assert result.prediction_interval_status == "available"
+    assert result.bounds == [(0.5, 1.5)]
     assert captured["seasonal_order"] == (1, 0, 0, 2)
+    assert captured["alpha"] == pytest.approx(0.2)
+
+
+def test_interval_failure_preserves_valid_model_points(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.api.v1.predictions import service as predictions_service
+
+    organisation_key = _create_organisation(client)
+    target_key = _create_target_and_metrics(client, organisation_key)
+
+    def interval_unavailable(row: object, confidence_level: int) -> object:
+        del row, confidence_level
+        return predictions_service._GeneratedResult(  # pyright: ignore[reportPrivateUsage]
+            [10.0, 11.0],
+            "available",
+            None,
+            "available",
+            1.0,
+            "unavailable",
+            "MLForecast prediction interval is unavailable.",
+        )
+
+    monkeypatch.setattr(predictions_service, "_mlforecast_result", interval_unavailable)  # pyright: ignore[reportPrivateUsage]
+    response = client.post(
+        f"/api/v1/organisations/{organisation_key}/predictions",
+        json=_prediction_payload(
+            target_key,
+            name="Interval unavailable",
+        ),
+    )
+
+    assert response.status_code == 201
+    result = {item["kind"]: item for item in response.json()["targets"][0]["results"]}[
+        "mlforecast"
+    ]
+    assert result["status"] == "available"
+    assert result["predictionIntervalStatus"] == "unavailable"
+    assert result["predictionIntervalReason"] == (
+        "MLForecast prediction interval is unavailable."
+    )
+    assert [point["value"] for point in result["points"]] == [10.0, 11.0]
+    assert all(
+        point["lowerBound"] is None and point["upperBound"] is None
+        for point in result["points"]
+    )
 
 
 def test_missing_target_scenario_period_is_saved_as_normal_ineligibility(

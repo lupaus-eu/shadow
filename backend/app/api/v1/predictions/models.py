@@ -31,6 +31,7 @@ class PredictionVersion(Base):
     prediction_key: Mapped[str] = mapped_column(Text)
     name: Mapped[str] = mapped_column(Text)
     cutoff_mode: Mapped[str] = mapped_column(Text)
+    confidence_level: Mapped[int] = mapped_column(Integer, default=80)
     start_date: Mapped[dt_date] = mapped_column(Date)
     end_date: Mapped[dt_date] = mapped_column(Date)
     model_configuration: Mapped[dict[str, object]] = mapped_column(JSON, default=dict)
@@ -85,6 +86,8 @@ class PredictionModelResult(Base):
     result_kind: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(Text)
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    prediction_interval_status: Mapped[str] = mapped_column(Text)
+    prediction_interval_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     cross_validation_status: Mapped[str] = mapped_column(Text)
     cross_validation_mae: Mapped[float | None] = mapped_column(Float, nullable=True)
     configuration: Mapped[dict[str, object]] = mapped_column(JSON, default=dict)
@@ -108,6 +111,8 @@ class PredictionPoint(Base):
     )
     date: Mapped[dt_date] = mapped_column(Date)
     value: Mapped[float] = mapped_column(Float)
+    lower_bound: Mapped[float | None] = mapped_column(Float, nullable=True)
+    upper_bound: Mapped[float | None] = mapped_column(Float, nullable=True)
     created_by: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("users.user_id"), nullable=True
     )

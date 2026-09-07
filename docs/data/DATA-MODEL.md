@@ -49,10 +49,10 @@ Lue nämä yhdessä datamallin kanssa:
 | Timeserie | Scenario-specific timeseries definition. |
 | Timeserie Value | Date-specific value for a timeserie. |
 | Derived Metric Equation | Scenario-owned formula defining one derived numeric Timeserie. |
-| Prediction Version | Immutable, organisation-owned named execution with its cutoff and model configuration snapshot. |
+| Prediction Version | Immutable, organisation-owned named execution with its cutoff, selected nominal prediction-interval level and model configuration snapshot. |
 | Prediction Target | One target scenario and metric in a saved version, including effective-observation/source snapshots and metric eligibility. |
-| Prediction Model Result | One persisted requested output kind with eligibility and cross-validation metadata. |
-| Prediction Point | One dated numeric value belonging to a model result. |
+| Prediction Model Result | One persisted requested output kind with eligibility, cross-validation and prediction-interval availability metadata. |
+| Prediction Point | One dated numeric value belonging to a model result, with an optional complete lower/upper prediction-interval pair. |
 | Customer | Application-wide customer profile with active, archived and soft-deleted lifecycle states. |
 | Contact | Customer-owned contact person or communication channel. |
 | Customer Address | Customer-owned labelled postal or visiting address. |
@@ -130,12 +130,19 @@ Lue nämä yhdessä datamallin kanssa:
   copied target-scenario timeseries.
 - A Prediction Version belongs to one organisation; its name is case-insensitively
   unique within that organisation and is never updated or overwritten.
+- A Prediction Version records one integer prediction-interval level from 50
+  through 99, defaulting to 80. Its configuration snapshot records the selected
+  level and supported model interval methods.
 - A Prediction Version owns Prediction Targets; each target owns exactly one result
   for every requested output kind, and a result owns dated Prediction Points.
 - Prediction Targets retain stable target keys and source and input JSON
   snapshots rather than source-table foreign keys. The source snapshot records
   target-scenario-only effective observations, so source soft deletion cannot
   make saved forecasts unreadable.
+- A Prediction Model Result records whether its interval is available,
+  unavailable with a safe reason, or not applicable. Available intervals are
+  complete: every Prediction Point has finite ordered bounds containing its
+  value; otherwise every bound is null.
 - Forecasting reads only the selected target scenario's values, graph history
   and events; it does not own or write Scenario, Timeserie or Timeserie Value
   rows.

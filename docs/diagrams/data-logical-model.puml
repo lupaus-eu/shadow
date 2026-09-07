@@ -112,4 +112,15 @@ note right of prediction_target
   source/input snapshots
 end note
 
+note right of prediction_version
+  Immutable selected interval level
+  (50..99; default 80)
+end note
+
+note right of prediction_model_result
+  Interval is available, unavailable,
+  or not applicable; available points
+  have complete enclosing bounds
+end note
+
 @enduml
