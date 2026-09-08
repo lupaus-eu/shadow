@@ -33,6 +33,9 @@ Päätetty tekninen perusrakenne:
   coverage selection and model-specific bounds for directly fitted MLForecast
   and SARIMA results according to ADR-011; baselines, live Reality and
   formula-derived results remain point-only
+- background prediction requests: ADR-012 accepts a PostgreSQL-backed,
+  single-worker architecture, but its request schema, worker, API, UI and
+  runtime wiring remain pending TASK-057B through TASK-057E
 
 Tarkemmat toteutusyksityiskohdat täsmentyvät taskien ja tarvittaessa uusien ADR:ien kautta.
 
@@ -569,16 +572,21 @@ Uusi merkittävä integraatio vaatii taskin ja tarvittaessa ADR:n.
 
 # Background Jobs
 
-Status: TBD
+Status: accepted Forecasting design, not implemented or deployed
 
-Jos projektiin lisätään ajastettuja töitä, queue tai worker-prosesseja, päätös dokumentoidaan ADR:llä.
+ADR-012 defines a Forecasting-only durable PostgreSQL queue for background
+prediction requests. One worker, using the existing backend image, will hold a
+database advisory lock and calculate one request globally at a time in
+submission order. Each calculation will run in a supervised child process;
+request cancellation, recovery and atomic publication are defined in the ADR.
 
-Mahdollisia käyttötapauksia:
+This does not change the implemented runtime shape above. TASK-057B through
+TASK-057E respectively implement detached calculation inputs, the durable
+request/API/worker behavior, the current-tab state-only UI and deployment
+wiring/QA. No generic background-job platform, broker, scheduler, retries or
+parallel processing is accepted.
 
-- sähköpostit
-- raportit
-- integraatiosynkronoinnit
-- audit trail -prosessointi
+![Accepted Forecasting request architecture (implementation pending)](docs/diagrams/generated/component-forecasting-prediction-requests.svg)
 
 ---
 

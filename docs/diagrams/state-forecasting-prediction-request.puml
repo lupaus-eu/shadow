@@ -1,0 +1,44 @@
+@startuml
+title Schatten - Accepted Prediction Request Lifecycle (Pending Implementation)
+
+hide empty description
+
+[*] --> queued : validated snapshot committed
+queued --> running : lock-owning worker claims oldest request
+queued --> cancelled : cancel accepted immediately
+running --> cancelling : cancel accepted
+cancelling --> cancelled : child stopped, reaped; output discarded
+running --> failed : unexpected error, crash or lost ownership
+running --> completed : atomic complete-version publication commits first
+
+note right of queued
+  Name reserved.
+  Survives restarts.
+end note
+
+note right of running
+  One global worker; child calculates
+  only from frozen detached snapshot.
+end note
+
+note right of cancelling
+  Supervisor checks each second,
+  terminates, then force-kills after
+  two seconds if necessary.
+end note
+
+note bottom of completed
+  Immutable version exists.
+  Later cancellation returns completed.
+end note
+
+note bottom of cancelled
+  Name is reusable.
+  No saved version from this request.
+end note
+
+note bottom of failed
+  Safe failure retained; no retry.
+  Name is reusable; no partial version.
+end note
+@enduml

@@ -36,6 +36,7 @@ package "Organisation Twin Structure Domain" {
 }
 
 package "Forecasting Domain" {
+  entity "Prediction Request\n(accepted; pending implementation)" as prediction_request
   entity "Prediction Version" as prediction_version
   entity "Prediction Target" as prediction_target
   entity "Prediction Model Result" as prediction_model_result
@@ -74,6 +75,9 @@ timeserie ||--o{ timeserie_value
 scenario ||--o{ derived_metric_equation
 timeserie ||--o| derived_metric_equation : derived
 organisation ||--o{ prediction_version
+organisation ||--o{ prediction_request
+user ||--o{ prediction_request : submitted / cancelled
+prediction_request }o--o| prediction_version : completed output
 prediction_version ||--o{ prediction_target
 prediction_target ||--o{ prediction_model_result
 prediction_model_result ||--o{ prediction_point
@@ -115,6 +119,13 @@ end note
 note right of prediction_version
   Immutable selected interval level
   (50..99; default 80)
+end note
+
+note left of prediction_request
+  queued | running | cancelling |
+  completed | cancelled | failed
+  Immutable submission snapshot;
+  request history is retained
 end note
 
 note right of prediction_model_result

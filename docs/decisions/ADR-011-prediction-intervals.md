@@ -6,6 +6,15 @@ Date: 2026-09-04
 
 ---
 
+# Amendment
+
+ADR-012 supersedes this ADR's background-execution exclusion. It retains every
+interval decision here, including the result-kind scope, methods, complete-bound
+invariant and existing work limits; durable requests do not alter interval
+semantics.
+
+---
+
 # Context
 
 Forecasting currently saves deterministic point predictions for five result
@@ -164,6 +173,7 @@ Costs and constraints:
 - `docs/decisions/ADR-007-predictions-forecasting-domain.md`
 - `docs/decisions/ADR-009-scenario-owned-prediction-inputs.md`
 - `docs/decisions/ADR-010-derived-metrics.md`
+- `docs/decisions/ADR-012-background-prediction-requests.md`
 - `docs/domains/FORECASTING.md`
 - `tasks/TASK-054A-prediction-intervals-architecture.md`
 - `tasks/TASK-054B-prediction-intervals-backend.md`

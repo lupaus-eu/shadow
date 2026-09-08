@@ -2,7 +2,9 @@
 
 Tämä dokumentti kuvaa järjestelmän loogisen datamallin.
 
-Status: core, customer and Forecasting Domain model defined. AI and billing still TBD.
+Status: core, customer and implemented Forecasting saved-version model defined.
+ADR-012 additionally defines the logical Prediction Request; its physical
+schema is pending TASK-057C. AI and billing remain TBD.
 
 Looginen datamalli kuvaa:
 
@@ -49,6 +51,7 @@ Lue nämä yhdessä datamallin kanssa:
 | Timeserie | Scenario-specific timeseries definition. |
 | Timeserie Value | Date-specific value for a timeserie. |
 | Derived Metric Equation | Scenario-owned formula defining one derived numeric Timeserie. |
+| Prediction Request | Mutable, organisation-owned durable request with a frozen calculation snapshot and terminal history; accepted architecture, not yet persisted. |
 | Prediction Version | Immutable, organisation-owned named execution with its cutoff, selected nominal prediction-interval level and model configuration snapshot. |
 | Prediction Target | One target scenario and metric in a saved version, including effective-observation/source snapshots and metric eligibility. |
 | Prediction Model Result | One persisted requested output kind with eligibility, cross-validation and prediction-interval availability metadata. |
@@ -128,8 +131,19 @@ Lue nämä yhdessä datamallin kanssa:
   scenario.
 - Scenario copy remaps copied graph-node timeserie references to the matching
   copied target-scenario timeseries.
+- A Prediction Request belongs to one organisation and has a stable request key,
+  immutable submission snapshot, state, submitter, optional cancellation actor,
+  worker ownership, safe failure information and optional completed Prediction
+  Version. Existing versions have no synthesized historical request.
+- A Prediction Request state is one of `queued`, `running`, `cancelling`,
+  `completed`, `cancelled` or `failed`. Queued requests survive restarts;
+  interrupted running work fails and abandoned cancelling work is cancelled,
+  without automatic retry.
 - A Prediction Version belongs to one organisation; its name is case-insensitively
-  unique within that organisation and is never updated or overwritten.
+  unique within that organisation and is never updated or overwritten. Active
+  Prediction Requests reserve names too; cancelled and failed request history
+  releases them. Publication/cancellation serialization permits either a
+  completed version or a cancelled request, never a partial version.
 - A Prediction Version records one integer prediction-interval level from 50
   through 99, defaulting to 80. Its configuration snapshot records the selected
   level and supported model interval methods.
@@ -174,6 +188,7 @@ Examples:
 - `edge_key`
 - `timeserie_key`
 - `prediction_key`
+- `prediction_request_key`
 
 These keys preserve Varjo-style identifiers while allowing relational foreign keys to use bigint primary keys.
 

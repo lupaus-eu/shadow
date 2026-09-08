@@ -1,0 +1,39 @@
+@startuml
+title Schatten - Accepted Forecasting Prediction Request Architecture (Pending Implementation)
+
+skinparam componentStyle rectangle
+skinparam linetype ortho
+
+actor User
+component "Predictions tab\n(TASK-057D)" as ui
+component "FastAPI prediction API\n(TASK-057C)" as api
+database "PostgreSQL\nrequests + saved versions" as database
+component "Prediction worker supervisor\n(TASK-057C/E)" as worker
+component "One supervised\ncalculation child" as child
+component "Organisation States +\nTwin Structure source services" as sources
+
+User --> ui : submit, inspect, cancel
+ui --> api : HTTPS request summaries\n(two-second visible polling)
+api --> database : freeze snapshot; enqueue;\nrequest/list/cancel state
+database --> worker : FIFO claim guarded by\nadvisory lock
+worker --> child : detached snapshot
+child --> worker : detached complete results
+worker --> database : atomic version publication\nand completed state
+api --> sources : submission-time read only
+
+note bottom of api
+  Current synchronous creation remains until TASK-057C.
+  Accepted work never depends on browser/session lifetime.
+end note
+
+note bottom of child
+  No source reads, queue access or publication.
+  Supervisor checks cancellation/ownership each second,
+  terminates, force-kills after two seconds, and reaps.
+end note
+
+note bottom of database
+  One global calculation; no broker, retries,
+  scheduler, priorities or parallel execution.
+end note
+@enduml

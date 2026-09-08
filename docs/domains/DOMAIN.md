@@ -205,18 +205,21 @@ Related Documents:
 
 ## Forecasting Domain
 
-Status: implemented by TASK-041B/TASK-041C; scenario-owned observation inputs
-amended by ADR-009.
+Status: saved-version persistence and synchronous API implemented by
+TASK-041B/TASK-041C; durable-request architecture accepted in ADR-012 but
+implementation remains pending TASK-057B through TASK-057E.
 
 Responsible for:
 
 - immutable derived prediction versions
+- mutable durable prediction requests and their request-history lifecycle
 - target-metric prediction records and per-model result metadata
 - dated prediction points and model/source-input audit snapshots
 
 Owns:
 
-- planned prediction version and result tables
+- prediction version, target, result and point tables
+- the accepted, not-yet-migrated `prediction_requests` table
 
 Does NOT Own:
 
@@ -233,13 +236,16 @@ Depends On:
 
 Primary APIs:
 
-- planned organisation-scoped prediction preflight, creation, list and detail
-  APIs; public routes are defined in TASK-041B
+- implemented organisation-scoped prediction preflight and saved-version list/
+  detail APIs
+- accepted request submission, list, detail and cancellation APIs specified by
+  ADR-012 and implemented by TASK-057C
 
 Related Documents:
 
 - `docs/decisions/ADR-007-predictions-forecasting-domain.md`
 - `docs/decisions/ADR-009-scenario-owned-prediction-inputs.md`
+- `docs/decisions/ADR-012-background-prediction-requests.md`
 - `docs/domains/FORECASTING.md`
 
 ---

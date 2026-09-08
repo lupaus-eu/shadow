@@ -2,7 +2,9 @@
 
 Tämä dokumentti kuvaa järjestelmän fyysisen tietokantamallin ja tietokantakäytännöt.
 
-Status: core, customer, authentication and Forecasting Domain persistence schema defined. AI and billing still TBD.
+Status: core, customer, authentication and Forecasting saved-version persistence
+schema defined. ADR-012's `prediction_requests` physical schema is intentionally
+pending TASK-057C. AI and billing still TBD.
 
 Tietokantateknologia ja ORM on päätetty ADR-001:ssä:
 
@@ -92,6 +94,11 @@ db/migrations/014_add_prediction_intervals.sql
 | `customers` | Application-wide customer profiles | Status is `active`, `archived` or `deleted`; status and `deleted_time` must agree. |
 | `contacts` | Customer-owned contacts | Name is required; email, phone and job title are optional. |
 | `customer_addresses` | Customer-owned labelled addresses | Label, first address line and two-letter uppercase country code are required. |
+
+ADR-012 defines the logical `prediction_requests` ownership and lifecycle, but
+this documentation task does not add a migration, table, constraint, index or
+physical-schema diagram entry. TASK-057C owns that physical implementation and
+must preserve all existing saved prediction versions.
 
 ---
 

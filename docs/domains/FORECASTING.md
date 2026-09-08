@@ -1,7 +1,8 @@
 # Forecasting Domain
 
-Status: persistence and synchronous backend API implemented by TASK-041B;
-prediction-interval architecture accepted in ADR-011
+Status: saved-version persistence and synchronous backend API implemented by
+TASK-041B; prediction-request architecture accepted in ADR-012, with runtime
+implementation pending TASK-057B through TASK-057E
 
 ## Purpose
 
@@ -14,6 +15,7 @@ scenario timeseries values and does not change source scenario data.
 Owns:
 
 - prediction versions
+- durable prediction requests and their immutable calculation snapshots
 - target-metric prediction records
 - per-model result metadata and eligibility states
 - dated prediction points
@@ -164,11 +166,13 @@ status and safe explanatory reason. They do not prevent other eligible
 metrics/models from being stored in the same version. Unexpected generation
 errors abort the version transaction and leave no partial version.
 
-### MVP Execution Bounds
+### Execution Requests And Bounds
 
-Forecasting runs synchronously in the authenticated backend request. There is
-no background worker, queue, scheduler, retry mechanism or progress-polling
-protocol in this MVP.
+The implemented create route currently runs synchronously. ADR-012 supersedes
+that execution restriction with an accepted, not-yet-implemented durable
+PostgreSQL request queue. TASK-057C will change creation to `202 Accepted` and
+one global worker will process snapshots in submission order. The worker will
+not change model behavior or these bounds.
 
 One request permits at most 50 numeric target scenario/metric candidates, 366
 generated periods per pair, 10,000 contiguous
@@ -180,6 +184,7 @@ A request that exceeds a limit is rejected rather than truncated.
 
 Owned tables:
 
+- prediction requests (accepted; migration pending TASK-057C)
 - prediction versions
 - prediction target metrics
 - prediction model results
@@ -190,12 +195,25 @@ read through their service boundaries but may not modify Forecasting-owned rows.
 Target source identities are retained as stable-key snapshots rather than source
 foreign keys, so saved versions remain readable when source rows are soft-deleted.
 
+A request retains the submission-time detached snapshot, state, submitter,
+cancellation actor, worker ownership, safe failure information and optional
+completed-version reference. Requests are mutable history; versions are
+immutable completed output. Active requests reserve a case-insensitive name per
+organisation alongside completed versions; cancelled and failed requests release
+their names. ADR-012 defines the queue, publication/cancellation race and
+recovery contract.
+
 ## API Ownership
 
-The organisation-scoped API exposes `preflight`, create, list and detail routes
-under `/api/v1/organisations/{organisation_key}/predictions`. Preflight is
-read-only. Create is authenticated, origin/CSRF-protected and stores an audit
-actor; list and detail follow the existing authenticated organisation boundary.
+The implemented organisation-scoped API exposes `preflight`, create, list and
+detail routes under `/api/v1/organisations/{organisation_key}/predictions`.
+Preflight is read-only. Until TASK-057C, create synchronously returns a
+completed version. ADR-012 specifies its replacement: `POST /predictions`
+returns `202 Accepted` and a request summary; request list, detail and
+idempotent cancellation are organisation-scoped. Existing saved-version list
+and detail contracts remain unchanged. Mutation CSRF/Origin checks and actor
+attribution apply, and both consultants and administrators may inspect/cancel
+another user's request.
 
 ## Dependencies
 
@@ -212,7 +230,22 @@ Referenced By:
 
 ## Common Workflow
 
-### Generate A Prediction Version
+### Accepted Background Request Workflow
+
+The following is the accepted target behavior, not current runtime behavior:
+
+1. Validate and freeze one complete detached input snapshot during submission.
+2. Persist a queued request and return its `202 Accepted` summary.
+3. The lock-owning worker claims the oldest queued request and calculates only
+   from its snapshot in a supervised child process.
+4. The supervisor atomically publishes a complete immutable version and marks
+   the request completed, unless cancellation committed first.
+5. Cancellation stops active child work promptly and discards partial output;
+   failure records safe request history without a partial version.
+
+![Accepted request lifecycle (implementation pending)](../diagrams/generated/state-forecasting-prediction-request.svg)
+
+### Generate A Prediction Version (Current Runtime)
 
 1. Validate organisation and selected active target scenarios.
 2. Resolve active numeric metrics and their own target-scenario history.
@@ -238,6 +271,7 @@ docs/decisions/ADR-008-target-scenario-observation-overrides.md
 docs/decisions/ADR-009-scenario-owned-prediction-inputs.md
 docs/decisions/ADR-010-derived-metrics.md
 docs/decisions/ADR-011-prediction-intervals.md
+docs/decisions/ADR-012-background-prediction-requests.md
 docs/domains/FORECASTING.md
 docs/domains/ORG_STATES.md
 docs/domains/ORG_TWIN_STRUCTURE.md
@@ -250,6 +284,7 @@ db/migrations/README.md
   and presentation paths.
 - Enforce source-data isolation in backend services; frontend selection is not
   the security boundary.
-- Do not introduce a worker or queue without a new accepted ADR.
-- Update data-model documentation and diagrams with any implemented Forecasting
-  schema in TASK-041B.
+- ADR-012 permits only its specified single-worker queue; do not extend it to a
+  general job platform, retries or parallel calculations.
+- Keep accepted design documents distinct from implementation status until the
+  corresponding TASK-057 work is complete.

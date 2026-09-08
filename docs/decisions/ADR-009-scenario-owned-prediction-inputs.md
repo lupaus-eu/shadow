@@ -35,7 +35,8 @@ Target metric eligibility requires a numeric target timeserie, finite target
 values, and contiguous target history on the metric's time-unit grid under the
 selected cutoff. Target-scenario events and graph history remain the only known
 explanatory inputs. The current model kinds, deterministic configuration,
-synchronous request execution, routes and resource limits are unchanged.
+routes and resource limits are unchanged. ADR-012 later supersedes the
+synchronous execution statement only; it preserves this source-isolation rule.
 
 The cutoff API values are `asOfStart` and `allCurrentScenario`:
 
@@ -76,6 +77,7 @@ results, model stack, execution bounds and all decisions not amended here.
 
 - `docs/decisions/ADR-007-predictions-forecasting-domain.md`
 - `docs/decisions/ADR-008-target-scenario-observation-overrides.md`
+- `docs/decisions/ADR-012-background-prediction-requests.md`
 - `docs/domains/FORECASTING.md`
 - `tasks/TASK-042-scenario-fork-timeseries-events-copy.md`
 - `tasks/TASK-043-scenario-owned-prediction-inputs.md`

@@ -16,8 +16,10 @@ current decision for prediction observation sources and cutoff naming.
 ADR-011 extends this ADR with a version-wide user-selected prediction-interval
 level, model-specific interval methods for directly fitted MLForecast and
 SARIMA results, and explicit interval availability semantics. ADR-007 remains
-authoritative for the five result kinds, immutable lifecycle, synchronous
-execution and resource limits not amended by ADR-011.
+authoritative for the five result kinds, immutable lifecycle and resource limits
+not amended by later ADRs. ADR-012 supersedes this ADR's synchronous execution
+restriction with durable background prediction requests while preserving those
+model and saved-version rules.
 
 ---
 
@@ -221,6 +223,7 @@ Costs and constraints:
 - `docs/decisions/ADR-008-target-scenario-observation-overrides.md`
 - `docs/decisions/ADR-009-scenario-owned-prediction-inputs.md`
 - `docs/decisions/ADR-011-prediction-intervals.md`
+- `docs/decisions/ADR-012-background-prediction-requests.md`
 - `docs/domains/FORECASTING.md`
 - `docs/domains/ORG_STATES.md`
 - `docs/domains/ORG_TWIN_STRUCTURE.md`
