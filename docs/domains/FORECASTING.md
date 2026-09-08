@@ -1,8 +1,9 @@
 # Forecasting Domain
 
 Status: saved-version persistence and synchronous backend API implemented by
-TASK-041B; prediction-request architecture accepted in ADR-012, with runtime
-implementation pending TASK-057B through TASK-057E
+TASK-041B; detached snapshot preparation, calculation and publication boundary
+implemented by TASK-057B; durable request runtime pending TASK-057C through
+TASK-057E
 
 ## Purpose
 
@@ -168,11 +169,29 @@ errors abort the version transaction and leave no partial version.
 
 ### Execution Requests And Bounds
 
-The implemented create route currently runs synchronously. ADR-012 supersedes
-that execution restriction with an accepted, not-yet-implemented durable
-PostgreSQL request queue. TASK-057C will change creation to `202 Accepted` and
-one global worker will process snapshots in submission order. The worker will
-not change model behavior or these bounds.
+The implemented create route currently runs synchronously through three
+explicit boundaries. Preparation freezes one format-identified, Pydantic-
+validated input snapshot in a PostgreSQL `REPEATABLE READ` transaction.
+Calculation accepts only that serialized shape and returns detached results;
+it has no Session or ORM input and performs no source reads, saved-version
+writes or commits. Publication accepts the frozen input and detached output and
+saves the complete immutable version in one transaction.
+
+The snapshot contains stable scenario and metric identities and display
+metadata, effective observations and provenance, historical/future feature
+grids, eligibility, cutoff and seasonality selections, interval level,
+deterministic model configuration, creator attribution, and derived formulas
+with referenced metric keys and captured short names. Normal targets are
+calculated before derived targets, whose formulas resolve only against the
+detached normal results. Source edits, soft deletion and formula or short-name
+changes after preparation therefore cannot change calculation or saved audit
+provenance.
+
+ADR-012 supersedes synchronous HTTP execution with an accepted,
+not-yet-implemented durable PostgreSQL request queue. TASK-057C will persist the
+same snapshot, change creation to `202 Accepted`, and let one global worker
+process snapshots in submission order without changing model behavior or these
+bounds.
 
 One request permits at most 50 numeric target scenario/metric candidates, 366
 generated periods per pair, 10,000 contiguous
@@ -247,19 +266,17 @@ The following is the accepted target behavior, not current runtime behavior:
 
 ### Generate A Prediction Version (Current Runtime)
 
-1. Validate organisation and selected active target scenarios.
-2. Resolve active numeric metrics and their own target-scenario history.
-3. Validate continuity and construct only the target scenario's known event and
-   graph inputs.
-4. Detect seasonality or request a manual period where detection is
-   inconclusive.
-5. Apply the version-selected prediction-interval level to supported directly
-   fitted MLForecast and SARIMA results.
-6. Fit and evaluate the requested models within the synchronous work limits.
-7. Persist the immutable named version, result and interval metadata, points,
-   available bounds and source snapshot; persist normal ineligibility and
-   interval-unavailable states alongside valid outputs.
-8. Roll back the entire version when an unexpected generation error occurs.
+1. In one consistent read snapshot, validate the organisation and selected
+   active target scenarios, resolve metrics and history, construct scenario-
+   isolated features, and freeze all model and audit inputs.
+2. Serialize and validate the detached snapshot shape.
+3. Calculate normal result kinds from only the snapshot, then calculate derived
+   results from the captured formulas, references and normal outputs.
+4. Persist the immutable named version, result and interval metadata, points,
+   available bounds and captured audit snapshots in one transaction.
+5. Persist expected model and interval limitations as result state; roll back
+   the entire publication on an unexpected persistence failure. An unexpected
+   calculation failure occurs before publication and leaves no version rows.
 
 ## AI Agent Guidance
 

@@ -1,6 +1,6 @@
 import warnings
 from collections.abc import Iterator
-from datetime import date
+from datetime import UTC, date, datetime
 from typing import Any, cast
 
 import pytest
@@ -9,13 +9,25 @@ from fastapi.testclient import TestClient
 from sqlalchemy import StaticPool, create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.api.v1.org_states.models import Scenario, Timeserie, TimeserieValue
+from app.api.v1.org_states.models import (
+    DerivedMetricEquation,
+    Scenario,
+    Timeserie,
+    TimeserieValue,
+)
 from app.api.v1.org_twin_structure.models import Metamodel
 from app.api.v1.predictions.models import (
     PredictionModelResult,
     PredictionPoint,
     PredictionTarget,
     PredictionVersion,
+)
+from app.api.v1.predictions.schemas import PredictionCreateRequest
+from app.api.v1.predictions.snapshots import (
+    PredictionCalculation,
+    PredictionInputSnapshot,
+    SnapshotFeaturePeriod,
+    SnapshotObservation,
 )
 from app.core.database import get_db_session
 from app.core.models import Base
@@ -232,6 +244,167 @@ def test_create_prediction_persists_derived_target_without_seasonal_source(
         )
         for result in targets[derived.json()["id"]]["results"]
     )
+
+
+def test_snapshot_round_trip_detaches_normal_and_derived_calculation_from_sources(
+    client: TestClient, session_factory: sessionmaker[Session]
+) -> None:
+    from app.api.v1.predictions import service as predictions_service
+
+    organisation_key = _create_organisation(client)
+    target_key = _create_target_and_metrics(client, organisation_key)
+    timeseries_path = (
+        f"/api/v1/organisations/{organisation_key}/scenarios/{target_key}/timeseries"
+    )
+    assert (
+        client.patch(
+            f"{timeseries_path}/revenue/short-name",
+            json={"shortName": "revenue"},
+        ).status_code
+        == 200
+    )
+    derived = client.post(
+        f"/api/v1/organisations/{organisation_key}/scenarios/"
+        f"{target_key}/derived-metrics",
+        json={"name": "Double revenue", "unit": "EUR", "formula": "revenue * 2"},
+    )
+    assert derived.status_code == 201
+    payload = PredictionCreateRequest.model_validate(
+        _prediction_payload(target_key, name="Detached forecast")
+    )
+
+    with session_factory() as preparation_session:
+        snapshot = predictions_service.prepare_prediction_snapshot(
+            preparation_session, organisation_key, payload, actor_user_id=0
+        )
+    restored = PredictionInputSnapshot.model_validate_json(
+        snapshot.model_dump_json(by_alias=True)
+    )
+    assert restored == snapshot
+
+    with session_factory() as mutation_session:
+        source = mutation_session.scalar(
+            select(Timeserie).where(Timeserie.timeserie_key == "revenue")
+        )
+        equation = mutation_session.scalar(select(DerivedMetricEquation))
+        assert source is not None and equation is not None
+        latest_value = mutation_session.scalar(
+            select(TimeserieValue)
+            .where(TimeserieValue.timeserie_id == source.timeserie_id)
+            .order_by(TimeserieValue.date.desc())
+        )
+        assert latest_value is not None
+        source.short_name = "changed_name"
+        source.deleted_time = datetime.now(UTC)
+        latest_value.value = {"value": 9999}
+        equation.formula = "changed_name * 999"
+        mutation_session.commit()
+
+    calculation = predictions_service.calculate_prediction(restored)
+    restored_calculation = PredictionCalculation.model_validate_json(
+        calculation.model_dump_json(by_alias=True)
+    )
+    assert restored_calculation == calculation
+    with session_factory() as publication_session:
+        detail = predictions_service.publish_prediction(
+            publication_session, restored, restored_calculation
+        )
+
+    targets = {item.metric_id: item for item in detail.targets}
+    normal_results = {item.kind: item for item in targets["revenue"].results}
+    derived_results = {
+        item.kind: item for item in targets[str(derived.json()["id"])].results
+    }
+    assert [point.value for point in normal_results["naive"].points] == [40.0, 40.0]
+    assert [point.value for point in derived_results["naive"].points] == [80.0, 80.0]
+    normal_source = cast(dict[str, Any], targets["revenue"].source_snapshot)
+    assert normal_source["effectiveObservations"][-1] == {
+        "date": "2025-04-01",
+        "value": 40.0,
+        "source": "targetScenario",
+    }
+    derived_source = cast(
+        dict[str, Any], targets[str(derived.json()["id"])].source_snapshot
+    )
+    assert derived_source["derivedFormula"] == "revenue * 2"
+    assert derived_source["referencedMetrics"] == [
+        {"id": "revenue", "shortName": "revenue"}
+    ]
+
+
+def test_publication_failure_rolls_back_the_complete_prediction_version(
+    client: TestClient,
+    session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.api.v1.predictions import service as predictions_service
+
+    organisation_key = _create_organisation(client)
+    target_key = _create_target_and_metrics(client, organisation_key)
+    payload = PredictionCreateRequest.model_validate(
+        _prediction_payload(target_key, name="Rollback forecast")
+    )
+    with session_factory() as preparation_session:
+        snapshot = predictions_service.prepare_prediction_snapshot(
+            preparation_session, organisation_key, payload, actor_user_id=0
+        )
+    calculation = predictions_service.calculate_prediction(snapshot)
+    original_save = predictions_service._save_result  # pyright: ignore[reportPrivateUsage]
+    calls = 0
+
+    def fail_during_publication(*args: object, **kwargs: object) -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise RuntimeError("injected publication failure")
+        original_save(*args, **kwargs)  # pyright: ignore[reportArgumentType]
+
+    monkeypatch.setattr(predictions_service, "_save_result", fail_during_publication)
+    with session_factory() as publication_session:
+        with pytest.raises(RuntimeError, match="injected publication failure"):
+            predictions_service.publish_prediction(
+                publication_session, snapshot, calculation
+            )
+
+    with session_factory() as verification_session:
+        assert verification_session.scalar(select(PredictionVersion)) is None
+        assert verification_session.scalar(select(PredictionTarget)) is None
+        assert verification_session.scalar(select(PredictionModelResult)) is None
+        assert verification_session.scalar(select(PredictionPoint)) is None
+
+
+def test_unexpected_detached_calculation_failure_leaves_no_partial_version(
+    client: TestClient,
+    session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.api.v1.predictions import service as predictions_service
+
+    organisation_key, target_key = _create_model_ready_target(client)
+    payload = PredictionCreateRequest.model_validate(
+        _prediction_payload(
+            target_key,
+            name="Calculation failure",
+            startDate="2025-01-01",
+            endDate="2025-02-28",
+        )
+    )
+    with session_factory() as preparation_session:
+        snapshot = predictions_service.prepare_prediction_snapshot(
+            preparation_session, organisation_key, payload, actor_user_id=0
+        )
+
+    def fail_calculation(row: object, confidence_level: int) -> object:
+        del row, confidence_level
+        raise RuntimeError("injected calculation failure")
+
+    monkeypatch.setattr(predictions_service, "_mlforecast_result", fail_calculation)
+    with pytest.raises(RuntimeError, match="injected calculation failure"):
+        predictions_service.calculate_prediction(snapshot)
+
+    with session_factory() as verification_session:
+        assert verification_session.scalar(select(PredictionVersion)) is None
+        assert verification_session.scalar(select(PredictionTarget)) is None
 
 
 def test_prediction_rejects_duplicate_name_and_cross_organisation_target(
@@ -890,22 +1063,29 @@ def test_sarima_uses_native_prediction_bounds_and_selected_seasonal_period(
             return FakeFittedModel()
 
     monkeypatch.setattr("statsmodels.tsa.statespace.sarimax.SARIMAX", FakeSarimax)
-    history = [
-        (date(2024, month, 1), float(month), "targetScenario") for month in range(1, 9)
-    ]
+    history_dates = [date(2024, month, 1) for month in range(1, 9)]
     prepared_target = predictions_service._PreparedTarget  # pyright: ignore[reportPrivateUsage]
     sarima_result = predictions_service._sarima_result  # pyright: ignore[reportPrivateUsage]
     row = prepared_target(
-        Scenario(),
-        Timeserie(time_unit="month"),
-        "eligible",
-        None,
-        2,
-        "manual",
-        history,
-        [{} for _ in history],
-        [date(2025, 1, 1)],
-        [{}],
+        scenarioInternalId=1,
+        scenarioKey="scenario",
+        scenarioName="Scenario",
+        metricKey="metric",
+        metricName="Metric",
+        timeUnit="month",
+        unit=None,
+        status="eligible",
+        reason=None,
+        seasonalPeriod=2,
+        seasonalPeriodSource="manual",
+        observations=[
+            SnapshotObservation(date=day, value=float(index))
+            for index, day in enumerate(history_dates, start=1)
+        ],
+        historyPeriods=[
+            SnapshotFeaturePeriod(date=day, features={}) for day in history_dates
+        ],
+        predictionPeriods=[SnapshotFeaturePeriod(date=date(2025, 1, 1), features={})],
     )
 
     result = sarima_result(row, 80)

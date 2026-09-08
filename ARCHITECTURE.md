@@ -34,8 +34,9 @@ Päätetty tekninen perusrakenne:
   and SARIMA results according to ADR-011; baselines, live Reality and
   formula-derived results remain point-only
 - background prediction requests: ADR-012 accepts a PostgreSQL-backed,
-  single-worker architecture, but its request schema, worker, API, UI and
-  runtime wiring remain pending TASK-057B through TASK-057E
+  single-worker architecture; detached snapshot preparation, calculation and
+  publication boundaries are implemented, while request persistence, worker,
+  API, UI and runtime wiring remain pending TASK-057C through TASK-057E
 
 Tarkemmat toteutusyksityiskohdat täsmentyvät taskien ja tarvittaessa uusien ADR:ien kautta.
 

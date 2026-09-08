@@ -1,17 +1,15 @@
-"""Forecasting Domain service.
-
-All source reads live here so each prediction target uses only its own observed
-values and known inputs.
-"""
+"""Forecasting preparation, detached calculation, and publication boundaries."""
 # pyright: reportAttributeAccessIssue=false, reportMissingTypeStubs=false, reportUnknownArgumentType=false, reportUnknownMemberType=false, reportUnknownVariableType=false
 
 import math
 import warnings
 from collections import Counter
+from collections.abc import Generator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date as dt_date
 from statistics import mean
-from typing import cast
+from typing import Literal, cast
 from uuid import uuid4
 
 from fastapi import HTTPException, status
@@ -58,9 +56,25 @@ from app.api.v1.predictions.schemas import (
     PredictionVersionDetailResponse,
     PredictionVersionListResponse,
 )
+from app.api.v1.predictions.snapshots import (
+    CalculatedResult,
+    CalculatedTarget,
+    CrossValidationStatus,
+    EligibilityStatus,
+    PredictionCalculation,
+    PredictionInputSnapshot,
+    PredictionIntervalStatus,
+    PredictionTargetSnapshot,
+    ResultKind,
+    ResultStatus,
+    SnapshotFeaturePeriod,
+    SnapshotMetricReference,
+    SnapshotObservation,
+    TimeUnit,
+)
 
 RESULT_KINDS = ("naive", "seasonal_naive", "average", "mlforecast", "sarima")
-type Observation = tuple[dt_date, float, str]
+type Observation = tuple[dt_date, float, Literal["targetScenario"]]
 MAX_PAIRS = 50
 MAX_PERIODS = 366
 MAX_HISTORY = 10_000
@@ -79,11 +93,11 @@ BASE_MODEL_CONFIGURATION: dict[str, object] = {
 @dataclass(frozen=True)
 class _GeneratedResult:
     values: list[float]
-    status: str
+    status: ResultStatus
     reason: str | None
-    cross_validation_status: str
+    cross_validation_status: CrossValidationStatus
     cross_validation_mae: float | None
-    prediction_interval_status: str
+    prediction_interval_status: PredictionIntervalStatus
     prediction_interval_reason: str | None
     bounds: list[tuple[float, float]] | None = None
 
@@ -109,11 +123,16 @@ def _model_configuration(confidence_level: int) -> dict[str, object]:
 def preflight_predictions(
     session: Session, organisation_key: str, payload: PredictionPreflightRequest
 ) -> PredictionPreflightResponse:
-    organisation, targets = _request_context(session, organisation_key, payload)
-    del organisation
-    rows = _prepare_targets(session, targets, payload)
+    with _consistent_read_session(session) as read_session:
+        organisation, targets = _request_context(
+            read_session, organisation_key, payload
+        )
+        del organisation
+        rows = _prepare_targets(read_session, targets, payload)
     _enforce_limits(rows)
-    return PredictionPreflightResponse(metrics=[row.preflight for row in rows])
+    return PredictionPreflightResponse(
+        metrics=[_preflight_response(row) for row in rows]
+    )
 
 
 def create_prediction(
@@ -122,56 +141,139 @@ def create_prediction(
     payload: PredictionCreateRequest,
     actor_user_id: int,
 ) -> PredictionVersionDetailResponse:
-    organisation, targets = _request_context(session, organisation_key, payload)
-    rows = _prepare_targets(session, targets, payload)
-    _enforce_limits(rows)
+    snapshot = prepare_prediction_snapshot(
+        session, organisation_key, payload, actor_user_id
+    )
+    calculation = calculate_prediction(snapshot)
+    return publish_prediction(session, snapshot, calculation)
+
+
+def prepare_prediction_snapshot(
+    session: Session,
+    organisation_key: str,
+    payload: PredictionCreateRequest,
+    actor_user_id: int,
+) -> PredictionInputSnapshot:
+    """Freeze every source and configuration input in one database snapshot."""
+    with _consistent_read_session(session) as read_session:
+        organisation, targets = _request_context(
+            read_session, organisation_key, payload
+        )
+        rows = _prepare_targets(read_session, targets, payload)
+        _enforce_limits(rows)
+        if (
+            read_session.scalar(
+                select(PredictionVersion.prediction_version_id).where(
+                    PredictionVersion.organisation_id == organisation.organisation_id,
+                    func.lower(PredictionVersion.name) == payload.name.lower(),
+                )
+            )
+            is not None
+        ):
+            raise _duplicate_name_exception()
+        return PredictionInputSnapshot(
+            organisationInternalId=organisation.organisation_id,
+            organisationKey=organisation.organisation_key,
+            predictionKey=f"prediction_{uuid4().hex}",
+            name=payload.name,
+            creatorUserId=actor_user_id,
+            cutoffMode=payload.cutoff_mode,
+            confidenceLevel=payload.confidence_level,
+            startDate=payload.start_date,
+            endDate=payload.end_date,
+            modelConfiguration=_model_configuration(payload.confidence_level),
+            targets=rows,
+        )
+
+
+def publish_prediction(
+    session: Session,
+    snapshot: PredictionInputSnapshot,
+    calculation: PredictionCalculation,
+) -> PredictionVersionDetailResponse:
+    """Persist one detached calculation as an immutable version transaction."""
+    if (
+        calculation.snapshot_format != snapshot.snapshot_format
+        or calculation.prediction_key != snapshot.prediction_key
+        or len(calculation.targets) != len(snapshot.targets)
+    ):
+        raise ValueError("Calculation output does not match its prediction snapshot.")
+    expected_kinds = set(RESULT_KINDS)
+    for row, calculated_target in zip(
+        snapshot.targets, calculation.targets, strict=True
+    ):
+        if (
+            calculated_target.scenario_key != row.scenario_key
+            or calculated_target.metric_key != row.metric_key
+            or {result.kind for result in calculated_target.results} != expected_kinds
+            or any(
+                result.status == "available"
+                and len(result.values) != len(row.prediction_periods)
+                for result in calculated_target.results
+            )
+        ):
+            raise ValueError(
+                "Calculation output does not match its prediction snapshot."
+            )
     if (
         session.scalar(
             select(PredictionVersion.prediction_version_id).where(
-                PredictionVersion.organisation_id == organisation.organisation_id,
-                func.lower(PredictionVersion.name) == payload.name.lower(),
+                PredictionVersion.organisation_id == snapshot.organisation_internal_id,
+                func.lower(PredictionVersion.name) == snapshot.name.lower(),
             )
         )
         is not None
     ):
         raise _duplicate_name_exception()
-
     version = PredictionVersion(
-        organisation_id=organisation.organisation_id,
-        prediction_key=f"prediction_{uuid4().hex}",
-        name=payload.name,
-        cutoff_mode=payload.cutoff_mode,
-        confidence_level=payload.confidence_level,
-        start_date=payload.start_date,
-        end_date=payload.end_date,
-        model_configuration=_model_configuration(payload.confidence_level),
-        created_by=actor_user_id,
+        organisation_id=snapshot.organisation_internal_id,
+        prediction_key=snapshot.prediction_key,
+        name=snapshot.name,
+        cutoff_mode=snapshot.cutoff_mode,
+        confidence_level=snapshot.confidence_level,
+        start_date=snapshot.start_date,
+        end_date=snapshot.end_date,
+        model_configuration=snapshot.model_configuration,
+        created_by=snapshot.creator_user_id,
     )
     try:
         session.add(version)
         session.flush()
-        for row in rows:
+        for row, calculated_target in zip(
+            snapshot.targets, calculation.targets, strict=True
+        ):
+            if (
+                calculated_target.scenario_key != row.scenario_key
+                or calculated_target.metric_key != row.metric_key
+            ):
+                raise ValueError("Calculated target order does not match the snapshot.")
             target = PredictionTarget(
                 prediction_version_id=version.prediction_version_id,
-                target_scenario_id=row.scenario.scenario_id,
-                target_scenario_key=row.scenario.scenario_key,
-                metric_key=row.metric.timeserie_key,
-                metric_name=row.metric.name,
-                time_unit=row.metric.time_unit,
-                unit=row.metric.unit,
+                target_scenario_id=row.scenario_internal_id,
+                target_scenario_key=row.scenario_key,
+                metric_key=row.metric_key,
+                metric_name=row.metric_name,
+                time_unit=row.time_unit,
+                unit=row.unit,
                 eligibility_status=row.status,
                 eligibility_reason=row.reason,
                 seasonal_period=row.seasonal_period,
                 seasonal_period_source=row.seasonal_period_source,
-                source_snapshot=row.source_snapshot,
-                input_snapshot=row.input_snapshot,
-                created_by=actor_user_id,
+                source_snapshot=row.source_audit_snapshot(),
+                input_snapshot=row.input_audit_snapshot(),
+                created_by=snapshot.creator_user_id,
             )
             session.add(target)
             session.flush()
-            _persist_result_set(
-                session, target, row, payload.confidence_level, actor_user_id
-            )
+            for generated in calculated_target.results:
+                _save_result(
+                    session,
+                    target,
+                    [item.date for item in row.prediction_periods],
+                    generated,
+                    snapshot.model_configuration,
+                    snapshot.creator_user_id,
+                )
         session.commit()
     except IntegrityError as exc:
         session.rollback()
@@ -183,6 +285,19 @@ def create_prediction(
         raise
     session.refresh(version)
     return _version_detail(session, version)
+
+
+@contextmanager
+def _consistent_read_session(session: Session) -> Generator[Session]:
+    """Use one PostgreSQL REPEATABLE READ transaction for snapshot preparation."""
+    bind = session.get_bind()
+    if bind.dialect.name != "postgresql":
+        yield session
+        return
+    snapshot_bind = bind.execution_options(isolation_level="REPEATABLE READ")
+    with Session(bind=snapshot_bind, autoflush=False) as read_session:
+        with read_session.begin():
+            yield read_session
 
 
 def list_predictions(
@@ -217,80 +332,21 @@ def get_prediction(
     return _version_detail(session, version)
 
 
-class _PreparedTarget:
-    def __init__(
-        self,
-        scenario: Scenario,
-        metric: Timeserie,
-        status: str,
-        reason: str | None,
-        seasonal_period: int | None,
-        seasonal_period_source: str | None,
-        history: list[Observation],
-        history_features: list[dict[str, float]],
-        periods: list[dt_date],
-        features: list[dict[str, float]],
-        equation: DerivedMetricEquation | None = None,
-    ) -> None:
-        self.scenario = scenario
-        self.metric = metric
-        self.status = status
-        self.reason = reason
-        self.seasonal_period = seasonal_period
-        self.seasonal_period_source = seasonal_period_source
-        self.history = history
-        self.history_features = history_features
-        self.periods = periods
-        self.features = features
-        self.equation = equation
+_PreparedTarget = PredictionTargetSnapshot
 
-    @property
-    def source_snapshot(self) -> dict[str, object]:
-        snapshot: dict[str, object] = {
-            "targetScenarioId": self.scenario.scenario_key,
-            "observationPolicy": "targetScenarioOnly",
-            "metric": {
-                "id": self.metric.timeserie_key,
-                "timeUnit": self.metric.time_unit,
-                "unit": self.metric.unit,
-            },
-            "effectiveObservations": [
-                {"date": day.isoformat(), "value": value, "source": source}
-                for day, value, source in self.history
-            ],
-        }
-        if self.equation is not None:
-            snapshot["derivedFormula"] = self.equation.formula
-            snapshot["referencedTimeserieIds"] = self.equation.referenced_timeserie_ids
-        return snapshot
 
-    @property
-    def input_snapshot(self) -> dict[str, object]:
-        return {
-            "historyPeriods": [
-                {"date": day.isoformat(), **features}
-                for (day, _, _), features in zip(
-                    self.history, self.history_features, strict=True
-                )
-            ],
-            "periods": [
-                {"date": day.isoformat(), **features}
-                for day, features in zip(self.periods, self.features, strict=True)
-            ],
-        }
-
-    @property
-    def preflight(self) -> PredictionMetricPreflightResponse:
-        return PredictionMetricPreflightResponse(
-            scenarioId=self.scenario.scenario_key,
-            metricId=self.metric.timeserie_key,
-            status=self.status,
-            reason=self.reason,
-            seasonalPeriod=self.seasonal_period,
-            seasonalPeriodSource=self.seasonal_period_source,
-            requiresManualSeasonalPeriod=self.status
-            == "requires_manual_seasonal_period",
-        )
+def _preflight_response(
+    row: PredictionTargetSnapshot,
+) -> PredictionMetricPreflightResponse:
+    return PredictionMetricPreflightResponse(
+        scenarioId=row.scenario_key,
+        metricId=row.metric_key,
+        status=row.status,
+        reason=row.reason,
+        seasonalPeriod=row.seasonal_period,
+        seasonalPeriodSource=row.seasonal_period_source,
+        requiresManualSeasonalPeriod=row.status == "requires_manual_seasonal_period",
+    )
 
 
 def _request_context(
@@ -337,6 +393,24 @@ def _prepare_targets(
                 )
             ).all()
         }
+        metrics_by_id = {metric.timeserie_id: metric for metric in metrics}
+        referenced_ids = {
+            reference_id
+            for equation in equations.values()
+            for reference_id in equation.referenced_timeserie_ids
+        }
+        if referenced_ids:
+            metrics_by_id.update(
+                {
+                    metric.timeserie_id: metric
+                    for metric in session.scalars(
+                        select(Timeserie).where(
+                            Timeserie.scenario_id == scenario.scenario_id,
+                            Timeserie.timeserie_id.in_(referenced_ids),
+                        )
+                    ).all()
+                }
+            )
         for metric in [
             item for item in metrics if item.timeserie_id not in equations
         ] + [item for item in metrics if item.timeserie_id in equations]:
@@ -345,7 +419,12 @@ def _prepare_targets(
                 if candidate_count > MAX_PAIRS:
                     raise _pair_limit_exception()
             row = _prepare_metric(
-                session, scenario, metric, payload, equations.get(metric.timeserie_id)
+                session,
+                scenario,
+                metric,
+                payload,
+                equations.get(metric.timeserie_id),
+                metrics_by_id,
             )
             prepared.append(row)
     return prepared
@@ -361,78 +440,149 @@ def _prepare_metric(
     metric: Timeserie,
     payload: PredictionRequestBase,
     equation: DerivedMetricEquation | None = None,
+    metrics_by_id: dict[int, Timeserie] | None = None,
 ) -> _PreparedTarget:
-    def empty(current_status: str, current_reason: str) -> _PreparedTarget:
+    def target(
+        *,
+        current_status: EligibilityStatus,
+        current_reason: str | None,
+        seasonal_period: int | None = None,
+        seasonal_period_source: str | None = None,
+        history: list[Observation] | None = None,
+        history_features: list[dict[str, float]] | None = None,
+        periods: list[dt_date] | None = None,
+        features: list[dict[str, float]] | None = None,
+        derived_formula: str | None = None,
+        references: list[SnapshotMetricReference] | None = None,
+    ) -> _PreparedTarget:
+        current_history = history or []
+        current_periods = periods or []
+        current_features = (
+            features if features is not None else [{} for _ in current_periods]
+        )
+        current_history_features = (
+            history_features
+            if history_features is not None
+            else [{} for _ in current_history]
+        )
         return _PreparedTarget(
-            scenario,
-            metric,
-            current_status,
-            current_reason,
-            None,
-            None,
-            [],
-            [],
-            [],
-            [],
+            scenarioInternalId=scenario.scenario_id,
+            scenarioKey=scenario.scenario_key,
+            scenarioName=scenario.name,
+            metricKey=metric.timeserie_key,
+            metricName=metric.name,
+            metricShortName=metric.short_name,
+            timeUnit=cast(TimeUnit, metric.time_unit),
+            unit=metric.unit,
+            status=current_status,
+            reason=current_reason,
+            seasonalPeriod=seasonal_period,
+            seasonalPeriodSource=seasonal_period_source,
+            observations=[
+                SnapshotObservation(date=day, value=value, source=source)
+                for day, value, source in current_history
+            ],
+            historyPeriods=[
+                SnapshotFeaturePeriod(date=day, features=feature_values)
+                for (day, _, _), feature_values in zip(
+                    current_history, current_history_features, strict=True
+                )
+            ],
+            predictionPeriods=[
+                SnapshotFeaturePeriod(date=day, features=feature_values)
+                for day, feature_values in zip(
+                    current_periods, current_features, strict=True
+                )
+            ],
+            derivedFormula=derived_formula,
+            referencedMetrics=references or [],
         )
 
-    if metric.value_unit != "number":
-        return empty("ineligible", "Only numeric metrics can be forecast.")
+    def empty(
+        current_status: EligibilityStatus,
+        current_reason: str,
+        *,
+        history: list[Observation] | None = None,
+        periods: list[dt_date] | None = None,
+    ) -> _PreparedTarget:
+        return target(
+            current_status=current_status,
+            current_reason=current_reason,
+            history=history,
+            periods=periods,
+        )
+
     periods = _periods_in_range(payload.start_date, payload.end_date, metric.time_unit)
+    if metric.value_unit != "number":
+        return empty(
+            "ineligible",
+            "Only numeric metrics can be forecast.",
+            periods=periods,
+        )
     if not periods:
         return empty(
             "ineligible", "The selected date range contains no valid metric periods."
         )
     if len(periods) > MAX_PERIODS:
         return empty(
-            "ineligible", f"Prediction range exceeds the {MAX_PERIODS} period limit."
+            "ineligible",
+            f"Prediction range exceeds the {MAX_PERIODS} period limit.",
+            periods=periods,
         )
     if equation is not None:
-        return _PreparedTarget(
-            scenario,
-            metric,
-            "eligible",
-            None,
-            None,
-            None,
-            [],
-            [],
-            periods,
-            [{} for _ in periods],
-            equation,
+        referenced_metrics = [
+            metrics_by_id[reference_id]
+            for reference_id in equation.referenced_timeserie_ids
+            if metrics_by_id is not None and reference_id in metrics_by_id
+        ]
+        return target(
+            current_status="eligible",
+            current_reason=None,
+            periods=periods,
+            features=[{} for _ in periods],
+            derived_formula=equation.formula,
+            references=[
+                SnapshotMetricReference(
+                    metricKey=reference.timeserie_key,
+                    shortName=reference.short_name or "",
+                )
+                for reference in referenced_metrics
+            ],
         )
     history = _target_history(session, metric, payload, periods[0])
     if not history:
         return empty(
             "ineligible",
             "Target scenario has no observations available under the selected cutoff.",
+            periods=periods,
         )
     if len(history) > MAX_HISTORY:
         return empty(
             "ineligible",
             "Effective observation history exceeds the "
             f"{MAX_HISTORY} observation limit.",
+            history=history,
+            periods=periods,
         )
     if not _is_contiguous([item[0] for item in history], metric.time_unit):
         return empty(
             "ineligible",
             "Effective observations are not contiguous on the metric time-unit grid.",
+            history=history,
+            periods=periods,
         )
     seasonal_period, source = _seasonal_period(
         history, payload.manual_seasonal_periods.get(metric.timeserie_key)
     )
     if seasonal_period is None:
-        return _PreparedTarget(
-            scenario,
-            metric,
-            "requires_manual_seasonal_period",
-            "Automatic seasonality is inconclusive; provide a manual seasonal period.",
-            None,
-            None,
-            history,
-            [],
-            periods,
-            [],
+        return target(
+            current_status="requires_manual_seasonal_period",
+            current_reason=(
+                "Automatic seasonality is inconclusive; provide a manual seasonal "
+                "period."
+            ),
+            history=history,
+            periods=periods,
         )
     history_features = _known_features(
         session,
@@ -444,17 +594,15 @@ def _prepare_metric(
     features = _known_features(
         session, scenario, metric.timeserie_id, metric.time_unit, periods
     )
-    return _PreparedTarget(
-        scenario,
-        metric,
-        "eligible",
-        None,
-        seasonal_period,
-        source,
-        history,
-        history_features,
-        periods,
-        features,
+    return target(
+        current_status="eligible",
+        current_reason=None,
+        seasonal_period=seasonal_period,
+        seasonal_period_source=source,
+        history=history,
+        history_features=history_features,
+        periods=periods,
+        features=features,
     )
 
 
@@ -561,54 +709,72 @@ def _known_features(
     return output
 
 
-def _persist_result_set(
-    session: Session,
-    target: PredictionTarget,
-    row: _PreparedTarget,
-    confidence_level: int,
-    actor_user_id: int,
-) -> None:
-    if row.equation is not None:
-        _persist_derived_result_set(
-            session, target, row, confidence_level, actor_user_id
+def calculate_prediction(snapshot: PredictionInputSnapshot) -> PredictionCalculation:
+    """Calculate detached results without a database session or ORM instances."""
+    results_by_target: dict[tuple[str, str], list[CalculatedResult]] = {}
+    normal_results: dict[tuple[str, str, str], CalculatedResult] = {}
+    for row in snapshot.targets:
+        if row.derived_formula is not None:
+            continue
+        results = _calculate_normal_result_set(row, snapshot.confidence_level)
+        results_by_target[(row.scenario_key, row.metric_key)] = results
+        for result in results:
+            normal_results[(row.scenario_key, row.metric_key, result.kind)] = result
+    for row in snapshot.targets:
+        if row.derived_formula is None:
+            continue
+        results_by_target[(row.scenario_key, row.metric_key)] = (
+            _calculate_derived_result_set(row, normal_results)
         )
-        return
-    if row.status != "eligible":
-        for kind in RESULT_KINDS:
-            interval_is_applicable = kind in ("mlforecast", "sarima")
-            session.add(
-                PredictionModelResult(
-                    prediction_target_id=target.prediction_target_id,
-                    result_kind=kind,
-                    status="ineligible",
-                    reason=row.reason,
-                    prediction_interval_status=(
-                        "unavailable" if interval_is_applicable else "not_applicable"
-                    ),
-                    prediction_interval_reason=(
-                        row.reason if interval_is_applicable else None
-                    ),
-                    cross_validation_status="unavailable",
-                    configuration=_model_configuration(confidence_level),
-                    created_by=actor_user_id,
-                )
+    return PredictionCalculation(
+        snapshotFormat=snapshot.snapshot_format,
+        predictionKey=snapshot.prediction_key,
+        targets=[
+            CalculatedTarget(
+                scenarioKey=row.scenario_key,
+                metricKey=row.metric_key,
+                results=results_by_target[(row.scenario_key, row.metric_key)],
             )
-        return
-    values = [value for _, value, _ in row.history]
-    points_by_kind: dict[str, list[float]] = {
-        "naive": [values[-1]] * len(row.periods),
-        "average": [mean(values)] * len(row.periods),
-        "seasonal_naive": _seasonal_naive(
-            values, len(row.periods), row.seasonal_period or 1
-        ),
+            for row in snapshot.targets
+        ],
+    )
+
+
+def _calculate_normal_result_set(
+    row: _PreparedTarget, confidence_level: int
+) -> list[CalculatedResult]:
+    if row.status != "eligible":
+        return [
+            _calculated_result(
+                kind,
+                _GeneratedResult(
+                    [],
+                    "ineligible",
+                    row.reason,
+                    "unavailable",
+                    None,
+                    (
+                        "unavailable"
+                        if kind in ("mlforecast", "sarima")
+                        else "not_applicable"
+                    ),
+                    row.reason if kind in ("mlforecast", "sarima") else None,
+                ),
+            )
+            for kind in RESULT_KINDS
+        ]
+    values = [item.value for item in row.observations]
+    amount = len(row.prediction_periods)
+    baseline_values = {
+        "naive": [values[-1]] * amount,
+        "average": [mean(values)] * amount,
+        "seasonal_naive": _seasonal_naive(values, amount, row.seasonal_period or 1),
     }
-    for kind in ("naive", "seasonal_naive", "average"):
-        _save_result(
-            session,
-            target,
-            kind,
+    results = [
+        _calculated_result(
+            cast(ResultKind, kind),
             _GeneratedResult(
-                points_by_kind[kind],
+                baseline_values[kind],
                 "available",
                 None,
                 "not_applicable",
@@ -616,49 +782,28 @@ def _persist_result_set(
                 "not_applicable",
                 None,
             ),
-            confidence_level,
-            actor_user_id,
         )
-    ml_result = _mlforecast_result(row, confidence_level)
-    _save_result(
-        session,
-        target,
-        "mlforecast",
-        ml_result,
-        confidence_level,
-        actor_user_id,
+        for kind in ("naive", "seasonal_naive", "average")
+    ]
+    results.extend(
+        (
+            _calculated_result("mlforecast", _mlforecast_result(row, confidence_level)),
+            _calculated_result("sarima", _sarima_result(row, confidence_level)),
+        )
     )
-    sarima_result = _sarima_result(row, confidence_level)
-    _save_result(
-        session,
-        target,
-        "sarima",
-        sarima_result,
-        confidence_level,
-        actor_user_id,
-    )
+    return results
 
 
-def _persist_derived_result_set(
-    session: Session,
-    target: PredictionTarget,
+def _calculate_derived_result_set(
     row: _PreparedTarget,
-    confidence_level: int,
-    actor_user_id: int,
-) -> None:
-    assert row.equation is not None
-    references = session.scalars(
-        select(Timeserie).where(
-            Timeserie.timeserie_id.in_(row.equation.referenced_timeserie_ids)
-        )
-    ).all()
+    normal_results: dict[tuple[str, str, str], CalculatedResult],
+) -> list[CalculatedResult]:
+    assert row.derived_formula is not None
     try:
-        parsed = parse_formula(row.equation.formula)
+        parsed = parse_formula(row.derived_formula)
     except FormulaError as error:
-        for kind in RESULT_KINDS:
-            _save_result(
-                session,
-                target,
+        return [
+            _calculated_result(
                 kind,
                 _GeneratedResult(
                     [],
@@ -669,95 +814,69 @@ def _persist_derived_result_set(
                     "not_applicable",
                     None,
                 ),
-                confidence_level,
-                actor_user_id,
             )
-        return
-    for kind in RESULT_KINDS:
-        values_by_name: dict[str, dict[dt_date, float]] = {}
+            for kind in RESULT_KINDS
+        ]
+    output: list[CalculatedResult] = []
+    for kind_value in RESULT_KINDS:
+        values_by_name: dict[str, list[float]] = {}
         failure: str | None = None
-        for reference in references:
-            source_target = session.scalar(
-                select(PredictionTarget).where(
-                    PredictionTarget.prediction_version_id
-                    == target.prediction_version_id,
-                    PredictionTarget.target_scenario_id == target.target_scenario_id,
-                    PredictionTarget.metric_key == reference.timeserie_key,
-                )
+        for reference in row.referenced_metrics:
+            source_result = normal_results.get(
+                (row.scenario_key, reference.metric_key, kind_value)
             )
-            if source_target is None:
+            if source_result is None:
                 failure = (
-                    f"Referenced metric {reference.timeserie_key} has no "
+                    f"Referenced metric {reference.metric_key} has no "
                     "prediction target."
                 )
                 break
-            source_result = session.scalar(
-                select(PredictionModelResult).where(
-                    PredictionModelResult.prediction_target_id
-                    == source_target.prediction_target_id,
-                    PredictionModelResult.result_kind == kind,
-                )
-            )
-            if source_result is None or source_result.status != "available":
+            if source_result.status != "available":
                 failure = (
-                    f"Referenced metric {reference.timeserie_key} has no available "
-                    f"{kind} result."
+                    f"Referenced metric {reference.metric_key} has no available "
+                    f"{kind_value} result."
                 )
                 break
-            points = session.scalars(
-                select(PredictionPoint).where(
-                    PredictionPoint.prediction_model_result_id
-                    == source_result.prediction_model_result_id
-                )
-            ).all()
-            if reference.short_name is not None:
-                values_by_name[reference.short_name] = {
-                    point.date: point.value for point in points
-                }
+            values_by_name[reference.short_name] = source_result.values
         values: list[float] = []
         if failure is None:
-            for period in row.periods:
+            for index, period in enumerate(row.prediction_periods):
                 try:
                     values.append(
                         evaluate_formula(
                             parsed,
                             {
-                                name: points[period]
-                                for name, points in values_by_name.items()
+                                name: source_values[index]
+                                for name, source_values in values_by_name.items()
                             },
                         )
                     )
-                except (FormulaError, KeyError):
+                except (FormulaError, IndexError, KeyError):
                     failure = (
-                        f"Derived formula cannot be evaluated for {period.isoformat()}."
+                        "Derived formula cannot be evaluated for "
+                        f"{period.date.isoformat()}."
                     )
                     break
-        _save_result(
-            session,
-            target,
-            kind,
-            _GeneratedResult(
-                values if failure is None else [],
-                "available" if failure is None else "ineligible",
-                failure,
-                "not_applicable",
-                None,
-                "not_applicable",
-                None,
-            ),
-            confidence_level,
-            actor_user_id,
+        output.append(
+            _calculated_result(
+                kind_value,
+                _GeneratedResult(
+                    values if failure is None else [],
+                    "available" if failure is None else "ineligible",
+                    failure,
+                    "not_applicable",
+                    None,
+                    "not_applicable",
+                    None,
+                ),
+            )
         )
+    return output
 
 
-def _save_result(
-    session: Session,
-    target: PredictionTarget,
-    kind: str,
-    generated: _GeneratedResult,
-    confidence_level: int,
-    actor_user_id: int,
-) -> None:
+def _calculated_result(
+    kind: ResultKind, generated: _GeneratedResult
+) -> CalculatedResult:
     result_status = generated.status
     reason = generated.reason
     cv_status = generated.cross_validation_status
@@ -777,32 +896,61 @@ def _save_result(
             interval_status = "unavailable"
             interval_reason = reason
             bounds = None
-    result = PredictionModelResult(
-        prediction_target_id=target.prediction_target_id,
-        result_kind=kind,
+    return CalculatedResult(
+        kind=kind,
+        values=values,
         status=result_status,
         reason=reason,
-        prediction_interval_status=interval_status,
-        prediction_interval_reason=interval_reason,
-        cross_validation_status=cv_status,
-        cross_validation_mae=cv_mae,
-        configuration=_model_configuration(confidence_level),
+        crossValidationStatus=cv_status,
+        crossValidationMae=cv_mae,
+        predictionIntervalStatus=interval_status,
+        predictionIntervalReason=interval_reason,
+        bounds=bounds,
+    )
+
+
+def _save_result(
+    session: Session,
+    target: PredictionTarget,
+    periods: list[dt_date],
+    calculated: CalculatedResult,
+    model_configuration: dict[str, object],
+    actor_user_id: int,
+) -> None:
+    result = PredictionModelResult(
+        prediction_target_id=target.prediction_target_id,
+        result_kind=calculated.kind,
+        status=calculated.status,
+        reason=calculated.reason,
+        prediction_interval_status=calculated.prediction_interval_status,
+        prediction_interval_reason=calculated.prediction_interval_reason,
+        cross_validation_status=calculated.cross_validation_status,
+        cross_validation_mae=calculated.cross_validation_mae,
+        configuration=model_configuration,
         created_by=actor_user_id,
     )
     session.add(result)
     session.flush()
-    if result_status == "available":
+    if calculated.status == "available":
         session.add_all(
             PredictionPoint(
                 prediction_model_result_id=result.prediction_model_result_id,
                 date=day,
                 value=value,
-                lower_bound=bounds[index][0] if bounds is not None else None,
-                upper_bound=bounds[index][1] if bounds is not None else None,
+                lower_bound=(
+                    calculated.bounds[index][0]
+                    if calculated.bounds is not None
+                    else None
+                ),
+                upper_bound=(
+                    calculated.bounds[index][1]
+                    if calculated.bounds is not None
+                    else None
+                ),
                 created_by=actor_user_id,
             )
             for index, (day, value) in enumerate(
-                zip(_current_periods(target.input_snapshot), values, strict=True)
+                zip(periods, calculated.values, strict=True)
             )
         )
 
@@ -810,7 +958,7 @@ def _save_result(
 def _mlforecast_result(row: _PreparedTarget, confidence_level: int) -> _GeneratedResult:
     # The package is used for the actual fitting path. Short histories are a normal
     # per-model state, not a failed version.
-    if len(row.history) < 12:
+    if len(row.observations) < 12:
         return _GeneratedResult(
             [],
             "ineligible",
@@ -826,12 +974,19 @@ def _mlforecast_result(row: _PreparedTarget, confidence_level: int) -> _Generate
         from mlforecast.utils import PredictionIntervals
         from sklearn.ensemble import RandomForestRegressor
 
-        normalised = _normalised_features(row.history_features, row.features)
+        history_features = [item.features for item in row.history_periods]
+        future_features = [item.features for item in row.prediction_periods]
+        normalised = _normalised_features(history_features, future_features)
         history_frame = pd.DataFrame(
             [
-                {"unique_id": "metric", "ds": day, "y": value, **features}
-                for (day, value, _), features in zip(
-                    row.history, normalised[: len(row.history_features)], strict=True
+                {
+                    "unique_id": "metric",
+                    "ds": observation.date,
+                    "y": observation.value,
+                    **features,
+                }
+                for observation, features in zip(
+                    row.observations, normalised[: len(history_features)], strict=True
                 )
             ]
         )
@@ -844,25 +999,29 @@ def _mlforecast_result(row: _PreparedTarget, confidence_level: int) -> _Generate
                         n_estimators=50, max_depth=8, random_state=41, n_jobs=1
                     )
                 ],
-                freq=_mlforecast_frequency(row.metric.time_unit),
+                freq=_mlforecast_frequency(row.time_unit),
                 lags=[1, 2, 3, 7],
                 date_features=["year", "month", "dayofweek"],
             )
 
         model = new_model()
         model.fit(history_frame, static_features=[])
-        future_features = normalised[len(row.history_features) :]
+        normalised_future_features = normalised[len(history_features) :]
         future_frame = pd.DataFrame(
             [
-                {"unique_id": "metric", "ds": day, **features}
-                for day, features in zip(row.periods, future_features, strict=True)
+                {"unique_id": "metric", "ds": period.date, **features}
+                for period, features in zip(
+                    row.prediction_periods,
+                    normalised_future_features,
+                    strict=True,
+                )
             ]
         )
         future_frame["ds"] = pd.to_datetime(future_frame["ds"])
-        prediction = model.predict(len(row.periods), X_df=future_frame)
+        prediction = model.predict(len(row.prediction_periods), X_df=future_frame)
         values = _named_prediction_values(prediction, "RandomForestRegressor")
         mae: float | None = None
-        if len(row.history) >= 12:
+        if len(row.observations) >= 12:
             cross_validation = model.cross_validation(
                 history_frame,
                 n_windows=3,
@@ -905,7 +1064,9 @@ def _mlforecast_result(row: _PreparedTarget, confidence_level: int) -> _Generate
                     module=r"mlforecast\.forecast",
                 )
                 interval_prediction = interval_model.predict(
-                    len(row.periods), X_df=future_frame, level=[confidence_level]
+                    len(row.prediction_periods),
+                    X_df=future_frame,
+                    level=[confidence_level],
                 )
             interval_values = _named_prediction_values(
                 interval_prediction, "RandomForestRegressor"
@@ -939,7 +1100,7 @@ def _mlforecast_result(row: _PreparedTarget, confidence_level: int) -> _Generate
 
 
 def _sarima_result(row: _PreparedTarget, confidence_level: int) -> _GeneratedResult:
-    if len(row.history) < max(8, (row.seasonal_period or 2) * 2):
+    if len(row.observations) < max(8, (row.seasonal_period or 2) * 2):
         reason = "SARIMA has insufficient history for the selected seasonal period."
         return _GeneratedResult(
             [], "ineligible", reason, "not_applicable", None, "unavailable", reason
@@ -949,25 +1110,27 @@ def _sarima_result(row: _PreparedTarget, confidence_level: int) -> _GeneratedRes
         from statsmodels.tools.sm_exceptions import ConvergenceWarning
         from statsmodels.tsa.statespace.sarimax import SARIMAX
 
-        normalised = _normalised_features(row.history_features, row.features)
+        history_features = [item.features for item in row.history_periods]
+        future_features = [item.features for item in row.prediction_periods]
+        normalised = _normalised_features(history_features, future_features)
         history_exog = np.asarray(
             [
                 list(features.values())
-                for features in normalised[: len(row.history_features)]
+                for features in normalised[: len(history_features)]
             ],
             dtype=float,
         )
         future_exog = np.asarray(
             [
                 list(features.values())
-                for features in normalised[len(row.history_features) :]
+                for features in normalised[len(history_features) :]
             ],
             dtype=float,
         )
         with warnings.catch_warnings(record=True) as caught_warnings:
             warnings.simplefilter("always", ConvergenceWarning)
             fitted = SARIMAX(
-                [value for _, value, _ in row.history],
+                [item.value for item in row.observations],
                 exog=history_exog,
                 order=(1, 0, 0),
                 seasonal_order=(1, 0, 0, row.seasonal_period),
@@ -986,7 +1149,7 @@ def _sarima_result(row: _PreparedTarget, confidence_level: int) -> _GeneratedRes
             )
         values = [
             float(value)
-            for value in fitted.forecast(len(row.periods), exog=future_exog)
+            for value in fitted.forecast(len(row.prediction_periods), exog=future_exog)
         ]
         point_result = _GeneratedResult(
             values,
@@ -998,7 +1161,9 @@ def _sarima_result(row: _PreparedTarget, confidence_level: int) -> _GeneratedRes
             "SARIMA prediction interval is unavailable.",
         )
         try:
-            forecast_result = fitted.get_forecast(len(row.periods), exog=future_exog)
+            forecast_result = fitted.get_forecast(
+                len(row.prediction_periods), exog=future_exog
+            )
             interval_values = [float(value) for value in forecast_result.predicted_mean]
             confidence_bounds = forecast_result.conf_int(
                 alpha=1 - confidence_level / 100
@@ -1165,22 +1330,14 @@ def _mlforecast_frequency(time_unit: str) -> str:
     return {"day": "D", "week": "W-MON", "month": "MS", "year": "YS"}[time_unit]
 
 
-def _current_periods(snapshot: dict[str, object]) -> list[dt_date]:
-    raw_periods = snapshot.get("periods", [])
-    if not isinstance(raw_periods, list):
-        return []
-    return [
-        dt_date.fromisoformat(str(item["date"]))
-        for item in raw_periods
-        if isinstance(item, dict)
-    ]
-
-
 def _enforce_limits(rows: list[_PreparedTarget]) -> None:
     eligible = [row for row in rows if row.status == "eligible"]
     if len(eligible) > MAX_PAIRS:
         raise _pair_limit_exception()
-    if sum(len(row.periods) * len(RESULT_KINDS) for row in eligible) > MAX_POINTS:
+    if (
+        sum(len(row.prediction_periods) * len(RESULT_KINDS) for row in eligible)
+        > MAX_POINTS
+    ):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=(

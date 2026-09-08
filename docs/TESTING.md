@@ -178,6 +178,32 @@ Expected:
 - mocked failure cases
 - documented manual verification if full integration testing is not possible
 
+## Forecasting Snapshot And Detached Calculation Harness
+
+Forecasting snapshot tests use the existing prediction API fixtures for
+representative normal and derived targets. Prepare with
+`prepare_prediction_snapshot`, close the preparation Session, round-trip with
+`PredictionInputSnapshot.model_dump_json` and `model_validate_json`, then call
+`calculate_prediction` without a Session. Source rows may be changed or soft-
+deleted between preparation and calculation to prove the frozen observation,
+formula, short-name and provenance boundary. Publish separately with
+`publish_prediction` when transaction-wide persistence behavior is under test.
+
+The PostgreSQL integration test creates and drops a unique schema in the same
+disposable database used by migration integration tests. It commits a source
+edit between preparation queries and proves that PostgreSQL `REPEATABLE READ`
+keeps the full prepared input on one database snapshot:
+
+```bash
+cd backend
+MIGRATION_TEST_DATABASE_URL=postgresql://schatten:schatten_dev_password@localhost:5432/schatten \
+  uv run pytest tests/test_predictions_postgresql_integration.py -v
+```
+
+When `MIGRATION_TEST_DATABASE_URL` is absent, this module is skipped. A skipped
+run is not evidence for TASK-057B's consistent-preparation acceptance criterion;
+run it against a disposable PostgreSQL database before review.
+
 ## Security-Sensitive Change
 
 Expected:
