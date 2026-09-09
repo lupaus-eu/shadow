@@ -509,6 +509,33 @@ Run `pnpm lint`, `pnpm test` and `pnpm build` from `frontend/`.
 
 ---
 
+# Prediction Request UI (TASK-057D)
+
+Frontend client and component tests cover the `202 Accepted` request summary,
+state labels, active/history separation, queue ordering, cancellation outcomes,
+safe failure reasons, idle polling and non-overlapping polling. Use controllable
+responses and fake timers for polling, cancellation/completion races and stale
+organisation responses. Preserve the saved-version comparison selections when a
+request completes; only work submitted from the current tab is auto-selected.
+
+Manual browser QA:
+
+- Queue two uniquely named predictions and verify the form is immediately
+  available for the second request.
+- Verify queued removal, running Stop, the Stopping state and a completion that
+  wins a cancellation race. Confirm Stop explains that calculated output is
+  discarded.
+- Reload, leave and return to the tab, and switch organisation; accepted work
+  must remain server-side and request summaries must refresh without stale rows.
+- Verify another user's requests appear while this tab is idle, polling errors
+  retain the last-known state, and completed saved versions do not reset an
+  existing comparison. A current-tab completion should be selected.
+
+Run `pnpm lint`, `pnpm test` and `pnpm build` from `frontend/`. Full worker and
+container browser QA is owned by TASK-057E.
+
+---
+
 # Test Levels
 
 Use the lightest useful test level.

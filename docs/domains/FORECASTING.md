@@ -1,7 +1,7 @@
 # Forecasting Domain
 
-Status: durable request persistence, API and standalone worker implemented by
-TASK-057C; UI and supported-runtime wiring pending TASK-057D/TASK-057E
+Status: durable request persistence, API, standalone worker and current-tab UI
+implemented by TASK-057C/TASK-057D; supported-runtime wiring pending TASK-057E
 
 ## Purpose
 
@@ -256,6 +256,14 @@ Referenced By:
    the request completed, unless cancellation committed first.
 5. Cancellation stops active child work promptly and discards partial output;
    failure records safe request history without a partial version.
+
+In the current organisation's Predictions tab, users queue named work and can
+continue submitting other uniquely named requests. The tab separates all active
+requests from the returned recent history, polls state-only summaries every two
+seconds while visible, and lets either business role remove queued work or stop
+running work. Stopping never deletes saved output or request history. A completed
+request refreshes the saved-version library; only a completion submitted from
+that tab is automatically selected for comparison.
 
 ![Request lifecycle](../diagrams/generated/state-forecasting-prediction-request.svg)
 

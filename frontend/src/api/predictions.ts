@@ -13,6 +13,26 @@ export type PredictionRequest = {
 
 export type PredictionCreateRequest = PredictionRequest & { name: string };
 
+export type PredictionRequestState =
+  | "queued"
+  | "running"
+  | "cancelling"
+  | "completed"
+  | "cancelled"
+  | "failed";
+
+export type PredictionRequestSummaryDto = {
+  id: string;
+  name: string;
+  state: PredictionRequestState;
+  submittedTime: string;
+  startTime: string | null;
+  finishTime: string | null;
+  failureCode: string | null;
+  failureReason: string | null;
+  completedPredictionId: string | null;
+};
+
 export type PredictionPreflightMetricDto = {
   scenarioId: string;
   metricId: string;
@@ -90,6 +110,10 @@ function predictionsPath(orgId: string) {
   return `/api/v1/organisations/${encodeURIComponent(orgId)}/predictions`;
 }
 
+function predictionRequestsPath(orgId: string) {
+  return `/api/v1/organisations/${encodeURIComponent(orgId)}/prediction-requests`;
+}
+
 async function requestJson<T>(
   path: string,
   init: RequestInit,
@@ -127,11 +151,42 @@ export function createPrediction(
   orgId: string,
   payload: PredictionCreateRequest,
   signal?: AbortSignal
-): Promise<PredictionVersionDetailDto> {
+): Promise<PredictionRequestSummaryDto> {
   return requestJson(predictionsPath(orgId), {
     method: "POST",
     body: JSON.stringify(payload)
   }, signal);
+}
+
+export function fetchPredictionRequests(
+  orgId: string,
+  signal?: AbortSignal
+): Promise<PredictionRequestSummaryDto[]> {
+  return requestJson(predictionRequestsPath(orgId), { method: "GET" }, signal);
+}
+
+export function fetchPredictionRequest(
+  orgId: string,
+  requestId: string,
+  signal?: AbortSignal
+): Promise<PredictionRequestSummaryDto> {
+  return requestJson(
+    `${predictionRequestsPath(orgId)}/${encodeURIComponent(requestId)}`,
+    { method: "GET" },
+    signal
+  );
+}
+
+export function cancelPredictionRequest(
+  orgId: string,
+  requestId: string,
+  signal?: AbortSignal
+): Promise<PredictionRequestSummaryDto> {
+  return requestJson(
+    `${predictionRequestsPath(orgId)}/${encodeURIComponent(requestId)}/cancel`,
+    { method: "POST" },
+    signal
+  );
 }
 
 export function fetchPredictions(

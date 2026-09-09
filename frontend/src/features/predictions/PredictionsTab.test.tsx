@@ -8,8 +8,10 @@ const api = vi.hoisted(() => ({
   fetchEvents: vi.fn(),
   fetchPredictions: vi.fn(),
   fetchPrediction: vi.fn(),
+  fetchPredictionRequests: vi.fn(),
   preflightPredictions: vi.fn(),
   createPrediction: vi.fn(),
+  cancelPredictionRequest: vi.fn(),
   fetchTimeseries: vi.fn()
 }));
 
@@ -18,8 +20,10 @@ vi.mock("../../api/events", () => ({ fetchEvents: api.fetchEvents }));
 vi.mock("../../api/predictions", () => ({
   fetchPredictions: api.fetchPredictions,
   fetchPrediction: api.fetchPrediction,
+  fetchPredictionRequests: api.fetchPredictionRequests,
   preflightPredictions: api.preflightPredictions,
-  createPrediction: api.createPrediction
+  createPrediction: api.createPrediction,
+  cancelPredictionRequest: api.cancelPredictionRequest
 }));
 vi.mock("../../api/timeseries", () => ({ fetchTimeseries: api.fetchTimeseries }));
 
@@ -63,11 +67,16 @@ describe("PredictionsTab", () => {
     ));
     api.fetchPredictions.mockResolvedValue([version]);
     api.fetchPrediction.mockResolvedValue(version);
+    api.fetchPredictionRequests.mockResolvedValue([]);
     api.preflightPredictions.mockResolvedValue({ metrics: [{
       scenarioId: "future", metricId: "revenue", status: "eligible", reason: null,
       seasonalPeriod: null, seasonalPeriodSource: null, requiresManualSeasonalPeriod: true
     }] });
-    api.createPrediction.mockResolvedValue({ ...version, id: "version-2", name: "Created plan" });
+    api.createPrediction.mockResolvedValue({
+      id: "request-2", name: "Created plan", state: "queued",
+      submittedTime: "2026-01-01T12:00:00Z", startTime: null, finishTime: null,
+      failureCode: null, failureReason: null, completedPredictionId: null
+    });
     api.fetchTimeseries.mockResolvedValue([{ id: "revenue", name: "Revenue", description: "", unit: "EUR", timeUnit: "month", valueUnit: "number", values: [{ date: "2026-01-10", value: 28 }] }]);
   });
 
@@ -143,7 +152,7 @@ describe("PredictionsTab", () => {
 
     expect(await screen.findByText("Preflight eligibility")).toBeVisible();
     fireEvent.change(screen.getByLabelText("Manual seasonal period for revenue"), { target: { value: "12" } });
-    fireEvent.click(screen.getByRole("button", { name: "Create immutable version" }));
+    fireEvent.click(screen.getByRole("button", { name: "Queue prediction" }));
 
     await waitFor(() => expect(api.createPrediction).toHaveBeenCalledWith(
       "acme",
@@ -161,6 +170,116 @@ describe("PredictionsTab", () => {
     expect(api.fetchTimeseries).toHaveBeenCalledWith("acme", "reality", expect.any(AbortSignal));
   });
 
+  it("shows active and recent request states, and keeps the server cancellation result", async () => {
+    const queued = {
+      id: "queued-request", name: "Queued plan", state: "queued" as const,
+      submittedTime: "2026-01-01T12:00:00Z", startTime: null, finishTime: null,
+      failureCode: null, failureReason: null, completedPredictionId: null
+    };
+    const running = {
+      id: "running-request", name: "Running plan", state: "running" as const,
+      submittedTime: "2026-01-01T12:01:00Z", startTime: "2026-01-01T12:02:00Z", finishTime: null,
+      failureCode: null, failureReason: null, completedPredictionId: null
+    };
+    const stopping = {
+      id: "stopping-request", name: "Stopping plan", state: "cancelling" as const,
+      submittedTime: "2026-01-01T12:01:30Z", startTime: "2026-01-01T12:02:00Z", finishTime: null,
+      failureCode: null, failureReason: null, completedPredictionId: null
+    };
+    const completed = {
+      id: "completed-request", name: "Completed plan", state: "completed" as const,
+      submittedTime: "2026-01-01T12:03:00Z", startTime: "2026-01-01T12:04:00Z", finishTime: "2026-01-01T12:05:00Z",
+      failureCode: null, failureReason: null, completedPredictionId: "version-1"
+    };
+    const cancelled = {
+      id: "cancelled-request", name: "Cancelled plan", state: "cancelled" as const,
+      submittedTime: "2026-01-01T12:03:00Z", startTime: null, finishTime: "2026-01-01T12:05:00Z",
+      failureCode: null, failureReason: null, completedPredictionId: null
+    };
+    const failed = {
+      id: "failed-request", name: "Failed plan", state: "failed" as const,
+      submittedTime: "2026-01-01T12:03:00Z", startTime: "2026-01-01T12:04:00Z", finishTime: "2026-01-01T12:05:00Z",
+      failureCode: "calculation_failed", failureReason: "The calculation could not be completed.", completedPredictionId: null
+    };
+    api.fetchPredictionRequests.mockResolvedValue([running, stopping, queued, completed, cancelled, failed]);
+    api.cancelPredictionRequest.mockResolvedValue({
+      ...running, state: "completed", finishTime: "2026-01-01T12:06:00Z", completedPredictionId: "version-1"
+    });
+
+    render(<PredictionsTab orgId="acme" />);
+    await screen.findByText("Queued plan");
+    expect(screen.getByText("Queued")).toBeVisible();
+    expect(screen.getByText("Calculating prediction values")).toBeVisible();
+    expect(screen.getByText("Stopping")).toBeVisible();
+    expect(screen.getByText("Completed")).toBeVisible();
+    expect(screen.getByText("Cancelled")).toBeVisible();
+    expect(screen.getByText("Failed")).toBeVisible();
+    expect(screen.getByText("The calculation could not be completed.")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Remove from queue" })).toBeEnabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Stop" }));
+    await waitFor(() => expect(api.cancelPredictionRequest).toHaveBeenCalledWith("acme", "running-request"));
+    const completedRow = screen.getByText("Running plan").closest("article")!;
+    expect(within(completedRow).getByText("Completed")).toBeVisible();
+    expect(within(completedRow).queryByRole("button", { name: "Stop" })).not.toBeInTheDocument();
+  });
+
+  it("does not overlap two-second request polls", async () => {
+    vi.useFakeTimers();
+    let resolveFirstPoll!: (value: unknown[]) => void;
+    api.fetchPredictionRequests
+      .mockReturnValueOnce(new Promise((resolve) => { resolveFirstPoll = resolve; }))
+      .mockResolvedValue([]);
+
+    render(<PredictionsTab orgId="acme" />);
+    await act(async () => undefined);
+    expect(api.fetchPredictionRequests).toHaveBeenCalledTimes(1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(6_000); });
+    expect(api.fetchPredictionRequests).toHaveBeenCalledTimes(1);
+    await act(async () => { resolveFirstPoll([]); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(2_000); });
+    expect(api.fetchPredictionRequests).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
+  });
+
+  it("loads and selects a completed request from this tab without resetting existing comparison choices", async () => {
+    const completedVersion = { ...version, id: "version-2", name: "Completed plan" };
+    const completedRequest = {
+      id: "request-2", name: "Created plan", state: "completed" as const,
+      submittedTime: "2026-01-01T12:00:00Z", startTime: "2026-01-01T12:01:00Z",
+      finishTime: "2026-01-01T12:02:00Z", failureCode: null, failureReason: null,
+      completedPredictionId: "version-2"
+    };
+    api.fetchPredictions
+      .mockResolvedValueOnce([version])
+      .mockResolvedValueOnce([version, completedVersion]);
+    api.fetchPrediction.mockImplementation((_orgId: string, id: string) =>
+      Promise.resolve(id === "version-2" ? completedVersion : version)
+    );
+    api.fetchPredictionRequests
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([completedRequest]);
+
+    render(<PredictionsTab orgId="acme" />);
+    await screen.findByText(/selected scenario's own data/i);
+    const versions = screen.getByRole("group", { name: "Versions" });
+    fireEvent.click(within(versions).getByLabelText("January plan (80% prediction interval)"));
+    expect(within(versions).getByLabelText("January plan (80% prediction interval)")).not.toBeChecked();
+
+    fireEvent.change(screen.getByLabelText("Version name"), { target: { value: "Created plan" } });
+    fireEvent.change(screen.getAllByLabelText("Start date")[0], { target: { value: "2026-01-10" } });
+    fireEvent.change(screen.getAllByLabelText("End date")[0], { target: { value: "2026-02-10" } });
+    fireEvent.click(screen.getByRole("button", { name: "Run preflight" }));
+    await screen.findByText("Preflight eligibility");
+    fireEvent.change(screen.getByLabelText("Manual seasonal period for revenue"), { target: { value: "12" } });
+    fireEvent.click(screen.getByRole("button", { name: "Queue prediction" }));
+    await screen.findByText(/was accepted and queued/i);
+
+    fireEvent(document, new Event("visibilitychange"));
+    await waitFor(() => expect(within(versions).getByLabelText("Completed plan (80% prediction interval)")).toBeChecked());
+    expect(within(versions).getByLabelText("January plan (80% prediction interval)")).not.toBeChecked();
+  });
+
   it("uses the visible default level, validates it, and invalidates stale preflight", async () => {
     render(<PredictionsTab orgId="acme" />);
     await screen.findByText(/selected scenario's own data/i);
@@ -174,10 +293,10 @@ describe("PredictionsTab", () => {
       "acme",
       expect.objectContaining({ confidenceLevel: 80 })
     ));
-    expect(screen.getByRole("button", { name: "Create immutable version" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Queue prediction" })).toBeEnabled();
 
     fireEvent.change(confidenceLevel, { target: { value: "90" } });
-    expect(screen.getByRole("button", { name: "Create immutable version" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Queue prediction" })).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "Run preflight" }));
     await waitFor(() => expect(api.preflightPredictions).toHaveBeenLastCalledWith(
       "acme",
@@ -266,7 +385,7 @@ describe("PredictionsTab", () => {
     fireEvent.click(screen.getByRole("button", { name: "Run preflight" }));
 
     expect(await screen.findByText(/No forecastable metrics were found/i)).toBeVisible();
-    expect(screen.getByRole("button", { name: "Create immutable version" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Queue prediction" })).toBeDisabled();
     expect(api.createPrediction).not.toHaveBeenCalled();
   });
 

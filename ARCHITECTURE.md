@@ -36,8 +36,8 @@ Päätetty tekninen perusrakenne:
 - background prediction requests: ADR-012 accepts a PostgreSQL-backed,
   single-worker architecture; detached snapshot preparation, durable request
   persistence, request APIs, supervised worker calculation and atomic
-  publication are implemented, while UI and runtime wiring remain pending
-  TASK-057D and TASK-057E
+  publication and the current-tab UI are implemented, while supported-runtime
+  wiring remains pending TASK-057E
 
 Tarkemmat toteutusyksityiskohdat täsmentyvät taskien ja tarvittaessa uusien ADR:ien kautta.
 

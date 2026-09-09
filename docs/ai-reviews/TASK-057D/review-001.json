@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-057D/review-001",
+  "task": {
+    "id": "TASK-057D",
+    "path": "tasks/TASK-057D-prediction-request-ui.md"
+  },
+  "round": 1,
+  "reviewed_at": "2026-09-09T08:28:09Z",
+  "reviewer": {
+    "label": "Codex self-review"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "dd12027efaa895847b8d4da573b49012d50a315b",
+    "head_sha": "fd993a5fa4fb9ef331cfb2c238e9847379260807",
+    "comparison": "dd12027efaa895847b8d4da573b49012d50a315b...fd993a5fa4fb9ef331cfb2c238e9847379260807",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "clean",
+    "summary": "No bugs, regressions, security issues, missing required tests, documentation gaps, or scope violations were identified in the reviewed TASK-057D diff. The implementation uses the durable request contract, keeps polling and mutation responses organisation-scoped and stale-safe, preserves saved-version comparison selection on completion, and leaves backend, schema, dependency and deployment work out of scope.",
+    "findings": [],
+    "prior_finding_dispositions": []
+  }
+}

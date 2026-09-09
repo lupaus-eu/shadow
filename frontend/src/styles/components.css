@@ -753,6 +753,62 @@
   width: 100%;
 }
 
+.prediction-requests {
+  gap: var(--space-4);
+}
+
+.prediction-requests__group,
+.prediction-requests__list {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.prediction-requests__group h3 {
+  margin: 0;
+}
+
+.prediction-request {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-subtle);
+}
+
+.prediction-request__summary {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-1);
+}
+
+.prediction-request__summary h4,
+.prediction-request__summary p {
+  margin: 0;
+}
+
+.prediction-request__summary h4 {
+  overflow-wrap: anywhere;
+}
+
+.prediction-request__state {
+  color: var(--color-text-secondary);
+  font-size: var(--text-meta-size);
+  font-weight: 600;
+}
+
+.prediction-request__failure {
+  color: var(--color-danger-500);
+  font-size: var(--text-meta-size);
+}
+
+.prediction-request .btn {
+  flex: 0 0 auto;
+}
+
 .predictions-version {
   display: flex;
   gap: var(--space-3);
@@ -1007,5 +1063,9 @@
 
   .predictions-preflight__row label {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .prediction-request {
+    display: grid;
   }
 }

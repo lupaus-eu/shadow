@@ -1,14 +1,17 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { RefObject } from "react";
 import { fetchEvents } from "../../api/events";
 import type { EventDto } from "../../api/events";
 import {
+  cancelPredictionRequest,
   createPrediction,
   fetchPrediction,
+  fetchPredictionRequests,
   fetchPredictions,
   preflightPredictions,
   type PredictionCutoffMode,
   type PredictionPreflightDto,
+  type PredictionRequestSummaryDto,
   type PredictionTargetDto,
   type PredictionVersionDetailDto
 } from "../../api/predictions";
@@ -33,6 +36,16 @@ type EventOption = EventDto & {
 const lineColors = ["#c94a11", "#2563eb", "#8b5cf6", "#0f766e", "#b45309", "#be185d"];
 const NON_NUMERIC_METRIC_REASON = "Only numeric metrics can be forecast.";
 const DEFAULT_CONFIDENCE_LEVEL = "80";
+const REQUEST_POLL_INTERVAL_MS = 2_000;
+
+const requestStateLabels = {
+  queued: "Queued",
+  running: "Calculating prediction values",
+  cancelling: "Stopping",
+  completed: "Completed",
+  cancelled: "Cancelled",
+  failed: "Failed"
+} as const;
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error";
@@ -60,6 +73,11 @@ export default function PredictionsTab(props: { orgId: string }) {
   const [scenarios, setScenarios] = useState<ScenarioDto[]>([]);
   const [events, setEvents] = useState<EventOption[]>([]);
   const [versions, setVersions] = useState<PredictionVersionDetailDto[]>([]);
+  const [predictionRequests, setPredictionRequests] = useState<PredictionRequestSummaryDto[]>([]);
+  const [requestLoading, setRequestLoading] = useState(true);
+  const [requestRefreshError, setRequestRefreshError] = useState("");
+  const [cancellingRequestIds, setCancellingRequestIds] = useState<Set<string>>(new Set());
+  const [requestActionError, setRequestActionError] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [refreshVersion, setRefreshVersion] = useState(0);
@@ -75,6 +93,7 @@ export default function PredictionsTab(props: { orgId: string }) {
   const [preflight, setPreflight] = useState<PredictionPreflightDto | null>(null);
   const [manualPeriods, setManualPeriods] = useState<Record<string, number>>({});
   const [formError, setFormError] = useState("");
+  const [submissionMessage, setSubmissionMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [selectedVersionIds, setSelectedVersionIds] = useState<Set<string>>(new Set());
   const [selectedScenarioFilter, setSelectedScenarioFilter] = useState<Set<string>>(new Set());
@@ -86,6 +105,29 @@ export default function PredictionsTab(props: { orgId: string }) {
   const [realityResult, setRealityResult] = useState<{
     orgId: string; scenarioId: string; timeseries: TimeserieDto[]; error: string;
   } | null>(null);
+  const versionsRef = useRef<PredictionVersionDetailDto[]>([]);
+  const submittedRequestIdsRef = useRef(new Set<string>());
+  const completedVersionFetchesRef = useRef(new Set<string>());
+  const processedCompletedRequestIdsRef = useRef(new Set<string>());
+  const requestMutationEpochRef = useRef(0);
+  const initialWorkspaceLoadedRef = useRef(false);
+  const currentOrgIdRef = useRef(props.orgId);
+
+  useLayoutEffect(() => {
+    currentOrgIdRef.current = props.orgId;
+  }, [props.orgId]);
+
+  useEffect(() => {
+    versionsRef.current = versions;
+  }, [versions]);
+
+  useEffect(() => {
+    submittedRequestIdsRef.current = new Set();
+    completedVersionFetchesRef.current = new Set();
+    processedCompletedRequestIdsRef.current = new Set();
+    requestMutationEpochRef.current += 1;
+    initialWorkspaceLoadedRef.current = false;
+  }, [props.orgId]);
 
   const targetScenarios = useMemo(
     () => scenarios,
@@ -157,23 +199,28 @@ export default function PredictionsTab(props: { orgId: string }) {
         if (cancelled) return;
         setScenarios(data.scenarios);
         setEvents(data.events);
-        setVersions(data.versions);
-        const targets = data.scenarios
-          .map((scenario) => scenario.id);
-        setTargetScenarioIds(new Set(targets));
-        setSelectedScenarioFilter(new Set([
-          ...targets,
-          ...data.versions.flatMap((version) => version.targets.map((target) => target.scenarioId))
-        ]));
-        setSelectedVersionIds(
-          data.versions.length ? new Set([data.versions[0].id]) : new Set()
-        );
-        setSelectedModelKinds(
-          new Set(data.versions.flatMap((version) => version.targets.flatMap((target) => target.results.map((result) => result.kind))))
-        );
-        setSelectedMetricIds(new Set(data.versions.flatMap((version) => version.targets
-          .filter(isNumericPredictionTarget)
-          .map((target) => target.metricId))));
+        setVersions((current) => {
+          const loadedById = new Map(data.versions.map((version) => [version.id, version]));
+          return [...data.versions, ...current.filter((version) => !loadedById.has(version.id))];
+        });
+        if (!initialWorkspaceLoadedRef.current) {
+          initialWorkspaceLoadedRef.current = true;
+          const targets = data.scenarios.map((scenario) => scenario.id);
+          setTargetScenarioIds(new Set(targets));
+          setSelectedScenarioFilter(new Set([
+            ...targets,
+            ...data.versions.flatMap((version) => version.targets.map((target) => target.scenarioId))
+          ]));
+          setSelectedVersionIds(
+            data.versions.length ? new Set([data.versions[0].id]) : new Set()
+          );
+          setSelectedModelKinds(
+            new Set(data.versions.flatMap((version) => version.targets.flatMap((target) => target.results.map((result) => result.kind))))
+          );
+          setSelectedMetricIds(new Set(data.versions.flatMap((version) => version.targets
+            .filter(isNumericPredictionTarget)
+            .map((target) => target.metricId))));
+        }
       } catch (loadError) {
         if (!cancelled && (loadError as { name?: string }).name !== "AbortError") {
           setError(`Could not load Predictions. ${errorMessage(loadError)}`);
@@ -205,6 +252,149 @@ export default function PredictionsTab(props: { orgId: string }) {
     return () => { cancelled = true; controller.abort(); };
   }, [includeReality, props.orgId, realityScenario]);
 
+  useEffect(() => {
+    let disposed = false;
+    let inFlight = false;
+    let controller: AbortController | null = null;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const isVisible = () => document.visibilityState !== "hidden";
+    const isCurrent = (mutationEpoch: number) =>
+      !disposed && currentOrgIdRef.current === props.orgId &&
+      requestMutationEpochRef.current === mutationEpoch;
+
+    const refreshCompletedVersions = async (
+      completed: PredictionRequestSummaryDto[],
+      mutationEpoch: number,
+      signal: AbortSignal
+    ) => {
+      const unprocessed = completed.filter(
+        (request) => !processedCompletedRequestIdsRef.current.has(request.id)
+      );
+      if (!unprocessed.length) return;
+      const completedIds = unprocessed
+        .map((request) => request.completedPredictionId)
+        .filter((id): id is string => id !== null);
+      if (!completedIds.length) return;
+
+      const savedVersions = await fetchPredictions(props.orgId, signal);
+      if (!isCurrent(mutationEpoch)) return;
+      const availableIds = new Set(savedVersions.map((version) => version.id));
+      const resolvedRequestIds = new Set(unprocessed
+        .filter((request) => request.completedPredictionId !== null && availableIds.has(request.completedPredictionId))
+        .map((request) => request.id));
+      if (!resolvedRequestIds.size) return;
+      const missingIds = completedIds.filter((id) =>
+        availableIds.has(id) &&
+        !versionsRef.current.some((version) => version.id === id) &&
+        !completedVersionFetchesRef.current.has(id)
+      );
+      missingIds.forEach((id) => completedVersionFetchesRef.current.add(id));
+      try {
+        const details = await Promise.all(
+          missingIds.map((id) => fetchPrediction(props.orgId, id, signal))
+        );
+        if (!isCurrent(mutationEpoch)) return;
+        if (details.length) {
+          setVersions((current) => {
+            const existingIds = new Set(current.map((version) => version.id));
+            const added = details.filter((version) => !existingIds.has(version.id));
+            const next = [...added, ...current];
+            versionsRef.current = next;
+            return next;
+          });
+        }
+        resolvedRequestIds.forEach((id) => processedCompletedRequestIdsRef.current.add(id));
+        const submittedCompletedIds = completed
+          .filter((request) =>
+            request.completedPredictionId !== null &&
+            submittedRequestIdsRef.current.has(request.id)
+          )
+          .map((request) => request.completedPredictionId!);
+        if (!submittedCompletedIds.length) return;
+        const submittedCompletedIdSet = new Set(submittedCompletedIds);
+        const submittedDetails = [
+          ...details,
+          ...versionsRef.current.filter((version) => submittedCompletedIdSet.has(version.id))
+        ].filter((version, index, all) =>
+          all.findIndex((candidate) => candidate.id === version.id) === index
+        );
+        setSelectedVersionIds((current) => new Set([...current, ...submittedCompletedIds]));
+        setSelectedScenarioFilter((current) => new Set([
+          ...current,
+          ...submittedDetails.flatMap((version) => version.targets.map((target) => target.scenarioId))
+        ]));
+        setSelectedModelKinds((current) => new Set([
+          ...current,
+          ...submittedDetails.flatMap((version) => version.targets.flatMap((target) => target.results.map((result) => result.kind)))
+        ]));
+        setSelectedMetricIds((current) => new Set([
+          ...current,
+          ...submittedDetails.flatMap((version) => version.targets
+            .filter(isNumericPredictionTarget)
+            .map((target) => target.metricId))
+          ]));
+      } finally {
+        missingIds.forEach((id) => completedVersionFetchesRef.current.delete(id));
+      }
+    };
+
+    const scheduleNext = () => {
+      if (!disposed && isVisible()) {
+        timer = setTimeout(() => { void poll(); }, REQUEST_POLL_INTERVAL_MS);
+      }
+    };
+
+    const poll = async () => {
+      if (disposed || !isVisible() || inFlight) return;
+      inFlight = true;
+      const mutationEpoch = requestMutationEpochRef.current;
+      controller = new AbortController();
+      try {
+        const summaries = await fetchPredictionRequests(props.orgId, controller.signal);
+        if (!isCurrent(mutationEpoch)) return;
+        setPredictionRequests(summaries);
+        setRequestLoading(false);
+        setRequestRefreshError("");
+        await refreshCompletedVersions(
+          summaries.filter((request) => request.state === "completed"),
+          mutationEpoch,
+          controller.signal
+        );
+      } catch (refreshError) {
+        if (isCurrent(mutationEpoch) && (refreshError as { name?: string }).name !== "AbortError") {
+          setRequestLoading(false);
+          setRequestRefreshError(`Could not refresh prediction requests. ${errorMessage(refreshError)}`);
+        }
+      } finally {
+        if (controller?.signal.aborted === false) controller = null;
+        inFlight = false;
+        scheduleNext();
+      }
+    };
+
+    const onVisibilityChange = () => {
+      if (isVisible()) {
+        if (timer) clearTimeout(timer);
+        timer = null;
+        void poll();
+      } else {
+        if (timer) clearTimeout(timer);
+        timer = null;
+        controller?.abort();
+      }
+    };
+
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    void poll();
+    return () => {
+      disposed = true;
+      if (timer) clearTimeout(timer);
+      controller?.abort();
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [props.orgId]);
+
   const allModelKinds = useMemo(
     () => [...new Set(versions.flatMap((version) => version.targets.flatMap((target) => target.results.map((result) => result.kind))))].sort(),
     [versions]
@@ -233,6 +423,7 @@ export default function PredictionsTab(props: { orgId: string }) {
   function invalidatePreflight() {
     setPreflight(null);
     setFormError("");
+    setSubmissionMessage("");
   }
 
   function selectedConfidenceLevel(): number | null {
@@ -325,23 +516,50 @@ export default function PredictionsTab(props: { orgId: string }) {
     try {
       setSubmitting(true);
       setFormError("");
+      setSubmissionMessage("");
       const created = await createPrediction(props.orgId, {
         name: name.trim(), targetScenarioIds: [...targetScenarioIds], startDate, endDate,
         cutoffMode, confidenceLevel: selectedLevel, manualSeasonalPeriods: manualPeriods
       });
-      setVersions((current) => [created, ...current]);
-      setSelectedVersionIds((current) => new Set(current).add(created.id));
-      setSelectedScenarioFilter((current) => new Set([...current, ...created.targets.map((target) => target.scenarioId)]));
-      setSelectedModelKinds((current) => new Set([...current, ...created.targets.flatMap((target) => target.results.map((result) => result.kind))]));
-      setSelectedMetricIds((current) => new Set([...current, ...created.targets
-        .filter(isNumericPredictionTarget)
-        .map((target) => target.metricId)]));
+      if (currentOrgIdRef.current !== props.orgId) return;
+      requestMutationEpochRef.current += 1;
+      submittedRequestIdsRef.current.add(created.id);
+      setPredictionRequests((current) => [
+        created,
+        ...current.filter((request) => request.id !== created.id)
+      ]);
       setName("");
       setPreflight(null);
+      setSubmissionMessage(`Prediction request “${created.name}” was accepted and queued.`);
     } catch (requestError) {
-      setFormError(`Could not create prediction version. ${errorMessage(requestError)}`);
+      setFormError(`Could not queue prediction. ${errorMessage(requestError)}`);
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleCancelPredictionRequest(request: PredictionRequestSummaryDto) {
+    requestMutationEpochRef.current += 1;
+    setRequestActionError("");
+    setCancellingRequestIds((current) => new Set(current).add(request.id));
+    try {
+      const updated = await cancelPredictionRequest(props.orgId, request.id);
+      if (currentOrgIdRef.current !== props.orgId) return;
+      setPredictionRequests((current) => current.map((item) =>
+        item.id === updated.id ? updated : item
+      ));
+    } catch (requestError) {
+      if (currentOrgIdRef.current === props.orgId) {
+        setRequestActionError(`Could not update prediction request. ${errorMessage(requestError)}`);
+      }
+    } finally {
+      if (currentOrgIdRef.current === props.orgId) {
+        setCancellingRequestIds((current) => {
+          const next = new Set(current);
+          next.delete(request.id);
+          return next;
+        });
+      }
     }
   }
 
@@ -352,7 +570,7 @@ export default function PredictionsTab(props: { orgId: string }) {
     <header><p className="eyebrow">Forecasting</p><h1 id="predictions-heading" className="page-title">Predictions</h1><p className="muted">Create immutable, comparable model outputs from each selected scenario's own data. Reality can also remain visible as live manually entered comparison data.</p></header>
     <div className="predictions-layout">
       <section className="detail-card detail-card--spacious predictions-panel" aria-labelledby="generation-heading">
-        <h2 id="generation-heading">Generate a prediction version</h2>
+        <h2 id="generation-heading">Queue a prediction</h2>
         <label className="form-row"><span className="form-label form-label--required">Version name</span><input className="input" value={name} onChange={(event) => { setName(event.target.value); }} /></label>
         <ScenarioMultiSelect borderless required items={targetScenarios.map((scenario) => [scenario.id, scenario.name])} selected={targetScenarioIds} onChange={(selected) => { setTargetScenarioIds(selected); invalidatePreflight(); }} />
         {!targetScenarios.length ? <p className="alert alert--info" role="status">No active scenarios are available for prediction.</p> : null}
@@ -366,13 +584,96 @@ export default function PredictionsTab(props: { orgId: string }) {
         <fieldset className="predictions-fieldset"><legend className="form-label form-label--required">Observation cutoff</legend><label className="predictions-check"><input type="radio" name="cutoff" checked={cutoffMode === "asOfStart"} onChange={() => { setCutoffMode("asOfStart"); invalidatePreflight(); }} /> As of start — excludes observations on and after the first predicted period.</label><label className="predictions-check"><input type="radio" name="cutoff" checked={cutoffMode === "allCurrentScenario"} onChange={() => { setCutoffMode("allCurrentScenario"); invalidatePreflight(); }} /> All current scenario — retrospective predictions can use later values from the selected scenario.</label></fieldset>
         <label className="form-row"><span className="form-label form-label--required">Prediction interval level</span><input aria-label="Prediction interval level" aria-describedby={confidenceLevelError ? "prediction-interval-help prediction-interval-error" : "prediction-interval-help"} aria-invalid={confidenceLevelError ? "true" : undefined} className="input" type="number" min="50" max="99" step="1" required value={confidenceLevel} onChange={(event) => updateConfidenceLevel(event.target.value)} /><span id="prediction-interval-help" className="muted">50–99%. This is a nominal prediction interval for future observed values; higher percentages generally produce wider bands.</span></label>
         {confidenceLevelError ? <p id="prediction-interval-error" className="alert alert--danger" role="alert">{confidenceLevelError}</p> : null}
-        <div className="form-actions"><button className="btn btn--secondary" type="button" disabled={submitting || invalidDates} onClick={() => void handlePreflight()}>Run preflight</button><button className="btn btn--primary" type="button" disabled={submitting || invalidDates || !preflight || !preflight.metrics.length} onClick={() => void handleCreate()}>Create immutable version</button></div>
+        <div className="form-actions"><button className="btn btn--secondary" type="button" disabled={submitting || invalidDates} onClick={() => void handlePreflight()}>Run preflight</button><button className="btn btn--primary" type="button" disabled={submitting || invalidDates || !preflight || !preflight.metrics.length} onClick={() => void handleCreate()}>Queue prediction</button></div>
         {formError ? <p className="alert alert--danger" role="alert">{formError}</p> : null}
+        {submissionMessage ? <p className="alert alert--info" role="status">{submissionMessage}</p> : null}
         {preflight ? <PreflightResults preflight={preflight} manualPeriods={manualPeriods} onManualPeriodChange={(metricId, value) => setManualPeriods((current) => ({ ...current, [metricId]: value }))} /> : null}
       </section>
+      <PredictionRequests
+        requests={predictionRequests}
+        loading={requestLoading}
+        refreshError={requestRefreshError}
+        actionError={requestActionError}
+        cancellingRequestIds={cancellingRequestIds}
+        onCancel={(request) => void handleCancelPredictionRequest(request)}
+      />
     </div>
     <section className="detail-card detail-card--spacious predictions-panel predictions-plots" aria-labelledby="plots-heading"><h2 id="plots-heading">Compare saved results</h2><div className="predictions-filters"><div className="predictions-filter-groups"><MultiSelectDropdown title="Versions" searchable borderless items={versions.map((version) => [version.id, `${version.name} (${version.confidenceLevel}% prediction interval)`])} selected={selectedVersionIds} onChange={setSelectedVersionIds} allLabel="All saved versions" allSelectedSummary="All saved versions" emptySummary="No saved versions selected" /><ScenarioMultiSelect borderless items={comparisonScenarios} selected={selectedScenarioFilter} onChange={setSelectedScenarioFilter} /><MultiSelectDropdown title="Models and baselines" borderless items={allModelKinds.map((kind) => [kind, formatModelKind(kind)])} selected={selectedModelKinds} onChange={setSelectedModelKinds} allLabel="All models and baselines" /><MultiSelectDropdown title="Numeric metrics" searchable borderless items={allMetrics.map(([id, metric]) => [id, `${metric.name} (${metric.unit ?? "no unit"})`])} selected={selectedMetricIds} onChange={setSelectedMetricIds} allLabel="All numeric metrics" allSelectedSummary="All numeric metrics" /></div><div className="predictions-plot-controls"><span className="form-label">Plot date range</span><div className="predictions-plot-dates"><label className="predictions-date-field">Start date<input aria-label="Plot start date" className="input date-input" type="date" value={plotStartDate} onChange={(event) => setPlotStartDate(event.target.value)} /></label><label className="predictions-date-field">End date<input aria-label="Plot end date" className="input date-input" type="date" value={plotEndDate} onChange={(event) => setPlotEndDate(event.target.value)} /></label></div><label className="predictions-check"><input type="checkbox" checked={includeReality} onChange={(event) => { setIncludeReality(event.target.checked); setRealityResult(null); }} /> Include current Reality (manually entered realized data)</label></div></div>{currentReality?.error ? <p className="alert alert--danger" role="alert">{currentReality.error}</p> : null}{includeReality && realityScenario && !currentReality ? <p role="status">Loading current Reality data…</p> : null}{charts.length ? <div className="predictions-chart-grid">{charts.map((chart) => <MetricChart key={chart.metricId} metricName={chart.metricName} unit={chart.unit} lines={chart.lines} missingModelKinds={chart.missingModelKinds} realityMessage={chart.realityMessage} />)}</div> : <div className="empty-state" role="status"><p>Select saved versions, scenarios, models and metrics with available numeric points to plot them.</p></div>}</section>
   </section>;
+}
+
+function PredictionRequests(props: {
+  requests: PredictionRequestSummaryDto[];
+  loading: boolean;
+  refreshError: string;
+  actionError: string;
+  cancellingRequestIds: Set<string>;
+  onCancel: (request: PredictionRequestSummaryDto) => void;
+}) {
+  const active = props.requests
+    .filter((request) =>
+      request.state === "queued" || request.state === "running" || request.state === "cancelling"
+    )
+    .sort((left, right) =>
+      left.submittedTime.localeCompare(right.submittedTime) || left.id.localeCompare(right.id)
+    );
+  const history = props.requests.filter((request) =>
+    request.state === "completed" || request.state === "cancelled" || request.state === "failed"
+  );
+
+  return <section className="detail-card detail-card--spacious predictions-panel prediction-requests" aria-labelledby="prediction-requests-heading">
+    <h2 id="prediction-requests-heading">Prediction requests</h2>
+    <p className="muted">Requests continue after you leave this tab. Stopping a calculation discards its calculated output.</p>
+    {props.refreshError ? <p className="alert alert--danger" role="alert">{props.refreshError}</p> : null}
+    {props.actionError ? <p className="alert alert--danger" role="alert">{props.actionError}</p> : null}
+    {props.loading ? <p role="status">Loading prediction requests…</p> : <>
+      <section className="prediction-requests__group" aria-labelledby="active-prediction-requests-heading">
+        <h3 id="active-prediction-requests-heading">Active work</h3>
+        {active.length ? <div className="prediction-requests__list">
+          {active.map((request) => <PredictionRequestRow
+            key={request.id}
+            request={request}
+            cancelling={props.cancellingRequestIds.has(request.id)}
+            onCancel={props.onCancel}
+          />)}
+        </div> : <p className="empty-state" role="status">No active prediction requests.</p>}
+      </section>
+      <section className="prediction-requests__group" aria-labelledby="recent-prediction-requests-heading">
+        <h3 id="recent-prediction-requests-heading">Recent history</h3>
+        {history.length ? <div className="prediction-requests__list">
+          {history.map((request) => <PredictionRequestRow key={request.id} request={request} />)}
+        </div> : <p className="empty-state" role="status">No recent prediction requests.</p>}
+      </section>
+    </>}
+  </section>;
+}
+
+function PredictionRequestRow(props: {
+  request: PredictionRequestSummaryDto;
+  cancelling?: boolean;
+  onCancel?: (request: PredictionRequestSummaryDto) => void;
+}) {
+  const action = props.request.state === "queued"
+    ? "Remove from queue"
+    : props.request.state === "running"
+      ? "Stop"
+      : null;
+  const canCancel = action !== null && !props.cancelling && props.request.state !== "cancelling";
+
+  return <article className="prediction-request">
+    <div className="prediction-request__summary">
+      <h4>{props.request.name}</h4>
+      <p className="prediction-request__state">{requestStateLabels[props.request.state]}</p>
+      {props.request.failureReason ? <p className="prediction-request__failure">{props.request.failureReason}</p> : null}
+      {props.request.state === "cancelling" ? <p className="muted">Calculated output will be discarded.</p> : null}
+    </div>
+    {action ? <button
+      className="btn btn--secondary"
+      type="button"
+      disabled={!canCancel}
+      onClick={() => props.onCancel?.(props.request)}
+    >{props.cancelling ? "Stopping…" : action}</button> : null}
+  </article>;
 }
 
 function PreflightResults(props: { preflight: PredictionPreflightDto; manualPeriods: Record<string, number>; onManualPeriodChange: (metricId: string, value: number) => void }) {
