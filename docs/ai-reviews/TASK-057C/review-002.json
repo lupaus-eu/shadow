@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-057C/review-002",
+  "task": {
+    "id": "TASK-057C",
+    "path": "tasks/TASK-057C-durable-prediction-requests-worker.md"
+  },
+  "round": 2,
+  "reviewed_at": "2026-09-09T07:20:52Z",
+  "reviewer": {
+    "label": "Codex self-review"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "8fa1ef2a28a117d0a05fcd7b08a2dad5d50df62a",
+    "head_sha": "164c250d3ab001cd318c77b27c77b6315968c796",
+    "comparison": "8fa1ef2a28a117d0a05fcd7b08a2dad5d50df62a...164c250d3ab001cd318c77b27c77b6315968c796",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "clean",
+    "summary": "No new bugs, regressions, security issues, missing required tests, documentation gaps, or scope violations were identified in the corrected committed TASK-057C diff. The active and finished organisation list paths now have matching ordered indexes, and PostgreSQL integration coverage deterministically verifies both cancellation-first and completion-first publication outcomes.",
+    "findings": [],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-057C/review-001",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "Migration 015 and SQLAlchemy metadata now define the organisation-scoped active request-list partial index, with migration presence coverage and updated physical database documentation.",
+        "validated_by": {
+          "review_id": "TASK-057C/review-002",
+          "commit": "164c250d3ab001cd318c77b27c77b6315968c796"
+        }
+      },
+      {
+        "record_id": "TASK-057C/review-001",
+        "finding_id": "F-002",
+        "disposition": "fixed",
+        "rationale": "A deterministic disposable-PostgreSQL test now serializes cancellation and publication in both commit orderings and verifies the terminal request and saved-version outcomes.",
+        "validated_by": {
+          "review_id": "TASK-057C/review-002",
+          "commit": "164c250d3ab001cd318c77b27c77b6315968c796"
+        }
+      }
+    ]
+  }
+}

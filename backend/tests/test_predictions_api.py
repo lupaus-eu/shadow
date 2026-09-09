@@ -1,7 +1,7 @@
 import warnings
 from collections.abc import Iterator
-from datetime import UTC, date, datetime
-from typing import Any, cast
+from datetime import UTC, date, datetime, timedelta
+from typing import Any, Protocol, cast
 
 import pytest
 from auth_helpers import authenticate_test_client
@@ -19,6 +19,7 @@ from app.api.v1.org_twin_structure.models import Metamodel
 from app.api.v1.predictions.models import (
     PredictionModelResult,
     PredictionPoint,
+    PredictionRequest,
     PredictionTarget,
     PredictionVersion,
 )
@@ -32,6 +33,15 @@ from app.api.v1.predictions.snapshots import (
 from app.core.database import get_db_session
 from app.core.models import Base
 from app.main import create_app
+
+
+class _TestResponse(Protocol):
+    status_code: int
+
+    def json(self) -> Any: ...
+
+
+_TEST_SESSION_FACTORIES: dict[int, sessionmaker[Session]] = {}
 
 
 @pytest.fixture
@@ -59,9 +69,53 @@ def client(session_factory: sessionmaker[Session]) -> Iterator[TestClient]:
 
     app.dependency_overrides[get_db_session] = override_get_db_session
     with TestClient(app) as test_client:
+        _TEST_SESSION_FACTORIES[id(test_client)] = session_factory
         authenticate_test_client(test_client, session_factory)
-        yield test_client
+        try:
+            yield test_client
+        finally:
+            _TEST_SESSION_FACTORIES.pop(id(test_client), None)
     app.dependency_overrides.clear()
+
+
+def _create_completed_prediction(
+    client: TestClient, url: str, *, json: dict[str, object]
+) -> _TestResponse:
+    """Submit through the public API, then emulate a successful worker cycle."""
+    from app.api.v1.predictions import service
+
+    accepted = client.post(url, json=json)
+    assert accepted.status_code == 202
+    factory = _TEST_SESSION_FACTORIES[id(client)]
+    with factory() as session:
+        request = session.scalar(
+            select(PredictionRequest).where(
+                PredictionRequest.prediction_request_key == accepted.json()["id"]
+            )
+        )
+        assert request is not None
+        snapshot = PredictionInputSnapshot.model_validate(request.input_snapshot)
+    calculation = service.calculate_prediction(snapshot)
+    now = datetime.now(UTC)
+    with factory() as session:
+        request = session.scalar(
+            select(PredictionRequest).where(
+                PredictionRequest.prediction_request_key == accepted.json()["id"]
+            )
+        )
+        assert request is not None
+        version = service.persist_prediction(session, snapshot, calculation)
+        request.state = "completed"
+        request.start_time = now
+        request.finish_time = now
+        request.completed_prediction_version_id = version.prediction_version_id
+        session.commit()
+    response = client.get(
+        f"/api/v1/organisations/{snapshot.organisation_key}/predictions/"
+        f"{snapshot.prediction_key}"
+    )
+    response.status_code = 201
+    return response
 
 
 def _create_organisation(client: TestClient, name: str = "Forecast Org") -> str:
@@ -135,6 +189,226 @@ def _create_model_ready_target(client: TestClient) -> tuple[str, str]:
     return organisation_key, target_key
 
 
+def test_create_enqueues_frozen_request_and_exposes_status_apis(
+    client: TestClient,
+    session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.api.v1.predictions import service
+
+    organisation_key = _create_organisation(client)
+    target_key = _create_target_and_metrics(client, organisation_key)
+
+    def must_not_calculate(_: object) -> object:
+        raise AssertionError("HTTP submission must not fit prediction models")
+
+    monkeypatch.setattr(service, "calculate_prediction", must_not_calculate)
+    accepted = client.post(
+        f"/api/v1/organisations/{organisation_key}/predictions",
+        json=_prediction_payload(target_key, name="Queued forecast"),
+    )
+
+    assert accepted.status_code == 202
+    summary = accepted.json()
+    assert summary == {
+        "id": summary["id"],
+        "name": "Queued forecast",
+        "state": "queued",
+        "submittedTime": summary["submittedTime"],
+        "startTime": None,
+        "finishTime": None,
+        "failureCode": None,
+        "failureReason": None,
+        "completedPredictionId": None,
+    }
+    assert accepted.headers["location"] == (
+        f"/api/v1/organisations/{organisation_key}/prediction-requests/"
+        f"{summary['id']}"
+    )
+    with session_factory() as session:
+        request = session.scalar(select(PredictionRequest))
+        assert request is not None
+        assert request.submitted_by == 0
+        assert request.input_snapshot["name"] == "Queued forecast"
+        assert session.scalar(select(PredictionVersion)) is None
+
+    listed = client.get(
+        f"/api/v1/organisations/{organisation_key}/prediction-requests"
+    )
+    detailed = client.get(accepted.headers["location"])
+    assert listed.status_code == 200 and listed.json() == [summary]
+    assert detailed.status_code == 200 and detailed.json() == summary
+
+
+def test_request_cancellation_is_idempotent_scoped_and_releases_name(
+    client: TestClient, session_factory: sessionmaker[Session]
+) -> None:
+    organisation_key = _create_organisation(client)
+    target_key = _create_target_and_metrics(client, organisation_key)
+    accepted = client.post(
+        f"/api/v1/organisations/{organisation_key}/predictions",
+        json=_prediction_payload(target_key, name="Reusable"),
+    )
+    assert accepted.status_code == 202
+    request_key = accepted.json()["id"]
+    duplicate = client.post(
+        f"/api/v1/organisations/{organisation_key}/predictions",
+        json=_prediction_payload(target_key, name="REUSABLE"),
+    )
+    assert duplicate.status_code == 409
+
+    cancelled = client.post(
+        f"/api/v1/organisations/{organisation_key}/prediction-requests/"
+        f"{request_key}/cancel"
+    )
+    repeated = client.post(
+        f"/api/v1/organisations/{organisation_key}/prediction-requests/"
+        f"{request_key}/cancel"
+    )
+    assert cancelled.status_code == 200
+    assert cancelled.json()["state"] == "cancelled"
+    assert cancelled.json()["finishTime"] is not None
+    assert repeated.json() == cancelled.json()
+    with session_factory() as session:
+        request = session.scalar(
+            select(PredictionRequest).where(
+                PredictionRequest.prediction_request_key == request_key
+            )
+        )
+        assert request is not None and request.cancelled_by == 0
+
+    reusable = client.post(
+        f"/api/v1/organisations/{organisation_key}/predictions",
+        json=_prediction_payload(target_key, name="reusable"),
+    )
+    assert reusable.status_code == 202
+    reusable_key = reusable.json()["id"]
+    with session_factory() as session:
+        running = session.scalar(
+            select(PredictionRequest).where(
+                PredictionRequest.prediction_request_key == reusable_key
+            )
+        )
+        assert running is not None
+        running.state = "running"
+        running.start_time = datetime.now(UTC)
+        running.worker_id = "test-worker"
+        session.commit()
+    stopping = client.post(
+        f"/api/v1/organisations/{organisation_key}/prediction-requests/"
+        f"{reusable_key}/cancel"
+    )
+    repeated_stopping = client.post(
+        f"/api/v1/organisations/{organisation_key}/prediction-requests/"
+        f"{reusable_key}/cancel"
+    )
+    assert stopping.status_code == 200 and stopping.json()["state"] == "cancelling"
+    assert repeated_stopping.json() == stopping.json()
+
+    other_organisation = _create_organisation(client, "Request isolation org")
+    assert (
+        client.get(
+            f"/api/v1/organisations/{other_organisation}/prediction-requests/"
+            f"{request_key}"
+        ).status_code
+        == 404
+    )
+    assert (
+        client.post(
+            f"/api/v1/organisations/{other_organisation}/prediction-requests/"
+            f"{request_key}/cancel"
+        ).status_code
+        == 404
+    )
+
+
+def test_request_list_includes_all_active_and_only_50_recently_finished(
+    client: TestClient, session_factory: sessionmaker[Session]
+) -> None:
+    organisation_key = _create_organisation(client)
+    target_key = _create_target_and_metrics(client, organisation_key)
+    active = client.post(
+        f"/api/v1/organisations/{organisation_key}/predictions",
+        json=_prediction_payload(target_key, name="Active"),
+    )
+    assert active.status_code == 202
+    base_time = datetime.now(UTC)
+    with session_factory() as session:
+        active_request = session.scalar(select(PredictionRequest))
+        assert active_request is not None
+        session.add_all(
+            PredictionRequest(
+                prediction_request_key=f"finished-{index}",
+                organisation_id=active_request.organisation_id,
+                name=f"Finished {index}",
+                input_snapshot={},
+                state="failed",
+                submitted_time=base_time + timedelta(seconds=index),
+                start_time=base_time + timedelta(seconds=index),
+                finish_time=base_time + timedelta(seconds=index),
+                submitted_by=0,
+                failure_code="FAILED",
+                failure_reason="Safe reason.",
+            )
+            for index in range(55)
+        )
+        session.commit()
+
+    response = client.get(
+        f"/api/v1/organisations/{organisation_key}/prediction-requests"
+    )
+    assert response.status_code == 200
+    rows = response.json()
+    assert len(rows) == 51
+    assert rows[0]["id"] == active.json()["id"]
+    assert [row["id"] for row in rows[1:]] == [
+        f"finished-{index}" for index in range(54, 4, -1)
+    ]
+
+
+@pytest.mark.parametrize("role", ["consultant", "admin"])
+def test_both_business_roles_can_inspect_and_cancel_another_users_request(
+    client: TestClient,
+    session_factory: sessionmaker[Session],
+    role: str,
+) -> None:
+    organisation_key = _create_organisation(client)
+    target_key = _create_target_and_metrics(client, organisation_key)
+    accepted = client.post(
+        f"/api/v1/organisations/{organisation_key}/predictions",
+        json=_prediction_payload(target_key, name=f"Shared {role}"),
+    )
+    assert accepted.status_code == 202
+    request_key = accepted.json()["id"]
+
+    authenticate_test_client(
+        client,
+        session_factory,
+        user_id=1,
+        role=role,
+        raw_session_id="r" * 43,
+        csrf_token=f"{role}-csrf",
+    )
+    assert (
+        client.get(
+            f"/api/v1/organisations/{organisation_key}/prediction-requests/"
+            f"{request_key}"
+        ).status_code
+        == 200
+    )
+    cancelled = client.post(
+        f"/api/v1/organisations/{organisation_key}/prediction-requests/"
+        f"{request_key}/cancel"
+    )
+    assert cancelled.status_code == 200 and cancelled.json()["state"] == "cancelled"
+    with session_factory() as session:
+        request = session.scalar(
+            select(PredictionRequest).where(
+                PredictionRequest.prediction_request_key == request_key
+            )
+        )
+        assert request is not None
+        assert request.submitted_by == 0 and request.cancelled_by == 1
 def test_preflight_is_read_only_and_create_persists_target_scenario_history(
     client: TestClient, session_factory: sessionmaker[Session]
 ) -> None:
@@ -160,7 +434,8 @@ def test_preflight_is_read_only_and_create_persists_target_scenario_history(
     with session_factory() as session:
         assert session.scalar(select(PredictionVersion)) is None
 
-    created = client.post(
+    created = _create_completed_prediction(
+        client,
         f"/api/v1/organisations/{organisation_key}/predictions",
         json=_prediction_payload(target_key, name="May forecast"),
     )
@@ -227,7 +502,8 @@ def test_create_prediction_persists_derived_target_without_seasonal_source(
     )
     assert derived.status_code == 201
 
-    created = client.post(
+    created = _create_completed_prediction(
+        client,
         f"/api/v1/organisations/{organisation_key}/predictions",
         json=_prediction_payload(target_key, name="Derived forecast"),
     )
@@ -414,7 +690,8 @@ def test_prediction_rejects_duplicate_name_and_cross_organisation_target(
     target_key = _create_target_and_metrics(client, organisation_key)
     payload = _prediction_payload(target_key, name="Forecast")
     assert (
-        client.post(
+        _create_completed_prediction(
+            client,
             f"/api/v1/organisations/{organisation_key}/predictions", json=payload
         ).status_code
         == 201
@@ -447,7 +724,8 @@ def test_prediction_accepts_confidence_level_boundaries(
         json=_prediction_payload(target_key, confidenceLevel=confidence_level),
     )
     assert preflight.status_code == 200
-    created = client.post(
+    created = _create_completed_prediction(
+        client,
         f"/api/v1/organisations/{organisation_key}/predictions",
         json=_prediction_payload(
             target_key,
@@ -482,7 +760,8 @@ def test_mlforecast_selected_levels_produce_distinct_complete_bounds(
     with warnings.catch_warnings(record=True) as caught_warnings:
         warnings.simplefilter("always")
         for confidence_level in (50, 99):
-            response = client.post(
+            response = _create_completed_prediction(
+                client,
                 f"/api/v1/organisations/{organisation_key}/predictions",
                 json=_prediction_payload(
                     target_key,
@@ -568,7 +847,8 @@ def test_as_of_start_excludes_observations_at_or_after_first_period(
         },
     )
     assert replacement.status_code == 200
-    response = client.post(
+    response = _create_completed_prediction(
+        client,
         f"/api/v1/organisations/{organisation_key}/predictions",
         json=_prediction_payload(
             target_key,
@@ -604,7 +884,8 @@ def test_as_of_start_uses_first_generated_period_for_unaligned_ranges(
     )
     assert replacement.status_code == 200
 
-    response = client.post(
+    response = _create_completed_prediction(
+        client,
         f"/api/v1/organisations/{organisation_key}/predictions",
         json=_prediction_payload(
             target_key,
@@ -640,7 +921,8 @@ def test_target_scenario_values_are_the_only_observed_history(
     )
     assert replacement.status_code == 200
 
-    response = client.post(
+    response = _create_completed_prediction(
+        client,
         f"/api/v1/organisations/{organisation_key}/predictions",
         json=_prediction_payload(target_key, name="Possible past"),
     )
@@ -686,7 +968,8 @@ def test_reality_is_a_prediction_target_with_its_own_history(
     )
     assert response.status_code == 200
 
-    response = client.post(
+    response = _create_completed_prediction(
+        client,
         f"/api/v1/organisations/{organisation_key}/predictions",
         json=_prediction_payload("reality", name="Reality forecast"),
     )
@@ -735,7 +1018,8 @@ def test_all_current_scenario_uses_only_target_data_and_rejects_legacy_cutoff(
     )
     assert response.status_code == 200
 
-    response = client.post(
+    response = _create_completed_prediction(
+        client,
         f"/api/v1/organisations/{organisation_key}/predictions",
         json=_prediction_payload(
             target_key,
@@ -800,7 +1084,8 @@ def test_forked_timeserie_history_is_independently_forecastable(
     assert fork.status_code == 201
     fork_key = fork.json()["id"]
 
-    prediction = client.post(
+    prediction = _create_completed_prediction(
+        client,
         f"/api/v1/organisations/{organisation_key}/predictions",
         json=_prediction_payload(fork_key, name="Fork forecast"),
     )
@@ -812,7 +1097,8 @@ def test_forked_timeserie_history_is_independently_forecastable(
         json={"values": [{"date": "2025-01-01", "value": 999}]},
     )
     assert response.status_code == 200
-    rerun = client.post(
+    rerun = _create_completed_prediction(
+        client,
         f"/api/v1/organisations/{organisation_key}/predictions",
         json=_prediction_payload(fork_key, name="Fork forecast after source edit"),
     )
@@ -841,7 +1127,8 @@ def test_sarima_nonconvergence_is_saved_without_discarding_mlforecast(
         json={"values": values},
     )
     assert replacement.status_code == 200
-    response = client.post(
+    response = _create_completed_prediction(
+        client,
         f"/api/v1/organisations/{organisation_key}/predictions",
         json=_prediction_payload(
             target_key,
@@ -899,7 +1186,8 @@ def test_non_finite_mlforecast_values_are_saved_as_ineligible(
         "_mlforecast_result",
         non_finite_mlforecast,
     )  # pyright: ignore[reportPrivateUsage]
-    response = client.post(
+    response = _create_completed_prediction(
+        client,
         f"/api/v1/organisations/{organisation_key}/predictions",
         json=_prediction_payload(
             target_key,
@@ -948,7 +1236,8 @@ def test_non_finite_mlforecast_mae_is_saved_as_ineligible(
         "_mlforecast_result",
         non_finite_mlforecast,
     )  # pyright: ignore[reportPrivateUsage]
-    response = client.post(
+    response = _create_completed_prediction(
+        client,
         f"/api/v1/organisations/{organisation_key}/predictions",
         json=_prediction_payload(
             target_key,
@@ -999,7 +1288,8 @@ def test_non_finite_sarima_values_are_saved_as_ineligible(
         "_sarima_result",
         non_finite_sarima,
     )  # pyright: ignore[reportPrivateUsage]
-    response = client.post(
+    response = _create_completed_prediction(
+        client,
         f"/api/v1/organisations/{organisation_key}/predictions",
         json=_prediction_payload(
             target_key,
@@ -1117,7 +1407,8 @@ def test_interval_failure_preserves_valid_model_points(
         )
 
     monkeypatch.setattr(predictions_service, "_mlforecast_result", interval_unavailable)  # pyright: ignore[reportPrivateUsage]
-    response = client.post(
+    response = _create_completed_prediction(
+        client,
         f"/api/v1/organisations/{organisation_key}/predictions",
         json=_prediction_payload(
             target_key,
@@ -1166,7 +1457,8 @@ def test_missing_target_scenario_period_is_saved_as_normal_ineligibility(
         assert missing is not None
         missing.deleted_time = missing.created_time
         session.commit()
-    response = client.post(
+    response = _create_completed_prediction(
+        client,
         f"/api/v1/organisations/{organisation_key}/predictions",
         json=_prediction_payload(target_key, name="Gap"),
     )

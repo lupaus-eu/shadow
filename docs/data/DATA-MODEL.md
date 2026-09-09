@@ -2,9 +2,8 @@
 
 Tämä dokumentti kuvaa järjestelmän loogisen datamallin.
 
-Status: core, customer and implemented Forecasting saved-version model defined.
-ADR-012 additionally defines the logical Prediction Request; its physical
-schema is pending TASK-057C. AI and billing remain TBD.
+Status: core, customer and Forecasting durable-request/saved-version models
+defined. AI and billing remain TBD.
 
 Looginen datamalli kuvaa:
 
@@ -51,7 +50,7 @@ Lue nämä yhdessä datamallin kanssa:
 | Timeserie | Scenario-specific timeseries definition. |
 | Timeserie Value | Date-specific value for a timeserie. |
 | Derived Metric Equation | Scenario-owned formula defining one derived numeric Timeserie. |
-| Prediction Request | Mutable, organisation-owned durable request with a frozen calculation snapshot and terminal history; accepted architecture, not yet persisted. |
+| Prediction Request | Mutable, organisation-owned durable request with a frozen calculation snapshot and retained terminal history. |
 | Prediction Version | Immutable, organisation-owned named execution with its cutoff, selected nominal prediction-interval level and model configuration snapshot. |
 | Prediction Target | One target scenario and metric in a saved version, including effective-observation/source snapshots and metric eligibility. |
 | Prediction Model Result | One persisted requested output kind with eligibility, cross-validation and prediction-interval availability metadata. |

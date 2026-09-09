@@ -34,9 +34,10 @@ Päätetty tekninen perusrakenne:
   and SARIMA results according to ADR-011; baselines, live Reality and
   formula-derived results remain point-only
 - background prediction requests: ADR-012 accepts a PostgreSQL-backed,
-  single-worker architecture; detached snapshot preparation, calculation and
-  publication boundaries are implemented, while request persistence, worker,
-  API, UI and runtime wiring remain pending TASK-057C through TASK-057E
+  single-worker architecture; detached snapshot preparation, durable request
+  persistence, request APIs, supervised worker calculation and atomic
+  publication are implemented, while UI and runtime wiring remain pending
+  TASK-057D and TASK-057E
 
 Tarkemmat toteutusyksityiskohdat täsmentyvät taskien ja tarvittaessa uusien ADR:ien kautta.
 
@@ -573,21 +574,22 @@ Uusi merkittävä integraatio vaatii taskin ja tarvittaessa ADR:n.
 
 # Background Jobs
 
-Status: accepted Forecasting design, not implemented or deployed
+Status: Forecasting worker implemented; runtime wiring pending TASK-057E
 
-ADR-012 defines a Forecasting-only durable PostgreSQL queue for background
-prediction requests. One worker, using the existing backend image, will hold a
-database advisory lock and calculate one request globally at a time in
-submission order. Each calculation will run in a supervised child process;
-request cancellation, recovery and atomic publication are defined in the ADR.
+Forecasting uses the ADR-012 durable PostgreSQL request queue. The standalone
+backend worker holds one session-level advisory lock, recovers abandoned active
+requests, claims queued work globally in submission order and runs each detached
+calculation in an isolated child process. The supervisor checks cancellation
+and ownership every second, reaps stopped children, and atomically publishes a
+complete immutable version with its completed request transition. It never
+retries work or runs inside FastAPI.
 
-This does not change the implemented runtime shape above. TASK-057B through
-TASK-057E respectively implement detached calculation inputs, the durable
-request/API/worker behavior, the current-tab state-only UI and deployment
-wiring/QA. No generic background-job platform, broker, scheduler, retries or
-parallel processing is accepted.
+TASK-057D owns the request UI and TASK-057E owns Compose/image lifecycle wiring
+and operational QA. Until TASK-057E, the worker module is implemented but is not
+started by repository runtime manifests. No generic background-job platform,
+broker, scheduler, retries or parallel processing is accepted.
 
-![Accepted Forecasting request architecture (implementation pending)](docs/diagrams/generated/component-forecasting-prediction-requests.svg)
+![Forecasting request architecture](docs/diagrams/generated/component-forecasting-prediction-requests.svg)
 
 ---
 

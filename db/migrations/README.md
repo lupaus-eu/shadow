@@ -92,6 +92,7 @@ The current ordered migration chain is:
 012_add_timeserie_short_name.sql
 013_create_derived_metrics.sql
 014_add_prediction_intervals.sql
+015_create_prediction_requests.sql
 ```
 
 Jokaisella yllä olevalla tiedostolla on vastaava `.down.sql`-tiedosto.
@@ -148,6 +149,11 @@ Migration 004:n alkuperäinen up-migraatio poisti graph-metadataa ja
 graph-to-org-state-assosiaation. Sen down-migraatio palauttaa legacy-rakenteen
 vain, kun jokainen graph-dataa sisältävä scenario liittyy täsmälleen yhteen
 organisation stateen. Muuten rollback epäonnistuu atomisesti.
+
+Migration 015 preserves all existing prediction versions and does not create
+request history for them. Its down migration deletes only prediction request
+history and must be run with every prediction worker stopped; it does not delete
+completed prediction versions or their owned rows.
 
 ## Deployment Compatibility
 

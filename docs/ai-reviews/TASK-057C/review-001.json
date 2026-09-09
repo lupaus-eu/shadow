@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-057C/review-001",
+  "task": {
+    "id": "TASK-057C",
+    "path": "tasks/TASK-057C-durable-prediction-requests-worker.md"
+  },
+  "round": 1,
+  "reviewed_at": "2026-09-09T07:08:10Z",
+  "reviewer": {
+    "label": "Codex self-review"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "8fa1ef2a28a117d0a05fcd7b08a2dad5d50df62a",
+    "head_sha": "d05354385f3594f4edd18a156fe475b1896e4c07",
+    "comparison": "8fa1ef2a28a117d0a05fcd7b08a2dad5d50df62a...d05354385f3594f4edd18a156fe475b1896e4c07",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Two acceptance-coverage gaps were identified in the committed TASK-057C diff: the active organisation request-list query lacks its own ordered partial index, and the cancellation/publication transaction race is not directly tested in both commit orderings.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "bug",
+        "severity": "low",
+        "summary": "The organisation-scoped active request list lacks an ordered supporting index.",
+        "rationale": "The migration indexes global queued claiming and organisation finished history, but the active-list query filters an organisation across queued, running and cancelling states and orders by submission time plus stable ID. Its available active-name index orders by lower-case name instead, so it does not satisfy the task's explicit request-list indexing requirement.",
+        "recommendation": "Add a partial index on organisation ID, submission time and request ID for active states, mirror it in SQLAlchemy metadata, and assert its migration presence.",
+        "locations": [
+          {
+            "path": "db/migrations/015_create_prediction_requests.sql",
+            "line": 82
+          },
+          {
+            "path": "backend/app/api/v1/predictions/models.py",
+            "line": 96
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "missing_test",
+        "severity": "medium",
+        "summary": "Cancellation/publication serialization is not directly covered for both commit orderings.",
+        "rationale": "The PostgreSQL tests prove cancellation while a child is blocked, but do not coordinate the final publication transaction against cancellation to demonstrate that cancellation committed first forbids a version and completion committed first leaves the completed request unchanged. The task explicitly requires PostgreSQL transaction-race evidence for this behavior.",
+        "recommendation": "Add a deterministic PostgreSQL concurrency test that holds the shared organisation name lock to force each ordering and verifies the resulting request and version state.",
+        "locations": [
+          {
+            "path": "backend/tests/test_predictions_postgresql_integration.py",
+            "line": 391
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": []
+  }
+}

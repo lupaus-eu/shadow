@@ -1,9 +1,7 @@
 # Forecasting Domain
 
-Status: saved-version persistence and synchronous backend API implemented by
-TASK-041B; detached snapshot preparation, calculation and publication boundary
-implemented by TASK-057B; durable request runtime pending TASK-057C through
-TASK-057E
+Status: durable request persistence, API and standalone worker implemented by
+TASK-057C; UI and supported-runtime wiring pending TASK-057D/TASK-057E
 
 ## Purpose
 
@@ -169,8 +167,8 @@ errors abort the version transaction and leave no partial version.
 
 ### Execution Requests And Bounds
 
-The implemented create route currently runs synchronously through three
-explicit boundaries. Preparation freezes one format-identified, Pydantic-
+The create route runs preparation synchronously but queues calculation through
+three explicit boundaries. Preparation freezes one format-identified, Pydantic-
 validated input snapshot in a PostgreSQL `REPEATABLE READ` transaction.
 Calculation accepts only that serialized shape and returns detached results;
 it has no Session or ORM input and performs no source reads, saved-version
@@ -187,11 +185,11 @@ detached normal results. Source edits, soft deletion and formula or short-name
 changes after preparation therefore cannot change calculation or saved audit
 provenance.
 
-ADR-012 supersedes synchronous HTTP execution with an accepted,
-not-yet-implemented durable PostgreSQL request queue. TASK-057C will persist the
-same snapshot, change creation to `202 Accepted`, and let one global worker
-process snapshots in submission order without changing model behavior or these
-bounds.
+The API commits that snapshot in a queued request before returning
+`202 Accepted`. A standalone lock-owning worker processes snapshots in global
+submission order without changing model behavior or these bounds. It uses one
+child process per request and keeps queue access and publication in the
+supervisor.
 
 One request permits at most 50 numeric target scenario/metric candidates, 366
 generated periods per pair, 10,000 contiguous
@@ -203,7 +201,7 @@ A request that exceeds a limit is rejected rather than truncated.
 
 Owned tables:
 
-- prediction requests (accepted; migration pending TASK-057C)
+- prediction requests
 - prediction versions
 - prediction target metrics
 - prediction model results
@@ -224,15 +222,14 @@ recovery contract.
 
 ## API Ownership
 
-The implemented organisation-scoped API exposes `preflight`, create, list and
-detail routes under `/api/v1/organisations/{organisation_key}/predictions`.
-Preflight is read-only. Until TASK-057C, create synchronously returns a
-completed version. ADR-012 specifies its replacement: `POST /predictions`
-returns `202 Accepted` and a request summary; request list, detail and
-idempotent cancellation are organisation-scoped. Existing saved-version list
-and detail contracts remain unchanged. Mutation CSRF/Origin checks and actor
-attribution apply, and both consultants and administrators may inspect/cancel
-another user's request.
+The organisation-scoped API exposes prediction preflight, queued creation and
+saved-version list/detail. `POST /predictions` returns `202 Accepted`, a request
+summary and a `Location` status URL after committing the frozen snapshot.
+Request list/detail and idempotent cancellation are exposed under
+`prediction-requests`; the list contains every active request plus the 50 most
+recently finished. Existing saved-version list and detail contracts remain
+unchanged. Mutation CSRF/Origin checks and actor attribution apply, and both
+consultants and administrators may inspect/cancel another user's request.
 
 ## Dependencies
 
@@ -249,9 +246,7 @@ Referenced By:
 
 ## Common Workflow
 
-### Accepted Background Request Workflow
-
-The following is the accepted target behavior, not current runtime behavior:
+### Background Request Workflow
 
 1. Validate and freeze one complete detached input snapshot during submission.
 2. Persist a queued request and return its `202 Accepted` summary.
@@ -262,9 +257,9 @@ The following is the accepted target behavior, not current runtime behavior:
 5. Cancellation stops active child work promptly and discards partial output;
    failure records safe request history without a partial version.
 
-![Accepted request lifecycle (implementation pending)](../diagrams/generated/state-forecasting-prediction-request.svg)
+![Request lifecycle](../diagrams/generated/state-forecasting-prediction-request.svg)
 
-### Generate A Prediction Version (Current Runtime)
+### Generate A Prediction Version
 
 1. In one consistent read snapshot, validate the organisation and selected
    active target scenarios, resolve metrics and history, construct scenario-

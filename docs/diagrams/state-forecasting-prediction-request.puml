@@ -1,5 +1,5 @@
 @startuml
-title Schatten - Accepted Prediction Request Lifecycle (Pending Implementation)
+title Schatten - Prediction Request Lifecycle
 
 hide empty description
 

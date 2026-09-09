@@ -243,6 +243,26 @@ entity "prediction_versions" as prediction_versions {
   created_time : TIMESTAMPTZ
 }
 
+entity "prediction_requests" as prediction_requests {
+  * prediction_request_id : BIGINT
+  --
+  prediction_request_key : TEXT
+  organisation_id : BIGINT
+  name : TEXT
+  input_snapshot : JSONB
+  state : TEXT
+  submitted_time : TIMESTAMPTZ
+  start_time : TIMESTAMPTZ
+  finish_time : TIMESTAMPTZ
+  submitted_by : BIGINT
+  cancelled_by : BIGINT
+  cancellation_time : TIMESTAMPTZ
+  worker_id : TEXT
+  failure_code : TEXT
+  failure_reason : TEXT
+  completed_prediction_version_id : BIGINT
+}
+
 entity "prediction_targets" as prediction_targets {
   * prediction_target_id : BIGINT
   --
@@ -311,6 +331,9 @@ timeseries ||--o{ timeserie_values
 scenarios ||--o{ derived_metrics_equations
 timeseries ||--o| derived_metrics_equations : derived
 organisations ||--o{ prediction_versions
+organisations ||--o{ prediction_requests
+users ||--o{ prediction_requests : submits / cancels
+prediction_versions |o--o| prediction_requests : completed output
 prediction_versions ||--o{ prediction_targets
 prediction_targets ||--o{ prediction_model_results
 prediction_model_results ||--o{ prediction_points

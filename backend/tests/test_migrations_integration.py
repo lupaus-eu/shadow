@@ -160,6 +160,10 @@ def test_rejects_non_latest_and_unapplied_down_migrations(
         )
 
     execute_command(
+        DownCommand("015_create_prediction_requests.down.sql"),
+        database_url=migration_database_url,
+    )
+    execute_command(
         DownCommand("014_add_prediction_intervals.down.sql"),
         database_url=migration_database_url,
     )
@@ -614,6 +618,10 @@ def test_prediction_interval_migration_resets_development_rows_and_constraints(
                 )
 
     execute_command(
+        DownCommand("015_create_prediction_requests.down.sql"),
+        database_url=migration_database_url,
+    )
+    execute_command(
         DownCommand("014_add_prediction_intervals.down.sql"),
         database_url=migration_database_url,
     )
@@ -662,6 +670,10 @@ def test_prediction_observation_source_migration_replaces_schema(
             )
 
     execute_command(
+        DownCommand("015_create_prediction_requests.down.sql"),
+        database_url=migration_database_url,
+    )
+    execute_command(
         DownCommand("014_add_prediction_intervals.down.sql"),
         database_url=migration_database_url,
     )
@@ -687,6 +699,110 @@ def test_prediction_observation_source_migration_replaces_schema(
               AND column_name = 'reality_scenario_key'
         )
         """,
+    )
+    execute_command(UpCommand(), database_url=migration_database_url)
+
+
+def test_prediction_request_migration_preserves_versions_and_enforces_lifecycle(
+    migration_database_url: str,
+) -> None:
+    execute_command(UpCommand(), database_url=migration_database_url)
+    with psycopg.connect(migration_database_url) as connection:
+        user = connection.execute(
+            "INSERT INTO users (name, email, role) "
+            "VALUES ('Queue Tester', 'queue@example.local', 'admin') RETURNING user_id"
+        ).fetchone()
+        assert user is not None
+        organisation = connection.execute(
+            "INSERT INTO organisations (organisation_key, name, created_by) "
+            "VALUES ('queue-org', 'Queue Org', %s) RETURNING organisation_id",
+            (user[0],),
+        ).fetchone()
+        other = connection.execute(
+            "INSERT INTO organisations (organisation_key, name, created_by) "
+            "VALUES ('other-queue-org', 'Other Queue Org', %s) "
+            "RETURNING organisation_id",
+            (user[0],),
+        ).fetchone()
+        assert organisation is not None and other is not None
+        version = connection.execute(
+            "INSERT INTO prediction_versions ("
+            "organisation_id, prediction_key, name, cutoff_mode, start_date, "
+            "end_date, created_by) VALUES "
+            "(%s, 'existing-version', 'Existing', 'asOfStart', "
+            "DATE '2025-01-01', DATE '2025-02-01', %s) "
+            "RETURNING prediction_version_id",
+            (organisation[0], user[0]),
+        ).fetchone()
+        assert version is not None
+        connection.commit()
+
+    assert _scalar(
+        migration_database_url, "SELECT count(*) FROM prediction_requests"
+    ) == 0
+    assert _scalar(
+        migration_database_url,
+        "SELECT to_regclass('idx_prediction_requests_organisation_active') "
+        "IS NOT NULL",
+    )
+    with psycopg.connect(migration_database_url) as connection:
+        connection.execute(
+            "INSERT INTO prediction_requests ("
+            "prediction_request_key, organisation_id, name, input_snapshot, "
+            "submitted_by) VALUES ('active', %s, 'Reserved', '{}'::jsonb, %s)",
+            (organisation[0], user[0]),
+        )
+        connection.execute(
+            "INSERT INTO prediction_requests ("
+            "prediction_request_key, organisation_id, name, input_snapshot, state, "
+            "start_time, finish_time, failure_code, failure_reason, submitted_by) "
+            "VALUES ('failed-history', %s, 'RESERVED', '{}'::jsonb, 'failed', "
+            "now(), now(), 'FAILED', 'Safe reason.', %s)",
+            (organisation[0], user[0]),
+        )
+        connection.commit()
+
+    with psycopg.connect(migration_database_url) as connection:
+        with pytest.raises(psycopg.errors.UniqueViolation):
+            connection.execute(
+                "INSERT INTO prediction_requests ("
+                "prediction_request_key, organisation_id, name, input_snapshot, "
+                "submitted_by) VALUES ('duplicate', %s, 'reserved', '{}'::jsonb, %s)",
+                (organisation[0], user[0]),
+            )
+
+    with psycopg.connect(migration_database_url) as connection:
+        with pytest.raises(psycopg.errors.CheckViolation):
+            connection.execute(
+                "INSERT INTO prediction_requests ("
+                "prediction_request_key, organisation_id, name, input_snapshot, "
+                "state, submitted_by) VALUES "
+                "('invalid-state', %s, 'Invalid', '{}'::jsonb, 'running', %s)",
+                (organisation[0], user[0]),
+            )
+
+    with psycopg.connect(migration_database_url) as connection:
+        with pytest.raises(psycopg.errors.ForeignKeyViolation):
+            connection.execute(
+                "INSERT INTO prediction_requests ("
+                "prediction_request_key, organisation_id, name, input_snapshot, "
+                "state, start_time, finish_time, submitted_by, "
+                "completed_prediction_version_id) VALUES "
+                "('wrong-owner', %s, 'Wrong owner', '{}'::jsonb, 'completed', "
+                "now(), now(), %s, %s)",
+                (other[0], user[0], version[0]),
+            )
+
+    execute_command(
+        DownCommand("015_create_prediction_requests.down.sql"),
+        database_url=migration_database_url,
+    )
+    assert _scalar(
+        migration_database_url, "SELECT count(*) FROM prediction_versions"
+    ) == 1
+    assert not _scalar(
+        migration_database_url,
+        "SELECT to_regclass('prediction_requests') IS NOT NULL",
     )
     execute_command(UpCommand(), database_url=migration_database_url)
 
@@ -846,6 +962,10 @@ def test_timeserie_name_and_short_name_indexes_enforce_active_scope(
         )
         connection.commit()
 
+    execute_command(
+        DownCommand("015_create_prediction_requests.down.sql"),
+        database_url=migration_database_url,
+    )
     execute_command(
         DownCommand("014_add_prediction_intervals.down.sql"),
         database_url=migration_database_url,

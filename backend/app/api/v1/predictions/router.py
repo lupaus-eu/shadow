@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.orm import Session
 
 from app.api.v1.auth.dependencies import (
@@ -12,6 +12,7 @@ from app.api.v1.predictions.schemas import (
     PredictionCreateRequest,
     PredictionPreflightRequest,
     PredictionPreflightResponse,
+    PredictionRequestSummaryResponse,
     PredictionVersionDetailResponse,
     PredictionVersionListResponse,
 )
@@ -40,17 +41,61 @@ def preflight_predictions(
 
 @router.post(
     "/{organisation_key}/predictions",
-    response_model=PredictionVersionDetailResponse,
-    status_code=status.HTTP_201_CREATED,
+    response_model=PredictionRequestSummaryResponse,
+    status_code=status.HTTP_202_ACCEPTED,
 )
 def create_prediction(
     organisation_key: str,
     payload: PredictionCreateRequest,
     session: SessionDependency,
     active: UnsafeRequestDependency,
-) -> PredictionVersionDetailResponse:
-    return service.create_prediction(
+) -> Response:
+    request = service.enqueue_prediction(
         session, organisation_key, payload, active.user.user_id
+    )
+    location = (
+        f"/api/v1/organisations/{organisation_key}/prediction-requests/{request.id}"
+    )
+    return Response(
+        content=request.model_dump_json(by_alias=True),
+        status_code=status.HTTP_202_ACCEPTED,
+        media_type="application/json",
+        headers={"Location": location},
+    )
+
+
+@router.get(
+    "/{organisation_key}/prediction-requests",
+    response_model=list[PredictionRequestSummaryResponse],
+)
+def list_prediction_requests(
+    organisation_key: str, session: SessionDependency
+) -> list[PredictionRequestSummaryResponse]:
+    return service.list_prediction_requests(session, organisation_key)
+
+
+@router.get(
+    "/{organisation_key}/prediction-requests/{request_key}",
+    response_model=PredictionRequestSummaryResponse,
+)
+def get_prediction_request(
+    organisation_key: str, request_key: str, session: SessionDependency
+) -> PredictionRequestSummaryResponse:
+    return service.get_prediction_request(session, organisation_key, request_key)
+
+
+@router.post(
+    "/{organisation_key}/prediction-requests/{request_key}/cancel",
+    response_model=PredictionRequestSummaryResponse,
+)
+def cancel_prediction_request(
+    organisation_key: str,
+    request_key: str,
+    session: SessionDependency,
+    active: UnsafeRequestDependency,
+) -> PredictionRequestSummaryResponse:
+    return service.cancel_prediction_request(
+        session, organisation_key, request_key, active.user.user_id
     )
 
 

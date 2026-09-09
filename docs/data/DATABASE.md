@@ -2,9 +2,8 @@
 
 Tämä dokumentti kuvaa järjestelmän fyysisen tietokantamallin ja tietokantakäytännöt.
 
-Status: core, customer, authentication and Forecasting saved-version persistence
-schema defined. ADR-012's `prediction_requests` physical schema is intentionally
-pending TASK-057C. AI and billing still TBD.
+Status: core, customer, authentication and Forecasting durable-request and
+saved-version persistence schema defined. AI and billing still TBD.
 
 Tietokantateknologia ja ORM on päätetty ADR-001:ssä:
 
@@ -65,6 +64,7 @@ db/migrations/011_alter_prediction_target_observation_source.sql
 db/migrations/012_add_timeserie_short_name.sql
 db/migrations/013_create_derived_metrics.sql
 db/migrations/014_add_prediction_intervals.sql
+db/migrations/015_create_prediction_requests.sql
 ```
 
 | Table | Purpose | Notes |
@@ -88,19 +88,13 @@ db/migrations/014_add_prediction_intervals.sql
 | `timeserie_values` | Timeseries values by date | No `name` column; value is stored as `JSONB` with the public scalar under `value`; `is_derived` distinguishes materialized equation output. |
 | `derived_metrics_equations` | Derived-metric formulas | One active formula per derived Timeserie, with internal referenced Timeserie IDs for recalculation and source short-name locking. |
 | `prediction_versions` | Immutable named Forecasting executions | Organisation-local case-insensitive name and stable `prediction_key`; persists range, cutoff, selected 50--99 prediction-interval level and deterministic configuration. |
+| `prediction_requests` | Durable mutable Forecasting request history | Stores an immutable submission snapshot, lifecycle/audit state, transient worker ownership, safe failure fields and an optional same-organisation completed-version link. |
 | `prediction_targets` | Saved scenario/metric Forecasting targets | Stores stable target key, eligibility, seasonality and immutable target-source JSON snapshots; source scenario/metric IDs are snapshots, not FKs. |
 | `prediction_model_results` | One result per target/model kind | Persists availability, safe ineligibility reason, cross-validation state, prediction-interval state/reason and configuration. |
 | `prediction_points` | Dated numeric derived values | Owned by a Forecasting model result; nullable bounds are a complete finite interval pair enclosing the point value; never written to `timeserie_values`. |
 | `customers` | Application-wide customer profiles | Status is `active`, `archived` or `deleted`; status and `deleted_time` must agree. |
 | `contacts` | Customer-owned contacts | Name is required; email, phone and job title are optional. |
 | `customer_addresses` | Customer-owned labelled addresses | Label, first address line and two-letter uppercase country code are required. |
-
-ADR-012 defines the logical `prediction_requests` ownership and lifecycle, but
-this documentation task does not add a migration, table, constraint, index or
-physical-schema diagram entry. TASK-057C owns that physical implementation and
-must preserve all existing saved prediction versions.
-
----
 
 # Common Columns
 
@@ -167,6 +161,14 @@ back.
 - `prediction_versions.name` is non-blank and unique case-insensitively per
   organisation; its date range is ordered, cutoff mode is constrained and its
   integer `confidence_level` is from 50 through 99.
+- `prediction_requests` constrains the six-state lifecycle together with
+  start/finish, cancellation, worker, failure and completed-version fields.
+  Its composite completed-version foreign key enforces organisation ownership.
+  Partial ordered indexes support both global queued claiming and each
+  organisation's active request list; a descending organisation index supports
+  the bounded finished-history list.
+  The migration creates no synthetic requests for old versions and its down
+  migration removes request history only; workers must be stopped first.
 - Prediction target/model/result-point rows are privately owned by the
   Forecasting Domain and cascade only from their own immutable version.
 - Prediction source references are stable-key snapshots instead of FKs to
@@ -225,6 +227,9 @@ The migration defines:
 - non-deleted contact lookup by customer and case-insensitive name
 - non-deleted customer-address lookup by customer and case-insensitive label
 - prediction version key and organisation-local case-insensitive name uniqueness
+- prediction request key, FIFO queued-work, organisation finished-history and
+  case-insensitive active-name indexes; cancelled/failed history is excluded
+  from active-name uniqueness
 - prediction target version and prediction point result/date lookup indexes
 
 ---

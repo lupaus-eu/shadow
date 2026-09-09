@@ -6,6 +6,9 @@ from pydantic import Field, StrictInt, field_validator, model_validator
 from app.core.schemas import StrictBaseModel
 
 CutoffMode = Literal["asOfStart", "allCurrentScenario"]
+PredictionRequestState = Literal[
+    "queued", "running", "cancelling", "completed", "cancelled", "failed"
+]
 
 
 class PredictionRequestBase(StrictBaseModel):
@@ -126,3 +129,15 @@ class PredictionTargetResponse(StrictBaseModel):
 class PredictionVersionDetailResponse(PredictionVersionListResponse):
     model_configuration: dict[str, object] = Field(alias="modelConfiguration")
     targets: list[PredictionTargetResponse]
+
+
+class PredictionRequestSummaryResponse(StrictBaseModel):
+    id: str
+    name: str
+    state: PredictionRequestState
+    submitted_time: str = Field(alias="submittedTime")
+    start_time: str | None = Field(alias="startTime")
+    finish_time: str | None = Field(alias="finishTime")
+    failure_code: str | None = Field(alias="failureCode")
+    failure_reason: str | None = Field(alias="failureReason")
+    completed_prediction_id: str | None = Field(alias="completedPredictionId")

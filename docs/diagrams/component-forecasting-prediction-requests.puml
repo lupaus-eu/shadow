@@ -1,14 +1,14 @@
 @startuml
-title Schatten - Accepted Forecasting Prediction Request Architecture (Pending Implementation)
+title Schatten - Forecasting Prediction Request Architecture
 
 skinparam componentStyle rectangle
 skinparam linetype ortho
 
 actor User
 component "Predictions tab\n(TASK-057D)" as ui
-component "FastAPI prediction API\n(TASK-057C)" as api
+component "FastAPI prediction API" as api
 database "PostgreSQL\nrequests + saved versions" as database
-component "Prediction worker supervisor\n(TASK-057C/E)" as worker
+component "Prediction worker supervisor\n(runtime wiring: TASK-057E)" as worker
 component "One supervised\ncalculation child" as child
 component "Organisation States +\nTwin Structure source services" as sources
 
@@ -22,7 +22,7 @@ worker --> database : atomic version publication\nand completed state
 api --> sources : submission-time read only
 
 note bottom of api
-  Current synchronous creation remains until TASK-057C.
+  Submission commits the frozen request before 202.
   Accepted work never depends on browser/session lifetime.
 end note
 

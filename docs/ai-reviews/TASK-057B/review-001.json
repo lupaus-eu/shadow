@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-057B/review-001",
+  "task": {
+    "id": "TASK-057B",
+    "path": "tasks/TASK-057B-snapshot-based-prediction-calculation.md"
+  },
+  "round": 1,
+  "reviewed_at": "2026-09-08T11:05:20Z",
+  "reviewer": {
+    "label": "Codex self-review"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "0a33af3e8e6aa105b68c6d15217497e5d3366ffb",
+    "head_sha": "8abdfa1aaa0a2e54b52e177c405e5cc284bd5f51",
+    "comparison": "0a33af3e8e6aa105b68c6d15217497e5d3366ffb...8abdfa1aaa0a2e54b52e177c405e5cc284bd5f51",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "clean",
+    "summary": "No bugs, regressions, security issues, missing required tests, documentation mismatches, or scope violations were identified in the reviewed committed TASK-057B diff. The implementation prepares validated serializable inputs from a consistent PostgreSQL read snapshot, calculates normal and derived targets without database access, publishes validated detached results transactionally, preserves the synchronous API contract, and adds unit/API plus disposable-PostgreSQL coverage for the required isolation and rollback behavior.",
+    "findings": [],
+    "prior_finding_dispositions": []
+  }
+}

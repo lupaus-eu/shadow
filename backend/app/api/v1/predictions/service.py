@@ -7,13 +7,14 @@ from collections import Counter
 from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from datetime import date as dt_date
 from statistics import mean
 from typing import Literal, cast
 from uuid import uuid4
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -36,10 +37,11 @@ from app.api.v1.org_twin_structure.models import (
     NodeType,
 )
 from app.api.v1.organisations.models import Organisation
-from app.api.v1.organisations.service import get_active_organisation
+from app.api.v1.organisations.queries import get_active_organisation
 from app.api.v1.predictions.models import (
     PredictionModelResult,
     PredictionPoint,
+    PredictionRequest,
     PredictionTarget,
     PredictionVersion,
 )
@@ -52,6 +54,8 @@ from app.api.v1.predictions.schemas import (
     PredictionPreflightRequest,
     PredictionPreflightResponse,
     PredictionRequestBase,
+    PredictionRequestState,
+    PredictionRequestSummaryResponse,
     PredictionTargetResponse,
     PredictionVersionDetailResponse,
     PredictionVersionListResponse,
@@ -148,6 +152,45 @@ def create_prediction(
     return publish_prediction(session, snapshot, calculation)
 
 
+def enqueue_prediction(
+    session: Session,
+    organisation_key: str,
+    payload: PredictionCreateRequest,
+    actor_user_id: int,
+) -> PredictionRequestSummaryResponse:
+    """Validate and durably enqueue a frozen request without fitting models."""
+    snapshot = prepare_prediction_snapshot(
+        session, organisation_key, payload, actor_user_id
+    )
+    request = PredictionRequest(
+        prediction_request_key=f"prediction_request_{uuid4().hex}",
+        organisation_id=snapshot.organisation_internal_id,
+        name=snapshot.name,
+        input_snapshot=cast(
+            dict[str, object], snapshot.model_dump(mode="json", by_alias=True)
+        ),
+        state="queued",
+        submitted_by=actor_user_id,
+    )
+    try:
+        _lock_prediction_names(session, snapshot.organisation_internal_id)
+        _ensure_name_available(
+            session, snapshot.organisation_internal_id, snapshot.name
+        )
+        session.add(request)
+        session.commit()
+    except IntegrityError as exc:
+        session.rollback()
+        if _is_duplicate_prediction_name_error(exc):
+            raise _duplicate_name_exception() from exc
+        raise
+    except Exception:
+        session.rollback()
+        raise
+    session.refresh(request)
+    return _request_summary(session, request)
+
+
 def prepare_prediction_snapshot(
     session: Session,
     organisation_key: str,
@@ -192,6 +235,27 @@ def publish_prediction(
     calculation: PredictionCalculation,
 ) -> PredictionVersionDetailResponse:
     """Persist one detached calculation as an immutable version transaction."""
+    try:
+        version = persist_prediction(session, snapshot, calculation)
+        session.commit()
+    except IntegrityError as exc:
+        session.rollback()
+        if _is_duplicate_prediction_name_error(exc):
+            raise _duplicate_name_exception() from exc
+        raise
+    except Exception:
+        session.rollback()
+        raise
+    session.refresh(version)
+    return _version_detail(session, version)
+
+
+def persist_prediction(
+    session: Session,
+    snapshot: PredictionInputSnapshot,
+    calculation: PredictionCalculation,
+) -> PredictionVersion:
+    """Flush a complete version into the caller's current transaction."""
     if (
         calculation.snapshot_format != snapshot.snapshot_format
         or calculation.prediction_key != snapshot.prediction_key
@@ -215,16 +279,9 @@ def publish_prediction(
             raise ValueError(
                 "Calculation output does not match its prediction snapshot."
             )
-    if (
-        session.scalar(
-            select(PredictionVersion.prediction_version_id).where(
-                PredictionVersion.organisation_id == snapshot.organisation_internal_id,
-                func.lower(PredictionVersion.name) == snapshot.name.lower(),
-            )
-        )
-        is not None
-    ):
-        raise _duplicate_name_exception()
+    _ensure_completed_name_available(
+        session, snapshot.organisation_internal_id, snapshot.name
+    )
     version = PredictionVersion(
         organisation_id=snapshot.organisation_internal_id,
         prediction_key=snapshot.prediction_key,
@@ -236,55 +293,44 @@ def publish_prediction(
         model_configuration=snapshot.model_configuration,
         created_by=snapshot.creator_user_id,
     )
-    try:
-        session.add(version)
-        session.flush()
-        for row, calculated_target in zip(
-            snapshot.targets, calculation.targets, strict=True
+    session.add(version)
+    session.flush()
+    for row, calculated_target in zip(
+        snapshot.targets, calculation.targets, strict=True
+    ):
+        if (
+            calculated_target.scenario_key != row.scenario_key
+            or calculated_target.metric_key != row.metric_key
         ):
-            if (
-                calculated_target.scenario_key != row.scenario_key
-                or calculated_target.metric_key != row.metric_key
-            ):
-                raise ValueError("Calculated target order does not match the snapshot.")
-            target = PredictionTarget(
-                prediction_version_id=version.prediction_version_id,
-                target_scenario_id=row.scenario_internal_id,
-                target_scenario_key=row.scenario_key,
-                metric_key=row.metric_key,
-                metric_name=row.metric_name,
-                time_unit=row.time_unit,
-                unit=row.unit,
-                eligibility_status=row.status,
-                eligibility_reason=row.reason,
-                seasonal_period=row.seasonal_period,
-                seasonal_period_source=row.seasonal_period_source,
-                source_snapshot=row.source_audit_snapshot(),
-                input_snapshot=row.input_audit_snapshot(),
-                created_by=snapshot.creator_user_id,
+            raise ValueError("Calculated target order does not match the snapshot.")
+        target = PredictionTarget(
+            prediction_version_id=version.prediction_version_id,
+            target_scenario_id=row.scenario_internal_id,
+            target_scenario_key=row.scenario_key,
+            metric_key=row.metric_key,
+            metric_name=row.metric_name,
+            time_unit=row.time_unit,
+            unit=row.unit,
+            eligibility_status=row.status,
+            eligibility_reason=row.reason,
+            seasonal_period=row.seasonal_period,
+            seasonal_period_source=row.seasonal_period_source,
+            source_snapshot=row.source_audit_snapshot(),
+            input_snapshot=row.input_audit_snapshot(),
+            created_by=snapshot.creator_user_id,
+        )
+        session.add(target)
+        session.flush()
+        for generated in calculated_target.results:
+            _save_result(
+                session,
+                target,
+                [item.date for item in row.prediction_periods],
+                generated,
+                snapshot.model_configuration,
+                snapshot.creator_user_id,
             )
-            session.add(target)
-            session.flush()
-            for generated in calculated_target.results:
-                _save_result(
-                    session,
-                    target,
-                    [item.date for item in row.prediction_periods],
-                    generated,
-                    snapshot.model_configuration,
-                    snapshot.creator_user_id,
-                )
-        session.commit()
-    except IntegrityError as exc:
-        session.rollback()
-        if _is_duplicate_prediction_name_error(exc):
-            raise _duplicate_name_exception() from exc
-        raise
-    except Exception:
-        session.rollback()
-        raise
-    session.refresh(version)
-    return _version_detail(session, version)
+    return version
 
 
 @contextmanager
@@ -330,6 +376,159 @@ def get_prediction(
             status_code=status.HTTP_404_NOT_FOUND, detail="Prediction not found."
         )
     return _version_detail(session, version)
+
+
+def list_prediction_requests(
+    session: Session, organisation_key: str
+) -> list[PredictionRequestSummaryResponse]:
+    organisation = get_active_organisation(session, organisation_key)
+    active = session.scalars(
+        select(PredictionRequest)
+        .where(
+            PredictionRequest.organisation_id == organisation.organisation_id,
+            PredictionRequest.state.in_(("queued", "running", "cancelling")),
+        )
+        .order_by(
+            PredictionRequest.submitted_time,
+            PredictionRequest.prediction_request_id,
+        )
+    ).all()
+    finished = session.scalars(
+        select(PredictionRequest)
+        .where(
+            PredictionRequest.organisation_id == organisation.organisation_id,
+            PredictionRequest.state.in_(("completed", "cancelled", "failed")),
+        )
+        .order_by(
+            PredictionRequest.finish_time.desc(),
+            PredictionRequest.prediction_request_id.desc(),
+        )
+        .limit(50)
+    ).all()
+    return [_request_summary(session, request) for request in [*active, *finished]]
+
+
+def get_prediction_request(
+    session: Session, organisation_key: str, request_key: str
+) -> PredictionRequestSummaryResponse:
+    organisation = get_active_organisation(session, organisation_key)
+    request = session.scalar(
+        select(PredictionRequest).where(
+            PredictionRequest.organisation_id == organisation.organisation_id,
+            PredictionRequest.prediction_request_key == request_key,
+        )
+    )
+    if request is None:
+        raise _request_not_found_exception()
+    return _request_summary(session, request)
+
+
+def cancel_prediction_request(
+    session: Session,
+    organisation_key: str,
+    request_key: str,
+    actor_user_id: int,
+) -> PredictionRequestSummaryResponse:
+    organisation = get_active_organisation(session, organisation_key)
+    try:
+        _lock_prediction_names(session, organisation.organisation_id)
+        request = session.scalar(
+            select(PredictionRequest)
+            .where(
+                PredictionRequest.organisation_id == organisation.organisation_id,
+                PredictionRequest.prediction_request_key == request_key,
+            )
+            .with_for_update()
+        )
+        if request is None:
+            raise _request_not_found_exception()
+        if request.state == "queued":
+            now = datetime.now(UTC)
+            request.state = "cancelled"
+            request.cancelled_by = actor_user_id
+            request.cancellation_time = now
+            request.finish_time = now
+        elif request.state == "running":
+            request.state = "cancelling"
+            request.cancelled_by = actor_user_id
+            request.cancellation_time = datetime.now(UTC)
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    session.refresh(request)
+    return _request_summary(session, request)
+
+
+def _lock_prediction_names(session: Session, organisation_id: int) -> None:
+    if session.get_bind().dialect.name == "postgresql":
+        session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtextextended(:name, 0))"),
+            {"name": f"schatten.prediction-name:{organisation_id}"},
+        )
+
+
+def _ensure_completed_name_available(
+    session: Session, organisation_id: int, name: str
+) -> None:
+    if (
+        session.scalar(
+            select(PredictionVersion.prediction_version_id).where(
+                PredictionVersion.organisation_id == organisation_id,
+                func.lower(PredictionVersion.name) == name.lower(),
+            )
+        )
+        is not None
+    ):
+        raise _duplicate_name_exception()
+
+
+def _ensure_name_available(
+    session: Session, organisation_id: int, name: str
+) -> None:
+    _ensure_completed_name_available(session, organisation_id, name)
+    if (
+        session.scalar(
+            select(PredictionRequest.prediction_request_id).where(
+                PredictionRequest.organisation_id == organisation_id,
+                func.lower(PredictionRequest.name) == name.lower(),
+                PredictionRequest.state.in_(("queued", "running", "cancelling")),
+            )
+        )
+        is not None
+    ):
+        raise _duplicate_name_exception()
+
+
+def _request_summary(
+    session: Session, request: PredictionRequest
+) -> PredictionRequestSummaryResponse:
+    completed_prediction_id: str | None = None
+    if request.completed_prediction_version_id is not None:
+        completed_prediction_id = session.scalar(
+            select(PredictionVersion.prediction_key).where(
+                PredictionVersion.prediction_version_id
+                == request.completed_prediction_version_id
+            )
+        )
+    return PredictionRequestSummaryResponse(
+        id=request.prediction_request_key,
+        name=request.name,
+        state=cast(PredictionRequestState, request.state),
+        submittedTime=request.submitted_time.isoformat(),
+        startTime=request.start_time.isoformat() if request.start_time else None,
+        finishTime=request.finish_time.isoformat() if request.finish_time else None,
+        failureCode=request.failure_code,
+        failureReason=request.failure_reason,
+        completedPredictionId=completed_prediction_id,
+    )
+
+
+def _request_not_found_exception() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail="Prediction request not found.",
+    )
 
 
 _PreparedTarget = PredictionTargetSnapshot
@@ -1446,9 +1645,10 @@ def _is_duplicate_prediction_name_error(error: IntegrityError) -> bool:
         return False
     try:
         diagnostic = original.diag
-        return diagnostic is not None and (
-            diagnostic.constraint_name == "ux_prediction_versions_organisation_name"
-        )
+        return diagnostic is not None and diagnostic.constraint_name in {
+            "ux_prediction_versions_organisation_name",
+            "ux_prediction_requests_active_organisation_name",
+        }
     except AttributeError:
         return False
 

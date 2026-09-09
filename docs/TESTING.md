@@ -204,6 +204,31 @@ When `MIGRATION_TEST_DATABASE_URL` is absent, this module is skipped. A skipped
 run is not evidence for TASK-057B's consistent-preparation acceptance criterion;
 run it against a disposable PostgreSQL database before review.
 
+## Durable Prediction Request And Worker Harness
+
+SQLite API tests cover request summaries, organisation scoping, authorization,
+CSRF/Origin enforcement, audit actors, idempotent queued cancellation and
+saved-version regressions. PostgreSQL is required for queue/name locks, FIFO
+claiming, worker exclusivity, recovery and publication/cancellation behavior.
+The worker integration harness uses a real spawned child process; prompt
+cancellation uses a deliberately blocked child and verifies termination and
+reaping within five seconds.
+
+Run the disposable PostgreSQL suites together:
+
+```bash
+cd backend
+MIGRATION_TEST_DATABASE_URL=postgresql://schatten:schatten_dev_password@localhost:5432/schatten \
+  uv run pytest tests/test_migrations_integration.py \
+    tests/test_predictions_postgresql_integration.py -v
+```
+
+The tests create and drop unique schemas. They cover migration preservation and
+down scope, lifecycle constraints, frozen submission inputs, global lock/FIFO,
+blocked-child cancellation, crash/publication rollback and abandoned-request
+recovery. An absent `MIGRATION_TEST_DATABASE_URL` skips this evidence and does
+not satisfy TASK-057C integration acceptance.
+
 ## Security-Sensitive Change
 
 Expected:

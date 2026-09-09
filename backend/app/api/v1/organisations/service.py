@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.api.v1.org_states import org_states_service
 from app.api.v1.org_twin_structure import org_twin_structure_service
 from app.api.v1.organisations.models import Organisation
+from app.api.v1.organisations.queries import get_active_organisation
 from app.api.v1.organisations.schemas import (
     OrganisationCreateRequest,
     OrganisationPatchRequest,
@@ -118,23 +119,6 @@ def soft_delete_organisation(
     organisation.modified_time = now
     organisation.modified_by = actor_user_id
     session.commit()
-
-
-def get_active_organisation(session: Session, organisation_key: str) -> Organisation:
-    organisation = session.scalar(
-        select(Organisation).where(
-            Organisation.organisation_key == organisation_key,
-            Organisation.deleted_time.is_(None),
-        ),
-    )
-
-    if organisation is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Organisation not found.",
-        )
-
-    return organisation
 
 
 def _ensure_name_is_available(

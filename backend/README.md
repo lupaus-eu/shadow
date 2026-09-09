@@ -27,6 +27,29 @@ Health check:
 curl --header 'Host: app.localhost:5173' http://localhost:8000/health
 ```
 
+## Prediction Worker
+
+The durable prediction supervisor is a standalone backend module and is never
+started by FastAPI:
+
+```bash
+DATABASE_URL=postgresql://user:password@database:5432/schatten \
+  uv run python -m app.api.v1.predictions.worker
+```
+
+It requires only `DATABASE_URL`; OIDC credentials are not required. Exactly one
+instance obtains the global PostgreSQL advisory lock and calculates work. A
+second instance exits nonzero without claiming a request. Runtime service
+wiring is intentionally deferred to TASK-057E.
+
+The process health-check command returns zero only while another live database
+session owns the worker lock:
+
+```bash
+DATABASE_URL=postgresql://user:password@database:5432/schatten \
+  uv run python -m app.api.v1.predictions.worker health-check
+```
+
 ## Production Image
 
 Build the provider-neutral production image from the repository root so it can

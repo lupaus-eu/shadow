@@ -36,7 +36,7 @@ package "Organisation Twin Structure Domain" {
 }
 
 package "Forecasting Domain" {
-  entity "Prediction Request\n(accepted; pending implementation)" as prediction_request
+  entity "Prediction Request" as prediction_request
   entity "Prediction Version" as prediction_version
   entity "Prediction Target" as prediction_target
   entity "Prediction Model Result" as prediction_model_result
