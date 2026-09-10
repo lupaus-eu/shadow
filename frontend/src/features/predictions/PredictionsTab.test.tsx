@@ -9,6 +9,7 @@ const api = vi.hoisted(() => ({
   fetchPredictions: vi.fn(),
   fetchPrediction: vi.fn(),
   fetchPredictionRequests: vi.fn(),
+  fetchPredictionRequest: vi.fn(),
   preflightPredictions: vi.fn(),
   createPrediction: vi.fn(),
   cancelPredictionRequest: vi.fn(),
@@ -21,6 +22,7 @@ vi.mock("../../api/predictions", () => ({
   fetchPredictions: api.fetchPredictions,
   fetchPrediction: api.fetchPrediction,
   fetchPredictionRequests: api.fetchPredictionRequests,
+  fetchPredictionRequest: api.fetchPredictionRequest,
   preflightPredictions: api.preflightPredictions,
   createPrediction: api.createPrediction,
   cancelPredictionRequest: api.cancelPredictionRequest
@@ -208,7 +210,7 @@ describe("PredictionsTab", () => {
 
     render(<PredictionsTab orgId="acme" />);
     await screen.findByText("Queued plan");
-    expect(screen.getByText("Queued")).toBeVisible();
+    expect(screen.getByText("Queued", { selector: ".prediction-request__state" })).toBeVisible();
     expect(screen.getByText("Calculating prediction values")).toBeVisible();
     expect(screen.getByText("Stopping")).toBeVisible();
     expect(screen.getByText("Completed")).toBeVisible();

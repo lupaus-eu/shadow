@@ -1003,7 +1003,8 @@
   padding-right: var(--space-10);
 }
 
-.metrics-notice__dismiss {
+.metrics-notice__dismiss,
+.prediction-notice__dismiss {
   position: absolute;
   top: var(--space-2);
   right: var(--space-2);
@@ -1021,11 +1022,13 @@
   line-height: 1;
 }
 
-.metrics-notice__dismiss:hover {
+.metrics-notice__dismiss:hover,
+.prediction-notice__dismiss:hover {
   background: rgb(0 0 0 / 8%);
 }
 
-.metrics-notice__dismiss:focus-visible {
+.metrics-notice__dismiss:focus-visible,
+.prediction-notice__dismiss:focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);
 }

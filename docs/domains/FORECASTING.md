@@ -259,11 +259,32 @@ Referenced By:
 
 In the current organisation's Predictions tab, users queue named work and can
 continue submitting other uniquely named requests. The tab separates all active
-requests from the returned recent history, polls state-only summaries every two
-seconds while visible, and lets either business role remove queued work or stop
+requests from recent history, initially showing the three newest terminal
+records. An accessible Show more / Show less control reveals the remainder of
+the backend's newest-first history (up to 50), preserves expansion across polls,
+and resets on organisation change. Every card shows browser-local queued,
+processing-start and finish timestamps to minute precision, with explicit
+Not started / Not finished stages. Queue and processing durations use completed
+elapsed minutes, compact minute/hour/day units and a sub-minute label; ongoing
+durations refresh with the existing poll. Never-started terminal work measures
+queue time through its finish.
+
+The tab polls summaries every two seconds while visible and lets either
+business role remove queued work or stop
 running work. Stopping never deletes saved output or request history. A completed
 request refreshes the saved-version library; only a completion submitted from
 that tab is automatically selected for comparison.
+
+Each successful current-tab submission adds a separate, newest-first,
+individually dismissible informational notice. Its accepted-and-queued text stays
+while running or stopping, then changes once to completed, cancelled, or a danger
+alert for failure with the server's safe reason when available. Unchanged polls
+do not re-announce notices, and requests discovered through polling do not create
+them. Notices last only for the mounted tab and organisation context; dismissal
+is permanent within that context and does not stop saved-result selection.
+Locally submitted active requests omitted from the capped list are resolved
+through request detail within the same non-overlapping poll cycle. Completion
+still refreshes and selects the saved version, including after notice dismissal.
 
 ![Request lifecycle](../diagrams/generated/state-forecasting-prediction-request.svg)
 

@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-058/review-001",
+  "task": {
+    "id": "TASK-058",
+    "path": "tasks/TASK-058-prediction-request-list-ui-follow-up.md"
+  },
+  "round": 1,
+  "reviewed_at": "2026-09-10T13:20:47Z",
+  "reviewer": {
+    "label": "Codex self-review"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "07b2a3b8ec0eefb7d298b98ffccb536c44d12d7c",
+    "head_sha": "ca91ec9e0bf0a03e0fb1c269952d381c0ef9c5bc",
+    "comparison": "07b2a3b8ec0eefb7d298b98ffccb536c44d12d7c...ca91ec9e0bf0a03e0fb1c269952d381c0ef9c5bc",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "clean",
+    "summary": "No actionable bugs, regressions, security issues, missing-test findings, documentation gaps or scope violations were identified in the committed TASK-058 diff. Reviewed history disclosure, elapsed-time formatting, per-submission notice transitions and dismissal, organisation isolation, detail fallback, polling and cancellation guards, completion-driven comparison selection, and the developer-requested layout refinements. Frontend lint, all 261 tests and the production build including TypeScript compilation passed on the reviewed revision. Browser layout, keyboard and screen-reader verification remain developer-owned and were not confirmed by this review. The review is advisory and does not replace human approval.",
+    "findings": [],
+    "prior_finding_dispositions": []
+  }
+}

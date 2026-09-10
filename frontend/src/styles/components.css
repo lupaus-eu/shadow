@@ -638,7 +638,7 @@
 
 .predictions-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(280px, 0.8fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-5);
   align-items: start;
 }
@@ -754,6 +754,9 @@
 }
 
 .prediction-requests {
+  max-width: 760px;
+  max-height: calc(100dvh - var(--space-8));
+  overflow: auto;
   gap: var(--space-4);
 }
 
@@ -782,7 +785,6 @@
 .prediction-request__summary {
   display: grid;
   min-width: 0;
-  gap: var(--space-1);
 }
 
 .prediction-request__summary h4,
@@ -803,6 +805,30 @@
 .prediction-request__failure {
   color: var(--color-danger-500);
   font-size: var(--text-meta-size);
+}
+
+.prediction-request__timing {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+  font-size: var(--text-meta-size);
+}
+
+.prediction-request__timing dt {
+  color: var(--color-text-secondary);
+}
+
+.prediction-request__timing dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.prediction-notice {
+  position: relative;
+  min-width: 0;
+  padding-right: var(--space-10);
+  overflow-wrap: anywhere;
 }
 
 .prediction-request .btn {

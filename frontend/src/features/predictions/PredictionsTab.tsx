@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { RefObject } from "react";
 import { fetchEvents } from "../../api/events";
 import type { EventDto } from "../../api/events";
@@ -6,6 +6,7 @@ import {
   cancelPredictionRequest,
   createPrediction,
   fetchPrediction,
+  fetchPredictionRequest,
   fetchPredictionRequests,
   fetchPredictions,
   preflightPredictions,
@@ -26,6 +27,7 @@ import {
   predictionIntervalBandPath,
   type PredictionChartLine
 } from "./predictionChart";
+import { formatRequestTimestamp, isTerminalRequest, requestDurations, requestNoticeMessage } from "./predictionRequestPresentation";
 
 type EventOption = EventDto & {
   selectionId: string;
@@ -70,6 +72,10 @@ function toggleSet(set: Set<string>, value: string): Set<string> {
 }
 
 export default function PredictionsTab(props: { orgId: string }) {
+  return <PredictionsWorkspace key={props.orgId} orgId={props.orgId} />;
+}
+
+function PredictionsWorkspace(props: { orgId: string }) {
   const [scenarios, setScenarios] = useState<ScenarioDto[]>([]);
   const [events, setEvents] = useState<EventOption[]>([]);
   const [versions, setVersions] = useState<PredictionVersionDetailDto[]>([]);
@@ -93,7 +99,8 @@ export default function PredictionsTab(props: { orgId: string }) {
   const [preflight, setPreflight] = useState<PredictionPreflightDto | null>(null);
   const [manualPeriods, setManualPeriods] = useState<Record<string, number>>({});
   const [formError, setFormError] = useState("");
-  const [submissionMessage, setSubmissionMessage] = useState("");
+  const [submissionNotices, setSubmissionNotices] = useState<PredictionRequestSummaryDto[]>([]);
+  const [requestNow, setRequestNow] = useState(() => Date.now());
   const [submitting, setSubmitting] = useState(false);
   const [selectedVersionIds, setSelectedVersionIds] = useState<Set<string>>(new Set());
   const [selectedScenarioFilter, setSelectedScenarioFilter] = useState<Set<string>>(new Set());
@@ -107,15 +114,39 @@ export default function PredictionsTab(props: { orgId: string }) {
   } | null>(null);
   const versionsRef = useRef<PredictionVersionDetailDto[]>([]);
   const submittedRequestIdsRef = useRef(new Set<string>());
+  // Tracking outlives notice dismissal so completion still selects saved output.
+  const trackedRequestsRef = useRef(new Map<string, PredictionRequestSummaryDto>());
   const completedVersionFetchesRef = useRef(new Set<string>());
   const processedCompletedRequestIdsRef = useRef(new Set<string>());
   const requestMutationEpochRef = useRef(0);
   const initialWorkspaceLoadedRef = useRef(false);
-  const currentOrgIdRef = useRef(props.orgId);
+  const currentOrgIdRef = useRef<string | null>(props.orgId);
 
   useLayoutEffect(() => {
     currentOrgIdRef.current = props.orgId;
+    return () => { currentOrgIdRef.current = null; };
   }, [props.orgId]);
+
+  const updateTrackedRequests = useCallback((requests: PredictionRequestSummaryDto[]) => {
+    for (const request of requests) {
+      if (trackedRequestsRef.current.has(request.id)) {
+        trackedRequestsRef.current.set(request.id, request);
+      }
+    }
+    setSubmissionNotices((current) => {
+      const byId = new Map(requests.map((request) => [request.id, request]));
+      let changed = false;
+      const next = current.map((notice) => {
+        const updated = byId.get(notice.id);
+        if (!isTerminalRequest(notice) && updated && isTerminalRequest(updated)) {
+          changed = true;
+          return updated;
+        }
+        return notice;
+      });
+      return changed ? next : current;
+    });
+  }, []);
 
   useEffect(() => {
     versionsRef.current = versions;
@@ -261,6 +292,7 @@ export default function PredictionsTab(props: { orgId: string }) {
     const isVisible = () => document.visibilityState !== "hidden";
     const isCurrent = (mutationEpoch: number) =>
       !disposed && currentOrgIdRef.current === props.orgId &&
+      controller?.signal.aborted !== true &&
       requestMutationEpochRef.current === mutationEpoch;
 
     const refreshCompletedVersions = async (
@@ -308,6 +340,7 @@ export default function PredictionsTab(props: { orgId: string }) {
         const submittedCompletedIds = completed
           .filter((request) =>
             request.completedPredictionId !== null &&
+            resolvedRequestIds.has(request.id) &&
             submittedRequestIdsRef.current.has(request.id)
           )
           .map((request) => request.completedPredictionId!);
@@ -353,14 +386,41 @@ export default function PredictionsTab(props: { orgId: string }) {
       try {
         const summaries = await fetchPredictionRequests(props.orgId, controller.signal);
         if (!isCurrent(mutationEpoch)) return;
-        setPredictionRequests(summaries);
+        setRequestNow(Date.now());
+        updateTrackedRequests(summaries);
         setRequestLoading(false);
         setRequestRefreshError("");
+        const listedIds = new Set(summaries.map((request) => request.id));
+        const missing = [...trackedRequestsRef.current.values()].filter((request) =>
+          !listedIds.has(request.id) && !isTerminalRequest(request)
+        );
+        setPredictionRequests([...summaries, ...missing]);
+        let detailError: unknown;
+        for (const request of missing) {
+          try {
+            const detail = await fetchPredictionRequest(props.orgId, request.id, controller.signal);
+            if (!isCurrent(mutationEpoch)) return;
+            updateTrackedRequests([detail]);
+            // Keep the backend's terminal-history order and limit; an active
+            // detail response still belongs in Active work.
+            setPredictionRequests((current) => isTerminalRequest(detail)
+              ? current.filter((item) => item.id !== detail.id)
+              : current.map((item) => item.id === detail.id ? detail : item));
+          } catch (error) {
+            if (!isCurrent(mutationEpoch)) return;
+            detailError = error;
+          }
+        }
+        const completed = new Map([
+          ...summaries,
+          ...trackedRequestsRef.current.values()
+        ].filter((request) => request.state === "completed").map((request) => [request.id, request]));
         await refreshCompletedVersions(
-          summaries.filter((request) => request.state === "completed"),
+          [...completed.values()],
           mutationEpoch,
           controller.signal
         );
+        if (detailError) throw detailError;
       } catch (refreshError) {
         if (isCurrent(mutationEpoch) && (refreshError as { name?: string }).name !== "AbortError") {
           setRequestLoading(false);
@@ -393,7 +453,7 @@ export default function PredictionsTab(props: { orgId: string }) {
       controller?.abort();
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
-  }, [props.orgId]);
+  }, [props.orgId, updateTrackedRequests]);
 
   const allModelKinds = useMemo(
     () => [...new Set(versions.flatMap((version) => version.targets.flatMap((target) => target.results.map((result) => result.kind))))].sort(),
@@ -423,7 +483,6 @@ export default function PredictionsTab(props: { orgId: string }) {
   function invalidatePreflight() {
     setPreflight(null);
     setFormError("");
-    setSubmissionMessage("");
   }
 
   function selectedConfidenceLevel(): number | null {
@@ -516,7 +575,6 @@ export default function PredictionsTab(props: { orgId: string }) {
     try {
       setSubmitting(true);
       setFormError("");
-      setSubmissionMessage("");
       const created = await createPrediction(props.orgId, {
         name: name.trim(), targetScenarioIds: [...targetScenarioIds], startDate, endDate,
         cutoffMode, confidenceLevel: selectedLevel, manualSeasonalPeriods: manualPeriods
@@ -524,17 +582,21 @@ export default function PredictionsTab(props: { orgId: string }) {
       if (currentOrgIdRef.current !== props.orgId) return;
       requestMutationEpochRef.current += 1;
       submittedRequestIdsRef.current.add(created.id);
+      trackedRequestsRef.current.set(created.id, created);
       setPredictionRequests((current) => [
         created,
         ...current.filter((request) => request.id !== created.id)
       ]);
       setName("");
       setPreflight(null);
-      setSubmissionMessage(`Prediction request “${created.name}” was accepted and queued.`);
+      setRequestNow(Date.now());
+      setSubmissionNotices((current) => [created, ...current]);
     } catch (requestError) {
-      setFormError(`Could not queue prediction. ${errorMessage(requestError)}`);
+      if (currentOrgIdRef.current === props.orgId) {
+        setFormError(`Could not queue prediction. ${errorMessage(requestError)}`);
+      }
     } finally {
-      setSubmitting(false);
+      if (currentOrgIdRef.current === props.orgId) setSubmitting(false);
     }
   }
 
@@ -545,6 +607,9 @@ export default function PredictionsTab(props: { orgId: string }) {
     try {
       const updated = await cancelPredictionRequest(props.orgId, request.id);
       if (currentOrgIdRef.current !== props.orgId) return;
+      requestMutationEpochRef.current += 1;
+      updateTrackedRequests([updated]);
+      setRequestNow(Date.now());
       setPredictionRequests((current) => current.map((item) =>
         item.id === updated.id ? updated : item
       ));
@@ -586,11 +651,22 @@ export default function PredictionsTab(props: { orgId: string }) {
         {confidenceLevelError ? <p id="prediction-interval-error" className="alert alert--danger" role="alert">{confidenceLevelError}</p> : null}
         <div className="form-actions"><button className="btn btn--secondary" type="button" disabled={submitting || invalidDates} onClick={() => void handlePreflight()}>Run preflight</button><button className="btn btn--primary" type="button" disabled={submitting || invalidDates || !preflight || !preflight.metrics.length} onClick={() => void handleCreate()}>Queue prediction</button></div>
         {formError ? <p className="alert alert--danger" role="alert">{formError}</p> : null}
-        {submissionMessage ? <p className="alert alert--info" role="status">{submissionMessage}</p> : null}
+        {submissionNotices.map((notice) => <div
+          key={notice.id}
+          className={`alert alert--${notice.state === "failed" ? "danger" : "info"} prediction-notice`}
+          role={notice.state === "failed" ? "alert" : "status"}
+        >
+          <button className="prediction-notice__dismiss" type="button"
+            aria-label={`Dismiss prediction request “${notice.name}” notice`}
+            onClick={() => setSubmissionNotices((current) => current.filter((item) => item.id !== notice.id))}
+          ><span aria-hidden="true">×</span></button>
+          <p className="alert__text">{requestNoticeMessage(notice)}</p>
+        </div>)}
         {preflight ? <PreflightResults preflight={preflight} manualPeriods={manualPeriods} onManualPeriodChange={(metricId, value) => setManualPeriods((current) => ({ ...current, [metricId]: value }))} /> : null}
       </section>
       <PredictionRequests
         requests={predictionRequests}
+        now={requestNow}
         loading={requestLoading}
         refreshError={requestRefreshError}
         actionError={requestActionError}
@@ -604,12 +680,15 @@ export default function PredictionsTab(props: { orgId: string }) {
 
 function PredictionRequests(props: {
   requests: PredictionRequestSummaryDto[];
+  now: number;
   loading: boolean;
   refreshError: string;
   actionError: string;
   cancellingRequestIds: Set<string>;
   onCancel: (request: PredictionRequestSummaryDto) => void;
 }) {
+  const [historyExpanded, setHistoryExpanded] = useState(false);
+  const historyId = useId();
   const active = props.requests
     .filter((request) =>
       request.state === "queued" || request.state === "running" || request.state === "cancelling"
@@ -633,6 +712,7 @@ function PredictionRequests(props: {
           {active.map((request) => <PredictionRequestRow
             key={request.id}
             request={request}
+            now={props.now}
             cancelling={props.cancellingRequestIds.has(request.id)}
             onCancel={props.onCancel}
           />)}
@@ -640,9 +720,13 @@ function PredictionRequests(props: {
       </section>
       <section className="prediction-requests__group" aria-labelledby="recent-prediction-requests-heading">
         <h3 id="recent-prediction-requests-heading">Recent history</h3>
-        {history.length ? <div className="prediction-requests__list">
-          {history.map((request) => <PredictionRequestRow key={request.id} request={request} />)}
+        {history.length ? <div id={historyId} className="prediction-requests__list">
+          {(historyExpanded ? history : history.slice(0, 3)).map((request) => <PredictionRequestRow key={request.id} request={request} now={props.now} />)}
         </div> : <p className="empty-state" role="status">No recent prediction requests.</p>}
+        {history.length > 3 ? <button className="btn btn--secondary" type="button"
+          aria-expanded={historyExpanded} aria-controls={historyId}
+          onClick={() => setHistoryExpanded((current) => !current)}
+        >{historyExpanded ? "Show less" : "Show more"}</button> : null}
       </section>
     </>}
   </section>;
@@ -650,6 +734,7 @@ function PredictionRequests(props: {
 
 function PredictionRequestRow(props: {
   request: PredictionRequestSummaryDto;
+  now: number;
   cancelling?: boolean;
   onCancel?: (request: PredictionRequestSummaryDto) => void;
 }) {
@@ -659,6 +744,7 @@ function PredictionRequestRow(props: {
       ? "Stop"
       : null;
   const canCancel = action !== null && !props.cancelling && props.request.state !== "cancelling";
+  const durations = requestDurations(props.request, props.now);
 
   return <article className="prediction-request">
     <div className="prediction-request__summary">
@@ -666,6 +752,13 @@ function PredictionRequestRow(props: {
       <p className="prediction-request__state">{requestStateLabels[props.request.state]}</p>
       {props.request.failureReason ? <p className="prediction-request__failure">{props.request.failureReason}</p> : null}
       {props.request.state === "cancelling" ? <p className="muted">Calculated output will be discarded.</p> : null}
+      <dl className="prediction-request__timing">
+        <div><dt>Queued</dt><dd><time dateTime={props.request.submittedTime}>{formatRequestTimestamp(props.request.submittedTime)}</time></dd></div>
+        <div><dt>Processing started</dt><dd>{props.request.startTime ? <time dateTime={props.request.startTime}>{formatRequestTimestamp(props.request.startTime)}</time> : "Not started"}</dd></div>
+        <div><dt>Finished</dt><dd>{props.request.finishTime ? <time dateTime={props.request.finishTime}>{formatRequestTimestamp(props.request.finishTime)}</time> : "Not finished"}</dd></div>
+        <div><dt>Queue duration</dt><dd>{durations.queue}</dd></div>
+        <div><dt>Processing duration</dt><dd>{durations.processing}</dd></div>
+      </dl>
     </div>
     {action ? <button
       className="btn btn--secondary"

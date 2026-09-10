@@ -525,7 +525,7 @@ Run `pnpm lint`, `pnpm test` and `pnpm build` from `frontend/`.
 
 ---
 
-# Prediction Request UI (TASK-057D)
+# Prediction Request UI (TASK-057D / TASK-058)
 
 Frontend client and component tests cover the `202 Accepted` request summary,
 state labels, active/history separation, queue ordering, cancellation outcomes,
@@ -533,6 +533,25 @@ safe failure reasons, idle polling and non-overlapping polling. Use controllable
 responses and fake timers for polling, cancellation/completion races and stale
 organisation responses. Preserve the saved-version comparison selections when a
 request completes; only work submitted from the current tab is auto-selected.
+
+TASK-058 component/helper coverage adds zero-to-three history records without a
+disclosure, expansion through the returned 50 records, collapse, poll stability,
+organisation reset, and preservation of every active action. With a fixed clock,
+verify all six lifecycle states, semantic `time` source values, explicit missing
+stages, completed elapsed minutes, sub-minute and negative-clock cases, and
+hour/day and daylight-saving boundaries. Derive local timestamp expectations
+with explicit year/month/day/hour/minute `Intl.DateTimeFormat` options so tests
+do not depend on the runner's timezone.
+
+Exercise several newest-first local notices, terminal updates from list, detail
+and cancellation responses, safe failure text, status/alert roles, individual
+dismissal, and organisation/unmount clearing. Observe live-region DOM mutations
+to ensure unchanged polls and running/stopping states do not re-announce queued
+notices. Discovered requests must not create notices. Resolve a locally submitted
+request omitted from the capped list through detail, including after dismissal,
+and verify saved-version refresh/selection and retry after a refresh failure.
+Use deferred responses to cover non-overlapping detail fetches, cancellation
+races, stale organisation results, visibility abortion and unmount cleanup.
 
 Manual browser QA:
 
@@ -546,6 +565,17 @@ Manual browser QA:
 - Verify another user's requests appear while this tab is idle, polling errors
   retain the last-known state, and completed saved versions do not reset an
   existing comparison. A current-tab completion should be selected.
+- With four or more finished requests, use keyboard activation of Show more /
+  Show less and check `aria-expanded` and its controlled history list. Polling
+  must preserve expansion; switching organisation must collapse it.
+- Check request cards at narrow widths, including long names, lifecycle labels
+  and cancellation actions. Compare queued/start/finish times to the browser's
+  local timezone and confirm ongoing elapsed minutes advance on polling.
+- Submit several requests, verify separate notices and terminal transitions,
+  then dismiss them individually using their named keyboard-accessible controls.
+  Check informational status versus failed alert announcements with a screen
+  reader. Dismissed notices must stay dismissed; navigation/reload and an
+  organisation change clear all notices.
 
 Run `pnpm lint`, `pnpm test` and `pnpm build` from `frontend/`. Full worker and
 container browser QA is owned by TASK-057E.
