@@ -27,16 +27,28 @@ env -i PATH="${PATH}" "${compose_env[@]}" \
 import json, sys
 model = json.load(sys.stdin)
 services = model["services"]
-assert set(services) == {"migration", "backend", "frontend"}
-assert "ports" not in services["migration"]
-assert "ports" not in services["backend"]
-assert "ports" not in services["frontend"]
+assert set(services) == {"migration", "backend", "prediction-worker", "frontend"}
+for service in services.values():
+    assert "ports" not in service
 assert services["migration"]["environment"] == {
     "DATABASE_URL": "postgresql://user:password@database:5432/schatten"
 }
 assert services["migration"]["image"] == services["backend"]["image"]
+worker = services["prediction-worker"]
+assert worker["image"] == services["backend"]["image"]
 assert services["backend"]["depends_on"]["migration"]["condition"] == "service_completed_successfully"
+assert worker["depends_on"]["migration"]["condition"] == "service_completed_successfully"
 assert services["frontend"]["depends_on"]["backend"]["condition"] == "service_healthy"
+assert worker["command"] == ["python", "-m", "app.api.v1.predictions.worker"]
+assert worker["environment"] == {
+    "DATABASE_URL": "postgresql://user:password@database:5432/schatten"
+}
+assert worker["healthcheck"]["test"] == [
+    "CMD", "python", "-m", "app.api.v1.predictions.worker", "health-check"
+]
+assert worker["restart"] == "unless-stopped"
+assert worker["init"] is True
+assert worker["stop_grace_period"] == "10s"
 assert services["backend"]["environment"]["APP_ENV"] == "production"
 assert services["backend"]["environment"]["PUBLIC_ORIGIN"] == "https://app.example.test"
 assert services["frontend"]["environment"]["PUBLIC_ORIGIN"] == "https://app.example.test"
@@ -61,4 +73,4 @@ for missing_name in "${!values[@]}"; do
   fi
 done
 
-echo "Production Compose requires every release, auth and proxy setting and preserves service isolation."
+echo "Production Compose requires every release, auth and proxy setting and preserves API/worker isolation and migration gates."

@@ -21,11 +21,12 @@ Päätetty tekninen perusrakenne:
 - authentication: provider-neutral backend OIDC; repository-managed Authentik
   locally, optionally federated to Entra, and direct Microsoft Entra ID in
   production
-- local runtime: frontend, backend, database and local-only Authentik in Docker
-  contexts
+- local runtime: frontend, backend, prediction worker, database and local-only
+  Authentik in Docker contexts
 - production-only deployment: Coolify Docker Compose with a Caddy same-origin
   frontend ingress
-- release migrations: one-shot job using the same backend image as the API
+- release migrations: one-shot job using the same backend image as the API and
+  prediction worker
 - derived metrics: Organisation States owns equations and materialized values;
   Forecasting derives prediction result points from normal-metric results
   according to ADR-010
@@ -33,11 +34,10 @@ Päätetty tekninen perusrakenne:
   coverage selection and model-specific bounds for directly fitted MLForecast
   and SARIMA results according to ADR-011; baselines, live Reality and
   formula-derived results remain point-only
-- background prediction requests: ADR-012 accepts a PostgreSQL-backed,
-  single-worker architecture; detached snapshot preparation, durable request
-  persistence, request APIs, supervised worker calculation and atomic
-  publication and the current-tab UI are implemented, while supported-runtime
-  wiring remains pending TASK-057E
+- background prediction requests: ADR-012's PostgreSQL-backed single-worker
+  architecture, detached snapshot preparation, durable request persistence,
+  request APIs, supervised worker calculation, atomic publication, current-tab
+  UI and supported-runtime wiring are implemented
 
 Tarkemmat toteutusyksityiskohdat täsmentyvät taskien ja tarvittaessa uusien ADR:ien kautta.
 
@@ -67,11 +67,15 @@ Browser --HTTPS--> Coolify edge --internal HTTP--> Frontend/Caddy :8080
                                                    +--/api--> FastAPI :8000
                                                                |--> PostgreSQL
                                                                +--> Entra ID
+Prediction worker -------------------------------------------> PostgreSQL
 ```
 
 Only frontend/Caddy receives the public application domain. FastAPI and the
-one-shot migration service remain internal. Local development replaces the
-Coolify/Caddy edge with Vite's same-origin `/api` proxy. Local Authentik is
+prediction worker and one-shot migration service remain internal. API and
+worker start only after the migration job succeeds and use the same immutable
+backend image; the worker receives database configuration only. Local
+development replaces the Coolify/Caddy edge with Vite's same-origin `/api`
+proxy. Local Authentik is
 served through a separate loopback-only TLS Caddy boundary; it can optionally
 delegate credential verification to a separate local-only Entra registration
 while remaining Schatten's OIDC issuer.
@@ -574,7 +578,7 @@ Uusi merkittävä integraatio vaatii taskin ja tarvittaessa ADR:n.
 
 # Background Jobs
 
-Status: Forecasting worker implemented; runtime wiring pending TASK-057E
+Status: Forecasting worker and supported-runtime wiring implemented
 
 Forecasting uses the ADR-012 durable PostgreSQL request queue. The standalone
 backend worker holds one session-level advisory lock, recovers abandoned active
@@ -584,10 +588,11 @@ and ownership every second, reaps stopped children, and atomically publishes a
 complete immutable version with its completed request transition. It never
 retries work or runs inside FastAPI.
 
-TASK-057D owns the request UI and TASK-057E owns Compose/image lifecycle wiring
-and operational QA. Until TASK-057E, the worker module is implemented but is not
-started by repository runtime manifests. No generic background-job platform,
-broker, scheduler, retries or parallel processing is accepted.
+TASK-057D owns the request UI. TASK-057E runs the worker in local and release
+Compose as a distinct internal service with a dedicated database-lock health
+check, automatic restart, Docker init process, and a ten-second shutdown grace.
+No generic background-job platform, broker, scheduler, retries or parallel
+processing is accepted.
 
 ![Forecasting request architecture](docs/diagrams/generated/component-forecasting-prediction-requests.svg)
 
@@ -659,6 +664,7 @@ GitHub Actions
    |       +--> one-shot migration job --> PostgreSQL
    |       |
    |       +--> backend after migration success
+   |       +--> prediction worker after migration success
    |                    |
    +--> frontend/Caddy image (same commit)
                            |
@@ -667,10 +673,11 @@ GitHub Actions
                                       +--> Coolify production public domain
 ```
 
-Backendin production-image sisältää sovelluksen, migraatio-runnerin ja
-versionhallittavat SQL-migraatiot. Migration- ja backend-palvelut käyttävät samaa
-immutable imageä ja `DATABASE_URL`:ia. Migration-palvelun epäonnistuminen estää
-uuden backendin käynnistymisen. Erillinen saman commitin frontend-image sisältää
+Backendin production-image sisältää sovelluksen, prediction workerin,
+migraatio-runnerin ja versionhallittavat SQL-migraatiot. Migration-, backend- ja
+prediction-worker-palvelut käyttävät samaa immutable imageä ja `DATABASE_URL`:ia.
+Migration-palvelun epäonnistuminen estää uuden backendin ja workerin
+käynnistymisen. Erillinen saman commitin frontend-image sisältää
 rakennetun React SPA:n ja Caddyn. Frontend käynnistyy vasta backendin health
 checkin jälkeen ja on ainoa julkisen production-domainin vastaanottava palvelu.
 

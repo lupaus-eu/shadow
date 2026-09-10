@@ -58,10 +58,11 @@ Päätetty teknologiapino:
 - authentication: repository-managed Authentik locally and Microsoft Entra ID
   in production; optional local Authentik-to-Entra federation is defined by
   ADR-006/TASK-040
-- local runtime: frontend, backend ja database omissa Docker-konteissaan
+- local runtime: frontend, backend, prediction worker ja database erillisinä
+  Docker Compose -palveluina
 - production-only deployment: Coolify Docker Compose, with portable
-  frontend/backend images and the one-shot migration job defined by
-  ADR-003/ADR-005
+  frontend/backend images, a prediction worker using the backend image, and the
+  one-shot migration job defined by ADR-003/ADR-005/ADR-012
 
 ---
 

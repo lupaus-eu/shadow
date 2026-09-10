@@ -107,12 +107,13 @@ refactor/
 
 # Running The App
 
-Status: frontend, backend, application database and local Authentik runtimes available
+Status: frontend, backend, prediction worker, application database and local Authentik runtimes available
 
 Paikallinen ympäristö ajetaan Docker-konteissa:
 
 - frontend container: React / TypeScript / Vite
 - backend container: FastAPI / Python
+- prediction-worker container: standalone durable Forecasting supervisor
 - database container: PostgreSQL
 - Authentik server and worker containers, loopback-only TLS Caddy plus a
   dedicated PostgreSQL container
@@ -137,7 +138,8 @@ puuttuu. Jos `.env.authentik.local` puuttuu, se luo Authentik-salaisuudet
 olemassa olevalla setup-skriptillä. Muussa tapauksessa se säilyttää olemassa
 olevat salaisuudet ja varmistaa paikallisen TLS-materiaalin. `make dev-up` ajaa
 dokumentoidun full-stack bootstrapin järjestyksessä: init,
-prerequisite-palvelut, migraatiot, dev-seed ja koko stack. `make dev-down`
+prerequisite-palvelut, migraatiot, dev-seed ja sen jälkeen prediction worker,
+backend ja frontend. `make dev-down`
 pysäyttää kontit mutta säilyttää volumet.
 
 Käytettävissä ovat myös `make db-up`, `make migrate`, `make seed`,
@@ -158,6 +160,10 @@ docker compose --env-file .env --env-file .env.authentik.local exec -T database 
   < db/init/002_seed_development_data.sql
 docker compose --env-file .env --env-file .env.authentik.local up -d
 ```
+
+Viimeinen komento käynnistää `prediction-worker`-palvelun vasta sen jälkeen,
+kun hostilla ajettu migraatio ja dev-seed ovat onnistuneet. Älä käynnistä
+workeria tuoretta tai migroimatonta skeemaa vasten.
 
 Authentik tarvitsee virallisen vähimmäissuosituksen mukaan vähintään kaksi CPU-
 ydintä ja 2 GB RAM-muistia. Ensimmäinen käynnistys voi kestää muutaman minuutin,
@@ -234,6 +240,38 @@ Health endpoint:
 ```bash
 curl --header 'Host: app.localhost:5173' http://localhost:8000/health
 ```
+
+## Local Prediction Worker
+
+`prediction-worker` käyttää samaa dev-imageä ja backend-bind-mounttia kuin API,
+mutta käynnistää vain komennon
+`python -m app.api.v1.predictions.worker`. Se saa ainoastaan container-verkon
+`DATABASE_URL`:in; sille ei anneta OIDC-credentialeja, browser-session-
+salaisuuksia tai julkista originia eikä sillä ole julkaistua porttia. Se on eri
+palvelu kuin paikallinen `authentik-worker`.
+
+Tarkista runtime ja turvalliset lifecycle-lokit:
+
+```bash
+docker compose --env-file .env --env-file .env.authentik.local \
+  ps prediction-worker
+docker compose --env-file .env --env-file .env.authentik.local \
+  logs prediction-worker
+```
+
+Health check onnistuu vain, kun live worker -tietokantasessio omistaa globaalin
+advisory lockin. Worker käynnistyy automaattisesti uudelleen, käyttää Dockerin
+init-prosessia ja saa kymmenen sekunnin stop-gracen. Supervisor tarkistaa
+keskeytyksen sekunnin välein, terminatoi calculation childin, force-killaa sen
+tarvittaessa kahden sekunnin jälkeen ja reapaa sen ennen terminaalitilaa.
+
+Workerin uudelleenkäynnistys säilyttää queued-rivit. Startup merkitsee hylätyn
+`running`-pyynnön turvallisesti `failed`-tilaan ja hylätyn `cancelling`-pyynnön
+`cancelled`-tilaan; kumpaakaan ei yritetä automaattisesti uudelleen. Käyttäjä voi
+lähettää failed/cancelled-nimen manuaalisesti uudestaan.
+
+Manuaalinen browser-QA ja tulosten kirjaus tehdään checklistillä
+`docs/qa/PREDICTION-WORKER-RUNTIME-QA.md`.
 
 ## Local Authentik OIDC
 

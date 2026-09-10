@@ -45,6 +45,23 @@ services:
     expose:
       - "8000"
 
+  prediction-worker:
+    <<: *backend-runtime
+    command: ["python", "-m", "app.api.v1.predictions.worker"]
+    depends_on:
+      migration:
+        condition: service_completed_successfully
+        required: true
+    healthcheck:
+      test: ["CMD", "python", "-m", "app.api.v1.predictions.worker", "health-check"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 10s
+
   frontend:
     build:
       context: frontend

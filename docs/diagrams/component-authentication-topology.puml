@@ -10,6 +10,7 @@ rectangle "Local development / testing" {
   actor "Local browser" as local_browser
   component "Vite\nsame-origin /api proxy" as vite
   component "Local FastAPI" as local_api
+  component "Local prediction worker\ndatabase settings only" as local_worker
   database "Local PostgreSQL" as local_db
   component "Local TLS Caddy\nhttps://auth.localhost:9443\nloopback-only host port" as local_tls
   cloud "Repository-managed Authentik" as authentik
@@ -17,6 +18,7 @@ rectangle "Local development / testing" {
   local_browser --> vite : HTTP
   vite --> local_api : /api
   local_api --> local_db
+  local_worker --> local_db : durable queue + advisory lock
   local_browser ..> local_tls : OIDC browser redirects\nHTTPS
   local_api ..> local_tls : OIDC discovery, token, JWKS\nHTTPS + local CA trust
   local_tls --> authentik : Internal HTTP :9000
@@ -27,12 +29,16 @@ rectangle "Production (only deployed environment)" {
   cloud "Coolify edge\n(public TLS)" as edge
   component "Frontend / Caddy\nSPA + /api proxy\ninternal HTTP :8080" as caddy
   component "Production FastAPI\nconfidential OIDC client" as prod_api
+  component "Prediction worker\nsame backend image\nno public port" as prod_worker
+  component "One-shot migration\nsame backend image" as migration
   database "Production PostgreSQL" as prod_db
 
   prod_browser --> edge : HTTPS, one public origin
   edge --> caddy : Internal HTTP\ntrusted edge CIDRs only
   caddy --> prod_api : /api, fixed proxy headers
   prod_api --> prod_db
+  prod_worker --> prod_db : durable queue + advisory lock
+  migration --> prod_db : up migrations
 }
 
 authentik ..> entra : Optional TASK-040 federation\nlocal app registration
@@ -46,7 +52,13 @@ end note
 
 note bottom of caddy
   Only Caddy receives the public domain.
-  Backend, migration and database stay internal.
+  Backend, worker, migration and database stay internal.
+end note
+
+note bottom of prod_worker
+  Migration success gates API and worker startup.
+  Worker has its own health check, automatic restart,
+  init process and shutdown grace.
 end note
 
 note bottom of prod_api

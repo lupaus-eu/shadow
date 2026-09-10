@@ -137,6 +137,31 @@ services:
       - backend_uv_cache:/root/.cache/uv
       - backend_venv:/app/.venv
 
+  prediction-worker:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      target: dev
+    command: ["uv", "run", "python", "-m", "app.api.v1.predictions.worker"]
+    environment:
+      DATABASE_URL: postgresql://${DATABASE_USER:-schatten}:${DATABASE_PASSWORD:-schatten_dev_password}@database:5432/${DATABASE_NAME:-schatten}
+    depends_on:
+      database:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "uv", "run", "python", "-m", "app.api.v1.predictions.worker", "health-check"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 10s
+    volumes:
+      - ./backend:/app
+      - backend_uv_cache:/root/.cache/uv
+      - backend_venv:/app/.venv
+
   frontend:
     build:
       context: ./frontend

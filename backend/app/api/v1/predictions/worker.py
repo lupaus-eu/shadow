@@ -29,7 +29,12 @@ from app.api.v1.predictions.snapshots import (
     PredictionCalculation,
     PredictionInputSnapshot,
 )
+from app.api.v1.users.models import User
 from app.core.config import get_settings, get_sqlalchemy_database_url
+
+# The standalone worker does not import the API routers. Keep the Users table in
+# its model registry so PredictionRequest's string-based audit FKs resolve.
+_REGISTERED_USER_TABLE = User.__table__
 
 LOGGER = logging.getLogger("schatten.prediction_worker")
 WORKER_ADVISORY_LOCK = 7_303_589_321_057

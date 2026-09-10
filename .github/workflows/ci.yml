@@ -38,6 +38,7 @@ jobs:
           test -f docs/decisions/ADR-004-authentication.md
           test -f docs/decisions/ADR-005-production-only-environments.md
           test -f docs/qa/AUTHENTICATION-QA-CHECKLIST.md
+          test -f docs/qa/PREDICTION-WORKER-RUNTIME-QA.md
           test -f docs/diagrams/component-authentication-topology.puml
           test -f docs/diagrams/generated/component-authentication-topology.svg
           test -f docs/diagrams/sequence-oidc-login.puml
@@ -49,6 +50,7 @@ jobs:
           test -f docker-compose.release.yml
           test -f docker-compose.production.yml
           test -f docker-compose.coolify.yml
+          test -f .github/scripts/verify-production-worker.sh
           test -f frontend/Caddyfile
           test -f .github/PULL_REQUEST_TEMPLATE.md
 
@@ -133,9 +135,9 @@ jobs:
           TRUSTED_CADDY_PEER_CIDRS: 172.30.0.0/24
           CADDY_TRUSTED_PROXY_CIDRS: 172.29.0.0/24
         run: |
-          rendered="$(sed '/exclude_from_hc:/d' docker-compose.coolify.yml | docker compose -f - config)"
-          grep --fixed-strings "image: schatten-backend-ci-resource:${{ github.sha }}" <<<"$rendered"
-          grep --fixed-strings "image: schatten-frontend-ci-resource:${{ github.sha }}" <<<"$rendered"
+          sed '/exclude_from_hc:/d' docker-compose.coolify.yml \
+            | docker compose -f - config --format json \
+            | python3 -c 'import json, sys; services=json.load(sys.stdin)["services"]; backend="schatten-backend-ci-resource:${{ github.sha }}"; frontend="schatten-frontend-ci-resource:${{ github.sha }}"; assert services["migration"]["image"] == backend; assert services["backend"]["image"] == backend; assert services["prediction-worker"]["image"] == backend; assert services["frontend"]["image"] == frontend'
 
       - name: Build production backend image
         run: >-
@@ -190,6 +192,12 @@ jobs:
 
           docker logs "$backend_container_id"
           exit 1
+
+      - name: Verify production prediction worker image lifecycle
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/schatten_test
+          BACKEND_IMAGE: schatten-backend:${{ github.sha }}
+        run: bash .github/scripts/verify-production-worker.sh
 
       - name: Verify migration failure blocks Compose backend startup
         env:

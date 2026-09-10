@@ -1,7 +1,7 @@
 # Forecasting Domain
 
-Status: durable request persistence, API, standalone worker and current-tab UI
-implemented by TASK-057C/TASK-057D; supported-runtime wiring pending TASK-057E
+Status: durable request persistence, API, standalone worker, current-tab UI and
+supported-runtime wiring implemented by TASK-057C/TASK-057D/TASK-057E
 
 ## Purpose
 

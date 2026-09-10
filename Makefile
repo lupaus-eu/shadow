@@ -102,7 +102,7 @@ dev-up:
 	$(COMPOSE_LOCAL) up -d database authentik-database authentik-server authentik-worker authentik-tls; \
 	$(MIGRATE); \
 	$(SEED); \
-	$(COMPOSE_LOCAL) up -d
+	$(COMPOSE_LOCAL) up -d prediction-worker backend frontend
 
 dev-down:
 	$(COMPOSE_LOCAL) down

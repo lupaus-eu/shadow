@@ -40,7 +40,8 @@ DATABASE_URL=postgresql://user:password@database:5432/schatten \
 It requires only `DATABASE_URL`; OIDC credentials are not required. Exactly one
 instance obtains the global PostgreSQL advisory lock and calculates work. A
 second instance exits nonzero without claiming a request. Runtime service
-wiring is intentionally deferred to TASK-057E.
+wiring is provided by the local and release Compose manifests as the distinct,
+internal `prediction-worker` service.
 
 The process health-check command returns zero only while another live database
 session owns the worker lock:
@@ -49,6 +50,11 @@ session owns the worker lock:
 DATABASE_URL=postgresql://user:password@database:5432/schatten \
   uv run python -m app.api.v1.predictions.worker health-check
 ```
+
+Compose gives this service its own health check, automatic restart, an init
+process and a ten-second stop grace so the supervisor can terminate and reap an
+active calculation child. The service publishes no port and receives no OIDC,
+session or public-origin settings.
 
 ## Production Image
 

@@ -74,15 +74,27 @@ docker compose \
   --project-name "${gate_project}" \
   --file docker-compose.production.yml \
   up --no-build --pull never --abort-on-container-exit --exit-code-from migration
-gate_status=$?
 set -e
 
-if [[ "${gate_status}" == "0" ]]; then
+migration_container="$({
+  docker compose \
+    --project-name "${gate_project}" \
+    --file docker-compose.production.yml \
+    ps --all --quiet migration
+} 2>/dev/null)"
+
+if [[ -z "${migration_container}" ]]; then
+  echo "Production Compose did not create the migration container." >&2
+  exit 1
+fi
+
+migration_status="$(docker inspect --format '{{.State.ExitCode}}' "${migration_container}")"
+if [[ "${migration_status}" == "0" ]]; then
   echo "Production Compose unexpectedly succeeded with invalid migration history." >&2
   exit 1
 fi
 
-for service in backend frontend; do
+for service in backend prediction-worker frontend; do
   service_container="$({
     docker compose \
       --project-name "${gate_project}" \
@@ -105,4 +117,4 @@ for service in backend frontend; do
   fi
 done
 
-echo "Migration failure returned nonzero and prevented backend/frontend startup."
+echo "Migration failure returned nonzero and prevented backend/prediction-worker/frontend startup."

@@ -8,7 +8,7 @@ actor User
 component "Predictions tab\n(TASK-057D)" as ui
 component "FastAPI prediction API" as api
 database "PostgreSQL\nrequests + saved versions" as database
-component "Prediction worker supervisor\n(runtime wiring: TASK-057E)" as worker
+component "Prediction worker supervisor\n(local + release Compose runtime)" as worker
 component "One supervised\ncalculation child" as child
 component "Organisation States +\nTwin Structure source services" as sources
 
@@ -35,5 +35,10 @@ end note
 note bottom of database
   One global calculation; no broker, retries,
   scheduler, priorities or parallel execution.
+end note
+
+note bottom of worker
+  Same backend image as API/migration; database-only settings.
+  Dedicated health check, automatic restart, init and shutdown grace.
 end note
 @enduml

@@ -105,8 +105,23 @@ assert services["backend"]["depends_on"]["authentik-worker"]["condition"] == (
     "service_started"
 )
 assert "@database:5432/" in services["backend"]["environment"]["DATABASE_URL"]
+prediction_worker = services["prediction-worker"]
+assert prediction_worker["command"] == [
+    "uv", "run", "python", "-m", "app.api.v1.predictions.worker"
+]
+assert prediction_worker["environment"] == {
+    "DATABASE_URL": services["backend"]["environment"]["DATABASE_URL"]
+}
+assert not prediction_worker.get("ports")
+assert prediction_worker["init"] is True
+assert prediction_worker["restart"] == "unless-stopped"
+assert prediction_worker["stop_grace_period"] == "10s"
+assert prediction_worker["healthcheck"]["test"] == [
+    "CMD", "uv", "run", "python", "-m",
+    "app.api.v1.predictions.worker", "health-check"
+]
 assert "SCHATTEN_OIDC_CLIENT_SECRET" not in server["environment"]
 assert "AUTHENTIK_BOOTSTRAP_PASSWORD_HASH" not in server["environment"]
 PY
 
-printf 'Local Authentik Compose, layered env, dependency, loopback, issuer, image, secret and production-manifest checks passed.\n'
+printf 'Local Authentik and prediction-worker Compose, dependency, isolation, issuer, image, and secret checks passed.\n'

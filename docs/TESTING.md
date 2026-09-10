@@ -129,8 +129,19 @@ a developer's normal schema or production for destructive tests.
 
 CI runs `.github/scripts/verify-release-compose-failure.sh` against an isolated
 PostgreSQL container. The script corrupts disposable migration history, starts
-the real production Compose model and requires both a nonzero deployment result
-and no running backend service.
+the real production Compose model and requires a nonzero migration-container
+exit plus no started backend, prediction worker or frontend service. It reads
+the migration service exit directly because Compose CLI exit behavior can vary
+after a dependency fails.
+
+TASK-057E additionally runs `.github/scripts/verify-production-worker.sh`
+against a migrated disposable PostgreSQL database and the production backend
+image. It verifies numeric non-root execution, database-only configuration, no
+published port, the worker-specific health command, duplicate-worker exclusion,
+automatic restart, shutdown grace/init configuration and credential/snapshot-
+safe lifecycle logs. Queue ordering, blocked-child cancellation, atomic
+publication and interrupted-request recovery remain covered by the PostgreSQL
+pytest harness below; both evidence sets are required.
 
 ## Production Frontend And Authentication Deployment
 
@@ -146,9 +157,10 @@ FRONTEND_IMAGE=schatten-frontend:local \
   .github/scripts/verify-production-frontend.sh
 ```
 
-The Compose check verifies required settings, migration-only database
-configuration, immutable backend/frontend images, internal ports and the
-migration -> backend health -> frontend gate. The live Caddy check covers
+The Compose check verifies required settings, database-only migration/worker
+configuration, immutable backend/worker/frontend image identity, internal ports,
+the migration -> API/worker gates and the backend health -> frontend gate. The
+live Caddy check covers
 configuration adaptation/startup, non-canonical, port-bearing, malformed or
 wildcard origin rejection, image health, SPA fallback, exact Host rejection,
 strict trusted-proxy parsing, forwarded-header replacement, HSTS,
@@ -228,6 +240,10 @@ down scope, lifecycle constraints, frozen submission inputs, global lock/FIFO,
 blocked-child cancellation, crash/publication rollback and abandoned-request
 recovery. An absent `MIGRATION_TEST_DATABASE_URL` skips this evidence and does
 not satisfy TASK-057C integration acceptance.
+
+Run assembled local browser and container QA separately with
+`docs/qa/PREDICTION-WORKER-RUNTIME-QA.md`. Record unavailable Docker, browser,
+Coolify-provider or production checks as unavailable, never as passing.
 
 ## Security-Sensitive Change
 

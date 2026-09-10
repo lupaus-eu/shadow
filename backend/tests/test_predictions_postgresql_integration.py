@@ -294,6 +294,18 @@ def test_worker_owns_global_lock_claims_fifo_and_publishes_frozen_snapshot(
         )
         assert point is not None and point.value == 40.0
 
+    # A new supervisor instance can acquire ownership and continue queued work
+    # after the first worker has exited; the accepted request is not lost.
+    assert PredictionWorker(engine).run(once=True)
+    with factory() as session:
+        second = session.scalar(
+            select(PredictionRequest).where(
+                PredictionRequest.prediction_request_key == second_key
+            )
+        )
+        assert second is not None and second.state == "completed"
+        assert second.completed_prediction_version_id is not None
+
 
 def test_concurrent_name_admission_allows_only_one_case_variant(
     prediction_postgresql_session_factory: sessionmaker[Session],
@@ -431,6 +443,49 @@ def test_worker_promptly_cancels_and_reaps_a_blocked_child(
             )
         )
         assert request is not None and request.state == "cancelled"
+        assert request.worker_id is None
+        assert session.scalar(select(PredictionVersion)) is None
+
+
+def test_worker_shutdown_stops_and_reaps_a_blocked_child(
+    prediction_postgresql_session_factory: sessionmaker[Session],
+) -> None:
+    from app.api.v1.predictions.worker import PredictionWorker
+
+    factory = prediction_postgresql_session_factory
+    request_key, _ = _seed_worker_request(factory, name="Shutdown")
+    engine = factory.kw["bind"]
+    assert engine is not None
+    worker = PredictionWorker(engine, child_target=_blocked_calculation)
+    thread = threading.Thread(target=lambda: worker.run(once=True))
+    thread.start()
+    deadline = time.monotonic() + 5
+    state: str | None = None
+    while time.monotonic() < deadline:
+        with factory() as session:
+            state = session.scalar(
+                select(PredictionRequest.state).where(
+                    PredictionRequest.prediction_request_key == request_key
+                )
+            )
+        if state == "running":
+            break
+        time.sleep(0.05)
+    assert state == "running"
+
+    stopped = time.monotonic()
+    worker.request_stop()
+    thread.join(timeout=5)
+    assert not thread.is_alive()
+    assert time.monotonic() - stopped < 5
+    with factory() as session:
+        request = session.scalar(
+            select(PredictionRequest).where(
+                PredictionRequest.prediction_request_key == request_key
+            )
+        )
+        assert request is not None and request.state == "failed"
+        assert request.failure_code == "WORKER_INTERRUPTED"
         assert request.worker_id is None
         assert session.scalar(select(PredictionVersion)) is None
 

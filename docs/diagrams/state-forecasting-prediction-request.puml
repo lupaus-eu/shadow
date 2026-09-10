@@ -13,7 +13,8 @@ running --> completed : atomic complete-version publication commits first
 
 note right of queued
   Name reserved.
-  Survives restarts.
+  Survives container restarts.
+  Claimed only after migrations succeed.
 end note
 
 note right of running
@@ -40,5 +41,6 @@ end note
 note bottom of failed
   Safe failure retained; no retry.
   Name is reusable; no partial version.
+  Startup recovers abandoned running here.
 end note
 @enduml

@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-057E/review-001",
+  "task": {
+    "id": "TASK-057E",
+    "path": "tasks/TASK-057E-prediction-worker-runtime-qa.md"
+  },
+  "round": 1,
+  "reviewed_at": "2026-09-10T11:00:32Z",
+  "reviewer": {
+    "label": "Codex self-review"
+  },
+  "pull_request": {
+    "number": 79,
+    "url": "https://github.com/reflector-oy/schatten/pull/79"
+  },
+  "source": {
+    "base_sha": "acd3775c696c83fdfb921a762dc001e77243f00e",
+    "head_sha": "c9c797d9f67177cc442fb81c30cb191d2acbb99d",
+    "comparison": "acd3775c696c83fdfb921a762dc001e77243f00e...c9c797d9f67177cc442fb81c30cb191d2acbb99d",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "The worker runtime, release wiring, failure gates, standalone model registration fix, tests and operational documentation are consistent with TASK-057E. Two low-severity documentation inconsistencies remain in the committed diff: the migration-failure test description no longer matches its version-robust assertion, and the QA follow-up contradicts the completed human result for browser item 2.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "The migration-failure testing guide describes an assertion the harness no longer makes.",
+        "rationale": "The guide says the release failure script requires a nonzero top-level deployment result. The corrected harness instead reads the migration container exit code directly because the installed Compose version can return zero from the top-level command while reporting the migration service failure. The documented test contract therefore disagrees with the executable check and its recorded QA evidence.",
+        "recommendation": "Describe the required nonzero migration-container exit and dependent-service startup prevention, including why the service exit is inspected directly.",
+        "locations": [
+          {
+            "path": "docs/TESTING.md",
+            "line": 132
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "The QA follow-up still marks browser item 2 pending after its human rerun passed.",
+        "rationale": "The dated manual browser table records FIFO and one calculating request as passed, but the later follow-up table still requests a human rerun. This leaves the final acceptance status internally contradictory.",
+        "recommendation": "Update the follow-up row to record the completed human rerun while preserving the earlier defect and remediation history.",
+        "locations": [
+          {
+            "path": "docs/qa/PREDICTION-WORKER-RUNTIME-QA.md",
+            "line": 159
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": []
+  }
+}

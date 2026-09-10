@@ -57,8 +57,8 @@ Päätetty rakenne:
 - authentication: backend-managed OIDC session; local Authentik, optional local
   Authentik-to-Entra federation and direct single-tenant Microsoft Entra ID in
   production
-- local runtime: frontend, backend, application database and local-only
-  Authentik in Docker contexts
+- local runtime: frontend, backend, prediction worker, application database and
+  local-only Authentik in Docker contexts
 - production-only deployment: one HTTPS origin through the frontend/Caddy
   service in Coolify Docker Compose (ADR-003/ADR-005)
 
@@ -80,8 +80,9 @@ make dev-down
 `make dev-up` creates a missing `.env` and creates Authentik secrets only when
 `.env.authentik.local` is missing. Existing local Authentik secrets are reused,
 and the local TLS material is validated or created without overwriting it. The
-target then starts the local stack, applies pending migrations and applies the
-idempotent development seed. It uses local Docker resources only. Production,
+target then starts the prerequisites, applies pending migrations and the
+idempotent development seed, and starts the API, prediction worker and frontend
+against the ready schema. It uses local Docker resources only. Production,
 Entra, release, rollback, baseline, reset and destructive cleanup operations
 are intentionally not available through Make.
 
@@ -107,6 +108,13 @@ tarkat trust- ja optional Entra federation -ohjeet ovat
 
 Backend on saatavilla osoitteessa `http://localhost:8000`.
 
+Prediction worker käynnistyy full-stack-komennon mukana erillisenä
+`prediction-worker`-palveluna. Sillä ei ole julkaistua porttia eikä OIDC-
+asetuksia. Sen tila näkyy komennolla
+`docker compose ps prediction-worker`; tarkemmat käyttö- ja QA-ohjeet ovat
+`docs/LOCAL-DEVELOPMENT.md`:ssä ja
+`docs/qa/PREDICTION-WORKER-RUNTIME-QA.md`:ssä.
+
 Health endpoint:
 
 ```bash
@@ -124,7 +132,8 @@ Migraatiokäytännöt, rollback-komennot ja olemassa olevan tietokannan baseline
 on kuvattu tiedostoissa `db/migrations/README.md` ja
 `docs/LOCAL-DEVELOPMENT.md`.
 
-Production frontend/backend images, automatic release migration, required
+Production frontend/backend images, the same-backend-image prediction worker,
+automatic release migration, required
 Entra/Coolify configuration, backup/approval gates, limited production smoke
 and rollback workflow are documented in `docs/DEPLOYMENT.md`. Local and
 production evidence uses `docs/qa/AUTHENTICATION-QA-CHECKLIST.md`. Deployment

@@ -13,6 +13,12 @@ services:
       service: backend
     image: schatten-backend-${COOLIFY_RESOURCE_UUID:?Coolify resource UUID is required}:${SOURCE_COMMIT:?Coolify source commit is required}
 
+  prediction-worker:
+    extends:
+      file: docker-compose.release.yml
+      service: prediction-worker
+    image: schatten-backend-${COOLIFY_RESOURCE_UUID:?Coolify resource UUID is required}:${SOURCE_COMMIT:?Coolify source commit is required}
+
   frontend:
     extends:
       file: docker-compose.release.yml

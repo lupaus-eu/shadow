@@ -11,6 +11,12 @@ services:
       service: backend
     image: ${BACKEND_IMAGE:?Set BACKEND_IMAGE to an immutable release image reference}
 
+  prediction-worker:
+    extends:
+      file: docker-compose.release.yml
+      service: prediction-worker
+    image: ${BACKEND_IMAGE:?Set BACKEND_IMAGE to an immutable release image reference}
+
   frontend:
     extends:
       file: docker-compose.release.yml

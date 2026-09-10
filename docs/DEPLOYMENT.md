@@ -13,24 +13,29 @@ Schatten publishes one HTTPS origin:
 browser -> Coolify TLS edge -> frontend/Caddy :8080 -> backend/FastAPI :8000
                                                      -> PostgreSQL
                                                      -> Microsoft Entra ID
+prediction worker ---------------------------------> PostgreSQL
 ```
 
 Only `frontend` receives the public application domain. Caddy serves the built
 React SPA, provides history fallback and reverse-proxies `/api`. Backend,
-one-shot migration and database ports remain internal. Caddy listens only on
-unprivileged internal HTTP port `8080`; it neither obtains certificates nor
-publishes container ports 80/443. Coolify terminates public TLS.
+prediction worker, one-shot migration and database ports remain internal. Caddy
+listens only on unprivileged internal HTTP port `8080`; it neither obtains
+certificates nor publishes container ports 80/443. Coolify terminates public
+TLS.
 
 The release has two immutable, commit-specific artifacts:
 
-- backend image: API, `migrate.py` and repository SQL migrations
+- backend image: API, prediction worker, `migrate.py` and repository SQL
+  migrations
 - frontend image: built SPA and pinned official Caddy
 
-Migration and API use the same backend image and `DATABASE_URL`. The migration
-command is `python migrate.py up`; it receives only database configuration and
-does not import or initialize the FastAPI/OIDC application. Backend starts only
-after migration exits zero, and frontend starts only after backend is healthy.
-Forward migrations are never automatically rolled back.
+Migration, API and prediction worker use the same backend image and
+`DATABASE_URL`. The migration command is `python migrate.py up`; it receives
+only database configuration and does not import or initialize the FastAPI/OIDC
+application. API and worker start only after migration exits zero, and frontend
+starts only after backend is healthy. The worker receives no OIDC, session or
+public-origin settings and publishes no port. Forward migrations are never
+automatically rolled back.
 
 Authentik is absent from every release/Coolify manifest. It is local-only,
 including TASK-040's optional Authentik-to-Entra federation.
@@ -40,7 +45,7 @@ including TASK-040's optional Authentik-to-Entra federation.
 ## Files
 
 ```text
-backend/Dockerfile                 backend API and migration artifact
+backend/Dockerfile                 backend API, worker and migration artifact
 frontend/Dockerfile                Vite build and Caddy production artifact
 frontend/Caddyfile                 provider-neutral same-origin ingress policy
 frontend/caddy-entrypoint.sh       derives the allowed Host from PUBLIC_ORIGIN
@@ -48,6 +53,7 @@ docker-compose.release.yml         shared release lifecycle and environment
 docker-compose.production.yml      portable immutable-image contract
 docker-compose.coolify.yml         thin Coolify image-tag/health adapter
 docs/qa/AUTHENTICATION-QA-CHECKLIST.md
+docs/qa/PREDICTION-WORKER-RUNTIME-QA.md
 ```
 
 The Caddy runtime is official
@@ -65,7 +71,7 @@ any required value is absent:
 | --- | --- | --- |
 | `BACKEND_IMAGE` | production manifest | Immutable backend commit tag/digest |
 | `FRONTEND_IMAGE` | production manifest | Immutable frontend commit tag/digest |
-| `DATABASE_URL` | migration + backend | Secret PostgreSQL URL |
+| `DATABASE_URL` | migration + backend + prediction worker | Secret PostgreSQL URL |
 | `OIDC_DISCOVERY_URL` | backend only | Tenant-specific HTTPS discovery URL |
 | `OIDC_ISSUER` | backend only | Exact, case-sensitive single-tenant issuer |
 | `OIDC_CLIENT_ID` | backend only | Confidential web application client ID |
@@ -126,10 +132,18 @@ env \
   docker compose -f docker-compose.production.yml config --quiet
 
 .github/scripts/verify-production-compose.sh
+BACKEND_IMAGE=schatten-backend:local \
+DATABASE_URL=postgresql://user:password@127.0.0.1:5432/disposable_database \
+  .github/scripts/verify-production-worker.sh
 FRONTEND_IMAGE=schatten-frontend:local \
   .github/scripts/verify-production-frontend.sh
 ```
 
+The worker check must target a migrated disposable PostgreSQL database. It
+checks the production image's numeric non-root worker, database-only settings,
+dedicated health command, exclusive ownership, automatic restart, shutdown
+configuration and safe lifecycle logs. The PostgreSQL pytest harness separately
+proves durable queue, cancellation and interrupted-request recovery behavior.
 The live frontend check uses an isolated Docker network and mock internal API.
 It covers Caddyfile adaptation/startup, health, exact Host, forwarded-header
 overwrite, security headers, SPA fallback and query-log redaction.
@@ -203,10 +217,13 @@ schatten-frontend-${COOLIFY_RESOURCE_UUID}:${SOURCE_COMMIT}
 
 Enter the required configuration above in Coolify, marking database URL and
 OIDC client secret as secrets. Assign the application domain only to
-`frontend:8080`. Do not assign a domain or public port to backend or migration.
-The migration service retains `exclude_from_hc: true`; frontend/backend use
-their image health checks. Caddy and backend run as numeric user/group
-`10001:10001`.
+`frontend:8080`. Do not assign a domain or public port to backend, prediction
+worker or migration. The migration service retains `exclude_from_hc: true`;
+frontend, backend and prediction worker use their respective image/service
+health checks. Caddy, backend and worker run as numeric user/group `10001:10001`.
+The worker's standard Compose fields can be validated locally, but Coolify must
+parse and exercise the manifest before rollout; standard Compose parsing does
+not prove provider-specific behavior such as `exclude_from_hc`.
 
 Coolify Compose deployment is not rolling or zero-downtime. Plan a maintenance
 window where availability is required.
@@ -231,8 +248,9 @@ There is no staging or pre-production application environment. Every production
 deployment requires a change record and this sequence:
 
 1. Require green CI, backend/frontend production image builds, production
-   Compose checks, migration failure gating, ingress/security checks and the
-   broad local Authentik QA checklist.
+   Compose and worker lifecycle checks, migration failure gating,
+   ingress/security checks, the broad local Authentik QA checklist and the
+   prediction-worker runtime QA record.
 2. Before the first production rollout and whenever authentication, provider or
    OIDC configuration changes, also require TASK-040's local
    Authentik-to-Entra smoke with designated accounts. Record that it is
@@ -242,7 +260,8 @@ deployment requires a change record and this sequence:
    record its identifier plus the evidence location for the latest successful
    restore verification. Missing backup or restore-verification evidence blocks
    deployment.
-4. Record the target commit SHA, matching backend/frontend image references,
+4. Record the target commit SHA, matching backend/frontend image references
+   (the worker uses the exact backend reference),
    intended stable SemVer tag if one exists, and current stable rollback tag
    with its commit and matching image references. For the first production
    rollout, explicitly record that no previous stable application release
@@ -250,8 +269,10 @@ deployment requires a change record and this sequence:
    the database automatically.
 5. Obtain explicit human approval for this deployment. Merge or CI success is
    not deployment authorization.
-6. Deploy both matching commit-specific images through the existing Coolify
-   topology and require the migration -> backend health -> frontend gate.
+6. Deploy API, frontend and worker together from the two matching
+   commit-specific images through the existing Coolify topology. Require the
+   migration -> API/worker startup gates and backend health -> frontend gate.
+   Do not mix the new create API with an older frontend or omit its worker.
 7. Run the limited direct-Entra production smoke with designated,
    pre-provisioned admin and consultant accounts and isolated test records:
    login, clean callback, session restoration, database role enforcement and
@@ -281,6 +302,7 @@ each used stable tag to:
 ```text
 tag -> commit SHA
     -> schatten-backend-${COOLIFY_RESOURCE_UUID}:${SOURCE_COMMIT}
+       (API, prediction worker and migration)
     -> schatten-frontend-${COOLIFY_RESOURCE_UUID}:${SOURCE_COMMIT}
 ```
 
@@ -288,9 +310,15 @@ On migration failure, keep the deployment stopped, inspect credential-safe job
 output, correct the reviewed cause and retry forward. Never run a down migration
 automatically.
 
-If application health or the production smoke fails after migrations succeed,
-select the documented stable rollback tag, resolve its commit-specific backend
-and frontend images, and deploy both together. Successfully applied forward
+If application or worker health, or the production smoke, fails after
+migrations succeed, first stop new submissions and inspect request summaries.
+Queued requests are durable but must not be processed by a mismatched worker.
+Any request interrupted while `running` becomes visibly failed without an
+automatic retry; `cancelling` becomes cancelled. Record affected request IDs
+without snapshots or personal data and require manual resubmission where
+appropriate. Then select the documented stable rollback tag, resolve its
+commit-specific backend and frontend images, and deploy API/frontend/worker
+together. Successfully applied forward
 migrations remain in place, so every release must preserve expand/contract
 compatibility through its documented rollback window. If the older application
 is incompatible with the current forward schema, stop and escalate instead of
@@ -320,7 +348,8 @@ automatically by a failed deployment or smoke test.
 ## Provider Replacement
 
 A replacement deployment provider must preserve both artifact boundaries: run
-the backend image migration command once with failure propagation, start the
-same backend image only after success, evaluate backend health, then start the
-frontend/Caddy image as the sole public ingress. Application code and the
-repository Caddyfile must remain provider-neutral.
+the backend image migration command once with failure propagation, start API
+and the single prediction worker from that same backend image only after
+success, evaluate their separate health checks, then start the frontend/Caddy
+image as the sole public ingress. Application code and the repository Caddyfile
+must remain provider-neutral.
