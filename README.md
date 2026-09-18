@@ -1,4 +1,5 @@
 # schatten
+
 Varjo:n inkarnaatio
 
 Schatten on AI-first ohjelmistoprojekti.
@@ -54,13 +55,19 @@ Päätetty rakenne:
 - backend: Python, FastAPI, Pydantic, uv, pytest, pyright, Ruff hakemistossa `backend/`
 - database: PostgreSQL
 - ORM: SQLAlchemy
-- authentication: backend-managed OIDC session; local Authentik, optional local
-  Authentik-to-Entra federation and direct single-tenant Microsoft Entra ID in
-  production
-- local runtime: frontend, backend, prediction worker, application database and
-  local-only Authentik in Docker contexts
-- production-only deployment: one HTTPS origin through the frontend/Caddy
-  service in Coolify Docker Compose (ADR-003/ADR-005)
+- authentication target: backend-managed direct single-tenant Entra in development
+  and production, sharing the existing registration with separate secrets
+- local target: HTTPS Caddy -> Vite/FastAPI, application database and one worker
+- production target: UpCloud Ubuntu 26.04 LTS with Docker/Compose, direct Caddy
+  TLS and private PostgreSQL 18 in Docker; daily encrypted on-server backups
+  in `/opt/postgres-backups` with 7-day retention required for initial release
+
+[ADR-013](docs/decisions/ADR-013-shared-entra-local-https-deployment.md) records
+the accepted amendment. The commands below still describe the implemented
+local HTTP/Authentik runtime until TASK-059B; the existing Coolify adapter remains
+until G. Runtime, seed/bootstrap, integrated QA and rollout are pending B/C/D/G/E/F.
+Volumes are not backups; release requires completed backup identifiers and
+successful restore-rehearsal evidence. Backup setup remains pending G/E/F.
 
 ## Optional Make Convenience
 
@@ -134,7 +141,7 @@ on kuvattu tiedostoissa `db/migrations/README.md` ja
 
 Production frontend/backend images, the same-backend-image prediction worker,
 automatic release migration, required
-Entra/Coolify configuration, backup/approval gates, limited production smoke
+direct-Entra/UpCloud configuration, manual approval gates, limited production smoke
 and rollback workflow are documented in `docs/DEPLOYMENT.md`. Local and
 production evidence uses `docs/qa/AUTHENTICATION-QA-CHECKLIST.md`. Deployment
 runs migrations as a separate job; normal backend startup does not mutate the

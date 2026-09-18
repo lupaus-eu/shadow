@@ -6,7 +6,7 @@ paste codes, tokens, cookies, client secrets, CSRF values, names or personal
 email into the record. Preserve valid completed evidence when updating an
 in-progress record.
 
-This checklist does not authorize a production deployment, Entra/Coolify
+This checklist does not authorize a production deployment, Entra/UpCloud
 mutation, tag operation, backup/restore operation or production QA. Those
 actions require their own human approval.
 
@@ -16,7 +16,16 @@ commit `dc186e5fb566ed094460b7536634f971771c1a9b` on 2026-08-21 by
 `https://github.com/reflector-oy/schatten/actions/runs/32473565343`.
 No issues were reported.
 
-## Local Automated Baseline
+Architecture amendment: [ADR-013](../decisions/ADR-013-shared-entra-local-https-deployment.md)
+selects direct Entra in both environments, UpCloud Ubuntu 26.04 LTS, direct
+Caddy TLS and private Docker PostgreSQL 18. Initial release requires daily
+encrypted on-server backups with 7-day retention and backup/restore evidence. All checked
+TASK-039G/TASK-040 results below are historical, including their platform,
+registration and federation assumptions. They do not verify this target.
+New simulated-OIDC/Compose and live Entra evidence belongs to B/G/E/F; the
+pending production gates below reflect the amended plan.
+
+## Historical Local Automated Baseline
 
 - [x] Backend Ruff, full pytest and pyright pass.
 - [x] Frontend lint, full tests and production build pass.
@@ -27,7 +36,7 @@ No issues were reported.
 - [x] The release-migration failure test proves that backend does not start.
 - [x] Both authentication PlantUML sources render to committed SVGs.
 
-## Broad Local Authentik QA
+## Historical Broad Local Authentik QA
 
 Run this section against repository-managed local Authentik and disposable local
 data. It is the comprehensive security baseline; do not repeat it against
@@ -65,7 +74,7 @@ production.
 
 The preserved local run reported no issues, no issues found in manual browser tersting.
 
-## Local Production-Boundary QA
+## Historical Local Production-Boundary QA
 
 - [x] Only frontend/Caddy has the public application domain; backend, migration
       and database have no public port or domain.
@@ -83,11 +92,10 @@ The preserved local run reported no issues, no issues found in manual browser te
 The preserved local Caddy ingress evidence reported that all proxy, log and
 header checks passed.
 
-## Conditional Local Entra Federation
+## Historical Conditional Local Entra Federation
 
-Complete this section before the first production rollout and for
-authentication, provider or OIDC configuration changes after TASK-040 is
-available. Use only designated test accounts.
+Historical TASK-040 procedure, retained with its completed evidence. It is no
+longer an initial-release requirement; B/E/F use direct Entra instead.
 
 - [x] Human authorization to access the organisation Entra tenant is recorded.
 - [x] Local Authentik uses its separate local-federation app registration.
@@ -113,10 +121,17 @@ This check used the local-only schatten-authentik Entra registration and local A
 Complete a new copy of this section before every production deployment.
 
 - [ ] Local baseline required for this release is green at the target commit.
-- [ ] Conditional local federation is green when required by release scope.
+- [ ] Real local direct-Entra browser checks are separately recorded after
+      authorized setup; simulated tests and historical federation are insufficient.
 - [ ] Release candidate is frozen.
-- [ ] Completed production backup identifier is recorded.
-- [ ] Latest successful restore-verification evidence location is recorded.
+- [ ] Daily encrypted on-server backups in `/opt/postgres-backups` and 7-day
+      retention are verified; the same-host/disk-loss limitation is recorded.
+- [ ] Completed pre-change backup identifier and latest successful isolated
+      restore-rehearsal evidence are recorded; missing evidence blocks release.
+- [ ] First installation additionally records backup and isolated restore of the
+      migrated/seeded/bootstrap database before release acceptance.
+- [ ] Direct Caddy TLS, private Docker PostgreSQL 18 and service readiness are
+      verified on the UpCloud Ubuntu 26.04 LTS host.
 - [ ] Target commit SHA and matching backend/frontend image references are recorded.
 - [ ] Current stable annotated SemVer rollback tag, commit and matching image
       references are recorded, or the first-rollout no-previous-release case
@@ -132,7 +147,7 @@ consultant accounts and isolated test records.
 - [ ] The Schatten database role—not Entra groups/claims—enforces Users access.
 - [ ] For the first rollout or an authentication/provider change, a designated
       unmatched account fails generically without creating a session.
-- [ ] The smoke result, commit, tester, time, backup identifier and evidence
+- [ ] The smoke result, commit, tester, time, image references, backup identifier and evidence
       location are recorded without identity or credential data.
 - [ ] A failure stops the release and invokes the documented application
       rollback decision.
@@ -149,16 +164,20 @@ The following are prohibited in production:
 
 ## Rollback Evidence
 
+Complete only when a compatible previous stable release exists. For the first
+rollout, record that no such target exists and use the stop/escalate path.
+
 - [ ] The selected stable tag resolves to the recorded commit.
-- [ ] Backend and frontend are both mapped to that commit's Coolify image references.
+- [ ] Backend and frontend are both mapped to that commit's frozen image references.
 - [ ] Compatibility with already-applied forward migrations is confirmed before
       deploying the older application.
 - [ ] No automatic down migration or database restoration is part of application
       rollback.
-- [ ] Any database restoration has separate explicit human authorization and
-      impact review.
+- [ ] No volume deletion or database reset occurs; application rollback does
+      not recover lost database contents. Production restoration needs separate
+      explicit human authorization and impact review.
 
-## TASK-039G Sign-Off
+## Historical TASK-039G Sign-Off
 
 - [x] Local Authentik result records date, commit, tester and pass/fail only.
 - [x] Documentation and diagrams show local Authentik, optional local Entra
@@ -168,9 +187,11 @@ The following are prohibited in production:
 
 ## Accepted Limitations
 
-- There is no staging environment; direct Entra/Coolify compatibility is first
-  validated through the limited production smoke.
-- Local federation cannot prove the direct production OIDC client.
+- There is no staging. Local direct-Entra checks cannot prove production
+  DNS/TLS, credentials or ingress; limited production smoke remains required.
+- Required backups do not make application rollback a database recovery action.
+  A future managed-service migration must preserve or explicitly revise backup
+  and restore policy; it is separate from initial backup implementation.
 - There is no organisation membership authorization; all active internal users
   intentionally access all organisations.
 - Guarded Entra email matching is accepted only for first linking within the

@@ -4,6 +4,34 @@ Tämä dokumentti kuvaa paikallisen DEV-ympäristön perusmallin.
 
 Teknologiapino on päätetty tiedostossa `docs/decisions/ADR-001-tech-stack.md`.
 
+[ADR-013](decisions/ADR-013-shared-entra-local-https-deployment.md) accepts
+`https://app.localhost` for local development with direct Entra and
+`https://schatten.lupaus.eu` for production. Both use the existing confidential
+single-tenant registration, distinct secrets and independent databases.
+
+**TASK-059B is pending.** The HTTP/Authentik instructions below describe the
+still-implemented runtime, not the accepted target. B adds loopback Caddy HTTPS,
+routes `/api` directly to FastAPI and other traffic/HMR to Vite, and removes
+Authentik services/federation dependencies while preserving data, old volumes
+and identity rows. Reuse valid CA material while separating app TLS tooling.
+
+The target Entra Web callback is `https://app.localhost/api/v1/auth/callback`
+and post-logout return is `https://app.localhost/login`. Use the exact tenant
+issuer, `openid profile email`, no Graph calls and no `email_verified` claim
+requirement. B supplies explicit local-only provisioning of a designated Entra
+admin even on an already-seeded database; never commit personal emails or create
+Users during login. New Entra identities use guarded linking, not issuer rewrites.
+
+Interactive target login needs tenant setup; automated tests use simulated OIDC
+without tenant credentials. Real-Entra browser evidence is recorded separately.
+Actual tenant cleanup/setup requires authorization under F and checks for other
+consumers. Production uses UpCloud Ubuntu 26.04 LTS, direct Caddy TLS, private
+Docker PostgreSQL 18 and daily encrypted on-server backups in
+`/opt/postgres-backups` with 7-day retention;
+backup identifiers and restore evidence gate release. See [deployment](DEPLOYMENT.md).
+
+# Current Runtime Instructions (Superseded Target; Until TASK-059B)
+
 ---
 
 # Initial Setup
@@ -212,11 +240,10 @@ same `pnpm build` output from Caddy and changes only the backend OIDC provider
 configuration to tenant-specific Entra values. Do not add provider-specific
 logic or browser tokens to the frontend when comparing environments.
 
-ADR-005 defines only local development/testing and production. TASK-040 adds an
-opt-in local overlay that federates this repository-managed Authentik to the
-same organisation's Entra tenant through a local-only app registration. That
-supplemental path is not a production-like environment and does not validate
-FastAPI's direct production Entra client.
+ADR-005 retains only local development/testing and production. The TASK-040
+optional Authentik-to-Entra overlay below is a legacy runtime capability pending
+removal in B. ADR-013 now selects direct Entra in both environments; historical
+federation checks do not verify that target or its production TLS boundary.
 
 Backend-kehityskontti:
 
@@ -344,7 +371,7 @@ Kaikki paikalliset kontit pysäytetään normaalisti komennolla:
 docker compose --env-file .env --env-file .env.authentik.local down
 ```
 
-### Optional Entra federation through local Authentik
+### Historical/Current Legacy Runtime: Optional Authentik Federation
 
 Tämä opt-in rehearsal testaa ketjun Schatten -> local Authentik -> Entra. Se ei
 korvaa `docs/DEPLOYMENT.md`:n human-approved limited production smokea, koska
@@ -363,6 +390,13 @@ https://auth.localhost:9443/source/oauth/callback/schatten-auth/
 Polun loppukauttaviiva ja slug `schatten-auth` ovat pakolliset. Lisää delegated
 Microsoft Graph -oikeudet `openid`, `profile`, `email` ja `User.Read`; älä lisää
 group-, role-, `offline_access`- tai application-permissioneita.
+
+The steps in this legacy section describe the existing Authentik runtime only.
+ADR-013 supersedes its target callback and Graph `/me` mapping with direct Entra
+for both applications. Do not use these instructions as the new registration
+setup plan. Authorized F setup registers the direct callbacks and removes old
+Authentik entries/Graph permission only after checking remaining consumers and
+coordinating cutover. See [deployment](DEPLOYMENT.md) for the accepted contract.
 
 Luo gitignored asetustiedosto interaktiivisesti. Skripti ei tulosta secret-arvoa:
 
@@ -576,9 +610,10 @@ Baseline ei tarkista skeeman sisältöä eikä päättele sen versiota. Komento 
 operaattorin vakuutus valitusta tasosta, ja se sallitaan vain olemassa olevalle
 skeemalle, jolla ei vielä ole migraatiohistoriaa.
 
-Production-tietokannan käyttöönotto, backup- ja baseline-portti sekä
-automaattinen release migration on kuvattu erikseen tiedostossa
-`docs/DEPLOYMENT.md`. Älä käytä production Compose -tiedostoja paikallisen dev
+The accepted fresh production initialization and release migration contract are
+in `docs/DEPLOYMENT.md`. Initial deployment requires backup and restore-rehearsal evidence;
+adopting an existing untracked database requires a separate reviewed plan.
+Älä käytä production Compose -tiedostoja paikallisen dev
 backendin korvikkeena.
 
 Paikallisen kehitysdatan seed on dev-only ja se varmistaa aktiiviset

@@ -10,6 +10,14 @@ Tämän tiedoston tulee kuvata päätettyä tai toteutettua nykytilaa. Tulevaisu
 
 Status: MVP bootstrap with authentication and release ingress implemented
 
+[ADR-013](docs/decisions/ADR-013-shared-entra-local-https-deployment.md) accepts
+direct Entra in both environments, distinct HTTPS origins, a shared registration,
+and Docker deployment on UpCloud Ubuntu 26.04 LTS with direct Caddy TLS and
+private Docker PostgreSQL 18. Daily encrypted on-server backups with 7-day
+retention and backup/restore evidence are required, pending implementation. Runtime,
+reference-seed/admin CLIs, integrated QA and rollout remain pending B/C/D/G/E/F.
+This documentation amendment changes no runtime.
+
 Teknologiapino on päätetty ADR-001:ssä.
 
 Päätetty tekninen perusrakenne:
@@ -18,13 +26,11 @@ Päätetty tekninen perusrakenne:
 - backend: Python, FastAPI, Pydantic, uv, pytest, pyright, Ruff hakemistossa `backend/`
 - database: PostgreSQL
 - ORM: SQLAlchemy
-- authentication: provider-neutral backend OIDC; repository-managed Authentik
-  locally, optionally federated to Entra, and direct Microsoft Entra ID in
-  production
-- local runtime: frontend, backend, prediction worker, database and local-only
-  Authentik in Docker contexts
-- production-only deployment: Coolify Docker Compose with a Caddy same-origin
-  frontend ingress
+- authentication target: provider-neutral backend OIDC connecting directly to
+  Microsoft Entra ID in development and production (local migration pending B)
+- local target: Caddy HTTPS, Vite, FastAPI, one prediction worker and PostgreSQL
+- production target: Docker Engine/Compose on UpCloud Ubuntu 26.04 LTS, Caddy
+  public TLS and private PostgreSQL 18 with persistent storage (pending G/F)
 - release migrations: one-shot job using the same backend image as the API and
   prediction worker
 - derived metrics: Organisation States owns equations and materialized values;
@@ -57,28 +63,28 @@ Kun tuotesuunta täsmentyy, lisää tähän lyhyt kuvaus:
 
 ---
 
-# Implemented Runtime Shape
-
-Production-rakenne:
+# Accepted Runtime Shape And Implementation Status
 
 ```text
-Browser --HTTPS--> Coolify edge --internal HTTP--> Frontend/Caddy :8080
-                                                   | React SPA
-                                                   +--/api--> FastAPI :8000
-                                                               |--> PostgreSQL
-                                                               +--> Entra ID
-Prediction worker -------------------------------------------> PostgreSQL
+Development: Browser --HTTPS--> local Caddy --> Vite / FastAPI --> Entra
+Production:  Browser --HTTPS--> Caddy (React) --/api--> FastAPI --> Entra
+                                                       |--> PostgreSQL 18
+Prediction worker ------------------------------------> PostgreSQL 18
+Migration job ----------------------------------------> PostgreSQL 18
 ```
 
-Only frontend/Caddy receives the public application domain. FastAPI and the
-prediction worker and one-shot migration service remain internal. API and
-worker start only after the migration job succeeds and use the same immutable
-backend image; the worker receives database configuration only. Local
-development replaces the Coolify/Caddy edge with Vite's same-origin `/api`
-proxy. Local Authentik is
-served through a separate loopback-only TLS Caddy boundary; it can optionally
-delegate credential verification to a separate local-only Entra registration
-while remaining Schatten's OIDC issuer.
+The production host is UpCloud Ubuntu 26.04 LTS. Caddy owns public TLS and
+persistent certificates. API, worker, migration job and database remain private;
+PostgreSQL runs in Docker with persistent storage initially. Migration success
+gates API/worker startup; backend health gates frontend readiness. Both API
+and worker use the same immutable backend image; worker config is database-only.
+
+The checked-in runtime is still the earlier design: local HTTP application
+`app.localhost:5173` with Authentik and optional federation, plus a production
+Coolify/Traefik adapter routing HTTP to frontend/Caddy:8080. These are
+implementation facts, not the target. B replaces local ingress/authentication;
+G replaces the production adapter. No Authentik, Traefik, forward-auth or
+`auth.lupaus.eu` is needed in the target. There is no staging environment.
 
 ---
 
@@ -235,19 +241,30 @@ If a concept changes meaning, lifecycle or ownership, update concept, domain, da
 
 Status: backend OIDC and application-session boundary implemented
 
-FastAPI on confidential OIDC relying party. Sama provider-neutral flow käyttää
-repository-managed Authentikia paikallisesti ja single-tenant Entraa suoraan
-productionissa. Paikallinen Authentik voidaan opt-in-testissä federatoida saman
-organisaation Entra-tenantiin erillisen local-only-rekisteröinnin kautta. React
-ei ole OIDC client eikä providerin access-, refresh- tai ID-token koskaan
-siirry browserille.
+FastAPI is a confidential OIDC relying party. ADR-013 selects direct
+single-tenant Entra in both environments using the existing shared registration
+and distinct secrets. React is not an OIDC client and receives no provider tokens.
+Local Authentik remains implemented until B; previous federation QA does not
+verify direct-Entra development or production ingress.
 
-ADR-006:n opt-in local federation rehearsal käyttää ketjua Schatten ->
-`https://auth.localhost:9443` -> Authentik -> single-tenant Entra. Schatten validoi
-edelleen Authentikin issuerin eikä tämä ketju korvaa human-approved limited
-production smokea, joka testaa suoran Schatten-to-Entra-polun ja Coolify-rajan.
-Local TLS Caddy on eri komponentti kuin production frontend/Caddy ja molemmat
-puuttuvat toistensa deploymenteista.
+| Purpose | Development | Production |
+| --- | --- | --- |
+| Public origin | `https://app.localhost` | `https://schatten.lupaus.eu` |
+| Entra Web callback | `https://app.localhost/api/v1/auth/callback` | `https://schatten.lupaus.eu/api/v1/auth/callback` |
+| Post-logout return | `https://app.localhost/login` | `https://schatten.lupaus.eu/login` |
+
+Use exact tenant-specific issuer, `openid profile email`, no Graph calls and
+no `email_verified` requirement. Registration identity, consent, permissions,
+assignments and callbacks are shared despite separate credentials. Application
+databases and cookies remain independent. Remove obsolete Authentik callbacks
+and its Graph permission from target configuration; actual tenant cleanup
+requires authorized setup and checks for other consumers under F.
+
+Retain guarded linking to a pre-provisioned active User and permanent
+`(issuer, subject)` ownership. Never rewrite old Authentik identities, create
+Users during login or copy sessions between environments. B provides explicit
+local-only designated-admin provisioning for already-seeded databases; D's
+production bootstrap remains restricted to a completely empty users table.
 
 ADR-004:n mukainen opaque sovellusistunto tallennetaan palvelinpuolelle vain
 hashatulla tunnisteella. FastAPI validoi istunnon ja aktiivisen User-rivin
@@ -645,46 +662,55 @@ Kielletty:
 
 # Deployment
 
-Status: production-only baseline decided in ADR-003 and ADR-005
+Status: ADR-013 amendment accepted; production runtime and rollout pending G/E/F
 
-Production-deployment tehdään Coolifyssa Docker Compose -topologialla. ADR-005
-poistaa staging-ympäristön aktiivisesta mallista muuttamatta ADR-003:n
-production-topologiaa tai ADR-001:n historiallista teknologiapäätöstä.
+Use Docker Engine/Compose on an **UpCloud Ubuntu 26.04 LTS** server. Caddy
+serves built React and terminates public TLS directly at
+`https://schatten.lupaus.eu`; it proxies `/api` to private FastAPI. Certificate
+storage persists across replacements. PostgreSQL 18 initially runs privately
+in Docker with persistent storage. Only Caddy exposes public application ports.
+SSH is restricted; FastAPI trusts only actual Caddy peers and no upstream edge.
 
-Tavoitemalli:
+A dedicated Ofelia container schedules daily backups and weekly Docker cleanup;
+it does not run application predictions. ADR-013 records its technology choice
+and mandatory hardening: pinned images, no scheduler network/ports, fixed read-only
+job configuration, confined local Docker socket and minimal runner mounts/secrets.
+Socket access is host-administrator-equivalent even when mounted `:ro`; verify
+the effective runner restrictions before activation. Implementation remains G/E/F.
 
-```text
-GitHub
-   |
-   v
-GitHub Actions
-   |
-   +--> backend image (commit-specific)
-   |       |
-   |       +--> one-shot migration job --> PostgreSQL
-   |       |
-   |       +--> backend after migration success
-   |       +--> prediction worker after migration success
-   |                    |
-   +--> frontend/Caddy image (same commit)
-                           |
-                           +--> starts after backend health
-                                      |
-                                      +--> Coolify production public domain
-```
+Initial builds run on UpCloud from an approved commit and produce frozen,
+immutable matching frontend/backend images. API, migration and the single
+prediction worker use the backend artifact; deployment does not rebuild.
+Migration success gates API/worker, and backend health gates frontend readiness.
+If builds fail or resource contention is unacceptable, consider GitHub Actions /
+GHCR builds with the same artifact contract in separately reviewed work.
 
-Backendin production-image sisältää sovelluksen, prediction workerin,
-migraatio-runnerin ja versionhallittavat SQL-migraatiot. Migration-, backend- ja
-prediction-worker-palvelut käyttävät samaa immutable imageä ja `DATABASE_URL`:ia.
-Migration-palvelun epäonnistuminen estää uuden backendin ja workerin
-käynnistymisen. Erillinen saman commitin frontend-image sisältää
-rakennetun React SPA:n ja Caddyn. Frontend käynnistyy vasta backendin health
-checkin jälkeen ja on ainoa julkisen production-domainin vastaanottava palvelu.
+First initialization is **migrations -> approved non-user reference seed ->
+empty-users-table administrator bootstrap**, then limited smoke. C/D commands
+are pending, explicit and database-only; never run the complete development seed
+in production or seed/bootstrap automatically on application startup.
 
-Coolify Docker Compose ei takaa rolling- tai zero-downtime deploymentia.
-Application rollback ei aja down-migraatiota automaattisesti, ja onnistuneesti
-ajetut forward-migraatiot jätetään paikalleen. Skeemamuutokset julkaistaan
-expand/contract-mallilla.
+**Initial backups are required:** daily encrypted on-server PostgreSQL backups
+in `/opt/postgres-backups` with 7-day retention, completed backup identifiers and
+successful isolated
+restore-rehearsal evidence as release gates. Volumes survive container replacement
+but are not backups. G implements tooling, E validates procedures and F activates
+and verifies production backups under operational approval. Missing evidence
+blocks release. This replaces the earlier no-initial-backup decision; the later
+destination amendment selects on-server storage initially. Host or disk loss can
+also destroy these backups; off-server protection is deferred and not a release gate.
+
+A future UpCloud Managed PostgreSQL migration remains separately planned,
+covering data transfer, connection/TLS/session advisory locks, cutover/rollback
+and continuity of backup encryption, retention and restore verification.
+
+Releases need explicit manual approval and narrow direct-Entra production smoke.
+Compose does not promise zero downtime. Retain matched stable artifacts for
+coordinated application rollback only if compatible with migrated schema;
+use expand/contract changes. No automatic down migrations, volume deletion,
+database reset or restoration. Application rollback cannot recover lost data;
+first rollout has no previous stable release. Stop/escalate when rollback is
+unavailable. E integrates B/C/D/G; F performs separately authorized setup/rollout.
 
 ## Infrastructure Principles
 
@@ -708,10 +734,11 @@ Päätökset:
 ```text
 ADR-001 Tech Stack: accepted
 ADR-002 Database Migration Tool: accepted
-ADR-003 Coolify Deployment And Release Migrations: accepted
+ADR-003 Coolify Deployment And Release Migrations: deployment superseded by ADR-013; release contract retained
 ADR-004 Authentication, Identity And Session Architecture: accepted
 ADR-005 Production-Only Deployment Environments: accepted
-ADR-006 Local Authentik TLS And Optional Entra Federation: accepted
+ADR-006 Local Authentik TLS And Optional Entra Federation: target superseded by ADR-013
+ADR-013 Shared Entra Registration And Local HTTPS Deployment: accepted; runtime/rollout pending
 ```
 
 ---

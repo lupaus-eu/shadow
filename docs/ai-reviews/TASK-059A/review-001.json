@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-059A/review-001",
+  "task": {
+    "id": "TASK-059A",
+    "path": "tasks/TASK-059A-shared-entra-local-https-architecture.md"
+  },
+  "round": 1,
+  "reviewed_at": "2026-09-17T17:54:36Z",
+  "reviewer": {
+    "label": "Codex self-review"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "964d3aeb1d9de4aa8ee78ac765a93ed2bf27aac1",
+    "head_sha": "1bbfa1a26c539f339cd432e610b79231083d222a",
+    "comparison": "964d3aeb1d9de4aa8ee78ac765a93ed2bf27aac1...1bbfa1a26c539f339cd432e610b79231083d222a",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "clean",
+    "summary": "No actionable bugs, regressions, security issues, missing required tests, documentation gaps or scope violations were found in the committed documentation-only change. Reviewed ADR supersession, direct Entra and shared-registration boundaries, task dependencies, existing-host setup assumptions, on-server encrypted backups with seven-day retention, release/restore gates and pending-runtime labels. Verified 24 changed documentation/diagram files, 65 local links/anchors, Markdown structure, preserved historical ADR bodies and completed QA, unchecked future task criteria and diff whitespace. Both committed SVGs match fresh renders and their previews were visually inspected. Application tests and production verification are outside this documentation review; shared-registration coupling and same-host backup loss remain explicitly accepted design risks for human review.",
+    "findings": [],
+    "prior_finding_dispositions": []
+  }
+}

@@ -4,10 +4,17 @@ Status: Accepted
 
 Date: 2026-08-06
 
-Partial supersession: ADR-005 removes staging from the active environment model.
-The Coolify production topology, immutable-image contract, one-shot migration
-gate and forward-only application rollback decisions in this ADR remain active.
-Historical staging text below is retained as decision history.
+Partial supersession: ADR-005 removes staging. The amended
+[ADR-013](ADR-013-shared-entra-local-https-deployment.md) replaces Coolify/Traefik
+and the external-database requirement with Docker Engine/Compose on UpCloud
+Ubuntu 26.04 LTS, direct Caddy TLS and private Docker PostgreSQL 18. It also
+retains initial-release backup/restore evidence gates, with daily encrypted
+on-server backups and 7-day retention.
+Immutable artifacts, migration-success gates and schema-compatible application
+rollback remain active. Runtime work is pending TASK-059G. Conflicting platform,
+and staging requirements below are historical; adoption of an
+existing untracked database is outside the fresh-install plan and requires
+separate review, not an implicit baseline or removal of its safeguards.
 
 ---
 

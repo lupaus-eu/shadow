@@ -33,7 +33,8 @@ Provides:
 
 Does NOT Own:
 
-- Microsoft Entra ID or local Authentik configuration and OIDC protocol adapters
+- Microsoft Entra ID configuration and OIDC protocol adapters (including the
+  legacy local Authentik adapter until TASK-059B)
 - organisation membership rules
 - organisation data
 - scenario or graph data
@@ -144,9 +145,11 @@ Exact HTTP operations and versioned paths are defined in backend implementation 
 Depends On:
 
 - the provider-neutral FastAPI OIDC adapter
-- repository-managed Authentik for local authentication, including optional
-  TASK-040 federation to Entra
-- tenant-specific Microsoft Entra ID directly in production
+- tenant-specific Microsoft Entra ID directly in both environments under
+  [ADR-013](../decisions/ADR-013-shared-entra-local-https-deployment.md), using
+  the shared confidential registration and separate environment secrets
+- until TASK-059B, the checked-in local runtime still uses Authentik; this is
+  legacy implementation status, not the accepted target
 
 Referenced By:
 
@@ -201,10 +204,14 @@ Both application roles are internal trusted users with access to all
 non-Users business domains and all organisations. Revisit ADR-004 before
 admitting users outside this boundary or adding organisation isolation.
 
-The initial direct-production Entra first-link accepts a validated tenant email
+Direct-Entra first linking in both environments accepts a validated tenant email
 only to find one pre-provisioned active User. Missing email prevents first link;
 exact `(issuer, subject)` is permanent afterward. There is no provider group
 mapping, Graph access, refresh token, back-channel logout or immediate IdP
 revocation.
-Local Authentik-to-Entra federation, when enabled by TASK-040, does not change
-these ownership or role rules.
+Use exact tenant-specific issuer and `openid profile email`; an `email_verified`
+claim is not required. Preserve old Authentik identity rows unchanged when local
+runtime migrates; new Entra identities use the same guarded linking rules.
+TASK-059B provides explicit local-only administrator provisioning on seeded dev
+databases; TASK-059D's production bootstrap still requires an empty users table.
+Login creates no Users, and database roles remain authoritative.

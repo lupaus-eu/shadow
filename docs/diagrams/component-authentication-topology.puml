@@ -1,69 +1,61 @@
 @startuml
-title Schatten - Authentication And Deployment Components
+!include <C4/C4_Container>
+title Schatten - Accepted ADR-013 Target (runtime / rollout B-G pending)
 
-skinparam componentStyle rectangle
-skinparam shadowing false
+System_Ext(entra, "Microsoft Entra ID", "One tenant; shared confidential Web registration\nShared permissions, consent, assignments and callbacks\nSeparate dev/prod secrets; exact tenant issuer\nopenid profile email; no Graph; email_verified not required")
 
-cloud "Microsoft Entra ID\none organisation tenant" as entra
+System_Boundary(local, "Development - https://app.localhost (pending B)") {
+  Person(local_browser, "Local browser")
+  Container(app_tls, "Application TLS", "Loopback Caddy :443", "Local CA; secure host-only cookies\nDirect /api routing; HMR WebSockets")
+  Container(vite, "Frontend", "Vite :5173", "SPA and HMR")
+  Container(local_api, "Local API", "FastAPI :8000", "Direct Entra; development secret\nGuarded pre-provisioned User linking")
+  Container(local_worker, "Prediction worker", "Backend runtime", "One worker; database settings only")
+  ContainerDb(local_db, "Local database", "PostgreSQL", "Independent development data\nPreserve old identities without issuer rewrites")
 
-rectangle "Local development / testing" {
-  actor "Local browser" as local_browser
-  component "Vite\nsame-origin /api proxy" as vite
-  component "Local FastAPI" as local_api
-  component "Local prediction worker\ndatabase settings only" as local_worker
-  database "Local PostgreSQL" as local_db
-  component "Local TLS Caddy\nhttps://auth.localhost:9443\nloopback-only host port" as local_tls
-  cloud "Repository-managed Authentik" as authentik
-
-  local_browser --> vite : HTTP
-  vite --> local_api : /api
-  local_api --> local_db
-  local_worker --> local_db : durable queue + advisory lock
-  local_browser ..> local_tls : OIDC browser redirects\nHTTPS
-  local_api ..> local_tls : OIDC discovery, token, JWKS\nHTTPS + local CA trust
-  local_tls --> authentik : Internal HTTP :9000
+  Rel(local_browser, app_tls, "Uses", "HTTPS")
+  Rel(app_tls, vite, "SPA / HMR", "HTTP / WebSocket")
+  Rel(app_tls, local_api, "/api; fixed headers", "HTTP")
+  Rel(local_api, local_db, "Users, identities, sessions")
+  Rel(local_worker, local_db, "Queue + advisory lock")
 }
 
-rectangle "Production (only deployed environment)" {
-  actor "Production browser" as prod_browser
-  cloud "Coolify edge\n(public TLS)" as edge
-  component "Frontend / Caddy\nSPA + /api proxy\ninternal HTTP :8080" as caddy
-  component "Production FastAPI\nconfidential OIDC client" as prod_api
-  component "Prediction worker\nsame backend image\nno public port" as prod_worker
-  component "One-shot migration\nsame backend image" as migration
-  database "Production PostgreSQL" as prod_db
+System_Boundary(prod, "UpCloud Ubuntu 26.04 LTS - Docker Engine / Compose (pending G/F)") {
+  Person(prod_browser, "Production browser")
+  Container(caddy, "Frontend and TLS", "Caddy :80 / :443 + React", "https://schatten.lupaus.eu\nPersistent certificate/account storage")
+  Container(prod_api, "Production API", "FastAPI :8000", "Direct Entra; production secret\nPrivate; database roles and sessions")
+  Container(prod_worker, "Prediction worker", "Same backend image", "One worker; private; database settings only")
+  Container(migration, "One-shot migration", "Same backend image", "Success gates API and worker startup")
+  Container(ofelia, "Operational scheduler", "Ofelia; pinned digest", "Fixed read-only job file\nNo network or public ports\nDaily backups / weekly cleanup")
+  Container(docker_api, "Host control plane", "Docker Engine Unix socket", "Host-administrator-equivalent authority\nSocket :ro does not restrict API writes")
+  Container(ops_jobs, "Operational job runners", "Pinned images; hardened execution", "Backup: private DB access + required secrets\nWrites /opt/postgres-backups; 7-day retention\nCleanup: protected resources + exclusion locks")
+  ContainerDb(prod_db, "Production database", "PostgreSQL 18 container", "Private; persistent volume\nMigration -> reference seed -> admin (C/D pending)\nDaily encrypted on-server backups\n/opt/postgres-backups; host-loss risk\n7-day retention; backup + restore evidence gates")
 
-  prod_browser --> edge : HTTPS, one public origin
-  edge --> caddy : Internal HTTP\ntrusted edge CIDRs only
-  caddy --> prod_api : /api, fixed proxy headers
-  prod_api --> prod_db
-  prod_worker --> prod_db : durable queue + advisory lock
-  migration --> prod_db : up migrations
+  Rel(prod_browser, caddy, "Uses", "HTTPS")
+  Rel(caddy, prod_api, "/api; fixed headers", "HTTP")
+  Rel(prod_api, prod_db, "Users, identities, sessions")
+  Rel(prod_worker, prod_db, "Queue + advisory lock")
+  Rel(migration, prod_db, "Forward migrations")
+  Rel(ofelia, docker_api, "Triggers reviewed jobs", "Local Unix socket")
+  Rel(docker_api, ops_jobs, "Executes with verified restrictions")
+  Rel(ops_jobs, prod_db, "Backup runner only", "Private database network")
 }
 
-authentik ..> entra : Optional TASK-040 federation\nlocal app registration
-prod_api ..> entra : Direct OIDC\nseparate production app registration
+Rel(local_api, entra, "Direct OIDC; callback:\nhttps://app.localhost/api/v1/auth/callback", "HTTPS")
+Rel(prod_api, entra, "Direct OIDC; callback:\nhttps://schatten.lupaus.eu/api/v1/auth/callback", "HTTPS")
 
-note bottom of authentik
-  Local federation is supplemental evidence.
-  It does not replace the limited direct-Entra
-  production smoke or validate the Coolify boundary.
+note bottom of app_tls
+  Target excludes Authentik in both environments.
+  Current local HTTP / Authentik runtime remains until B.
+  Browser authorization redirects go directly to Entra.
+  Logout returns to /login at each application origin.
 end note
 
 note bottom of caddy
-  Only Caddy receives the public domain.
-  Backend, worker, migration and database stay internal.
+  Caddy owns public TLS; no Traefik or Coolify in target.
+  Current release adapter remains until G.
+  Backend health gates frontend readiness.
+  Build on UpCloud; deploy frozen images without rebuild.
+  Persistent volumes are not backups.
+  Backup tooling / activation pending G/E/F.
 end note
-
-note bottom of prod_worker
-  Migration success gates API and worker startup.
-  Worker has its own health check, automatic restart,
-  init process and shutdown grace.
-end note
-
-note bottom of prod_api
-  React never receives provider tokens.
-  Schatten's database is the only role source.
-end note
-
 @enduml

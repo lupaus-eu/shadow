@@ -4,6 +4,13 @@ This checklist records TASK-057E local runtime evidence. Use only disposable or
 local development data. It does not authorize production deployment, failure
 injection, down migrations or Coolify changes.
 
+Architecture amendment: [ADR-013](../decisions/ADR-013-shared-entra-local-https-deployment.md)
+replaces the platform and local identity target with UpCloud/Compose, direct
+Caddy TLS and direct Entra. The TASK-057E procedures/results below are preserved
+historical evidence for the earlier runtime, not verification of the new design.
+TASK-059G/E provides equivalent Compose and worker checks; old unavailable
+Coolify checks are not gates for the new deployment and must not be marked passed.
+
 ## Preconditions
 
 - Run `make dev-up` so migration 015 and the development seed complete before

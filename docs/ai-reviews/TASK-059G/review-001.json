@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-059G/review-001",
+  "task": {
+    "id": "TASK-059G",
+    "path": "tasks/TASK-059G-upcloud-docker-runtime.md"
+  },
+  "round": 1,
+  "reviewed_at": "2026-09-18T06:41:42Z",
+  "reviewer": {
+    "label": "Codex self-review"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "74233cf6409db52c9cd5cd49372d1334ed6defa1",
+    "head_sha": "9b2dd7419b13c870f1679548c393b5042f97565c",
+    "comparison": "74233cf6409db52c9cd5cd49372d1334ed6defa1...9b2dd7419b13c870f1679548c393b5042f97565c",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "The committed documentation adds Ofelia as the scheduler for daily backups and weekly Docker cleanup, with useful protections for persistent data and rollback artifacts. Two follow-up gaps remain: the privileged Docker control-plane component lacks explicit hardening requirements, and the new technology choice is not recorded in the architecture decision trail.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "security",
+        "severity": "medium",
+        "summary": "Ofelia's privileged Docker control-plane access lacks mandatory hardening requirements.",
+        "rationale": "The task and deployment documentation require Ofelia to access the Docker API/socket so it can run backup and cleanup jobs. That access can provide broad control over the host and application containers. The documents mention ownership, logs and required mounts, but do not require an immutable/pinned Ofelia image, no published ports, a restricted operational network, controlled socket exposure, or a minimal secret and mount set.",
+        "recommendation": "Require a pinned Ofelia image reference, no public ports or unnecessary network access, controlled Docker-socket exposure, read-only mounts except the required backup output, and only the credentials needed by the backup job. Add verification of these boundaries to the Compose/security QA.",
+        "locations": [
+          {
+            "path": "tasks/TASK-059G-upcloud-docker-runtime.md",
+            "line": 33
+          },
+          {
+            "path": "docs/DEPLOYMENT.md",
+            "line": 63
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "The Ofelia technology choice is not recorded in the architecture decision trail.",
+        "rationale": "The committed task and deployment documentation now select Ofelia as the production scheduler. ADR-013 assigns G the runtime and backup tooling but does not record this scheduler choice, its operational-only boundary, or the associated Docker-socket trade-off. This leaves the new deployment technology without a durable architectural rationale and security boundary in the repository source of truth.",
+        "recommendation": "Update ADR-013 or create a focused ADR that records Ofelia's operational-only scope, scheduling responsibilities, security boundary and replacement/retirement conditions, then link the task and deployment documentation to it.",
+        "locations": [
+          {
+            "path": "tasks/TASK-059G-upcloud-docker-runtime.md",
+            "line": 15
+          },
+          {
+            "path": "docs/DEPLOYMENT.md",
+            "line": 60
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": []
+  }
+}

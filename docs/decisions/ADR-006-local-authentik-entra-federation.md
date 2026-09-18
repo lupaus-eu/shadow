@@ -6,6 +6,16 @@ Date: 2026-08-20
 
 Amended: 2026-08-24 to align with ADR-005's production-only environment model.
 
+Superseded target: amended
+[ADR-013](ADR-013-shared-entra-local-https-deployment.md) replaces local Authentik
+and federation with direct Entra at `https://app.localhost`, sharing the existing
+registration with production using separate secrets. The decisions below remain
+historical and describe the still-implemented runtime until TASK-059B. B preserves
+existing data, old volumes and identity rows and reuses valid CA material where
+possible. Tenant callback/Graph permission cleanup belongs to authorized F setup
+only after remaining-consumer checks. Historical federation QA does not verify
+the direct-Entra design.
+
 ## Context
 
 ADR-004 keeps repository-managed Authentik as Schatten's daily local OIDC

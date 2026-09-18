@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-059G/review-002",
+  "task": {
+    "id": "TASK-059G",
+    "path": "tasks/TASK-059G-upcloud-docker-runtime.md"
+  },
+  "round": 2,
+  "reviewed_at": "2026-09-18T07:17:39Z",
+  "reviewer": {
+    "label": "Codex self-review"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "964d3aeb1d9de4aa8ee78ac765a93ed2bf27aac1",
+    "head_sha": "69812703189d431858e1ac6ecd0aa685bffcb1b4",
+    "comparison": "964d3aeb1d9de4aa8ee78ac765a93ed2bf27aac1...69812703189d431858e1ac6ecd0aa685bffcb1b4",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "clean",
+    "summary": "Reviewed the complete committed documentation branch against its main-branch merge base for bugs, regressions, security gaps, missing verification, documentation consistency and scope. Both prior Ofelia findings are fixed: ADR-013 records the decision and host-level Docker authority, and G/E/F require scheduler and effective job-runner hardening before activation. Checked 20 Markdown files and 69 local links/anchors, future task checkboxes, SVG XML and whitespace; rendered and visually inspected the revised topology. Only documentation and diagrams changed. No application tests, live host audit, scheduler execution, backup/restore or deployment was performed; those remain future task obligations. No further actionable findings identified. This review is advisory and does not replace human approval.",
+    "findings": [],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-059G/review-001",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "ADR-013, deployment guidance and G/E/F now require immutable scheduler/job images, no scheduler network or published ports, confined local socket access, operator-controlled read-only job configuration, non-root execution, dropped capabilities, no-new-privileges and minimal mounts/secrets. QA must inspect effective API-created runners, and unmet controls block activation. The residual host-level authority of Docker access is explicit; a read-only socket is not presented as API authorization.",
+        "validated_by": {
+          "review_id": "TASK-059G/review-002",
+          "commit": "69812703189d431858e1ac6ecd0aa685bffcb1b4"
+        }
+      },
+      {
+        "record_id": "TASK-059G/review-001",
+        "finding_id": "F-002",
+        "disposition": "fixed",
+        "rationale": "ADR-013 now records Ofelia selection, the host-timer alternative, operational-only scope, daily backup and weekly cleanup responsibilities, Docker authority trade-off, mandatory controls and replacement/retirement conditions. Task and deployment links resolve; architecture guidance and the rendered topology reflect the decision.",
+        "validated_by": {
+          "review_id": "TASK-059G/review-002",
+          "commit": "69812703189d431858e1ac6ecd0aa685bffcb1b4"
+        }
+      }
+    ]
+  }
+}

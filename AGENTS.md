@@ -55,14 +55,45 @@ Päätetty teknologiapino:
 - database: PostgreSQL
 - ORM: SQLAlchemy
 - migrations: repository-owned Python/Psycopg runner and paired SQL migrations
-- authentication: repository-managed Authentik locally and Microsoft Entra ID
-  in production; optional local Authentik-to-Entra federation is defined by
-  ADR-006/TASK-040
-- local runtime: frontend, backend, prediction worker ja database erillisinä
-  Docker Compose -palveluina
-- production-only deployment: Coolify Docker Compose, with portable
-  frontend/backend images, a prediction worker using the backend image, and the
-  one-shot migration job defined by ADR-003/ADR-005/ADR-012
+- authentication: provider-neutral backend OIDC, with direct Microsoft Entra ID
+  in both development and production under amended ADR-013; the checked-in
+  local Authentik runtime remains until TASK-059B implements its removal
+- local target: loopback Caddy HTTPS at `https://app.localhost`, routing Vite and
+  FastAPI, plus a separate prediction worker and application database
+- production target: Docker Engine/Compose on an UpCloud Ubuntu 26.04 LTS host;
+  Caddy directly terminates TLS at `https://schatten.lupaus.eu`, serves React and
+  proxies FastAPI; initially private PostgreSQL 18 in Docker with persistent storage
+- release contracts: immutable matching frontend/backend artifacts, one-shot
+  migration-success gates, backend health gating frontend, and one prediction worker
+
+ADR-013 supersedes Coolify/Traefik and local Authentik/federation choices.
+Both environments share the existing single-tenant confidential Entra registration
+with separate secrets and independent databases. Use exact tenant issuer,
+`openid profile email`, no Graph calls and no `email_verified` requirement.
+Guarded pre-provisioned User linking, permanent identity ownership, sessions,
+CSRF and database roles remain unchanged. Builds initially run on UpCloud;
+GitHub Actions/GHCR is a possible later build location with the same image contract.
+
+Initial release requires daily encrypted on-server PostgreSQL backups in
+`/opt/postgres-backups` with 7-day retention, recorded backup identifiers and
+successful restore-rehearsal evidence. Persistent volumes survive container
+replacement but are not backups.
+Ofelia schedules backups and weekly Docker maintenance under ADR-013's mandatory
+hardening; implementation is pending G/E/F. Docker socket access grants host-level
+authority even when mounted `:ro`; verify scheduler and runner restrictions before
+activation. Ofelia never replaces the single application prediction worker.
+G delivers backup tooling, E the runbook/QA, and F authorized activation and
+verification. Missing backup or restore evidence blocks release. A later move
+to UpCloud Managed PostgreSQL must preserve or explicitly revise this policy;
+application rollback never automatically restores the database. These initial
+same-host backups do not protect against loss of the host or its disk; that
+limitation is accepted until a separately planned off-server/managed solution.
+
+TASK-059A changes documentation only. Runtime, shared seed/admin CLIs, QA and
+rollout remain pending B/C/D/G/E/F; the current Coolify adapter remains until G.
+The non-user metamodel seed is approved production reference data; development
+Users and example business data remain forbidden in production. First setup is
+migrations -> reference seed -> empty-users-table administrator bootstrap.
 
 ---
 

@@ -10,6 +10,15 @@ identity, session, authorization and production Entra decisions in this ADR
 remain active. Historical environment text below is retained as decision
 history.
 
+Further partial supersession: amended
+[ADR-013](ADR-013-shared-entra-local-https-deployment.md) selects direct Entra in
+both environments, one shared confidential registration, distinct secrets and
+HTTPS origins. Local Authentik and separate-registration/callback policies below
+are historical. Exact tenant issuer, guarded first-link, permanent identity,
+sessions and database authorization remain active. Direct Entra uses
+`openid profile email`, no Graph calls and no `email_verified` requirement in
+both environments. Local runtime migration remains pending TASK-059B.
+
 ---
 
 # Context

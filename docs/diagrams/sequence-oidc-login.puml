@@ -1,17 +1,25 @@
 @startuml
-title Schatten - Same-Origin OIDC Login And Application Session
+title Schatten - Direct Entra Login (ADR-013 target; runtime / setup pending B/G/F)
 
 actor Browser
-participant "Frontend / Caddy\n(one public origin)" as Caddy
+participant "Application ingress\nCaddy / same-origin API" as Caddy
 participant "FastAPI" as API
-participant "Configured OIDC provider\nAuthentik: local\nEntra: production direct" as Provider
+participant "Microsoft Entra ID\nDirect in both environments" as Provider
 database PostgreSQL as DB
 
 note over Provider
-  Local Authentik is exposed through its loopback TLS Caddy
-  and may federate to Entra through a separate local registration.
-  That upstream hop does not replace the limited direct-Entra
-  production smoke or validate the Coolify boundary.
+  One shared single-tenant confidential registration; separate dev/prod secrets.
+  Exact tenant issuer; openid profile email; no Graph calls.
+  No email_verified claim requirement; missing email prevents first linking.
+  Registration permissions, consent, assignments and callbacks are shared.
+end note
+
+note over Browser, Caddy
+  Development: https://app.localhost -> local Caddy -> HTTP API / Vite.
+  Production: https://schatten.lupaus.eu -> Caddy TLS / React -> HTTP API.
+  Entra Web callback is /api/v1/auth/callback at each exact origin.
+  Post-logout return is /login at each origin; no Authentik or Traefik.
+  Current local Authentik and release adapter remain until B/G.
 end note
 
 Browser -> Caddy : GET /api/v1/auth/login?return_to=/workspace
@@ -29,8 +37,14 @@ end note
 Caddy -> API : Callback with fixed proxy headers
 API -> DB : Atomically consume browser-bound transaction
 API -> Provider : Redeem code with confidential client + verifier
-Provider --> API : Validated identity claims
-API -> DB : Resolve permanent (issuer, subject)\nCreate hashed opaque application session
+Provider --> API : Token response
+API -> API : Validate signature, exact issuer, audience, nonce and claims
+note right of DB
+  Login never creates Users.
+  Existing issuer/subject bindings are not rewritten.
+  Each environment has an independent database.
+end note
+API -> DB : Guarded first-link to pre-provisioned User, or exact (issuer, subject)\nCreate hashed opaque application session
 API --> Browser : 303 clean local path\nSecure HttpOnly SameSite=Strict cookie
 Browser -> Caddy : GET SPA and /api with session cookie
 Caddy -> API : Same-origin /api request

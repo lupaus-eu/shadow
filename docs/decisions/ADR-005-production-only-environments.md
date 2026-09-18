@@ -4,6 +4,17 @@ Status: Accepted
 
 Date: 2026-08-21
 
+Partial supersession: amended
+[ADR-013](ADR-013-shared-entra-local-https-deployment.md) selects direct Entra
+in both environments sharing the existing registration with distinct secrets
+and HTTPS origins. It replaces Coolify with UpCloud Ubuntu 26.04 LTS,
+Docker/Compose and direct Caddy TLS, initially with private Docker PostgreSQL 18.
+It retains backup identifiers and restore-evidence release gates, with daily
+encrypted on-server backups and 7-day retention. Volumes are not backups.
+Conflicting local Authentik, platform and separate-registration requirements
+below are historical; backup evidence requirements remain active. The two
+environments and limited production smoke remain active; B/C/D/G/E/F are pending.
+
 ---
 
 # Context
