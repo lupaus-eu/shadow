@@ -334,6 +334,13 @@ Current local/dev seed:
 db/init/002_seed_development_data.sql
 ```
 
+Its metamodel insertion logic is shared with the approved production command in:
+
+```text
+db/init/001_seed_reference_data.sql
+db/init/metamodel_state_##default##.json
+```
+
 The seed creates non-production bootstrap data only:
 
 - active `Development Consultant` (`consultant@example.local`) and `Development
@@ -347,6 +354,13 @@ The default metamodel uses `metamodels.organisation_id = NULL` and stores the JS
 The seed does not create identities, login transactions, sessions,
 organisations, scenarios, org states, events, graph nodes, graph edges,
 timeseries, timeserie values, customers, contacts or customer addresses.
+
+After migrations, the production backend image exposes the explicit database-only
+`python -m app.seed_reference_data` command. Both it and the development wrapper
+supply the same JSON through a transaction-local PostgreSQL setting and execute
+the same advisory-lock-serialized SQL. The production command inserts no Users or
+business data, preserves an existing active default unchanged, and is never an
+API/worker startup hook. This is reference-data initialization, not a migration.
 
 Migration 009 assumes there is no retained User data at migration 008. It adds
 required email directly, without a nullable transition or backfill. Disposable

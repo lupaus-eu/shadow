@@ -64,8 +64,9 @@ Päätetty rakenne:
 
 [ADR-013](docs/decisions/ADR-013-shared-entra-local-https-deployment.md) records
 the accepted amendment. TASK-059B implements the local HTTPS/direct-Entra
-runtime; the existing production adapter remains until G. Seed/bootstrap,
-integrated QA and rollout are pending C/D/E/F/G.
+runtime and TASK-059C implements the non-user reference seed. The existing
+production adapter remains until G; bootstrap, integrated QA and rollout are
+pending D/E/F/G.
 Volumes are not backups; release requires completed backup identifiers and
 successful restore-rehearsal evidence. Backup setup remains pending G/E/F.
 

@@ -143,6 +143,26 @@ safe lifecycle logs. Queue ordering, blocked-child cancellation, atomic
 publication and interrupted-request recovery remain covered by the PostgreSQL
 pytest harness below; both evidence sets are required.
 
+## Production Reference-Data Seed
+
+TASK-059C tests the database-only reference seed against disposable PostgreSQL
+schemas. The suite runs the production Python path and the real stdin-driven
+development `psql` wrapper, then compares every mapped metamodel/type/attribute/
+connection field while confirming that only development receives its two Users.
+It also covers no-op/idempotent behavior, concurrent callers, an existing active
+default, atomic rollback and failure before migrations:
+
+```bash
+cd backend
+MIGRATION_TEST_DATABASE_URL=postgresql://schatten:schatten_dev_password@localhost:5432/schatten \
+  uv run pytest tests/test_seed_reference_data_postgresql_integration.py -v
+```
+
+The production image check confirms that only the shared SQL/JSON resources are
+packaged, the command runs as numeric user `10001` from `/tmp` with only
+`DATABASE_URL`, and a repeated invocation succeeds as a no-op. Never point this
+suite or the image command at production.
+
 ## Production Frontend And Authentication Deployment
 
 TASK-039G adds the immutable frontend/Caddy artifact and makes it the only

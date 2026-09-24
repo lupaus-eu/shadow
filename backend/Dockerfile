@@ -28,6 +28,7 @@ RUN uv sync --frozen --no-dev
 COPY backend/app/ ./app/
 COPY backend/migrate.py ./migrate.py
 COPY db/migrations/ /workspace/db/migrations/
+COPY db/init/001_seed_reference_data.sql db/init/metamodel_state_##default##.json /workspace/db/init/
 
 ENV PATH="/workspace/backend/.venv/bin:${PATH}"
 ENV PYTHONPATH="/workspace/backend"

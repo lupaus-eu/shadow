@@ -269,24 +269,27 @@ unacceptable build duration trigger reassessment. GitHub Actions/GHCR can later
 build the same artifact contract, followed by approved deployment of frozen
 images. No automatic deployment or off-server workflow is implemented here.
 
-## First Initialization (Commands Pending C/D)
+## First Initialization (Reference Seed Implemented; Bootstrap Pending D)
 
 For a fresh database, the explicit order is:
 
 1. Apply reviewed forward migrations through the release backend image.
-2. Run `python -m app.seed_reference_data` from that artifact. It shares the
-   existing development seed's non-user metamodel SQL/JSON, inserts atomically
-   only when no active default exists, and otherwise preserves it unchanged.
+2. Run the implemented `python -m app.seed_reference_data` command from that
+   artifact with only `DATABASE_URL`. It shares the development seed's non-user
+   metamodel SQL/JSON, inserts atomically only when no active default exists,
+   and otherwise preserves it unchanged.
 3. Run interactive `python -m app.bootstrap_admin` from that artifact in a private
    operator terminal. Validate the designated Entra name/email; create one fixed
    admin only when the entire users table is empty, including soft-deleted rows.
 4. First direct-Entra login links the pre-provisioned admin normally. Provision
    subsequent Users through existing admin functionality, then run limited smoke.
 
-C/D are database-only commands, create no identities/sessions and do not initialize
-OIDC. No personal input in command arguments/evidence. They never run automatically
-on application startup. Subsequent releases run migrations, not first-admin
-bootstrap. Never run the full `002_seed_development_data.sql` in production.
+C's reference seed is database-only, creates no Users, identities or sessions,
+and does not initialize OIDC. D's planned bootstrap has the same configuration
+boundary but accepts private interactive administrator input. Neither runs
+automatically on application startup. Subsequent releases run migrations, not
+first-admin bootstrap. Never run the full `002_seed_development_data.sql` in
+production.
 
 This is a fresh-install plan. Existing untracked production database adoption is
 outside it and requires a separate reviewed procedure; historical baseline/

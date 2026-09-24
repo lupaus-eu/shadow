@@ -89,8 +89,9 @@ application rollback never automatically restores the database. These initial
 same-host backups do not protect against loss of the host or its disk; that
 limitation is accepted until a separately planned off-server/managed solution.
 
-TASK-059A changes documentation only. Runtime, shared seed/admin CLIs, QA and
-rollout remain pending C/D/G/E/F; the current Coolify adapter remains until G.
+TASK-059A changes documentation only. The shared reference-data seed CLI is
+implemented by TASK-059C. Admin bootstrap, production runtime, QA and rollout
+remain pending D/G/E/F; the current Coolify adapter remains until G.
 The non-user metamodel seed is approved production reference data; development
 Users and example business data remain forbidden in production. First setup is
 migrations -> reference seed -> empty-users-table administrator bootstrap.

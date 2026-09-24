@@ -36,9 +36,12 @@ make local-verify
 
 `make dev-up` starts the application database, applies pending migrations and
 the idempotent development seed, then starts the backend, one prediction worker,
-Vite and local Caddy. It never runs a reset, `down -v`, volume deletion or
-provider mutation. The database port and ingress are bound only to loopback;
-FastAPI and Vite have no host-published ports.
+Vite and local Caddy. The development wrapper keeps its two local Users in the
+same transaction while invoking the shared metamodel-only SQL/JSON used by
+`python -m app.seed_reference_data`; never use that full wrapper in production.
+It never runs a reset, `down -v`, volume deletion or provider mutation. The
+database port and ingress are bound only to loopback; FastAPI and Vite have no
+host-published ports.
 
 All local Compose commands load `.env` followed by `.env.entra.local`, including
 database-only, preview and diagram commands: Compose validates the required

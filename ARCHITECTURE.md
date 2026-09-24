@@ -14,9 +14,9 @@ Status: MVP bootstrap with authentication and release ingress implemented
 direct Entra in both environments, distinct HTTPS origins, a shared registration,
 and Docker deployment on UpCloud Ubuntu 26.04 LTS with direct Caddy TLS and
 private Docker PostgreSQL 18. Daily encrypted on-server backups with 7-day
-retention and backup/restore evidence are required, pending implementation. Runtime,
-reference-seed/admin CLIs, integrated QA and rollout remain pending C/D/G/E/F.
-This documentation amendment changes no runtime.
+retention and backup/restore evidence are required, pending implementation. The
+reference-data seed CLI is implemented; production runtime, administrator
+bootstrap, integrated QA and rollout remain pending D/G/E/F.
 
 Teknologiapino on päätetty ADR-001:ssä.
 
@@ -687,9 +687,10 @@ If builds fail or resource contention is unacceptable, consider GitHub Actions /
 GHCR builds with the same artifact contract in separately reviewed work.
 
 First initialization is **migrations -> approved non-user reference seed ->
-empty-users-table administrator bootstrap**, then limited smoke. C/D commands
-are pending, explicit and database-only; never run the complete development seed
-in production or seed/bootstrap automatically on application startup.
+empty-users-table administrator bootstrap**, then limited smoke. C's explicit,
+database-only reference seed command is implemented; D's administrator bootstrap
+remains pending. Never run the complete development seed in production or run
+seed/bootstrap automatically on application startup.
 
 **Initial backups are required:** daily encrypted on-server PostgreSQL backups
 in `/opt/postgres-backups` with 7-day retention, completed backup identifiers and

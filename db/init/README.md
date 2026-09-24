@@ -22,7 +22,9 @@ Current init scripts:
 
 | Script | Purpose |
 | --- | --- |
-| `002_seed_development_data.sql` | Local/dev-only seed for consultant/admin users matching the Authentik fixtures and the default metamodel from `db/init/metamodel_state_##default##.json`. |
+| `001_seed_reference_data.sql` | Shared metamodel-only insertion logic used by the production CLI and development wrapper. |
+| `002_seed_development_data.sql` | Local/dev-only wrapper that inserts consultant/admin users and invokes the shared reference seed. |
+| `metamodel_state_##default##.json` | The single approved default-metamodel source for both callers. |
 
 ---
 
@@ -84,7 +86,14 @@ PGPASSWORD=schatten_dev_password psql -h localhost -p 5432 -U schatten -d schatt
 Do not run the development seed before the migration runner reports that no
 migrations are pending.
 
-`002_seed_development_data.sql` is idempotent for normal local use:
+`002_seed_development_data.sql` is idempotent for normal local use. It reads the
+JSON source, stores it in the transaction-local
+`schatten.seed_reference_data.metamodel_json` PostgreSQL setting and includes
+`001_seed_reference_data.sql` in the same transaction. The shared SQL obtains a
+transaction-scoped advisory lock before checking for an active default, so local
+and production callers cannot interleave reference inserts.
+
+The development wrapper:
 
 - it ensures active `Development Consultant` (`consultant@example.local`) and
   `Development Admin` (`admin@example.local`) rows when those active emails are
@@ -94,3 +103,15 @@ migrations are pending.
 - it does not create organisations, scenarios, org states, events, graph nodes,
   graph edges, timeseries, timeserie values, customers, contacts or customer
   addresses
+
+The production backend image packages only the shared SQL and JSON, not the
+development wrapper. After migrations, run its database-only command explicitly:
+
+```bash
+DATABASE_URL=postgresql://user:password@database:5432/schatten \
+  python -m app.seed_reference_data
+```
+
+The command inserts one complete default only when no active default exists;
+otherwise it succeeds as a no-op without repairing or changing existing content.
+It never inserts development Users or runs automatically at application startup.

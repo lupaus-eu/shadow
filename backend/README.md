@@ -67,14 +67,25 @@ docker build --target production -t schatten-backend:local -f backend/Dockerfile
 ```
 
 The default command runs the production API. The same image provides the
-one-shot release migration command. Both run as numeric user/group
-`10001:10001`:
+one-shot release migration command and explicit reference-data seed. All run as
+numeric user/group `10001:10001`:
 
 ```bash
 docker run --rm \
   -e DATABASE_URL=postgresql://user:password@database:5432/schatten \
   schatten-backend:local python migrate.py up
+
+docker run --rm \
+  -e DATABASE_URL=postgresql://user:password@database:5432/schatten \
+  --workdir /tmp \
+  schatten-backend:local python -m app.seed_reference_data
 ```
+
+Run the seed only after migrations. It needs only `DATABASE_URL`, inserts the
+approved default metamodel without Users or business records, and reports a
+successful no-op when an active default already exists. It resolves its packaged
+SQL/JSON independently of the working directory and does not initialize FastAPI
+or OIDC configuration.
 
 Deployment policy and secret-safe operator commands are documented in
 `docs/DEPLOYMENT.md`.
