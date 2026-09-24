@@ -15,11 +15,10 @@ Coolify checks are not gates for the new deployment and must not be marked passe
 
 - Run `make dev-up` so migration 015 and the development seed complete before
   API, prediction worker and frontend startup.
-- Trust the repository-managed local Authentik CA and use
-  `http://app.localhost:5173`.
+- Trust the local application CA and use `https://app.localhost`.
 - Use non-sensitive synthetic prediction names. Never paste snapshots,
   credentials, cookies, CSRF tokens or personal data into this record.
-- Keep a terminal ready for `docker compose ps prediction-worker` and
+- Keep a terminal ready for `docker compose --env-file .env --env-file .env.entra.local ps prediction-worker` and
   credential-safe worker logs.
 
 ## Browser And Runtime Procedure

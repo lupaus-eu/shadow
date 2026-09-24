@@ -3,10 +3,10 @@ SHELL := /bin/sh
 .DEFAULT_GOAL := help
 
 COMPOSE := docker compose --env-file .env
-COMPOSE_LOCAL := $(COMPOSE) --env-file .env.authentik.local
+COMPOSE_LOCAL := $(COMPOSE) --env-file .env.entra.local
 MIGRATE := uv run --env-file .env --project backend python backend/migrate.py up
 SEED := $(COMPOSE_LOCAL) exec -T database sh -c 'psql -v ON_ERROR_STOP=1 -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"' < db/init/002_seed_development_data.sql
-AUTHENTIK_INIT := if [ ! -f .env.authentik.local ]; then scripts/setup-local-authentik.sh; else scripts/setup-local-authentik-tls.sh; fi
+LOCAL_INIT := if [ ! -f .env.entra.local ] || ! grep -q '^OIDC_CLIENT_SECRET=' .env.entra.local; then scripts/setup-local-entra.sh; fi; scripts/setup-local-app-tls.sh
 
 .PHONY: \
 	help \
@@ -14,7 +14,7 @@ AUTHENTIK_INIT := if [ ! -f .env.authentik.local ]; then scripts/setup-local-aut
 	check backend-check backend-lint backend-test backend-typecheck \
 	frontend-check frontend-lint frontend-test frontend-build \
 	dev-init db-up migrate seed dev-up dev-down preview-up \
-	diagrams auth-smoke auth-verify
+	diagrams local-verify provision-local-admin
 
 help:
 	@printf '%s\n' \
@@ -31,7 +31,7 @@ help:
 		'  frontend-check      Run frontend lint, tests, and build' \
 		'' \
 		'Local development (uses local Docker resources only):' \
-		'  dev-init            Create missing local configuration; reuse existing Authentik secrets' \
+		'  dev-init            Create missing private direct-Entra configuration and local TLS material' \
 		'  db-up               Start the local application database' \
 		'  migrate             Apply pending migrations (requires the local database)' \
 		'  seed                Apply migrations and the dev seed (requires dev-init and database)' \
@@ -41,8 +41,8 @@ help:
 		'' \
 		'Local verification:' \
 		'  diagrams            Render the default PlantUML diagram' \
-		'  auth-smoke          Run the local Authentik discovery/JWKS smoke' \
-		'  auth-verify         Verify local Authentik and Compose configuration' \
+		'  local-verify        Verify local Caddy/direct-Entra Compose configuration' \
+		'  provision-local-admin  Interactively pre-provision a designated local Entra admin' \
 		'' \
 		'Production, Entra, release, rollback, baseline, reset, and cleanup operations' \
 		'are intentionally not available through Make. See the documented direct commands.'
@@ -82,10 +82,10 @@ check: backend-check frontend-check
 dev-init:
 	@set -ex; \
 	if [ ! -f .env ]; then cp .env.example .env; fi; \
-	$(AUTHENTIK_INIT)
+	$(LOCAL_INIT)
 
 db-up:
-	$(COMPOSE) up -d database
+	$(COMPOSE_LOCAL) up -d database
 
 migrate:
 	$(MIGRATE)
@@ -98,24 +98,24 @@ seed:
 dev-up:
 	@set -ex; \
 	if [ ! -f .env ]; then cp .env.example .env; fi; \
-	$(AUTHENTIK_INIT); \
-	$(COMPOSE_LOCAL) up -d database authentik-database authentik-server authentik-worker authentik-tls; \
+	$(LOCAL_INIT); \
+	$(COMPOSE_LOCAL) up -d database; \
 	$(MIGRATE); \
 	$(SEED); \
-	$(COMPOSE_LOCAL) up -d prediction-worker backend frontend
+	$(COMPOSE_LOCAL) up -d prediction-worker backend frontend local-caddy
 
 dev-down:
 	$(COMPOSE_LOCAL) down
 
 preview-up:
-	$(COMPOSE) --profile preview up frontend-preview
+	$(COMPOSE_LOCAL) --profile preview up frontend-preview
 
 diagrams:
-	$(COMPOSE) --profile docs build diagram-renderer
-	$(COMPOSE) --profile docs run --rm diagram-renderer
+	$(COMPOSE_LOCAL) --profile docs build diagram-renderer
+	$(COMPOSE_LOCAL) --profile docs run --rm diagram-renderer
 
-auth-smoke:
-	scripts/smoke-local-authentik.sh
+local-verify:
+	scripts/verify-local-direct-entra-config.sh
 
-auth-verify:
-	scripts/verify-local-authentik-config.sh
+provision-local-admin:
+	cd backend && uv run --env-file ../.env --env-file ../.env.entra.local python -m app.provision_local_admin

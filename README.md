@@ -63,9 +63,9 @@ Päätetty rakenne:
   in `/opt/postgres-backups` with 7-day retention required for initial release
 
 [ADR-013](docs/decisions/ADR-013-shared-entra-local-https-deployment.md) records
-the accepted amendment. The commands below still describe the implemented
-local HTTP/Authentik runtime until TASK-059B; the existing Coolify adapter remains
-until G. Runtime, seed/bootstrap, integrated QA and rollout are pending B/C/D/G/E/F.
+the accepted amendment. TASK-059B implements the local HTTPS/direct-Entra
+runtime; the existing production adapter remains until G. Seed/bootstrap,
+integrated QA and rollout are pending C/D/E/F/G.
 Volumes are not backups; release requires completed backup identifiers and
 successful restore-rehearsal evidence. Backup setup remains pending G/E/F.
 
@@ -84,54 +84,56 @@ make dev-up
 make dev-down
 ```
 
-`make dev-up` creates a missing `.env` and creates Authentik secrets only when
-`.env.authentik.local` is missing. Existing local Authentik secrets are reused,
-and the local TLS material is validated or created without overwriting it. The
-target then starts the prerequisites, applies pending migrations and the
-idempotent development seed, and starts the API, prediction worker and frontend
-against the ready schema. It uses local Docker resources only. Production,
-Entra, release, rollback, baseline, reset and destructive cleanup operations
-are intentionally not available through Make.
+`make dev-up` creates a missing `.env`, privately collects missing direct-Entra
+configuration into ignored `.env.entra.local`, and validates or creates local
+application TLS without overwriting valid material. It then starts the local
+prerequisites, applies migrations and the idempotent development seed, and
+starts Caddy, API, prediction worker and Vite against the ready schema. It uses
+local Docker resources only. Production, provider mutation, release, rollback,
+baseline, reset and destructive cleanup operations are intentionally not
+available through Make.
 
 Frontendin voi ajaa Dockerissa:
 
 ```bash
-docker compose up frontend
+docker compose --env-file .env --env-file .env.entra.local up frontend local-caddy
 ```
 
-Frontend dev on saatavilla osoitteessa `http://app.localhost:5173`.
+Frontend dev on saatavilla osoitteessa `https://app.localhost`.
 
 Backendin voi ajaa Dockerissa:
 
 ```bash
-scripts/setup-local-authentik.sh
-docker compose --env-file .env --env-file .env.authentik.local up backend
+make dev-init
+docker compose --env-file .env --env-file .env.entra.local up backend local-caddy
 ```
 
-Ensimmäinen setup luo myös gitignored local CA:n Authentikin HTTPS-osoitteelle
-`https://auth.localhost:9443`. CA pitää luottaa hostilla ennen browser-testausta;
-tarkat trust- ja optional Entra federation -ohjeet ovat
+Ensimmäinen setup luo myös gitignored local CA:n sovelluksen HTTPS-osoitteelle
+`https://app.localhost`. CA pitää luottaa hostilla ennen browser-testausta;
+tarkat trust-, direct-Entra- ja local-admin-ohjeet ovat
 `docs/LOCAL-DEVELOPMENT.md`:ssä.
 
-Backend on saatavilla osoitteessa `http://localhost:8000`.
+FastAPIlla ei ole host-published porttia; Caddy reitittää API:n osoitteessa
+`https://app.localhost/api`.
 
 Prediction worker käynnistyy full-stack-komennon mukana erillisenä
 `prediction-worker`-palveluna. Sillä ei ole julkaistua porttia eikä OIDC-
 asetuksia. Sen tila näkyy komennolla
-`docker compose ps prediction-worker`; tarkemmat käyttö- ja QA-ohjeet ovat
+`docker compose --env-file .env --env-file .env.entra.local ps prediction-worker`; tarkemmat käyttö- ja QA-ohjeet ovat
 `docs/LOCAL-DEVELOPMENT.md`:ssä ja
 `docs/qa/PREDICTION-WORKER-RUNTIME-QA.md`:ssä.
 
 Health endpoint:
 
 ```bash
-curl --header 'Host: app.localhost:5173' http://localhost:8000/health
+curl --cacert /path/printed/by/setup-local-app-tls.sh/ca.crt \
+  https://app.localhost/health
 ```
 
 Käynnistä tietokanta ja aja kaikki puuttuvat migraatiot:
 
 ```bash
-docker compose up -d database
+docker compose --env-file .env --env-file .env.entra.local up -d database
 uv run --env-file .env --project backend python backend/migrate.py up
 ```
 
@@ -151,7 +153,7 @@ resource change, tag operation, backup or restore.
 Buildatun frontendin preview:
 
 ```bash
-docker compose --profile preview up frontend-preview
+docker compose --env-file .env --env-file .env.entra.local --profile preview up frontend-preview
 ```
 
 Preview on saatavilla osoitteessa `http://localhost:4173`.

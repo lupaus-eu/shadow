@@ -165,14 +165,14 @@ configuration adaptation/startup, non-canonical, port-bearing, malformed or
 wildcard origin rejection, image health, SPA fallback, exact Host rejection,
 strict trusted-proxy parsing, forwarded-header replacement, HSTS,
 Referrer-Policy, nosniff, frame denial, enforced CSP and selective callback
-query redaction while retaining ordinary request metadata.
+query redaction plus CSRF-header redaction while retaining ordinary request
+metadata.
 
-Automated checks do not replace provider/browser verification. Run the broad
-`docs/qa/AUTHENTICATION-QA-CHECKLIST.md` locally with repository-managed
-Authentik. Before the first production rollout and for authentication, provider
-or OIDC configuration changes, TASK-040 additionally requires a designated-user
-local Authentik-to-Entra smoke. That path is supplemental and does not prove the
-direct production OIDC client.
+Automated checks do not replace provider/browser verification. Run simulated
+direct-Entra OIDC and local Caddy checks from
+`docs/qa/AUTHENTICATION-QA-CHECKLIST.md`. Authorized browser verification uses
+the designated Entra account and is recorded separately; it does not prove the
+direct production client or authorize production activity.
 
 The standard production Compose model is validated locally. The thin Coolify
 manifest must additionally be parsed by Coolify because `exclude_from_hc` is a
@@ -297,7 +297,35 @@ cd backend
 uv run pytest tests/test_auth_api.py tests/test_auth_provider.py -v
 ```
 
-## Local Authentik Integration
+## Local Direct-Entra Integration
+
+Use the local Caddy/direct-Entra configuration rather than the historical
+Authentik commands below. The automated boundary is simulated OIDC plus the
+disposable local configuration check, so it requires no tenant credentials:
+
+```bash
+scripts/verify-local-direct-entra-config.sh /path/to/base.env /path/to/private-entra.env
+cd backend
+uv run pytest tests/test_auth_api.py tests/test_auth_provider.py \
+  tests/test_config.py tests/test_provision_local_admin.py -v
+```
+
+The configuration check covers loopback ingress, no Authentik services, exact
+HTTPS origin, secure cookie setting, direct Entra claim policy, fixed Caddy peer
+and leaf-only certificate mount. The backend suite covers exact issuer, missing
+email, no `email_verified` dependency, guarded first linking, existing identity,
+sessions, CSRF, logout, spoofed forwarded headers and callback-log redaction.
+The local provisioning tests cover seeded/populated database preservation,
+validation, conflicts and deleted users without identities, sessions or role
+changes.
+
+An authorized browser run against the designated tenant account is separate
+evidence. Record it as pending until setup exists; mock tests do not pass it.
+
+## Historical Local Authentik Integration
+
+The commands and results in this retained historical section are superseded and
+must not be run against the current Compose runtime.
 
 TASK-039E:n Authentik-tarkistukset käyttävät `.env.authentik.local`-tiedostoa,
 joka sisältää vain paikallisia salaisuuksia ja salted password hasheja. Luo se

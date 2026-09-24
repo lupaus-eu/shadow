@@ -1,0 +1,54 @@
+{
+	auto_https off
+}
+
+:443 {
+	tls /certs/app.localhost.crt /certs/app.localhost.key
+
+	log {
+		output stdout
+		format filter {
+			request>headers>X-Csrf-Token replace REDACTED
+			request>uri query {
+				replace code REDACTED
+				replace state REDACTED
+				replace error REDACTED
+				replace error_description REDACTED
+			}
+			wrap json
+		}
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		Referrer-Policy "no-referrer"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		# Allow only Vite's inline React-refresh preamble in development.
+		# frontend/localCsp.test.ts checks this hash against the installed plugin.
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'sha256-Z2/iFzh9VMlVkEOar1f/oSHWwQk3ve1qk/C2WdsC4Xk='; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' wss://app.localhost; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
+	}
+
+	route {
+		@invalid_host not host app.localhost
+		respond @invalid_host "Invalid host" 400
+
+		@health path /health
+		respond @health "OK" 200
+
+		@api path /api /api/*
+		request_header @api -Forwarded
+		request_header @api -X-Forwarded-*
+		request_header @api -X-Schatten-Client-IP
+		reverse_proxy @api backend:8000 {
+			header_up Host app.localhost
+			header_up X-Forwarded-Host app.localhost
+			header_up X-Forwarded-Proto https
+			header_up X-Schatten-Client-IP {remote_host}
+		}
+
+		reverse_proxy frontend:5173 {
+			header_up Host app.localhost
+		}
+	}
+}

@@ -11,6 +11,7 @@
 	log {
 		output stdout
 		format filter {
+			request>headers>X-Csrf-Token replace REDACTED
 			request>uri query {
 				replace code REDACTED
 				replace state REDACTED

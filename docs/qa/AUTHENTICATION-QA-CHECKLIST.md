@@ -25,6 +25,109 @@ registration and federation assumptions. They do not verify this target.
 New simulated-OIDC/Compose and live Entra evidence belongs to B/G/E/F; the
 pending production gates below reflect the amended plan.
 
+## TASK-059B Direct-Entra Local Evidence
+
+- [x] Authorized real-Entra browser verification records login, clean callback,
+      guarded first-link, session role, logout and existing-identity login.
+      Simulated OIDC tests are not used as this evidence.
+- [x] The trusted local application certificate and `wss://app.localhost` HMR
+      were verified in a browser after local provider setup.
+- [x] Automated and local checks verified the exact Entra issuer,
+      missing-email rejection, no
+      `email_verified` requirement, pre-provisioned-only linking, existing
+      identity login, session/CSRF/logout behavior, header spoof rejection and
+      callback-log redaction using the TASK-059B automated and local checks.
+
+Recorded on 2026-09-24 by `@jonatanska` against the local
+`https://app.localhost` environment with Chromium `135`. Steps 1-8 tested
+application commit `bc082576d414def6bb4dff9db50ed6c47ddcdca4`. Step 9 exposed a
+CSRF-header logging defect; the corrected log boundary was verified at fix
+commit `3d6ffb45e3ce7f05464626a37db728cb7988ae50`. The associated CI evidence is
+[run 35362139899](https://github.com/reflector-oy/schatten/actions/runs/35362139899).
+
+### Step 1 — Test baseline
+
+**Result: PASS.** The clean baseline was recorded at
+`bc082576d414def6bb4dff9db50ed6c47ddcdca4` on
+2026-09-24 at 09:44:42 EEST on branch
+`feature/TASK-059B-local-https-direct-entra`. The tester, browser and CI evidence
+are identified above.
+
+### Step 2 — Local TLS initialization and trust
+
+**Result: PASS.** `make dev-init` completed without exposing private values.
+Both `.env.entra.local` and the application leaf private key had mode `600`.
+The reused Schatten development CA was trusted by the host and browser; only
+the public CA certificate was imported.
+
+### Step 3 — Stack startup and configuration
+
+**Result: PASS.** `make dev-up` completed, the local direct-Entra verifier
+passed, the database/backend/frontend services were running, the prediction
+worker was healthy, and `https://app.localhost/health` returned `OK` through
+local Caddy.
+
+### Step 4 — Designated administrator provisioning
+
+**Result: PASS.** Interactive local-only provisioning created or verified the
+designated active administrator without recording personal input. The database
+role was `admin`, and no direct-Entra identity existed before the first-link
+browser run.
+
+### Step 5 — Browser TLS, headers and HMR
+
+**Result: PASS.** The browser trusted the `app.localhost` certificate without a
+warning. HSTS, Referrer-Policy, nosniff, frame denial and the enforced CSP were
+present with no CSP console errors. The Vite client connected over
+`wss://app.localhost` on port 443 with status `101`, and a temporary visible
+source edit updated through HMR without a full reload. The edit was reverted.
+
+### Step 6 — Real Entra first link and callback
+
+**Result: PASS.** The designated account reached the expected tenant, completed
+authentication, returned through a clean `303` callback and landed on a clean
+Schatten URL without provider query data. The application rendered normally,
+showed the database-backed Admin role and exposed the authorized Users
+navigation.
+
+### Step 7 — Session and guarded-link persistence
+
+**Result: PASS.** Reload restored the session and the session endpoint returned
+`200`. The `__Host-schatten-session` cookie was Secure, HttpOnly,
+SameSite=Strict, host-only and scoped to `Path=/`; the pre-authentication cookie
+was consumed. Browser URLs and storage exposed no provider tokens. The database
+contained exactly one direct-Entra identity for the designated User after the
+first link, with existing Authentik identities and unrelated Users unchanged.
+
+### Step 8 — Logout and existing-identity login
+
+**Result: PASS.** Authenticated logout carried Origin and CSRF headers,
+removed the application session cookie and caused the session endpoint to
+return `401`. Entra returned the browser to `/login`; Chromium displayed a harmless
+empty trailing fragment (`#`). A second login used the existing identity,
+restored the Admin role and left the direct-Entra identity count at exactly one.
+The second logout also succeeded.
+
+### Step 9 — Credential-safe logs
+
+**Result: PASS after fix.** The initial run found that local Caddy logged the
+CSRF request-header value; no sensitive value is reproduced in this record.
+Commit `3d6ffb45e3ce7f05464626a37db728cb7988ae50` added local and production
+Caddy redaction plus regression coverage. After reload, a credential-safe live
+probe found zero exposures of its dummy value and one correctly redacted logout
+entry. Callback query values were redacted by Caddy, backend callback access
+logs contained no callback query, and the inspected logs contained no provider
+tokens, secrets, cookies, CSRF values or personal email.
+
+This verification performed no production operation, schema change, volume
+deletion, manual identity rewrite, callback cleanup, Graph permission removal
+or other Entra/UpCloud mutation. The normal guarded first-link write and local
+administrator provisioning were the only identity/User changes in scope.
+
+TASK-059B does not authorize provider writes, callback cleanup, Graph permission
+removal, tenant changes or production verification. Historical Authentik results
+below are preserved evidence only; they are not checks for the current runtime.
+
 ## Historical Local Automated Baseline
 
 - [x] Backend Ruff, full pytest and pyright pass.

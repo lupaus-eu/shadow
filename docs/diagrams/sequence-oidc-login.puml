@@ -1,5 +1,5 @@
 @startuml
-title Schatten - Direct Entra Login (ADR-013 target; runtime / setup pending B/G/F)
+title Schatten - Direct Entra Login (local runtime implemented; production setup pending G/F)
 
 actor Browser
 participant "Application ingress\nCaddy / same-origin API" as Caddy
@@ -19,7 +19,7 @@ note over Browser, Caddy
   Production: https://schatten.lupaus.eu -> Caddy TLS / React -> HTTP API.
   Entra Web callback is /api/v1/auth/callback at each exact origin.
   Post-logout return is /login at each origin; no Authentik or Traefik.
-  Current local Authentik and release adapter remain until B/G.
+  Local Caddy/direct Entra is implemented; release adapter remains until G.
 end note
 
 Browser -> Caddy : GET /api/v1/auth/login?return_to=/workspace

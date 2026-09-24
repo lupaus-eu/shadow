@@ -17,6 +17,7 @@ ORIGIN_HOST_LABEL = re.compile(
     r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$"
 )
 LEGACY_IPV4_LABEL = re.compile(r"^(?:0[xX][0-9A-Fa-f]+|[0-9]+)$")
+LOCAL_CADDY_PEER_CIDRS = (ip_network("172.28.59.2/32"),)
 
 
 class Settings(StrictBaseModel):
@@ -165,23 +166,61 @@ class Settings(StrictBaseModel):
             raise ValueError(
                 f"Missing required authentication configuration: {', '.join(missing)}"
             )
+        if self.app_environment == "development":
+            if self.public_origin != "https://app.localhost":
+                raise ValueError(
+                    "Development PUBLIC_ORIGIN must be https://app.localhost"
+                )
+            if self.allowed_origin != self.public_origin:
+                raise ValueError(
+                    "Development APP_ALLOWED_ORIGIN must equal PUBLIC_ORIGIN"
+                )
+            if not self.session_cookie_secure:
+                raise ValueError("Development session cookies must be Secure")
+            if self.trusted_caddy_peer_cidrs != LOCAL_CADDY_PEER_CIDRS:
+                raise ValueError(
+                    "Development TRUSTED_CADDY_PEER_CIDRS must be 172.28.59.2/32"
+                )
         for name, value in (
             ("OIDC_DISCOVERY_URL", self.oidc_discovery_url),
             ("OIDC_ISSUER", self.oidc_issuer),
         ):
             parsed = urlsplit(value)
-            if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-                raise ValueError(f"{name} must be an absolute HTTP(S) URL")
-            if self.app_environment == "production" and parsed.scheme != "https":
-                raise ValueError(f"{name} must use HTTPS in production")
-            if parsed.hostname == "login.microsoftonline.com":
-                path_parts = {
-                    part.lower() for part in parsed.path.split("/") if part
-                }
-                if path_parts.intersection({"common", "organizations", "consumers"}):
-                    raise ValueError(
-                        f"{name} must use a tenant-specific Entra authority"
-                    )
+            if (
+                parsed.scheme != "https"
+                or parsed.hostname != "login.microsoftonline.com"
+                or parsed.port is not None
+                or parsed.username is not None
+                or parsed.password is not None
+                or parsed.query
+                or parsed.fragment
+            ):
+                raise ValueError(
+                    f"{name} must use the exact direct Entra HTTPS origin"
+                )
+            path_parts = [part for part in parsed.path.split("/") if part]
+            if not path_parts or path_parts[0].lower() in {
+                "common",
+                "organizations",
+                "consumers",
+            }:
+                raise ValueError(f"{name} must use a tenant-specific Entra authority")
+        issuer = urlsplit(self.oidc_issuer)
+        discovery = urlsplit(self.oidc_discovery_url)
+        issuer_parts = [part for part in issuer.path.split("/") if part]
+        if (
+            len(issuer_parts) != 2
+            or issuer_parts[1] != "v2.0"
+            or issuer.path != f"/{issuer_parts[0]}/v2.0"
+        ):
+            raise ValueError("OIDC_ISSUER must contain an exact tenant and /v2.0")
+        expected_discovery_path = (
+            f"/{issuer_parts[0]}/v2.0/.well-known/openid-configuration"
+        )
+        if discovery.path != expected_discovery_path:
+            raise ValueError(
+                "OIDC_DISCOVERY_URL must match the exact tenant-specific issuer"
+            )
 
     @property
     def public_host(self) -> str:

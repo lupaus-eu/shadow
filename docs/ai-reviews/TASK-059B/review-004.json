@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-059B/review-004",
+  "task": {
+    "id": "TASK-059B",
+    "path": "tasks/TASK-059B-local-https-direct-entra.md"
+  },
+  "round": 4,
+  "reviewed_at": "2026-09-18T15:14:19Z",
+  "reviewer": { "label": "Codex self-review" },
+  "pull_request": null,
+  "source": {
+    "base_sha": "32a88620267f4c5163f0e63ad1e9dd799fc945f3",
+    "head_sha": "6aa88b947182e595c57404ec60e14b523cdf01a1",
+    "comparison": "32a88620267f4c5163f0e63ad1e9dd799fc945f3...6aa88b947182e595c57404ec60e14b523cdf01a1",
+    "excluded_paths": ["docs/ai-reviews/**"]
+  },
+  "review": {
+    "outcome": "clean",
+    "summary": "Completed the follow-up Step 13 review of the committed TASK-059B branch, excluding review metadata. All three findings from review-003 are fixed; no additional actionable findings were identified. Verification in this review session passed frontend ESLint, all 262 Vitest tests, TypeScript and the Vite production build; 89 focused backend configuration, provisioning, auth API and provider tests; six review-tool tests; shell syntax and diff checks; and synthetic Compose configuration validation for all four affected Make commands and the existing local verifier. The actual administrator Make target now reaches its expected noninteractive refusal without accessing the database. No application code changed in the follow-up, so command execution and Compose parsing were used instead of adding tests that duplicate the Make recipes. Prior review-002 backend and integration evidence remains historical and was not rerun in full. The earlier automated browser check covered CSP rendering, WSS HMR and inline-script rejection, with certificate checks bypassed only in the isolated test browser. Human browser verification, local certificate trust and real-Entra login, callback, linking, role and logout remain pending with the developer. Remote CI was not checked in this session. This review is advisory and does not authorize merge or deployment.",
+    "findings": [],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-059B/review-003",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "Database, preview and diagram Make targets now load both local environment files, and the active README and worker QA command examples do the same. Every affected rendered Compose command passed config validation with synthetic credentials, as did the existing local configuration verifier; no services were started by these checks.",
+        "validated_by": {
+          "review_id": "TASK-059B/review-004",
+          "commit": "6aa88b947182e595c57404ec60e14b523cdf01a1"
+        }
+      },
+      {
+        "record_id": "TASK-059B/review-003",
+        "finding_id": "F-002",
+        "disposition": "fixed",
+        "rationale": "The administrator Make target now changes into backend before importing the module and resolves both environment files from that directory. Running the real target with closed standard input produced the intended interactive-terminal diagnostic and exit code 2 rather than an import failure; it performed no database action.",
+        "validated_by": {
+          "review_id": "TASK-059B/review-004",
+          "commit": "6aa88b947182e595c57404ec60e14b523cdf01a1"
+        }
+      },
+      {
+        "record_id": "TASK-059B/review-003",
+        "finding_id": "F-003",
+        "disposition": "fixed",
+        "rationale": "The local guide now explicitly describes database startup, pending migrations and the idempotent development seed before the application services, matching the existing Make recipe and README. It also documents the environment-file prerequisite for partial Compose commands.",
+        "validated_by": {
+          "review_id": "TASK-059B/review-004",
+          "commit": "6aa88b947182e595c57404ec60e14b523cdf01a1"
+        }
+      }
+    ]
+  }
+}

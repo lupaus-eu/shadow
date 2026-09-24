@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-059B/review-006",
+  "task": {
+    "id": "TASK-059B",
+    "path": "tasks/TASK-059B-local-https-direct-entra.md"
+  },
+  "round": 6,
+  "reviewed_at": "2026-09-24T12:10:19Z",
+  "reviewer": {
+    "label": "Codex self-review"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "32a88620267f4c5163f0e63ad1e9dd799fc945f3",
+    "head_sha": "1c7875e44ada05dbe1c9861cd38302015bb1e09e",
+    "comparison": "32a88620267f4c5163f0e63ad1e9dd799fc945f3...1c7875e44ada05dbe1c9861cd38302015bb1e09e",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "clean",
+    "summary": "Completed the follow-up review of the full committed TASK-059B branch against origin/main, excluding AI-review records. The browser evidence now consistently identifies Chromium 135, all earlier findings remain fixed, and no additional bugs, regressions, security issues, missing tests, documentation gaps or out-of-scope changes were identified. This session validated shell and Python syntax, branch diff formatting, all AI-review records, the local direct-Entra verifier, a live local CSRF-header redaction probe, the production frontend build and the live production ingress regression. Previously recorded backend, frontend, PostgreSQL and authorized real-Entra browser evidence remains applicable because the follow-up changed only Caddy logging coverage and QA documentation. This review is advisory and does not replace human approval.",
+    "findings": [],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-059B/review-005",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "The Step 8 evidence now identifies Chromium, matching the Chromium 135 browser recorded for the manual run; the rest of the redacted evidence is unchanged.",
+        "validated_by": {
+          "review_id": "TASK-059B/review-006",
+          "commit": "1c7875e44ada05dbe1c9861cd38302015bb1e09e"
+        }
+      }
+    ]
+  }
+}

@@ -33,8 +33,7 @@ Provides:
 
 Does NOT Own:
 
-- Microsoft Entra ID configuration and OIDC protocol adapters (including the
-  legacy local Authentik adapter until TASK-059B)
+- Microsoft Entra ID configuration and OIDC protocol adapters
 - organisation membership rules
 - organisation data
 - scenario or graph data
@@ -148,8 +147,7 @@ Depends On:
 - tenant-specific Microsoft Entra ID directly in both environments under
   [ADR-013](../decisions/ADR-013-shared-entra-local-https-deployment.md), using
   the shared confidential registration and separate environment secrets
-- until TASK-059B, the checked-in local runtime still uses Authentik; this is
-  legacy implementation status, not the accepted target
+- local Caddy/direct Entra is the checked-in development runtime
 
 Referenced By:
 

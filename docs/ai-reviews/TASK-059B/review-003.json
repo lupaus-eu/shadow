@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-059B/review-003",
+  "task": {
+    "id": "TASK-059B",
+    "path": "tasks/TASK-059B-local-https-direct-entra.md"
+  },
+  "round": 3,
+  "reviewed_at": "2026-09-18T14:44:48Z",
+  "reviewer": { "label": "Codex self-review" },
+  "pull_request": null,
+  "source": {
+    "base_sha": "32a88620267f4c5163f0e63ad1e9dd799fc945f3",
+    "head_sha": "89f71b556275ddee7895bbdcfc60f027e1680f4a",
+    "comparison": "32a88620267f4c5163f0e63ad1e9dd799fc945f3...89f71b556275ddee7895bbdcfc60f027e1680f4a",
+    "excluded_paths": ["docs/ai-reviews/**"]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Reviewed the committed TASK-059B branch for bugs, regressions, security issues, missing tests, documentation gaps and scope, including the prior fixes and the new development CSP hash. Frontend lint, all 262 tests, TypeScript and the production build passed. The CSP hash matches the installed React plugin; the preceding local automated Chromium check demonstrated rendering, WSS HMR without a reload and rejection of unrelated inline scripts. Three additional local workflow issues were identified. Human browser verification and real-Entra login, callback, identity linking, role and logout remain pending with the developer; this review does not substitute for that evidence or human approval.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "regression",
+        "severity": "medium",
+        "summary": "Several local Compose commands omit the now-required private Entra configuration.",
+        "rationale": "The branch makes backend OIDC variables mandatory during Compose interpolation, but db-up, preview-up and diagrams still load only the base environment. Compose validates the whole model even when selecting an unrelated service; a credential-free parser check reproduced failure before any service action. README and worker QA also retain bare Compose commands. Completing dev-init does not export the private file into those processes.",
+        "recommendation": "Load the private local Entra environment consistently in these Make targets and active command examples, and verify the rendered commands with synthetic configuration without starting services.",
+        "locations": [
+          { "path": "Makefile", "line": 88 },
+          { "path": "Makefile", "line": 111 },
+          { "path": "Makefile", "line": 114 },
+          { "path": "README.md", "line": 99 },
+          { "path": "docs/qa/PREDICTION-WORKER-RUNTIME-QA.md", "line": 20 }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "bug",
+        "severity": "medium",
+        "summary": "The documented local administrator Make target cannot import its Python module.",
+        "rationale": "The target runs python -m app.provision_local_admin from the repository root. uv --project selects the backend environment without changing the working directory, and this backend is not installed as a package. A noninteractive invocation reproduced ModuleNotFoundError for app before the CLI guard, so the supported provisioning path cannot run.",
+        "recommendation": "Run the command from backend with adjusted environment-file paths and verify that the real Make target reaches its noninteractive refusal without accessing the database.",
+        "locations": [
+          { "path": "Makefile", "line": 121 }
+        ]
+      },
+      {
+        "id": "F-003",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "The local development guide incorrectly states that dev-up never initializes the database.",
+        "rationale": "The guide says the command never performs database bootstrap, while the Make recipe applies pending migrations and the development seed on every invocation. README correctly describes those writes. Operators following the local guide receive an inaccurate account of the command's data effects.",
+        "recommendation": "Describe the migration and idempotent development-seed steps in the local guide while retaining the distinction from resets, volume deletion and production operations.",
+        "locations": [
+          { "path": "docs/LOCAL-DEVELOPMENT.md", "line": 37 }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": []
+  }
+}

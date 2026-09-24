@@ -147,9 +147,100 @@ def test_oidc_scopes_are_limited_to_identity_claims(scopes: str) -> None:
     ],
 )
 def test_generic_entra_authority_is_rejected(name: str, value: str) -> None:
-    settings = Settings.model_validate({"APP_ENV": "development", name: value})
+    settings = Settings.model_validate(
+        {
+            "APP_ENV": "development",
+            "PUBLIC_ORIGIN": "https://app.localhost",
+            "APP_ALLOWED_ORIGIN": "https://app.localhost",
+            "SESSION_COOKIE_SECURE": True,
+            "TRUSTED_CADDY_PEER_CIDRS": "172.28.59.2/32",
+            "OIDC_ISSUER": "https://login.microsoftonline.com/tenant-id/v2.0",
+            "OIDC_DISCOVERY_URL": "https://login.microsoftonline.com/tenant-id/v2.0/.well-known/openid-configuration",
+            name: value,
+        }
+    )
 
     with pytest.raises(ValueError, match="tenant-specific"):
+        settings.validate_auth_configuration()
+
+
+def test_development_requires_local_https_caddy_boundary() -> None:
+    settings = Settings.model_validate(
+        {
+            "APP_ENV": "development",
+            "PUBLIC_ORIGIN": "https://app.example.test",
+            "APP_ALLOWED_ORIGIN": "https://app.example.test",
+            "SESSION_COOKIE_SECURE": True,
+            "TRUSTED_CADDY_PEER_CIDRS": "172.28.59.2/32",
+        }
+    )
+
+    with pytest.raises(ValueError, match="https://app.localhost"):
+        settings.validate_auth_configuration()
+
+
+def test_development_requires_exact_direct_entra_discovery() -> None:
+    settings = Settings.model_validate(
+        {
+            "APP_ENV": "development",
+            "PUBLIC_ORIGIN": "https://app.localhost",
+            "APP_ALLOWED_ORIGIN": "https://app.localhost",
+            "SESSION_COOKIE_SECURE": True,
+            "TRUSTED_CADDY_PEER_CIDRS": "172.28.59.2/32",
+            "OIDC_ISSUER": "https://login.microsoftonline.com/tenant-id/v2.0",
+            "OIDC_DISCOVERY_URL": "https://login.microsoftonline.com/other/v2.0/.well-known/openid-configuration",
+        }
+    )
+
+    with pytest.raises(ValueError, match="must match"):
+        settings.validate_auth_configuration()
+
+
+@pytest.mark.parametrize(
+    "name,value",
+    [
+        (
+            "OIDC_DISCOVERY_URL",
+            "https://provider.example.test/tenant-id/v2.0/.well-known/openid-configuration",
+        ),
+        (
+            "OIDC_ISSUER",
+            "https://login.microsoftonline.com:444/tenant-id/v2.0",
+        ),
+    ],
+)
+def test_development_rejects_noncanonical_entra_origins(
+    name: str, value: str
+) -> None:
+    settings = Settings.model_validate(
+        {
+            "APP_ENV": "development",
+            "PUBLIC_ORIGIN": "https://app.localhost",
+            "APP_ALLOWED_ORIGIN": "https://app.localhost",
+            "SESSION_COOKIE_SECURE": True,
+            "TRUSTED_CADDY_PEER_CIDRS": "172.28.59.2/32",
+            "OIDC_ISSUER": "https://login.microsoftonline.com/tenant-id/v2.0",
+            "OIDC_DISCOVERY_URL": "https://login.microsoftonline.com/tenant-id/v2.0/.well-known/openid-configuration",
+            name: value,
+        }
+    )
+
+    with pytest.raises(ValueError, match="exact direct Entra HTTPS origin"):
+        settings.validate_auth_configuration()
+
+
+def test_development_rejects_broad_caddy_peer_trust() -> None:
+    settings = Settings.model_validate(
+        {
+            "APP_ENV": "development",
+            "PUBLIC_ORIGIN": "https://app.localhost",
+            "APP_ALLOWED_ORIGIN": "https://app.localhost",
+            "SESSION_COOKIE_SECURE": True,
+            "TRUSTED_CADDY_PEER_CIDRS": "172.28.59.0/24",
+        }
+    )
+
+    with pytest.raises(ValueError, match="172.28.59.2/32"):
         settings.validate_auth_configuration()
 
 

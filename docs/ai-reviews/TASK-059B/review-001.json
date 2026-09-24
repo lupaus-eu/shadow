@@ -1,0 +1,119 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-059B/review-001",
+  "task": {
+    "id": "TASK-059B",
+    "path": "tasks/TASK-059B-local-https-direct-entra.md"
+  },
+  "round": 1,
+  "reviewed_at": "2026-09-18T13:30:56Z",
+  "reviewer": {
+    "label": "Codex self-review"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "32a88620267f4c5163f0e63ad1e9dd799fc945f3",
+    "head_sha": "ad6518ca01e93347d70e5c5e71ffd22a14562365",
+    "comparison": "32a88620267f4c5163f0e63ad1e9dd799fc945f3...ad6518ca01e93347d70e5c5e71ffd22a14562365",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "The committed TASK-059B implementation establishes the intended local Caddy/direct-Entra topology, preserves old volumes and identities, and adds explicit local administrator provisioning. Five actionable issues remain in the reviewed revision: direct-Entra and local proxy trust validation are not exact, an already-built backend image retains the removed Authentik startup dependency, the documented leaf-renewal procedure cannot complete, CA-path examples do not support legacy CA reuse, and local provisioning tightens the public Users API beyond the task scope.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "security",
+        "severity": "medium",
+        "summary": "Development authentication validation does not fully pin the direct-Entra and Caddy trust boundaries.",
+        "rationale": "The issuer host is pinned, but a discovery URL on a different HTTPS host is accepted when its path matches the issuer tenant. Development also accepts any non-empty trusted-proxy CIDR even though the Compose topology has one fixed Caddy peer. These settings can redirect discovery to an unintended authority or broaden acceptance of client-controlled forwarding headers when the backend is run with a misconfigured development environment.",
+        "recommendation": "Require both issuer and discovery URLs to use the exact login.microsoftonline.com HTTPS origin without credentials, ports, query or fragment, require their exact tenant paths to match, and require the development trusted peer list to equal the fixed Caddy /32. Add rejection tests.",
+        "locations": [
+          {
+            "path": "backend/app/core/config.py",
+            "line": 168
+          },
+          {
+            "path": "backend/app/core/config.py",
+            "line": 181
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "regression",
+        "severity": "medium",
+        "summary": "The local backend can keep executing the removed Authentik entrypoint from a stale development image.",
+        "rationale": "The backend entrypoint is copied into the image outside the bind-mounted source directory, while make dev-up starts services without rebuilding. On an existing checkout, the reviewed Compose stack reproduced an exited backend that still required the removed Authentik CA, while Caddy remained healthy. This prevents API and direct-Entra use after the documented in-place migration.",
+        "recommendation": "Make Compose execute the bind-mounted current development entrypoint or ensure dev-up rebuilds the affected image, and assert the effective command in the local configuration verifier.",
+        "locations": [
+          {
+            "path": "docker-compose.yml",
+            "line": 19
+          },
+          {
+            "path": "Makefile",
+            "line": 98
+          }
+        ]
+      },
+      {
+        "id": "F-003",
+        "category": "bug",
+        "severity": "low",
+        "summary": "The leaf-certificate renewal instruction produces a state the TLS setup script refuses to repair.",
+        "rationale": "When a valid leaf is inside the renewal window, the script tells the operator to remove only the certificate and rerun. The next invocation treats the remaining valid leaf key as incomplete material and exits. The renewal path therefore cannot reuse the valid key as promised.",
+        "recommendation": "Allow a key-only leaf state as the deliberate renewal path and issue the replacement certificate from that existing key while continuing to reject a certificate with no key and all mismatched material.",
+        "locations": [
+          {
+            "path": "scripts/setup-local-app-tls.sh",
+            "line": 31
+          },
+          {
+            "path": "scripts/setup-local-app-tls.sh",
+            "line": 81
+          }
+        ]
+      },
+      {
+        "id": "F-004",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "Health-check examples hardcode a CA path that is absent when a valid legacy CA is reused.",
+        "rationale": "The TLS script deliberately reused the existing legacy CA in the reviewed environment and printed its path under .local/authentik-tls. README examples instead require .local/app-tls/ca.crt, so the documented curl command fails in the supported reuse case.",
+        "recommendation": "Use the CA certificate path printed by the setup script in generic command examples and explain both possible locations without copying the CA private key.",
+        "locations": [
+          {
+            "path": "README.md",
+            "line": 129
+          },
+          {
+            "path": "backend/README.md",
+            "line": 27
+          }
+        ]
+      },
+      {
+        "id": "F-005",
+        "category": "scope",
+        "severity": "medium",
+        "summary": "Local administrator provisioning unintentionally changes the validation contract of the public Users API.",
+        "rationale": "The task asks the local-only CLI to reuse existing User validation and validate its identity input. The reviewed change instead adds a new email syntax invariant to shared create and patch schemas, changing existing HTTP API behavior and the documented User invariant from trimmed non-blank email without updating the owning concept. That is broader than the provisioning path.",
+        "recommendation": "Restore the existing shared User schema contract, keep using it for name/email normalization, and apply the additional Entra-address syntax check only inside the local provisioning command with focused tests.",
+        "locations": [
+          {
+            "path": "backend/app/api/v1/users/schemas.py",
+            "line": 1
+          },
+          {
+            "path": "backend/app/provision_local_admin.py",
+            "line": 33
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": []
+  }
+}

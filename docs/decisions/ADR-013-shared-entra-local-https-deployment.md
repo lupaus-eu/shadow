@@ -251,10 +251,12 @@ alternate login admission path is introduced.
 
 # Implementation Status And Follow-Up
 
-This amendment changes documentation only. The checked-in local runtime still
-uses HTTP application ingress and Authentik until B; the release configuration
+TASK-059B implements local loopback Caddy HTTPS, direct Entra configuration,
+Authentik retirement and local-only administrator provisioning. It preserves
+old volumes, application data and identity ownership. The release configuration
 still contains the Coolify/HTTP-Caddy adapter until G. Historical QA results do
-not verify the accepted target, and provider setup has not occurred.
+not verify the accepted target, and authorized live-provider setup remains
+separate evidence.
 
 | Task | Delivery | Dependency |
 | --- | --- | --- |
@@ -266,9 +268,9 @@ not verify the accepted target, and provider setup has not occurred.
 | [E](../../tasks/TASK-059E-upcloud-docker-runbook-qa.md) | Integrated runbook and QA | B/C/D/G |
 | [F](../../tasks/TASK-059F-first-production-rollout.md) | Authorized setup and first rollout | E and explicit operational approval |
 
-TASK-059H is not created: production Authentik is excluded. After documentation
-review, B is implemented on its own task branch. Acceptance of this ADR does
-not authorize tenant/DNS changes, production writes or deployment.
+TASK-059H is not created: production Authentik is excluded. B is implemented on
+its own task branch. Acceptance of this ADR does not authorize tenant/DNS
+changes, production writes or deployment.
 
 # Options And Consequences
 

@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-059B/review-002",
+  "task": {
+    "id": "TASK-059B",
+    "path": "tasks/TASK-059B-local-https-direct-entra.md"
+  },
+  "round": 2,
+  "reviewed_at": "2026-09-18T14:00:00Z",
+  "reviewer": {
+    "label": "Codex self-review"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "32a88620267f4c5163f0e63ad1e9dd799fc945f3",
+    "head_sha": "216922db185581832198720bfdeef87d4af5696b",
+    "comparison": "32a88620267f4c5163f0e63ad1e9dd799fc945f3...216922db185581832198720bfdeef87d4af5696b",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "clean",
+    "summary": "Reviewed the complete committed TASK-059B branch against origin/main for bugs, regressions, security issues, missing tests, documentation gaps and out-of-scope changes, excluding AI-review records. All five prior findings are fixed. Backend Ruff and Pyright passed; 402 backend tests passed with 28 expected skips; 26 disposable PostgreSQL migration/prediction integration tests passed; frontend lint, 261 tests and the production build passed. Compose rendering, local configuration assertions, Caddy validation and live local HTTPS routing, Host rejection, callback redaction, TLS key-preserving renewal and backend startup from a pre-existing image were verified. Authorized real-Entra browser login, callback, guarded first-link, role, logout and HMR verification remain explicitly pending until the Entra callback is updated; they are not presented as passed. No further actionable findings were identified. This review is advisory and does not replace human approval.",
+    "findings": [],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-059B/review-001",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "Development validation now requires canonical login.microsoftonline.com HTTPS issuer and discovery URLs with no credentials, port, query or fragment, exact matching tenant paths, and exactly the fixed 172.28.59.2/32 Caddy peer. Focused rejection tests and the full backend suite passed.",
+        "validated_by": {
+          "review_id": "TASK-059B/review-002",
+          "commit": "216922db185581832198720bfdeef87d4af5696b"
+        }
+      },
+      {
+        "record_id": "TASK-059B/review-001",
+        "finding_id": "F-002",
+        "disposition": "fixed",
+        "rationale": "Local Compose now executes the current bind-mounted backend entrypoint, and the verifier asserts that effective command. Recreating the previously failing backend container replaced the stale Authentik check; the service remained up and the Caddy HTTPS health route returned successfully.",
+        "validated_by": {
+          "review_id": "TASK-059B/review-002",
+          "commit": "216922db185581832198720bfdeef87d4af5696b"
+        }
+      },
+      {
+        "record_id": "TASK-059B/review-001",
+        "finding_id": "F-003",
+        "disposition": "fixed",
+        "rationale": "The TLS script now accepts a valid key-only state as the deliberate renewal path, creates the new certificate from that key, and still rejects certificate-without-key or invalid key material. An isolated two-run test confirmed certificate validation and identical public keys before and after renewal.",
+        "validated_by": {
+          "review_id": "TASK-059B/review-002",
+          "commit": "216922db185581832198720bfdeef87d4af5696b"
+        }
+      },
+      {
+        "record_id": "TASK-059B/review-001",
+        "finding_id": "F-004",
+        "disposition": "fixed",
+        "rationale": "README health-check examples now use the CA path printed by the TLS setup script, so both a reused legacy CA and a newly created application CA are supported without copying or mounting the CA private key.",
+        "validated_by": {
+          "review_id": "TASK-059B/review-002",
+          "commit": "216922db185581832198720bfdeef87d4af5696b"
+        }
+      },
+      {
+        "record_id": "TASK-059B/review-001",
+        "finding_id": "F-005",
+        "disposition": "fixed",
+        "rationale": "The existing shared Users create and patch validation contract is restored. Local provisioning still reuses that schema for normalization and role validation, while its additional Entra email syntax check is confined to the non-HTTP development-only command; focused and full backend tests passed.",
+        "validated_by": {
+          "review_id": "TASK-059B/review-002",
+          "commit": "216922db185581832198720bfdeef87d4af5696b"
+        }
+      }
+    ]
+  }
+}

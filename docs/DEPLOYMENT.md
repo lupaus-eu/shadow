@@ -10,10 +10,10 @@ This document records the accepted plan, not a completed
 deployment or authorization to change providers, credentials or production data.
 
 The checked-in release manifests/Caddy configuration still implement the earlier
-Coolify/Traefik -> HTTP frontend/Caddy:8080 topology with an external database;
-local development still uses HTTP application ingress and Authentik. Do not
-use those manifests as if this target were implemented. B migrates local runtime,
-G replaces the production adapter, C/D add initialization commands, E supplies
+Coolify/Traefik -> HTTP frontend/Caddy:8080 topology with an external database.
+Local development now uses loopback Caddy HTTPS and direct Entra. Do not use
+the release manifests as if this target were implemented. G replaces the
+production adapter, C/D add initialization commands, E supplies
 tested operational commands/QA, and F performs separately approved setup/rollout.
 Earlier platform/federation choices are superseded. Initial backup identifiers
 and restore-rehearsal evidence remain release gates; the no-backup exception

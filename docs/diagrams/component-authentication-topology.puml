@@ -1,10 +1,10 @@
 @startuml
 !include <C4/C4_Container>
-title Schatten - Accepted ADR-013 Target (runtime / rollout B-G pending)
+title Schatten - Accepted ADR-013 Topology (local implemented; production G/F pending)
 
 System_Ext(entra, "Microsoft Entra ID", "One tenant; shared confidential Web registration\nShared permissions, consent, assignments and callbacks\nSeparate dev/prod secrets; exact tenant issuer\nopenid profile email; no Graph; email_verified not required")
 
-System_Boundary(local, "Development - https://app.localhost (pending B)") {
+System_Boundary(local, "Development - https://app.localhost") {
   Person(local_browser, "Local browser")
   Container(app_tls, "Application TLS", "Loopback Caddy :443", "Local CA; secure host-only cookies\nDirect /api routing; HMR WebSockets")
   Container(vite, "Frontend", "Vite :5173", "SPA and HMR")
@@ -45,7 +45,7 @@ Rel(prod_api, entra, "Direct OIDC; callback:\nhttps://schatten.lupaus.eu/api/v1/
 
 note bottom of app_tls
   Target excludes Authentik in both environments.
-  Current local HTTP / Authentik runtime remains until B.
+  Local Caddy/direct Entra is implemented; production runtime remains pending G.
   Browser authorization redirects go directly to Entra.
   Logout returns to /login at each application origin.
 end note

@@ -1,10 +1,8 @@
 services:
   database:
-    # Use 18.0 locally because the official 18.0.4 image is not available yet.
-    # Revisit this pin for production deployment once the managed 18.0.4 target is available.
     image: postgres:18.0
     ports:
-      - "${DATABASE_PORT:-5432}:5432"
+      - "127.0.0.1:${DATABASE_PORT:-5432}:5432"
     environment:
       POSTGRES_DB: ${DATABASE_NAME:-schatten}
       POSTGRES_USER: ${DATABASE_USER:-schatten}
@@ -13,113 +11,33 @@ services:
     volumes:
       - database_data:/var/lib/postgresql
       - ./db/init:/workspace/db/init:ro
-
-  authentik-database:
-    image: docker.io/library/postgres:16.10-alpine@sha256:029660641a0cfc575b14f336ba448fb8a75fd595d42e1fa316b9fb4378742297
-    environment:
-      POSTGRES_DB: authentik
-      POSTGRES_USER: authentik
-      POSTGRES_PASSWORD: ${AUTHENTIK_POSTGRESQL_PASSWORD:-}
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -d authentik -U authentik"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-      start_period: 10s
-    volumes:
-      - authentik_database_data:/var/lib/postgresql/data
-
-  authentik-server:
-    image: &authentik-image ghcr.io/goauthentik/server:2026.5.6@sha256:ed120caf710ccf82ef0026f0bc74e51615bc95ebff228a7a2d6fc60c441c3868
-    command: server
-    environment: &authentik-environment
-      AUTHENTIK_POSTGRESQL__HOST: authentik-database
-      AUTHENTIK_POSTGRESQL__NAME: authentik
-      AUTHENTIK_POSTGRESQL__USER: authentik
-      AUTHENTIK_POSTGRESQL__PASSWORD: ${AUTHENTIK_POSTGRESQL_PASSWORD:-}
-      AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY:-}
-      AUTHENTIK_ERROR_REPORTING__ENABLED: "false"
-      AUTHENTIK_DISABLE_STARTUP_ANALYTICS: "true"
-      AUTHENTIK_DISABLE_UPDATE_CHECK: "true"
-    depends_on:
-      authentik-database:
-        condition: service_healthy
-    healthcheck:
-      test:
-        - CMD
-        - python
-        - -c
-        - "import urllib.request; response = urllib.request.urlopen('http://127.0.0.1:9000/application/o/schatten/.well-known/openid-configuration', timeout=3); raise SystemExit(0 if response.status == 200 else 1)"
-      interval: 5s
-      timeout: 5s
-      retries: 24
-      start_period: 30s
-    volumes:
-      - authentik_data:/data
-
-  authentik-tls:
-    image: docker.io/library/caddy:2.11.4-alpine@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648
-    ports:
-      - "127.0.0.1:9443:9443"
-    depends_on:
-      authentik-server:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--spider", "--no-check-certificate", "https://auth.localhost:9443/-/health/live/"]
-      interval: 5s
-      timeout: 5s
-      retries: 12
-      start_period: 5s
     networks:
-      default:
-        aliases:
-          - auth.localhost
-    volumes:
-      - ./authentik/Caddyfile:/etc/caddy/Caddyfile:ro
-      - ./.local/authentik-tls/auth.localhost.crt:/certs/auth.localhost.crt:ro
-      - ./.local/authentik-tls/auth.localhost.key:/certs/auth.localhost.key:ro
-
-  authentik-worker:
-    image: *authentik-image
-    command: worker
-    environment:
-      <<: *authentik-environment
-      SCHATTEN_OIDC_CLIENT_SECRET: ${SCHATTEN_OIDC_CLIENT_SECRET:-}
-      AUTHENTIK_BOOTSTRAP_PASSWORD_HASH: ${AUTHENTIK_BOOTSTRAP_PASSWORD_HASH:-}
-      AUTHENTIK_BOOTSTRAP_EMAIL: authentik-admin@example.local
-      AUTHENTIK_CONSULTANT_PASSWORD_HASH: ${AUTHENTIK_CONSULTANT_PASSWORD_HASH:-}
-      AUTHENTIK_ADMIN_PASSWORD_HASH: ${AUTHENTIK_ADMIN_PASSWORD_HASH:-}
-      AUTHENTIK_UNMATCHED_PASSWORD_HASH: ${AUTHENTIK_UNMATCHED_PASSWORD_HASH:-}
-    depends_on:
-      authentik-database:
-        condition: service_healthy
-    volumes:
-      - authentik_data:/data
-      - ./authentik/blueprints/schatten.yaml:/blueprints/schatten.yaml:ro
+      local:
+        ipv4_address: 172.28.59.4
 
   backend:
     build:
       context: .
       dockerfile: backend/Dockerfile
       target: dev
-    ports:
-      - "8000:8000"
+    # Execute the bind-mounted entrypoint so an existing image cannot retain
+    # the retired Authentik startup checks after a branch update.
+    command: ["/app/docker-entrypoint-dev.sh"]
     environment:
       DATABASE_URL: postgresql://${DATABASE_USER:-schatten}:${DATABASE_PASSWORD:-schatten_dev_password}@database:5432/${DATABASE_NAME:-schatten}
-      APP_ENV: ${APP_ENV:-development}
-      OIDC_DISCOVERY_URL: https://auth.localhost:9443/application/o/schatten/.well-known/openid-configuration
-      OIDC_ISSUER: https://auth.localhost:9443/application/o/schatten/
-      OIDC_CLIENT_ID: schatten-local
-      OIDC_CLIENT_SECRET: ${SCHATTEN_OIDC_CLIENT_SECRET:-}
-      OIDC_SCOPES: ${OIDC_SCOPES:-openid profile email}
-      OIDC_CALLBACK_PATH: ${OIDC_CALLBACK_PATH:-/api/v1/auth/callback}
-      OIDC_ALLOWED_SIGNING_ALGORITHMS: ${OIDC_ALLOWED_SIGNING_ALGORITHMS:-RS256}
-      OIDC_REQUIRE_VERIFIED_EMAIL: ${OIDC_REQUIRE_VERIFIED_EMAIL:-true}
-      SSL_CERT_FILE: /etc/ssl/certs/ca-certificates.crt
-      PUBLIC_ORIGIN: http://app.localhost:5173
-      APP_ALLOWED_ORIGIN: http://app.localhost:5173
-      TRUSTED_CADDY_PEER_CIDRS: ${TRUSTED_CADDY_PEER_CIDRS:-}
-      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
+      APP_ENV: development
+      OIDC_DISCOVERY_URL: ${OIDC_DISCOVERY_URL:?Run scripts/setup-local-entra.sh and load .env.entra.local}
+      OIDC_ISSUER: ${OIDC_ISSUER:?Run scripts/setup-local-entra.sh and load .env.entra.local}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:?Run scripts/setup-local-entra.sh and load .env.entra.local}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:?Run scripts/setup-local-entra.sh and load .env.entra.local}
+      OIDC_SCOPES: openid profile email
+      OIDC_CALLBACK_PATH: /api/v1/auth/callback
+      OIDC_ALLOWED_SIGNING_ALGORITHMS: RS256
+      OIDC_REQUIRE_VERIFIED_EMAIL: "false"
+      PUBLIC_ORIGIN: https://app.localhost
+      APP_ALLOWED_ORIGIN: https://app.localhost
+      TRUSTED_CADDY_PEER_CIDRS: 172.28.59.2/32
+      SESSION_COOKIE_SECURE: "true"
       AUTH_SESSION_IDLE_TIMEOUT_SECONDS: ${AUTH_SESSION_IDLE_TIMEOUT_SECONDS:-1800}
       AUTH_SESSION_ABSOLUTE_LIFETIME_SECONDS: ${AUTH_SESSION_ABSOLUTE_LIFETIME_SECONDS:-28800}
       AUTH_SESSION_ACTIVITY_WRITE_SECONDS: ${AUTH_SESSION_ACTIVITY_WRITE_SECONDS:-300}
@@ -127,15 +45,13 @@ services:
     depends_on:
       database:
         condition: service_started
-      authentik-tls:
-        condition: service_healthy
-      authentik-worker:
-        condition: service_started
     volumes:
       - ./backend:/app
-      - ./.local/authentik-tls/ca.crt:/usr/local/share/ca-certificates/schatten-local-authentik.crt:ro
       - backend_uv_cache:/root/.cache/uv
       - backend_venv:/app/.venv
+    networks:
+      local:
+        ipv4_address: 172.28.59.3
 
   prediction-worker:
     build:
@@ -161,33 +77,56 @@ services:
       - ./backend:/app
       - backend_uv_cache:/root/.cache/uv
       - backend_venv:/app/.venv
+    networks:
+      local:
+        ipv4_address: 172.28.59.5
 
   frontend:
     build:
       context: ./frontend
       target: dev
-    ports:
-      - "127.0.0.1:5173:5173"
     environment:
       VITE_DEV_API_PROXY_TARGET: ${FRONTEND_DEV_API_PROXY_TARGET:-http://backend:8000}
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     volumes:
       - ./frontend:/app
       - frontend_node_modules:/app/node_modules
+    networks:
+      local:
+        ipv4_address: 172.28.59.6
+
+  local-caddy:
+    image: docker.io/library/caddy:2.11.4-alpine@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648
+    ports:
+      - "127.0.0.1:443:443"
+    depends_on:
+      backend:
+        condition: service_started
+      frontend:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--spider", "--no-check-certificate", "--header=Host: app.localhost", "https://127.0.0.1/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+    volumes:
+      - ./local/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./.local/app-tls/app.localhost.crt:/certs/app.localhost.crt:ro
+      - ./.local/app-tls/app.localhost.key:/certs/app.localhost.key:ro
+    networks:
+      local:
+        ipv4_address: 172.28.59.2
 
   frontend-preview:
-    profiles:
-      - preview
+    profiles: [preview]
     build:
       context: ./frontend
       target: preview
     ports:
-      - "4173:4173"
+      - "127.0.0.1:4173:4173"
 
   diagram-renderer:
-    profiles:
-      - docs
+    profiles: [docs]
     build:
       context: ./docs/diagrams
     user: "${UID:-1000}:${GID:-1000}"
@@ -197,9 +136,16 @@ services:
     command: ["-tsvg", "-o", "generated", "db-physical-schema.puml"]
 
 volumes:
+  # Retained declarations avoid any volume deletion during the Authentik retirement.
   authentik_data:
   authentik_database_data:
   backend_uv_cache:
   backend_venv:
   database_data:
   frontend_node_modules:
+
+networks:
+  local:
+    ipam:
+      config:
+        - subnet: 172.28.59.0/24

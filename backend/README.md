@@ -11,20 +11,21 @@ uv run fastapi dev app/main.py
 
 The API fails closed outside tests unless the OIDC relying-party settings are
 present. Copy the non-secret names from `.env.example` and inject the client
-secret through the local environment or deployment secret store. Authentik and
-Entra use the same settings; Authentik additionally sets
-`OIDC_REQUIRE_VERIFIED_EMAIL=true`, while the reviewed Entra workforce flow may
-set it to `false` for guarded first-link discovery.
+secret through the local environment or deployment secret store. Local
+development uses direct Entra with `OIDC_REQUIRE_VERIFIED_EMAIL=false`; the
+reviewed workforce flow uses the email claim only for guarded first-link
+discovery.
 
 `PUBLIC_ORIGIN` determines the one accepted Host, callback URL and local
 redirect base. `APP_ALLOWED_ORIGIN` is the exact Origin accepted by unsafe
 requests and the sole credentialed CORS origin in development. Production must
 use HTTPS, Secure cookies and explicit trusted Caddy peer CIDRs.
 
-Health check:
+Health check through local Caddy:
 
 ```bash
-curl --header 'Host: app.localhost:5173' http://localhost:8000/health
+curl --cacert /path/printed/by/setup-local-app-tls.sh/ca.crt \
+  https://app.localhost/health
 ```
 
 ## Prediction Worker

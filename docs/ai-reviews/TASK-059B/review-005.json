@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-059B/review-005",
+  "task": {
+    "id": "TASK-059B",
+    "path": "tasks/TASK-059B-local-https-direct-entra.md"
+  },
+  "round": 5,
+  "reviewed_at": "2026-09-24T11:59:09Z",
+  "reviewer": {
+    "label": "Codex self-review"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "32a88620267f4c5163f0e63ad1e9dd799fc945f3",
+    "head_sha": "567cd863c80461144eff83ef28e8955626dc5500",
+    "comparison": "32a88620267f4c5163f0e63ad1e9dd799fc945f3...567cd863c80461144eff83ef28e8955626dc5500",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Reviewed the complete committed TASK-059B branch against origin/main for bugs, regressions, security issues, missing tests, documentation gaps and scope, excluding AI-review records. Prior implementation findings remain fixed, the CSRF-header log-redaction regression is covered by live local and production checks, and the recorded real-provider evidence completes the outstanding browser verification. One low-severity documentation inconsistency remains: the evidence identifies Chromium 135 as the test browser but later attributes the logout fragment observation to Brave. This review is advisory and does not replace human approval.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "The browser name is inconsistent within the recorded TASK-059B evidence.",
+        "rationale": "The evidence header records Chromium 135 as the browser used for the run, while the Step 8 result says Brave displayed the empty logout fragment. This makes the otherwise audit-ready manual evidence internally inconsistent.",
+        "recommendation": "Change the Step 8 browser reference to Chromium and preserve the recorded version in the evidence header.",
+        "locations": [
+          {
+            "path": "docs/qa/AUTHENTICATION-QA-CHECKLIST.md",
+            "line": 106
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": []
+  }
+}

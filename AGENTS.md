@@ -56,8 +56,8 @@ Päätetty teknologiapino:
 - ORM: SQLAlchemy
 - migrations: repository-owned Python/Psycopg runner and paired SQL migrations
 - authentication: provider-neutral backend OIDC, with direct Microsoft Entra ID
-  in both development and production under amended ADR-013; the checked-in
-  local Authentik runtime remains until TASK-059B implements its removal
+  in both development and production under amended ADR-013; local Caddy HTTPS
+  and direct Entra are implemented by TASK-059B
 - local target: loopback Caddy HTTPS at `https://app.localhost`, routing Vite and
   FastAPI, plus a separate prediction worker and application database
 - production target: Docker Engine/Compose on an UpCloud Ubuntu 26.04 LTS host;
@@ -90,7 +90,7 @@ same-host backups do not protect against loss of the host or its disk; that
 limitation is accepted until a separately planned off-server/managed solution.
 
 TASK-059A changes documentation only. Runtime, shared seed/admin CLIs, QA and
-rollout remain pending B/C/D/G/E/F; the current Coolify adapter remains until G.
+rollout remain pending C/D/G/E/F; the current Coolify adapter remains until G.
 The non-user metamodel seed is approved production reference data; development
 Users and example business data remain forbidden in production. First setup is
 migrations -> reference seed -> empty-users-table administrator bootstrap.

@@ -15,7 +15,7 @@ direct Entra in both environments, distinct HTTPS origins, a shared registration
 and Docker deployment on UpCloud Ubuntu 26.04 LTS with direct Caddy TLS and
 private Docker PostgreSQL 18. Daily encrypted on-server backups with 7-day
 retention and backup/restore evidence are required, pending implementation. Runtime,
-reference-seed/admin CLIs, integrated QA and rollout remain pending B/C/D/G/E/F.
+reference-seed/admin CLIs, integrated QA and rollout remain pending C/D/G/E/F.
 This documentation amendment changes no runtime.
 
 Teknologiapino on päätetty ADR-001:ssä.
@@ -27,7 +27,7 @@ Päätetty tekninen perusrakenne:
 - database: PostgreSQL
 - ORM: SQLAlchemy
 - authentication target: provider-neutral backend OIDC connecting directly to
-  Microsoft Entra ID in development and production (local migration pending B)
+  Microsoft Entra ID in development and production
 - local target: Caddy HTTPS, Vite, FastAPI, one prediction worker and PostgreSQL
 - production target: Docker Engine/Compose on UpCloud Ubuntu 26.04 LTS, Caddy
   public TLS and private PostgreSQL 18 with persistent storage (pending G/F)
@@ -79,12 +79,13 @@ PostgreSQL runs in Docker with persistent storage initially. Migration success
 gates API/worker startup; backend health gates frontend readiness. Both API
 and worker use the same immutable backend image; worker config is database-only.
 
-The checked-in runtime is still the earlier design: local HTTP application
-`app.localhost:5173` with Authentik and optional federation, plus a production
-Coolify/Traefik adapter routing HTTP to frontend/Caddy:8080. These are
-implementation facts, not the target. B replaces local ingress/authentication;
-G replaces the production adapter. No Authentik, Traefik, forward-auth or
-`auth.lupaus.eu` is needed in the target. There is no staging environment.
+The checked-in development runtime is loopback `https://app.localhost` through
+local Caddy to Vite/FastAPI and direct Entra. Caddy fixes the API Host/proxy
+headers and Vite HMR uses WSS on the same HTTPS origin. Existing Authentik
+volumes and identity rows are preserved but Authentik is not an active runtime
+dependency. The production Coolify/Traefik adapter remains until G. No
+Authentik, Traefik, forward-auth or `auth.lupaus.eu` is needed in the target.
+There is no staging environment.
 
 ---
 
@@ -244,8 +245,8 @@ Status: backend OIDC and application-session boundary implemented
 FastAPI is a confidential OIDC relying party. ADR-013 selects direct
 single-tenant Entra in both environments using the existing shared registration
 and distinct secrets. React is not an OIDC client and receives no provider tokens.
-Local Authentik remains implemented until B; previous federation QA does not
-verify direct-Entra development or production ingress.
+Local Caddy/direct-Entra is implemented. Historical federation QA does not
+verify the direct-Entra development or production ingress.
 
 | Purpose | Development | Production |
 | --- | --- | --- |

@@ -42,6 +42,7 @@ with request(
         "X-Forwarded-Host": "evil.test",
         "X-Forwarded-Proto": "http",
         "X-Schatten-Client-IP": "203.0.113.40",
+        "X-CSRF-Token": "csrf-header-secret",
         "Authorization": "Bearer credential-secret",
         "Cookie": "session=credential-cookie",
     },
