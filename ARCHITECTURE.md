@@ -15,8 +15,8 @@ direct Entra in both environments, distinct HTTPS origins, a shared registration
 and Docker deployment on UpCloud Ubuntu 26.04 LTS with direct Caddy TLS and
 private Docker PostgreSQL 18. Daily encrypted on-server backups with 7-day
 retention and backup/restore evidence are required, pending implementation. The
-reference-data seed CLI is implemented; production runtime, administrator
-bootstrap, integrated QA and rollout remain pending D/G/E/F.
+reference-data seed and empty-users-table administrator bootstrap CLIs are
+implemented; production runtime, integrated QA and rollout remain pending G/E/F.
 
 Teknologiapino on päätetty ADR-001:ssä.
 

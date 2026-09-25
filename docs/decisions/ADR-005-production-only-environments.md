@@ -13,7 +13,8 @@ It retains backup identifiers and restore-evidence release gates, with daily
 encrypted on-server backups and 7-day retention. Volumes are not backups.
 Conflicting local Authentik, platform and separate-registration requirements
 below are historical; backup evidence requirements remain active. The two
-environments and limited production smoke remain active; B/C/D/G/E/F are pending.
+environments and limited production smoke remain active; B/C/D are implemented
+and G/E/F are pending.
 
 ---
 

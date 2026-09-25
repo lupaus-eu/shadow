@@ -163,6 +163,29 @@ packaged, the command runs as numeric user `10001` from `/tmp` with only
 `DATABASE_URL`, and a repeated invocation succeeds as a no-op. Never point this
 suite or the image command at production.
 
+## First Production Administrator Bootstrap
+
+TASK-059D covers CLI input validation, cancellation, generic output and redaction
+without a database. Its disposable PostgreSQL suite covers the successful
+fixed-role insert, active and soft-deleted User refusal, writer serialization,
+rollback, missing migrations and the reference-seed -> bootstrap -> guarded
+first-link sequence:
+
+```bash
+cd backend
+uv run pytest tests/test_bootstrap_admin.py -v
+MIGRATION_TEST_DATABASE_URL=postgresql://schatten:schatten_dev_password@localhost:5432/schatten \
+  uv run pytest tests/test_bootstrap_admin_postgresql_integration.py -v
+```
+
+Build the production image and exercise `python -m app.bootstrap_admin` only
+against a migrated disposable database whose entire `users` table is empty. Run
+it as numeric user `10001` from `/tmp` with only `DATABASE_URL`, an interactive
+stdin and no OIDC/public-origin/session settings. Verify one active admin with
+null audit actors and no identity/session, then verify a repeat invocation
+refuses without mutation. Never enter a real production administrator during
+implementation QA and never point this suite at production.
+
 ## Production Frontend And Authentication Deployment
 
 TASK-039G adds the immutable frontend/Caddy artifact and makes it the only

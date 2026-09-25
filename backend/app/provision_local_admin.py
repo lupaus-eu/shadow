@@ -1,6 +1,5 @@
 """Interactive, development-only admission of one designated Entra administrator."""
 
-import re
 import sys
 from dataclasses import dataclass
 
@@ -9,14 +8,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.v1.users.models import User
-from app.api.v1.users.schemas import UserCreateRequest
+from app.api.v1.users.schemas import (
+    UserCreateRequest,
+    validate_user_email_address,
+)
 from app.core.config import Settings, get_settings
 from app.core.database import get_session_factory
-
-_LOCAL_ENTRA_EMAIL_PATTERN = re.compile(
-    r"^[^\s@]+@(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)"
-    r"(?:\.(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?))*$"
-)
 
 
 class LocalAdminProvisioningError(Exception):
@@ -43,8 +40,7 @@ def provision_local_admin(
         )
 
     payload = UserCreateRequest(name=name, email=email, role="admin")
-    if not _LOCAL_ENTRA_EMAIL_PATTERN.fullmatch(payload.email):
-        raise ValueError("Value must be a valid email address.")
+    validate_user_email_address(payload.email)
     matching_users = session.scalars(
         select(User)
         .where(func.lower(User.email) == payload.email.lower())

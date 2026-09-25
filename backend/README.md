@@ -67,8 +67,8 @@ docker build --target production -t schatten-backend:local -f backend/Dockerfile
 ```
 
 The default command runs the production API. The same image provides the
-one-shot release migration command and explicit reference-data seed. All run as
-numeric user/group `10001:10001`:
+one-shot release migration command, explicit reference-data seed and interactive
+first-administrator bootstrap. All run as numeric user/group `10001:10001`:
 
 ```bash
 docker run --rm \
@@ -79,6 +79,11 @@ docker run --rm \
   -e DATABASE_URL=postgresql://user:password@database:5432/schatten \
   --workdir /tmp \
   schatten-backend:local python -m app.seed_reference_data
+
+docker run --rm --interactive --tty \
+  --env DATABASE_URL \
+  --workdir /tmp \
+  schatten-backend:local python -m app.bootstrap_admin
 ```
 
 Run the seed only after migrations. It needs only `DATABASE_URL`, inserts the
@@ -86,6 +91,16 @@ approved default metamodel without Users or business records, and reports a
 successful no-op when an active default already exists. It resolves its packaged
 SQL/JSON independently of the working directory and does not initialize FastAPI
 or OIDC configuration.
+
+Run the bootstrap only after migrations and the reference seed, from a private
+operator terminal with session recording and screen sharing disabled. It prompts
+for the designated administrator's display name and matching Entra email; never
+place either value in command arguments or repository records. The command
+creates one active fixed-role `admin` with null bootstrap audit actors only when
+the entire `users` table is empty, including soft-deleted rows. Any existing User
+causes a nonzero refusal without mutation. It creates no identity or session;
+the administrator's first direct-Entra login uses normal guarded identity
+linking. Manage every later User through the authenticated Users UI/API.
 
 Deployment policy and secret-safe operator commands are documented in
 `docs/DEPLOYMENT.md`.

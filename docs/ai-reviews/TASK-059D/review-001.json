@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-059D/review-001",
+  "task": {
+    "id": "TASK-059D",
+    "path": "tasks/TASK-059D-production-admin-bootstrap.md"
+  },
+  "round": 1,
+  "reviewed_at": "2026-09-25T08:20:12Z",
+  "reviewer": {
+    "label": "Claude Code self-review"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "7683679f4df5f1df59713bb4ee684350d63068a9",
+    "head_sha": "d8f35cfd8c49f51709fa464659a5a843d57686c3",
+    "comparison": "7683679f4df5f1df59713bb4ee684350d63068a9...d8f35cfd8c49f51709fa464659a5a843d57686c3",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Reviewed the full committed TASK-059D branch against main, excluding AI-review records. No bugs, regressions, security issues, missing tests or out-of-scope changes were found in the database-only bootstrap CLI, the shared email validator reuse, the tests or the backend/deployment/testing/Users documentation. The table lock serializes the emptiness check and insert against all User writers; output stays generic and does not echo input, credentials or database URLs. Ruff and Pyright passed; the full backend suite passed with 417 tests and 42 expected PostgreSQL-gated skips; all 18 focused bootstrap tests passed against a disposable PostgreSQL 18. The production image ran as uid 10001 from /tmp with only DATABASE_URL: an unmigrated database failed generically, and after migrate and reference seed it created one active admin with null audit actors and no identity or session, then refused a repeat invocation without mutation. One low documentation finding: the root README status line was not updated. This review is advisory and does not replace human approval.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "Root README still lists administrator bootstrap as pending D.",
+        "rationale": "AGENTS.md, ARCHITECTURE.md and docs/DEPLOYMENT.md were updated to mark the bootstrap as implemented, but the root README status paragraph still says bootstrap is pending D/E/F/G. TASK-059C updated the same paragraph for its own delivery.",
+        "recommendation": "Update the root README status paragraph to say TASK-059D implements the empty-users-table administrator bootstrap and that production runtime, integrated QA and rollout remain pending G/E/F.",
+        "locations": [
+          {
+            "path": "README.md",
+            "line": 67
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "documentation",
+        "severity": "info",
+        "summary": "ADR-005 amendment note still lists B/C/D as pending.",
+        "rationale": "The ADR-005 status note has not been updated since TASK-059B and TASK-059C were delivered, so this predates the branch. It now also misstates TASK-059D. The ADR-013 amendment remains the authoritative source.",
+        "recommendation": "Ask the developer whether ADR amendment status notes should track delivery. If so, update the note to say only G/E/F remain pending, either in this PR or in a separate docs change.",
+        "locations": [
+          {
+            "path": "docs/decisions/ADR-005-production-only-environments.md",
+            "line": 16
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": []
+  }
+}

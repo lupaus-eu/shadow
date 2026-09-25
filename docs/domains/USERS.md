@@ -168,6 +168,22 @@ Flow:
 3. Create active user row.
 4. Return user data.
 
+## Bootstrap First Production Administrator
+
+After migrations and production reference-data seeding, an operator may run the
+database-only interactive `python -m app.bootstrap_admin` command once from a
+private terminal. The command reuses User name/email validation, fixes the role
+internally to `admin`, and creates one active User only when the entire `users`
+table is empty, including soft-deleted rows. The emptiness check and insert are
+one transaction serialized against other User writers.
+
+Bootstrap audit actors are null because no authenticated application actor can
+exist yet. The command never creates an identity or session, never updates,
+revives or promotes an existing User, and never runs during application startup.
+The first direct-Entra login performs the normal guarded email discovery and
+permanent identity link. All subsequent Users are managed through the existing
+authenticated admin API/UI.
+
 ## Soft Delete User
 
 Flow:

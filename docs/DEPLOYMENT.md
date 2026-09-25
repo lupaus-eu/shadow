@@ -269,7 +269,7 @@ unacceptable build duration trigger reassessment. GitHub Actions/GHCR can later
 build the same artifact contract, followed by approved deployment of frozen
 images. No automatic deployment or off-server workflow is implemented here.
 
-## First Initialization (Reference Seed Implemented; Bootstrap Pending D)
+## First Initialization (Reference Seed And Bootstrap Implemented)
 
 For a fresh database, the explicit order is:
 
@@ -279,14 +279,22 @@ For a fresh database, the explicit order is:
    metamodel SQL/JSON, inserts atomically only when no active default exists,
    and otherwise preserves it unchanged.
 3. Run interactive `python -m app.bootstrap_admin` from that artifact in a private
-   operator terminal. Validate the designated Entra name/email; create one fixed
-   admin only when the entire users table is empty, including soft-deleted rows.
+   operator terminal with screen sharing and session recording disabled. Supply
+   `DATABASE_URL` through protected environment configuration and enter the
+   designated Entra name/email only at the prompts, never in arguments or
+   repository records. The command validates and trims both fields and creates
+   one fixed-role admin only when the entire users table is empty, including
+   soft-deleted rows.
 4. First direct-Entra login links the pre-provisioned admin normally. Provision
    subsequent Users through existing admin functionality, then run limited smoke.
 
 C's reference seed is database-only, creates no Users, identities or sessions,
-and does not initialize OIDC. D's planned bootstrap has the same configuration
-boundary but accepts private interactive administrator input. Neither runs
+and does not initialize OIDC. D's bootstrap has the same configuration boundary
+but accepts private interactive administrator input. It serializes the complete
+table-emptiness check and insert against all User writers. Existing active or
+soft-deleted rows cause a nonzero refusal without updates, revival, promotion or
+new rows; do not bypass that refusal with manual SQL. The bootstrap leaves audit
+actors null as approved and creates no identity or session. Neither command runs
 automatically on application startup. Subsequent releases run migrations, not
 first-admin bootstrap. Never run the full `002_seed_development_data.sql` in
 production.

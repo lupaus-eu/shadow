@@ -1,3 +1,4 @@
+import re
 from typing import Literal
 
 from pydantic import Field, field_validator
@@ -5,6 +6,17 @@ from pydantic import Field, field_validator
 from app.core.schemas import StrictBaseModel
 
 UserRole = Literal["consultant", "admin"]
+USER_EMAIL_PATTERN = re.compile(
+    r"^[^\s@]+@(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)"
+    r"(?:\.(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?))*$"
+)
+
+
+def validate_user_email_address(value: str) -> str:
+    """Validate a trimmed User email intended for Entra first linking."""
+    if not USER_EMAIL_PATTERN.fullmatch(value):
+        raise ValueError("Value must be a valid email address.")
+    return value
 
 
 class UserCreateRequest(StrictBaseModel):
