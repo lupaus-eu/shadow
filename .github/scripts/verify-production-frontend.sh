@@ -20,7 +20,6 @@ for invalid_origin in \
   'https://app.example.test:8443'; do
   if docker run --rm \
     --env "PUBLIC_ORIGIN=${invalid_origin}" \
-    --env CADDY_TRUSTED_PROXY_CIDRS=172.29.0.0/24 \
     "${FRONTEND_IMAGE}" \
     caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile \
     >/dev/null 2>&1; then
@@ -28,45 +27,53 @@ for invalid_origin in \
     exit 1
   fi
 done
+if docker run --rm --env PUBLIC_ORIGIN=https://app.example.test --env CADDY_TLS_MODE=off \
+  "${FRONTEND_IMAGE}" caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null 2>&1; then
+  echo "Production frontend accepted an unsupported CADDY_TLS_MODE." >&2
+  exit 1
+fi
+for mode in acme internal; do
+  docker run --rm --env PUBLIC_ORIGIN=https://app.example.test --env "CADDY_TLS_MODE=${mode}" \
+    "${FRONTEND_IMAGE}" caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null
+done
 
 run_id="${GITHUB_RUN_ID:-$$}-${GITHUB_RUN_ATTEMPT:-1}"
-backend_network_name="task039g-backend-${run_id}"
-edge_network_name="task039g-edge-${run_id}"
-untrusted_network_name="task039g-untrusted-${run_id}"
-backend_name="task039g-backend-${run_id}"
-frontend_name="task039g-frontend-${run_id}"
+network_name="task059g-frontend-${run_id}"
+backend_name="task059g-backend-${run_id}"
+frontend_name="task059g-frontend-${run_id}"
+volume_name="task059g-caddy-data-${run_id}"
 
 cleanup() {
   docker rm --force "${frontend_name}" "${backend_name}" >/dev/null 2>&1 || true
-  docker network rm "${backend_network_name}" "${edge_network_name}" \
-    "${untrusted_network_name}" >/dev/null 2>&1 || true
+  docker network rm "${network_name}" >/dev/null 2>&1 || true
+  docker volume rm "${volume_name}" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
-docker network create "${backend_network_name}" >/dev/null
-docker network create "${edge_network_name}" >/dev/null
-docker network create "${untrusted_network_name}" >/dev/null
-edge_network_cidr="$(docker network inspect --format '{{(index .IPAM.Config 0).Subnet}}' "${edge_network_name}")"
+docker network create "${network_name}" >/dev/null
 
 docker run --detach --rm \
   --name "${backend_name}" \
-  --network "${backend_network_name}" \
+  --network "${network_name}" \
   --network-alias backend \
   --volume "${PWD}/.github/scripts/mock-production-backend.py:/tmp/mock-production-backend.py:ro" \
   --entrypoint python \
   "${python_image}" \
   /tmp/mock-production-backend.py >/dev/null
 
-docker run --detach --rm \
+# Same effective hardening as docker-compose.production.yml; the internal
+# issuer replaces public ACME for this offline check.
+docker run --detach \
   --name "${frontend_name}" \
-  --network "${backend_network_name}" \
-  --network-alias frontend \
+  --network "${network_name}" \
+  --network-alias app.example.test \
+  --read-only --cap-drop ALL --security-opt no-new-privileges:true \
+  --sysctl net.ipv4.ip_unprivileged_port_start=80 \
+  --tmpfs /config:uid=10001,gid=10001,mode=0700 --tmpfs /tmp:uid=10001,gid=10001,mode=0700 \
+  --volume "${volume_name}:/data" \
   --env PUBLIC_ORIGIN=https://app.example.test \
-  --env "CADDY_TRUSTED_PROXY_CIDRS=${edge_network_cidr}" \
+  --env CADDY_TLS_MODE=internal \
   "${FRONTEND_IMAGE}" >/dev/null
-
-docker network connect --alias frontend "${edge_network_name}" "${frontend_name}"
-docker network connect --alias frontend "${untrusted_network_name}" "${frontend_name}"
 
 for attempt in $(seq 1 30); do
   health="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}missing{{end}}' "${frontend_name}")"
@@ -83,16 +90,7 @@ for attempt in $(seq 1 30); do
 done
 
 docker run --rm \
-  --network "${edge_network_name}" \
-  --env PROXY_TEST_MODE=trusted \
-  --volume "${PWD}/.github/scripts/verify-production-frontend-client.py:/tmp/verify-production-frontend-client.py:ro" \
-  --entrypoint python \
-  "${python_image}" \
-  /tmp/verify-production-frontend-client.py
-
-docker run --rm \
-  --network "${untrusted_network_name}" \
-  --env PROXY_TEST_MODE=untrusted \
+  --network "${network_name}" \
   --volume "${PWD}/.github/scripts/verify-production-frontend-client.py:/tmp/verify-production-frontend-client.py:ro" \
   --entrypoint python \
   "${python_image}" \
@@ -118,4 +116,4 @@ for expected in 'code=REDACTED' 'state=REDACTED' 'error=REDACTED' \
   fi
 done
 
-echo "Production frontend host, proxy, SPA, health, header and log boundaries passed."
+echo "Production frontend non-root TLS, redirect, host, forwarded-header, SPA, health, header and log boundaries passed."

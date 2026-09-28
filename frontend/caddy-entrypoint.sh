@@ -3,6 +3,15 @@
 set -eu
 
 : "${PUBLIC_ORIGIN:?Set the exact public HTTPS origin}"
+: "${CADDY_TLS_MODE:?Set CADDY_TLS_MODE to acme or internal}"
+
+case "${CADDY_TLS_MODE}" in
+  acme|internal) ;;
+  *)
+    echo "CADDY_TLS_MODE must be acme or internal" >&2
+    exit 1
+    ;;
+esac
 
 invalid_origin() {
   echo "PUBLIC_ORIGIN must contain one browser-canonical lowercase DNS or IP host without an explicit port" >&2

@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-059G/review-004",
+  "task": {
+    "id": "TASK-059G",
+    "path": "tasks/TASK-059G-upcloud-docker-runtime.md"
+  },
+  "round": 4,
+  "reviewed_at": "2026-09-28T10:20:00Z",
+  "reviewer": {
+    "label": "Claude Code self-review"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "0b46930a1de936a5be3417e08f1debded6069936",
+    "head_sha": "276dfd9c25e66a06fcd83713d1197507786d1a5e",
+    "comparison": "0b46930a1de936a5be3417e08f1debded6069936...276dfd9c25e66a06fcd83713d1197507786d1a5e",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "clean",
+    "summary": "Re-reviewed the full committed TASK-059G branch against main, excluding AI-review records, with focus on the round 3 fixes in the Docker cleanup job, the deploy-release failure reporting, the deployment documentation, the runtime QA script and the QA record. The fix also closes a second instance of the F-001 defect: a failed build-cache prune had been hidden behind a pipeline. Before the fix, a docker shim with a reachable API but failing listings reproduced the false status=completed; after it, the shim produced status=failed. Script syntax checks, shellcheck at warning severity and verify-production-compose.sh passed. The disposable end-to-end verify-production-runtime.sh ran on an isolated Docker-in-Docker daemon at da7caee and passed with 38 PASS groups and no failures. That run includes new checks for failing ps, images and builder calls, and for a post-migration gate failure followed by fix-forward. Later commits changed only the QA record and the wording of the recovery hint; the QA assertion pattern still matches. No production host, DNS, tenant or backup directory was touched. No new actionable findings. This review is advisory and does not replace human approval.",
+    "findings": [],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-059G/review-003",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "The container, image-protection and image listings are captured with explicit status checks. A failure aborts with status=failed and exit 1 before that phase removes anything. The build-cache prune status is no longer masked by a pipeline. Runtime QA asserts status=failed for failing ps, images and builder calls, and DEPLOYMENT.md documents the behavior.",
+        "validated_by": {
+          "review_id": "TASK-059G/review-004",
+          "commit": "276dfd9c25e66a06fcd83713d1197507786d1a5e"
+        }
+      },
+      {
+        "record_id": "TASK-059G/review-003",
+        "finding_id": "F-002",
+        "disposition": "fixed",
+        "rationale": "deploy-release records SERVICES_REPLACED in every failed deployment record. Once new-release application containers may have started, the failure message says they may be partly running and names both recovery options: fix forward, or a schema-compatible rollback. DEPLOYMENT.md explains that unchanged pointers do not mean the previous release is serving. Runtime QA asserts SERVICES_REPLACED=false for a failed migration. For a forced post-migration health failure, it asserts the partly-running message, SERVICES_REPLACED=true and unchanged pointers, followed by a successful fix-forward.",
+        "validated_by": {
+          "review_id": "TASK-059G/review-004",
+          "commit": "276dfd9c25e66a06fcd83713d1197507786d1a5e"
+        }
+      },
+      {
+        "record_id": "TASK-059G/review-003",
+        "finding_id": "F-003",
+        "disposition": "accepted_risk",
+        "rationale": "The developer decided that no freshness limit is needed for restore-rehearsal evidence. The gate still requires the selected or latest evidence to report STATUS=success. No code change was made.",
+        "validated_by": {
+          "review_id": "TASK-059G/review-004",
+          "commit": "276dfd9c25e66a06fcd83713d1197507786d1a5e"
+        }
+      }
+    ]
+  }
+}

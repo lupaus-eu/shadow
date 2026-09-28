@@ -1,24 +1,286 @@
+# Production runtime for the UpCloud Docker Engine host (ADR-013).
+#
+# Run only through deploy/bin/* from a frozen release directory. BACKEND_IMAGE
+# and FRONTEND_IMAGE are immutable image IDs from the release record; this file
+# has no build sections, so deployment cannot rebuild. Rendered `config` output
+# contains secrets and must never be pasted into evidence.
+name: schatten
+
+x-hardening: &hardening
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  privileged: false
+
+x-backend-image: &backend-image
+  image: ${BACKEND_IMAGE:?Set BACKEND_IMAGE to the frozen release backend image ID}
+  pull_policy: never
+
+x-retain: &retain
+  # Every Schatten container: the weekly Docker cleanup never removes them,
+  # even while stopped.
+  eu.lupaus.schatten.retain: "true"
+
 services:
+  database:
+    <<: *hardening
+    image: docker.io/library/postgres:18.6@sha256:4ef4dbc939d61acea57712655ddb4b4ab27419c913f94cca0cd57cb3ea3c2280
+    pull_policy: missing
+    user: "999:999"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    tmpfs:
+      - /var/run/postgresql:uid=999,gid=999,mode=0775,size=1m
+      - /tmp:uid=999,gid=999,mode=0700,size=64m
+    shm_size: 128m
+    networks: [data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready --username \"$$POSTGRES_USER\" --dbname \"$$POSTGRES_DB\" --host 127.0.0.1"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    labels: *retain
+    restart: unless-stopped
+    stop_grace_period: 60s
+
   migration:
-    extends:
-      file: docker-compose.release.yml
-      service: migration
-    image: ${BACKEND_IMAGE:?Set BACKEND_IMAGE to an immutable release image reference}
+    <<: [*hardening, *backend-image]
+    command: ["python", "migrate.py", "up"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL for the private database}
+    tmpfs:
+      - /tmp:size=16m
+    networks: [data]
+    depends_on:
+      database:
+        condition: service_healthy
+        required: true
+    labels: *retain
+    restart: "no"
+    healthcheck:
+      disable: true
 
   backend:
-    extends:
-      file: docker-compose.release.yml
-      service: backend
-    image: ${BACKEND_IMAGE:?Set BACKEND_IMAGE to an immutable release image reference}
+    <<: [*hardening, *backend-image]
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL for the private database}
+      APP_ENV: production
+      OIDC_DISCOVERY_URL: ${OIDC_DISCOVERY_URL:?Set the tenant-specific OIDC discovery URL}
+      OIDC_ISSUER: ${OIDC_ISSUER:?Set the exact expected OIDC issuer}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:?Set the confidential OIDC client ID}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:?Set the confidential OIDC client secret}
+      OIDC_SCOPES: openid profile email
+      OIDC_CALLBACK_PATH: /api/v1/auth/callback
+      OIDC_ALLOWED_SIGNING_ALGORITHMS: RS256
+      OIDC_REQUIRE_VERIFIED_EMAIL: "false"
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?Set the exact public HTTPS origin}
+      APP_ALLOWED_ORIGIN: ${PUBLIC_ORIGIN:?Set the exact public HTTPS origin}
+      # Trust only the fixed Caddy address on the edge network.
+      TRUSTED_CADDY_PEER_CIDRS: ${SCHATTEN_CADDY_IPV4:-172.30.59.2}/32
+      SESSION_COOKIE_SECURE: "true"
+      AUTH_SESSION_IDLE_TIMEOUT_SECONDS: "1800"
+      AUTH_SESSION_ABSOLUTE_LIFETIME_SECONDS: "28800"
+      AUTH_SESSION_ACTIVITY_WRITE_SECONDS: "300"
+      OIDC_TRANSACTION_LIFETIME_SECONDS: "600"
+    tmpfs:
+      - /tmp:size=64m
+    # edge provides Caddy ingress and Entra egress; data is internal-only.
+    networks: [edge, data]
+    expose:
+      - "8000"
+    depends_on:
+      database:
+        condition: service_healthy
+        required: true
+      migration:
+        condition: service_completed_successfully
+        required: true
+    labels: *retain
+    restart: unless-stopped
 
   prediction-worker:
-    extends:
-      file: docker-compose.release.yml
-      service: prediction-worker
-    image: ${BACKEND_IMAGE:?Set BACKEND_IMAGE to an immutable release image reference}
+    <<: [*hardening, *backend-image]
+    command: ["python", "-m", "app.api.v1.predictions.worker"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL for the private database}
+    tmpfs:
+      - /tmp:size=64m
+    networks: [data]
+    depends_on:
+      database:
+        condition: service_healthy
+        required: true
+      migration:
+        condition: service_completed_successfully
+        required: true
+    healthcheck:
+      test: ["CMD", "python", "-m", "app.api.v1.predictions.worker", "health-check"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    init: true
+    labels: *retain
+    restart: unless-stopped
+    stop_grace_period: 10s
 
   frontend:
-    extends:
-      file: docker-compose.release.yml
-      service: frontend
-    image: ${FRONTEND_IMAGE:?Set FRONTEND_IMAGE to an immutable release image reference}
+    <<: *hardening
+    image: ${FRONTEND_IMAGE:?Set FRONTEND_IMAGE to the frozen release frontend image ID}
+    pull_policy: never
+    environment:
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?Set the exact public HTTPS origin}
+      CADDY_TLS_MODE: acme
+    # The only published ports on the host.
+    ports:
+      - "80:80/tcp"
+      - "443:443/tcp"
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: "80"
+    volumes:
+      - caddy_data:/data
+    tmpfs:
+      - /config:uid=10001,gid=10001,mode=0700,size=1m
+      - /tmp:uid=10001,gid=10001,mode=0700,size=16m
+    networks:
+      edge:
+        ipv4_address: ${SCHATTEN_CADDY_IPV4:-172.30.59.2}
+    depends_on:
+      backend:
+        condition: service_healthy
+        required: true
+    labels: *retain
+    restart: unless-stopped
+
+  # Operational scheduler (ADR-013). Started only by an explicit
+  # `deploy/bin/deploy-release --enable-scheduler`; no network, no ports and no
+  # label discovery. Docker socket access is host-administrator-equivalent: a
+  # read-only bind mount would not restrict Docker API writes, so none is implied.
+  ofelia:
+    <<: *hardening
+    profiles: [scheduler]
+    image: docker.io/mcuadros/ofelia:0.3.22@sha256:efcbe2c5cf658a25de6443c1462d653f9cc03791d642e01fc6c638a00f97e492
+    pull_policy: missing
+    user: "65534:${DOCKER_SOCKET_GID:?Set DOCKER_SOCKET_GID to the host docker socket group ID}"
+    command: ["daemon", "--config", "/etc/ofelia/config.ini"]
+    environment:
+      TZ: Europe/Helsinki
+    network_mode: none
+    volumes:
+      - type: bind
+        source: ${SCHATTEN_DOCKER_SOCKET:-/var/run/docker.sock}
+        target: /var/run/docker.sock
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${SCHATTEN_OFELIA_CONFIG:-./deploy/ofelia/config.ini}
+        target: /etc/ofelia/config.ini
+        read_only: true
+        bind: {create_host_path: false}
+    tmpfs:
+      - /tmp:size=8m
+    labels: *retain
+    restart: unless-stopped
+
+  # Pre-created hardened runners. Ofelia starts these existing containers
+  # (job-run `container =`), so their effective settings are the ones below.
+  backup-runner:
+    <<: *hardening
+    profiles: [ops]
+    container_name: schatten-backup-runner
+    image: docker.io/library/postgres:18.6@sha256:4ef4dbc939d61acea57712655ddb4b4ab27419c913f94cca0cd57cb3ea3c2280
+    pull_policy: missing
+    user: "${SCHATTEN_BACKUP_UID:-10002}:${SCHATTEN_BACKUP_GID:-10002}"
+    entrypoint: ["/opt/schatten-ops/backup.sh"]
+    command: ["scheduled"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL for the private database}
+      BACKUP_RETENTION_DAYS: "7"
+      BACKUP_LOCK_TIMEOUT_SECONDS: ${SCHATTEN_BACKUP_LOCK_TIMEOUT_SECONDS:-1800}
+      HOME: /tmp
+    networks: [data]
+    volumes:
+      - type: bind
+        source: ./deploy/ops
+        target: /opt/schatten-ops
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${SCHATTEN_BACKUP_DIR:-/opt/postgres-backups}
+        target: /backups
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${SCHATTEN_BACKUP_PUBLIC_KEY:?Set SCHATTEN_BACKUP_PUBLIC_KEY to the backup encryption public key}
+        target: /run/schatten/backup-public-key.asc
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${SCHATTEN_STATE_DIR:-/opt/apps/schatten-state}/locks
+        target: /locks
+        read_only: true
+        bind: {create_host_path: false}
+    tmpfs:
+      - /tmp:mode=1777,size=16m
+      # Replaces the image's declared data VOLUME so no anonymous volume is created.
+      - /var/lib/postgresql:mode=0700,size=1m
+    labels: *retain
+    restart: "no"
+
+  cleanup-runner:
+    <<: *hardening
+    profiles: [ops]
+    container_name: schatten-docker-cleanup
+    image: docker.io/library/docker:28.5.2-cli@sha256:625d9431a9f54c5a2bc90f24f0e1c3d55b1349fd857dd85035f98c2c9acbdd4d
+    pull_policy: missing
+    user: "65534:${DOCKER_SOCKET_GID:?Set DOCKER_SOCKET_GID to the host docker socket group ID}"
+    entrypoint: ["/opt/schatten-ops/docker-cleanup.sh"]
+    command: ["--apply"]
+    environment:
+      CLEANUP_RETENTION_DAYS: "7"
+      DOCKER_CONFIG: /tmp/docker-config
+      HOME: /tmp
+    network_mode: none
+    volumes:
+      - type: bind
+        source: ${SCHATTEN_DOCKER_SOCKET:-/var/run/docker.sock}
+        target: /var/run/docker.sock
+        bind: {create_host_path: false}
+      - type: bind
+        source: ./deploy/ops
+        target: /opt/schatten-ops
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${SCHATTEN_RELEASES_DIR:-/opt/apps/schatten-releases}
+        target: /releases
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${SCHATTEN_STATE_DIR:-/opt/apps/schatten-state}/locks
+        target: /locks
+        read_only: true
+        bind: {create_host_path: false}
+    tmpfs:
+      - /tmp:mode=1777,size=8m
+    labels: *retain
+    restart: "no"
+
+volumes:
+  # Persistent across container replacement; not a backup.
+  postgres_data:
+  caddy_data:
+
+networks:
+  edge:
+    ipam:
+      config:
+        # Dynamic addresses come only from ip_range, so the fixed Caddy
+        # address (outside it) can never be taken by another container.
+        - subnet: ${SCHATTEN_EDGE_SUBNET:-172.30.59.0/24}
+          ip_range: ${SCHATTEN_EDGE_IP_RANGE:-172.30.59.128/25}
+  data:
+    internal: true

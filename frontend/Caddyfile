@@ -1,13 +1,44 @@
 {
-	auto_https off
-	servers :8080 {
-		trusted_proxies static {$CADDY_TRUSTED_PROXY_CIDRS}
-		trusted_proxies_strict
-		client_ip_headers X-Forwarded-For
+	admin off
+	skip_install_trust
+	servers {
+		# Only TCP 80/443 are published; do not advertise HTTP/3 over UDP.
+		protocols h1 h2
 	}
 }
 
-:8080 {
+# Production uses Caddy's default public ACME issuers. Disposable QA selects
+# the internal issuer through CADDY_TLS_MODE=internal.
+(tls_acme) {
+	tls {
+		issuer acme
+	}
+}
+
+(tls_internal) {
+	tls internal
+}
+
+# Loopback-only container health endpoint; independent of certificate issuance.
+http://127.0.0.1:8081 {
+	bind 127.0.0.1
+	respond /health "OK" 200
+	respond 404
+}
+
+# Requests for any other Host (after a valid TLS handshake, or over HTTP) are
+# rejected explicitly instead of falling through to an empty response.
+:443 {
+	respond "Invalid host" 400
+}
+
+http:// {
+	respond "Invalid host" 400
+}
+
+{$PUBLIC_HOST} {
+	import tls_{$CADDY_TLS_MODE}
+
 	log {
 		output stdout
 		format filter {
@@ -37,16 +68,18 @@
 		@health path /health
 		respond @health "OK" 200
 
+		# Caddy is the TLS edge; the TCP peer is the client. Replace every
+		# browser-supplied forwarding header with fixed values.
 		@api path /api /api/*
 		request_header @api -Forwarded
 		request_header @api -X-Forwarded-*
 		request_header @api -X-Schatten-Client-IP
 		reverse_proxy @api backend:8000 {
 			header_up Host {$PUBLIC_HOST}
-			header_up X-Forwarded-For {client_ip}
+			header_up X-Forwarded-For {remote_host}
 			header_up X-Forwarded-Host {$PUBLIC_HOST}
 			header_up X-Forwarded-Proto https
-			header_up X-Schatten-Client-IP {client_ip}
+			header_up X-Schatten-Client-IP {remote_host}
 		}
 
 		root * /srv

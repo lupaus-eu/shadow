@@ -1,0 +1,169 @@
+#!/usr/bin/env python3
+"""Verify effective container settings of the deployed Schatten project.
+
+Inspects the running/created containers (not just Compose YAML) against the
+ADR-013 scheduler and runner hardening plus the private-port topology. Any
+failure exits nonzero and blocks scheduler activation.
+
+Usage: deploy/bin/verify-runtime-hardening [--project schatten]
+"""
+
+import configparser
+import json
+import subprocess
+import sys
+
+PROJECT = sys.argv[2] if len(sys.argv) > 2 and sys.argv[1] == "--project" else "schatten"
+SECRET_NAMES = {"DATABASE_URL", "POSTGRES_PASSWORD", "OIDC_CLIENT_SECRET"}
+SOCKET = "/var/run/docker.sock"
+RUNNER_CONTAINERS = {"schatten-backup-runner", "schatten-docker-cleanup"}
+REQUIRED = {
+    "database",
+    "migration",
+    "backend",
+    "prediction-worker",
+    "frontend",
+    "backup-runner",
+    "cleanup-runner",
+}
+failures: list[str] = []
+
+
+def docker_json(*args: str) -> list[dict]:
+    output = subprocess.run(
+        ["docker", *args], check=True, capture_output=True, text=True
+    ).stdout
+    return json.loads(output) if output.strip() else []
+
+
+def check(condition: bool, message: str) -> None:
+    print(("ok     " if condition else "error  ") + message)
+    if not condition:
+        failures.append(message)
+
+
+def added_env_names(container: dict) -> set[str]:
+    image_env = set(
+        docker_json("image", "inspect", container["Image"])[0]["Config"].get("Env") or []
+    )
+    return {
+        item.split("=", 1)[0]
+        for item in container["Config"].get("Env") or []
+        if item not in image_env
+    }
+
+
+ids = subprocess.run(
+    [
+        "docker", "ps", "--all", "--quiet", "--no-trunc",
+        "--filter", f"label=com.docker.compose.project={PROJECT}",
+    ],
+    check=True, capture_output=True, text=True,
+).stdout.split()
+containers = [
+    container
+    for container in (docker_json("inspect", *ids) if ids else [])
+    if container["Config"]["Labels"].get("com.docker.compose.oneoff") != "True"
+]
+by_service: dict[str, list[dict]] = {}
+for container in containers:
+    by_service.setdefault(
+        container["Config"]["Labels"]["com.docker.compose.service"], []
+    ).append(container)
+
+for service in sorted(REQUIRED):
+    check(service in by_service, f"{service} container exists")
+check(
+    len([c for c in by_service.get("prediction-worker", []) if c["State"]["Running"]]) == 1,
+    "exactly one running prediction worker",
+)
+
+for service, items in sorted(by_service.items()):
+    for container in items:
+        host = container["HostConfig"]
+        config = container["Config"]
+        name = f"{service} ({container['Name'].lstrip('/')})"
+        user = config.get("User") or ""
+        check(bool(user) and user.split(":")[0] not in {"0", "root"}, f"{name} runs as non-root user {user or 'default'}")
+        check(host.get("Privileged") is False, f"{name} is not privileged")
+        check(host.get("ReadonlyRootfs") is True, f"{name} has a read-only root filesystem")
+        check("ALL" in (host.get("CapDrop") or []) and not host.get("CapAdd"), f"{name} drops all capabilities")
+        check("no-new-privileges:true" in (host.get("SecurityOpt") or []), f"{name} sets no-new-privileges")
+        for field in ("PidMode", "IpcMode", "UTSMode", "UsernsMode", "NetworkMode"):
+            check(host.get(field) != "host", f"{name} does not use host {field}")
+        check(not host.get("GroupAdd"), f"{name} has no supplementary groups")
+        check(not host.get("Devices"), f"{name} has no host devices")
+        check(
+            config["Labels"].get("eu.lupaus.schatten.retain") == "true",
+            f"{name} is protected from Docker cleanup",
+        )
+
+        bindings = host.get("PortBindings") or {}
+        if service == "frontend":
+            check(set(bindings) == {"80/tcp", "443/tcp"}, f"{name} publishes only 80/tcp and 443/tcp")
+        else:
+            check(not bindings, f"{name} publishes no ports")
+
+        mounts = container.get("Mounts") or []
+        sockets = [m for m in mounts if m.get("Destination") == SOCKET or m.get("Source", "").endswith("docker.sock")]
+        if service in {"ofelia", "cleanup-runner"}:
+            check(len(sockets) == 1, f"{name} has the local Docker socket")
+        else:
+            check(not sockets, f"{name} has no Docker socket")
+        check(all(m.get("Source") != "/" for m in mounts), f"{name} does not mount the host root")
+        volumes = {m.get("Name") for m in mounts if m.get("Type") == "volume"}
+        allowed_volumes = {
+            "database": {f"{PROJECT}_postgres_data"},
+            "frontend": {f"{PROJECT}_caddy_data"},
+        }.get(service, set())
+        check(volumes <= allowed_volumes, f"{name} mounts only its own persistent volumes")
+        writable = {m["Destination"] for m in mounts if m.get("RW") and m.get("Type") == "bind" and m["Destination"] != SOCKET}
+        expected_writable = {"/backups"} if service == "backup-runner" else set()
+        check(writable == expected_writable, f"{name} writable bind mounts {sorted(writable) or 'none'}")
+
+        env_names = added_env_names(container)
+        image_ref = config.get("Image", "")
+        if service in {"database", "ofelia", "backup-runner", "cleanup-runner"}:
+            check("@sha256:" in image_ref, f"{name} image is digest-pinned")
+        else:
+            check(image_ref == container["Image"], f"{name} runs the frozen image ID")
+
+        networks = set((container["NetworkSettings"].get("Networks") or {}))
+        if service in {"ofelia", "cleanup-runner"}:
+            check(host.get("NetworkMode") == "none", f"{name} has network_mode none")
+            check(not (env_names & SECRET_NAMES), f"{name} receives no secrets")
+        if service == "ofelia":
+            command = config.get("Cmd") or []
+            check("-d" not in command and "--docker" not in command, f"{name} has label discovery disabled")
+            config_mounts = [m for m in mounts if m["Destination"] == "/etc/ofelia/config.ini"]
+            check(len(config_mounts) == 1 and not config_mounts[0]["RW"], f"{name} job file is read-only")
+            if config_mounts:
+                parser = configparser.ConfigParser()
+                with open(config_mounts[0]["Source"], encoding="utf-8") as job_file:
+                    parser.read_file(job_file)
+                for section in parser.sections():
+                    job = parser[section]
+                    check(
+                        section.startswith('job-run "')
+                        and job.get("container") in RUNNER_CONTAINERS
+                        and not {"image", "command", "volume", "network", "user"} & set(job),
+                        f"{name} job [{section}] only starts a pre-created runner",
+                    )
+        if service == "backup-runner":
+            check(networks == {f"{PROJECT}_data"}, f"{name} joins only the private data network")
+            check(env_names & SECRET_NAMES == {"DATABASE_URL"}, f"{name} receives only the database credential")
+        if service in {"migration", "prediction-worker"}:
+            check(env_names == {"DATABASE_URL"}, f"{name} has database-only configuration")
+            check(networks == {f"{PROJECT}_data"}, f"{name} joins only the private data network")
+        if service == "database":
+            check(networks == {f"{PROJECT}_data"}, f"{name} joins only the private data network")
+        if service == "frontend":
+            check(not (env_names & SECRET_NAMES), f"{name} receives no secrets")
+
+data_networks = docker_json("network", "inspect", f"{PROJECT}_data") if by_service else []
+check(bool(data_networks) and data_networks[0].get("Internal") is True, "data network is internal")
+
+if failures:
+    print(f"FAILED {len(failures)} hardening check(s); scheduler activation is blocked.")
+    sys.exit(1)
+print("PASSED runtime hardening")

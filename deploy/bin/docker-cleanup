@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Inspect (default) or apply the weekly release-aware Docker cleanup using the
+# same hardened cleanup-runner definition that Ofelia schedules.
+#
+# Usage: deploy/bin/docker-cleanup [--dry-run|--apply]
+
+source "$(dirname "$(readlink -f "$0")")/../lib/common.sh"
+
+mode="${1:---dry-run}"
+[[ "${mode}" == --dry-run || "${mode}" == --apply ]] || die "Usage: docker-cleanup [--dry-run|--apply]"
+load_config
+release_id="$(pointer_value current)"
+[[ -n "${release_id}" ]] || die "No current release"
+compose_release "$(release_dir "${release_id}")" --profile ops run --rm --no-deps -T cleanup-runner "${mode}"

@@ -19,7 +19,7 @@ System_Boundary(local, "Development - https://app.localhost") {
   Rel(local_worker, local_db, "Queue + advisory lock")
 }
 
-System_Boundary(prod, "UpCloud Ubuntu 26.04 LTS - Docker Engine / Compose (pending G/F)") {
+System_Boundary(prod, "UpCloud Ubuntu 26.04 LTS - Docker Engine / Compose (runtime G; rollout pending F)") {
   Person(prod_browser, "Production browser")
   Container(caddy, "Frontend and TLS", "Caddy :80 / :443 + React", "https://schatten.lupaus.eu\nPersistent certificate/account storage")
   Container(prod_api, "Production API", "FastAPI :8000", "Direct Entra; production secret\nPrivate; database roles and sessions")
@@ -27,7 +27,7 @@ System_Boundary(prod, "UpCloud Ubuntu 26.04 LTS - Docker Engine / Compose (pendi
   Container(migration, "One-shot migration", "Same backend image", "Success gates API and worker startup")
   Container(ofelia, "Operational scheduler", "Ofelia; pinned digest", "Fixed read-only job file\nNo network or public ports\nDaily backups / weekly cleanup")
   Container(docker_api, "Host control plane", "Docker Engine Unix socket", "Host-administrator-equivalent authority\nSocket :ro does not restrict API writes")
-  Container(ops_jobs, "Operational job runners", "Pinned images; hardened execution", "Backup: private DB access + required secrets\nWrites /opt/postgres-backups; 7-day retention\nCleanup: protected resources + exclusion locks")
+  Container(ops_jobs, "Operational job runners", "Pre-created hardened Compose containers", "Backup: private DB access + required secrets\nWrites /opt/postgres-backups; 7-day retention\nCleanup: protected resources + exclusion locks")
   ContainerDb(prod_db, "Production database", "PostgreSQL 18 container", "Private; persistent volume\nMigration -> reference seed -> admin (C/D pending)\nDaily encrypted on-server backups\n/opt/postgres-backups; host-loss risk\n7-day retention; backup + restore evidence gates")
 
   Rel(prod_browser, caddy, "Uses", "HTTPS")
@@ -45,17 +45,17 @@ Rel(prod_api, entra, "Direct OIDC; callback:\nhttps://schatten.lupaus.eu/api/v1/
 
 note bottom of app_tls
   Target excludes Authentik in both environments.
-  Local Caddy/direct Entra is implemented; production runtime remains pending G.
+  Local Caddy/direct Entra and the production runtime are implemented.
   Browser authorization redirects go directly to Entra.
   Logout returns to /login at each application origin.
 end note
 
 note bottom of caddy
   Caddy owns public TLS; no Traefik or Coolify in target.
-  Current release adapter remains until G.
+  Coolify adapter removed; only Caddy publishes 80/443.
   Backend health gates frontend readiness.
   Build on UpCloud; deploy frozen images without rebuild.
   Persistent volumes are not backups.
-  Backup tooling / activation pending G/E/F.
+  Backup tooling implemented (G); activation pending E/F.
 end note
 @enduml

@@ -65,11 +65,12 @@ Päätetty rakenne:
 [ADR-013](docs/decisions/ADR-013-shared-entra-local-https-deployment.md) records
 the accepted amendment. TASK-059B implements the local HTTPS/direct-Entra
 runtime, TASK-059C implements the non-user reference seed and TASK-059D
-implements the empty-users-table administrator bootstrap. The existing
-production adapter remains until G; production runtime, integrated QA and
-rollout are pending G/E/F.
+implements the empty-users-table administrator bootstrap. TASK-059G implements
+the production runtime (`docker-compose.production.yml`) and the operator
+build/release, backup, restore and scheduler tooling in `deploy/`; integrated
+QA/runbook and rollout are pending E/F.
 Volumes are not backups; release requires completed backup identifiers and
-successful restore-rehearsal evidence. Backup setup remains pending G/E/F.
+successful restore-rehearsal evidence. Production backup activation is pending E/F.
 
 ## Optional Make Convenience
 

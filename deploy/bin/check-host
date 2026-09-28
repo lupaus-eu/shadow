@@ -1,0 +1,113 @@
+#!/usr/bin/env bash
+# Read-only prerequisite check for the existing cloud-init host baseline.
+# Reports missing or incompatible tools and storage; never installs, reruns
+# cloud-init, recreates swap or changes ownership.
+#
+# Usage: deploy/bin/check-host [--allow-os-mismatch]
+
+source "$(dirname "$(readlink -f "$0")")/../lib/common.sh"
+
+allow_os_mismatch=false
+[[ "${1:-}" == "--allow-os-mismatch" ]] && allow_os_mismatch=true
+
+errors=0
+ok() { printf 'ok     %s\n' "$*"; }
+warn() { printf 'warn   %s\n' "$*"; }
+error() { printf 'error  %s\n' "$*"; errors=$((errors + 1)); }
+
+version_at_least() {
+  [[ "$(printf '%s\n%s\n' "$2" "$1" | sort -V | head -n 1)" == "$2" ]]
+}
+
+# shellcheck disable=SC1091
+os_version="$(. /etc/os-release && printf '%s %s' "${ID:-unknown}" "${VERSION_ID:-unknown}")"
+if [[ "${os_version}" == "ubuntu 26.04" ]]; then
+  ok "OS ${os_version}"
+elif [[ "${allow_os_mismatch}" == true ]]; then
+  warn "OS ${os_version} is not the approved ubuntu 26.04 (allowed for disposable QA)"
+else
+  error "OS ${os_version} is not the approved ubuntu 26.04"
+fi
+
+for tool in git python3 flock sha256sum tar; do
+  if command -v "${tool}" >/dev/null 2>&1; then ok "tool ${tool}"; else error "missing tool ${tool}"; fi
+done
+
+if server="$(docker version --format '{{.Server.Version}}' 2>/dev/null)"; then
+  if version_at_least "${server}" 25.0.0; then ok "Docker Engine ${server}"; else error "Docker Engine ${server} is older than 25.0"; fi
+else
+  error "Docker Engine is not reachable by $(id -un)"
+fi
+if compose="$(docker compose version --short 2>/dev/null)"; then
+  if version_at_least "${compose#v}" 2.24.0; then ok "Docker Compose ${compose}"; else error "Docker Compose ${compose} is older than 2.24"; fi
+else
+  error "Docker Compose plugin is missing"
+fi
+if buildx="$(docker buildx version 2>/dev/null)"; then ok "Docker Buildx ${buildx%% *} ${buildx#* }"; else error "Docker Buildx plugin is missing"; fi
+
+load_config
+ok "env file ${SCHATTEN_ENV_FILE} is operator-owned and private"
+for key in POSTGRES_DB POSTGRES_USER POSTGRES_PASSWORD DATABASE_URL OIDC_DISCOVERY_URL \
+  OIDC_ISSUER OIDC_CLIENT_ID OIDC_CLIENT_SECRET PUBLIC_ORIGIN DOCKER_SOCKET_GID \
+  SCHATTEN_BACKUP_PUBLIC_KEY; do
+  [[ -n "$(config_value "${key}")" ]] || error "env file does not set ${key}"
+done
+
+socket_gid="$(config_value DOCKER_SOCKET_GID)"
+if [[ -S "${SCHATTEN_DOCKER_SOCKET}" ]]; then
+  actual_gid="$(stat -c %g "${SCHATTEN_DOCKER_SOCKET}")"
+  actual_mode="$(stat -c %a "${SCHATTEN_DOCKER_SOCKET}")"
+  [[ "${actual_gid}" == "${socket_gid}" ]] && ok "Docker socket group ${actual_gid}" \
+    || error "Docker socket group ${actual_gid} != DOCKER_SOCKET_GID ${socket_gid}"
+  [[ "${actual_mode}" == "660" ]] && ok "Docker socket mode 660" \
+    || error "Docker socket mode ${actual_mode} is not 660; do not widen it"
+else
+  error "Docker socket ${SCHATTEN_DOCKER_SOCKET} is missing"
+fi
+if ss -ltnH 2>/dev/null | awk '{ print $4 }' | grep -Eq ':(2375|2376)$'; then
+  error "A Docker TCP listener appears to be open on 2375/2376"
+fi
+
+for directory in "$(dirname "${SCHATTEN_STATE_DIR}")" "${SCHATTEN_STATE_DIR}" "${SCHATTEN_RELEASES_DIR}"; do
+  if [[ -d "${directory}" && -w "${directory}" ]]; then ok "writable ${directory}"; else error "missing or unwritable ${directory}"; fi
+done
+for lock in maintenance backup release; do
+  [[ -r "${SCHATTEN_LOCK_DIR}/${lock}.lock" ]] || error "missing ${SCHATTEN_LOCK_DIR}/${lock}.lock (run deploy/bin/init-state)"
+done
+[[ -d /opt/caddy ]] && ok "/opt/caddy exists (not mounted; Caddy uses the caddy_data volume)"
+
+if [[ -d "${SCHATTEN_BACKUP_DIR}" ]]; then
+  backup_owner="$(stat -c %u:%g "${SCHATTEN_BACKUP_DIR}")"
+  backup_mode="$(stat -c %a "${SCHATTEN_BACKUP_DIR}")"
+  [[ "${backup_owner}" == "${SCHATTEN_BACKUP_UID}:${SCHATTEN_BACKUP_GID}" ]] \
+    && ok "backup directory owner ${backup_owner}" \
+    || error "backup directory ${SCHATTEN_BACKUP_DIR} owner ${backup_owner} != ${SCHATTEN_BACKUP_UID}:${SCHATTEN_BACKUP_GID}"
+  [[ "${backup_mode}" =~ ^7[05]0$ ]] && ok "backup directory mode ${backup_mode}" \
+    || error "backup directory mode ${backup_mode} must be 700 or 750"
+else
+  error "backup directory ${SCHATTEN_BACKUP_DIR} is missing"
+fi
+
+public_key="$(config_value SCHATTEN_BACKUP_PUBLIC_KEY)"
+if [[ -n "${public_key}" && -r "${public_key}" ]]; then
+  if grep -q 'PRIVATE KEY BLOCK' "${public_key}"; then
+    error "${public_key} contains private key material"
+  else
+    ok "backup public key ${public_key}"
+  fi
+  case "$(readlink -f "${public_key}")" in
+    "$(readlink -f "${SCHATTEN_BACKUP_DIR}")"/*) error "backup key must be stored outside the backup directory" ;;
+  esac
+else
+  error "backup public key is missing or unreadable"
+fi
+
+available="$(df -P -B1 /var/lib/docker "${SCHATTEN_BACKUP_DIR}" 2>/dev/null | awk 'NR > 1 { print $6 "=" int($4 / 1048576) "MiB" }' | tr '\n' ' ')"
+printf 'info   free disk %s\n' "${available:-unknown}"
+printf 'info   %s\n' "$(free -m | awk '/^Mem:/ { print "memory total=" $2 "MiB available=" $7 "MiB" } /^Swap:/ { print "swap total=" $2 "MiB used=" $3 "MiB" }' | tr '\n' ' ')"
+
+if (( errors > 0 )); then
+  printf 'FAILED %s prerequisite error(s); fix them through the approved runbook (E/F).\n' "${errors}"
+  exit 1
+fi
+printf 'PASSED host prerequisites\n'

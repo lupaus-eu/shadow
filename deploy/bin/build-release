@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+# Build matching frontend/backend images from one approved exact commit and
+# freeze them in a release record. Builds from `git archive`, so untracked or
+# modified checkout files cannot enter the images. Uses no secrets.
+#
+# Usage: deploy/bin/build-release <40-character commit SHA>
+#   SCHATTEN_SOURCE_REPO defaults to /opt/apps/schatten.
+
+source "$(dirname "$(readlink -f "$0")")/../lib/common.sh"
+
+commit="${1:-}"
+[[ "${commit}" =~ ^[0-9a-f]{40}$ ]] || die "Usage: build-release <approved 40-character commit SHA>"
+source_repo="${SCHATTEN_SOURCE_REPO:-/opt/apps/schatten}"
+
+load_config
+hold_release_lock
+hold_maintenance_lock
+
+git -C "${source_repo}" cat-file -e "${commit}^{commit}" 2>/dev/null \
+  || die "Commit ${commit} is not present in ${source_repo}; fetch it first"
+
+release_id="$(date -u +%Y%m%dT%H%M%SZ)-${commit:0:12}"
+final_dir="$(release_dir "${release_id}")"
+work_dir="${final_dir}.incomplete"
+[[ ! -e "${final_dir}" && ! -e "${work_dir}" ]] || die "Release ${release_id} already exists"
+mkdir -p "${work_dir}/source"
+trap 'rm -rf "${work_dir}"' EXIT
+
+git -C "${source_repo}" archive --format=tar "${commit}" | tar -x -C "${work_dir}/source"
+source_date_epoch="$(git -C "${source_repo}" show -s --format=%ct "${commit}")"
+backend_image="schatten-backend:${release_id}"
+frontend_image="schatten-frontend:${release_id}"
+
+started="$(date +%s)"
+memory_before="$(awk '/^MemAvailable:/ { print $2 * 1024 }' /proc/meminfo)"
+log "Building ${backend_image} and ${frontend_image} from ${commit}"
+{
+  docker buildx build --load --provenance=false --sbom=false \
+    --build-arg SOURCE_DATE_EPOCH="${source_date_epoch}" \
+    --target production --tag "${backend_image}" \
+    --file "${work_dir}/source/backend/Dockerfile" "${work_dir}/source"
+  docker buildx build --load --provenance=false --sbom=false \
+    --build-arg SOURCE_DATE_EPOCH="${source_date_epoch}" \
+    --target production --tag "${frontend_image}" \
+    --file "${work_dir}/source/frontend/Dockerfile" "${work_dir}/source/frontend"
+} 2>&1 | tee "${work_dir}/build.log" >&2
+duration=$(( $(date +%s) - started ))
+
+backend_id="$(docker image inspect --format '{{.Id}}' "${backend_image}")"
+frontend_id="$(docker image inspect --format '{{.Id}}' "${frontend_image}")"
+for image in "${backend_image}" "${frontend_image}"; do
+  if docker image inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "${image}" \
+    | grep -Eq '^(DATABASE_URL|POSTGRES_PASSWORD|OIDC_CLIENT_SECRET)='; then
+    die "${image} contains a runtime secret variable in its image configuration"
+  fi
+done
+
+{
+  printf 'RELEASE_ID=%s\n' "${release_id}"
+  printf 'SOURCE_COMMIT=%s\n' "${commit}"
+  printf 'SOURCE_DATE_EPOCH=%s\n' "${source_date_epoch}"
+  printf 'BUILT_AT=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  printf 'BUILD_DURATION_SECONDS=%s\n' "${duration}"
+  printf 'BUILD_MEMORY_AVAILABLE_BEFORE_BYTES=%s\n' "${memory_before}"
+  printf 'BACKEND_IMAGE=%s\n' "${backend_image}"
+  printf 'BACKEND_IMAGE_ID=%s\n' "${backend_id}"
+  printf 'FRONTEND_IMAGE=%s\n' "${frontend_image}"
+  printf 'FRONTEND_IMAGE_ID=%s\n' "${frontend_id}"
+  printf 'DOCKER_ENGINE_VERSION=%s\n' "$(docker version --format '{{.Server.Version}}')"
+  printf 'DOCKER_COMPOSE_VERSION=%s\n' "$(docker compose version --short)"
+  printf 'DOCKER_BUILDX_VERSION=%s\n' "$(docker buildx version | awk '{ print $2 }')"
+  printf 'GIT_VERSION=%s\n' "$(git --version | awk '{ print $3 }')"
+  printf 'KERNEL=%s\n' "$(uname -r)"
+} >"${work_dir}/release.env"
+chmod -R a-w "${work_dir}/source"
+mv "${work_dir}" "${final_dir}"
+trap - EXIT
+
+log "Frozen release ${release_id} (build ${duration}s). Record: ${final_dir}/release.env"
+cat "${final_dir}/release.env"

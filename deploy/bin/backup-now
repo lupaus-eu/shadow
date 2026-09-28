@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# Explicit on-demand encrypted backup through the same hardened backup-runner
+# definition used by the daily Ofelia schedule. Prints BACKUP_ID=<id> only
+# after the runner reports a completed, published backup.
+#
+# Usage: deploy/bin/backup-now [--reason pre-release|manual] [--release <id>]
+
+source "$(dirname "$(readlink -f "$0")")/../lib/common.sh"
+
+reason=manual
+release_id=""
+while (( $# > 0 )); do
+  case "$1" in
+    --reason) reason="${2:-}"; shift 2 ;;
+    --release) release_id="${2:-}"; shift 2 ;;
+    *) die "Usage: backup-now [--reason pre-release|manual] [--release <id>]" ;;
+  esac
+done
+[[ "${reason}" == pre-release || "${reason}" == manual ]] || die "Reason must be pre-release or manual"
+
+load_config
+release_id="${release_id:-$(pointer_value current)}"
+[[ -n "${release_id}" ]] || die "No current release; pass --release <id>"
+directory="$(release_dir "${release_id}")"
+hold_maintenance_lock
+
+set +e
+output="$(compose_release "${directory}" --profile ops run --rm --no-deps -T backup-runner "${reason}" 2>&1)"
+status=$?
+set -e
+printf '%s\n' "${output}" >&2
+backup_id="$(sed -n 's/.* status=completed .*backup_id=\([^ ]*\).*/\1/p' <<<"${output}" | tail -n 1)"
+if [[ "${status}" -ne 0 || -z "${backup_id}" ]]; then
+  # Exit code 2 means the backup completed but retention pruning failed.
+  if [[ "${status}" -eq 2 && -n "${backup_id}" ]]; then
+    printf 'BACKUP_ID=%s\n' "${backup_id}"
+    die "Backup ${backup_id} completed but retention pruning failed"
+  fi
+  die "Backup failed; no completed backup was recorded"
+fi
+printf 'BACKUP_ID=%s\n' "${backup_id}"

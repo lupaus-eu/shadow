@@ -14,9 +14,10 @@ Status: MVP bootstrap with authentication and release ingress implemented
 direct Entra in both environments, distinct HTTPS origins, a shared registration,
 and Docker deployment on UpCloud Ubuntu 26.04 LTS with direct Caddy TLS and
 private Docker PostgreSQL 18. Daily encrypted on-server backups with 7-day
-retention and backup/restore evidence are required, pending implementation. The
-reference-data seed and empty-users-table administrator bootstrap CLIs are
-implemented; production runtime, integrated QA and rollout remain pending G/E/F.
+retention and backup/restore evidence are required. The reference-data seed,
+empty-users-table administrator bootstrap, production runtime, build/release and
+backup/scheduler tooling are implemented; integrated QA/runbook and production
+activation/rollout remain pending E/F.
 
 Teknologiapino on päätetty ADR-001:ssä.
 
@@ -30,7 +31,8 @@ Päätetty tekninen perusrakenne:
   Microsoft Entra ID in development and production
 - local target: Caddy HTTPS, Vite, FastAPI, one prediction worker and PostgreSQL
 - production target: Docker Engine/Compose on UpCloud Ubuntu 26.04 LTS, Caddy
-  public TLS and private PostgreSQL 18 with persistent storage (pending G/F)
+  public TLS and private PostgreSQL 18 with persistent storage (runtime
+  implemented by G; rollout pending F)
 - release migrations: one-shot job using the same backend image as the API and
   prediction worker
 - derived metrics: Organisation States owns equations and materialized values;
@@ -83,7 +85,7 @@ The checked-in development runtime is loopback `https://app.localhost` through
 local Caddy to Vite/FastAPI and direct Entra. Caddy fixes the API Host/proxy
 headers and Vite HMR uses WSS on the same HTTPS origin. Existing Authentik
 volumes and identity rows are preserved but Authentik is not an active runtime
-dependency. The production Coolify/Traefik adapter remains until G. No
+dependency. The Coolify/Traefik adapter was removed by G. No
 Authentik, Traefik, forward-auth or `auth.lupaus.eu` is needed in the target.
 There is no staging environment.
 
@@ -663,7 +665,9 @@ Kielletty:
 
 # Deployment
 
-Status: ADR-013 amendment accepted; production runtime and rollout pending G/E/F
+Status: ADR-013 amendment accepted; production runtime and tooling implemented
+by TASK-059G (`docker-compose.production.yml`, `deploy/`); runbook/QA and rollout
+pending E/F
 
 Use Docker Engine/Compose on an **UpCloud Ubuntu 26.04 LTS** server. Caddy
 serves built React and terminates public TLS directly at
@@ -677,7 +681,8 @@ it does not run application predictions. ADR-013 records its technology choice
 and mandatory hardening: pinned images, no scheduler network/ports, fixed read-only
 job configuration, confined local Docker socket and minimal runner mounts/secrets.
 Socket access is host-administrator-equivalent even when mounted `:ro`; verify
-the effective runner restrictions before activation. Implementation remains G/E/F.
+the effective runner restrictions before activation. G implements the scheduler,
+runners and effective-settings verification; E/F verify and activate them.
 
 Initial builds run on UpCloud from an approved commit and produce frozen,
 immutable matching frontend/backend images. API, migration and the single
@@ -688,8 +693,8 @@ GHCR builds with the same artifact contract in separately reviewed work.
 
 First initialization is **migrations -> approved non-user reference seed ->
 empty-users-table administrator bootstrap**, then limited smoke. C's explicit,
-database-only reference seed command is implemented; D's administrator bootstrap
-remains pending. Never run the complete development seed in production or run
+database-only reference seed and D's administrator bootstrap are implemented and
+run only through explicit operator commands. Never run the complete development seed in production or run
 seed/bootstrap automatically on application startup.
 
 **Initial backups are required:** daily encrypted on-server PostgreSQL backups

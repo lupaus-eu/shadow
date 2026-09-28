@@ -1,0 +1,183 @@
+#!/usr/bin/env bash
+# Deploy a frozen release without rebuilding, after human approval.
+#
+# Usage:
+#   deploy-release <release-id> --approval <reference> --first-install [--enable-scheduler]
+#   deploy-release <release-id> --approval <reference> [--restore-evidence <file>] [--enable-scheduler]
+#   deploy-release <release-id> --approval <reference> --rollback --confirm-schema-compatible [--restore-evidence <file>]
+#
+# Gates, in order: verified image IDs, successful restore-rehearsal evidence
+# (except first install, which rehearses after initialization), healthy
+# database, completed pre-change backup, successful migration (skipped for a
+# schema-compatible rollback), healthy API/worker/frontend, exactly one worker
+# and verified runtime hardening. Never runs down migrations, deletes volumes,
+# resets or restores the database. Failure leaves the pointers unchanged.
+
+source "$(dirname "$(readlink -f "$0")")/../lib/common.sh"
+bin_dir="$(dirname "$(readlink -f "$0")")"
+
+release_id="${1:-}"
+shift || true
+approval=""
+restore_evidence=""
+first_install=false
+rollback=false
+schema_confirmed=false
+enable_scheduler=false
+while (( $# > 0 )); do
+  case "$1" in
+    --approval) approval="${2:-}"; shift 2 ;;
+    --restore-evidence) restore_evidence="${2:-}"; shift 2 ;;
+    --first-install) first_install=true; shift ;;
+    --rollback) rollback=true; shift ;;
+    --confirm-schema-compatible) schema_confirmed=true; shift ;;
+    --enable-scheduler) enable_scheduler=true; shift ;;
+    *) die "Unknown argument $1" ;;
+  esac
+done
+[[ -n "${approval}" ]] || die "--approval <reference> is required: releases need explicit human approval"
+[[ "${approval}" =~ ^[A-Za-z0-9._:/#-]{1,120}$ ]] || die "--approval must be a short non-personal reference"
+[[ "${first_install}" == false || "${rollback}" == false ]] || die "--first-install and --rollback are exclusive"
+[[ "${rollback}" == false || "${schema_confirmed}" == true ]] \
+  || die "--rollback requires --confirm-schema-compatible after reviewing expand/contract compatibility"
+
+load_config
+hold_release_lock
+hold_maintenance_lock
+directory="$(release_dir "${release_id}")"
+verify_release_images "${directory}"
+previous_current="$(pointer_value current)"
+
+record_file="${SCHATTEN_STATE_DIR}/deployments/$(date -u +%Y%m%dT%H%M%SZ)-${release_id}.env"
+record() { printf '%s=%s\n' "$1" "$2" >>"${record_file}"; }
+mode=release
+[[ "${first_install}" == true ]] && mode=first-install
+[[ "${rollback}" == true ]] && mode=rollback
+record STARTED_AT "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+record RELEASE_ID "${release_id}"
+record SOURCE_COMMIT "$(release_value "${directory}" SOURCE_COMMIT)"
+record BACKEND_IMAGE_ID "$(release_value "${directory}" BACKEND_IMAGE_ID)"
+record FRONTEND_IMAGE_ID "$(release_value "${directory}" FRONTEND_IMAGE_ID)"
+record MODE "${mode}"
+record APPROVAL "${approval}"
+record PREVIOUS_RELEASE "${previous_current:-none}"
+[[ -n "${SCHATTEN_COMPOSE_OVERRIDE_FILE:-}" ]] && record QA_COMPOSE_OVERRIDE "${SCHATTEN_COMPOSE_OVERRIDE_FILE}"
+
+# Set once new-release application containers may have replaced the old ones.
+services_replaced=false
+fail_release() {
+  record STATUS failed
+  record FAILURE "$1"
+  record SERVICES_REPLACED "${services_replaced}"
+  record FINISHED_AT "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  if [[ "${services_replaced}" == true ]]; then
+    die "$1. Release pointers unchanged, but ${release_id} containers may be partly running; fix forward, or roll back to a schema-compatible release with --rollback --confirm-schema-compatible; record ${record_file}"
+  fi
+  die "$1. Release pointers unchanged; record ${record_file}"
+}
+
+if [[ "${first_install}" == false ]]; then
+  if [[ -z "${restore_evidence}" ]]; then
+    restore_evidence="$(ls -1t "${SCHATTEN_STATE_DIR}"/restore-evidence/*.txt 2>/dev/null | head -n 1 || true)"
+  fi
+  [[ -n "${restore_evidence}" && -r "${restore_evidence}" ]] \
+    || fail_release "Missing restore-rehearsal evidence blocks release"
+  grep -qx 'STATUS=success' "${restore_evidence}" \
+    || fail_release "Latest restore-rehearsal evidence is not successful"
+  record RESTORE_EVIDENCE "${restore_evidence}"
+fi
+
+# Preload digest-pinned operational images; application images are never pulled.
+while IFS= read -r image; do
+  [[ "${image}" == *@sha256:* ]] || continue
+  docker image inspect "${image}" >/dev/null 2>&1 || docker pull --quiet "${image}" >/dev/null \
+    || fail_release "Could not preload pinned image ${image}"
+done < <(compose_release "${directory}" --profile ops --profile scheduler config --images)
+
+compose_release "${directory}" up --detach --no-build --pull never --wait database \
+  || fail_release "Database did not become healthy"
+has_history="$(compose_release "${directory}" exec -T database sh -c \
+  'psql -X -A -t -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT to_regclass('"'"'schema_migrations'"'"') IS NOT NULL"')" \
+  || fail_release "Could not inspect database migration history"
+if [[ "${first_install}" == true && "${has_history}" == "t" ]]; then
+  fail_release "--first-install refused: the database already has migration history"
+elif [[ "${first_install}" == false && "${has_history}" != "t" ]]; then
+  fail_release "Database has no migration history; a fresh install requires --first-install"
+fi
+
+backup_output="$("${bin_dir}/backup-now" --reason pre-release --release "${release_id}")" \
+  || fail_release "Pre-change backup failed"
+backup_id="$(sed -n 's/^BACKUP_ID=//p' <<<"${backup_output}")"
+[[ -n "${backup_id}" ]] || fail_release "Pre-change backup reported no identifier"
+record PRE_CHANGE_BACKUP_ID "${backup_id}"
+
+if [[ "${rollback}" == true ]]; then
+  compose_release "${directory}" run --rm --no-deps -T migration python -c '
+import os
+import psycopg
+from app.core.migrations import discover_migrations, get_psycopg_database_url
+expected = [(m.version, m.up_name, m.checksum) for m in discover_migrations()]
+with psycopg.connect(get_psycopg_database_url(os.environ["DATABASE_URL"])) as connection:
+    applied = [
+        (int(version), filename, checksum)
+        for version, filename, checksum in connection.execute(
+            "SELECT version, filename, checksum FROM schema_migrations ORDER BY version"
+        ).fetchall()
+    ]
+if len(applied) < len(expected) or applied[: len(expected)] != expected:
+    raise SystemExit("Rollback image migrations are not a prefix of the applied history")
+print(f"rollback-compatibility image_migrations={len(expected)} applied={len(applied)}")
+' || fail_release "Rollback target is incompatible with the applied migration history"
+  services_replaced=true
+  compose_release "${directory}" up --detach --no-build --pull never --no-deps backend prediction-worker \
+    || fail_release "Rollback API/worker start failed"
+  wait_for_healthy "${directory}" backend && wait_for_healthy "${directory}" prediction-worker \
+    || fail_release "Rollback API/worker did not become healthy"
+  compose_release "${directory}" up --detach --no-build --pull never --no-deps frontend \
+    || fail_release "Rollback frontend start failed"
+else
+  compose_release "${directory}" up --detach --no-build --pull never --no-deps --force-recreate migration \
+    || fail_release "Migration container could not start"
+  migration_container="$(compose_release "${directory}" ps --all --quiet migration)"
+  migration_status="$(docker wait "${migration_container}")"
+  docker logs "${migration_container}" >&2 || true
+  record MIGRATION_EXIT_CODE "${migration_status}"
+  [[ "${migration_status}" == "0" ]] \
+    || fail_release "Migration failed; the new API/worker/frontend were not started"
+  services_replaced=true
+  compose_release "${directory}" up --detach --no-build --pull never backend prediction-worker frontend \
+    || fail_release "Application services failed to start"
+fi
+for service in backend prediction-worker frontend; do
+  wait_for_healthy "${directory}" "${service}" || fail_release "${service} did not become healthy"
+done
+worker_count="$(compose_release "${directory}" ps --quiet prediction-worker | wc -l)"
+[[ "${worker_count}" == "1" ]] || fail_release "Expected exactly one prediction worker, found ${worker_count}"
+
+compose_release "${directory}" --profile ops create --no-build --pull never --force-recreate backup-runner cleanup-runner \
+  || fail_release "Could not create hardened operational runners"
+ofelia_running="$(compose_release "${directory}" --profile scheduler ps --quiet ofelia)"
+if [[ "${enable_scheduler}" == true || -n "${ofelia_running}" ]]; then
+  compose_release "${directory}" --profile scheduler up --detach --no-build --pull never ofelia \
+    || fail_release "Could not start the Ofelia scheduler"
+fi
+if ! "${bin_dir}/verify-runtime-hardening"; then
+  compose_release "${directory}" --profile scheduler stop ofelia >/dev/null 2>&1 || true
+  fail_release "Runtime hardening verification failed; scheduler stopped"
+fi
+if [[ -n "$(compose_release "${directory}" --profile scheduler ps --quiet ofelia)" ]]; then
+  record SCHEDULER active
+else
+  record SCHEDULER not-activated
+fi
+
+if [[ "${previous_current}" != "${release_id}" ]]; then
+  [[ -n "${previous_current}" ]] && printf '%s\n' "${previous_current}" >"${SCHATTEN_RELEASES_DIR}/previous"
+  printf '%s\n' "${release_id}" >"${SCHATTEN_RELEASES_DIR}/current"
+fi
+record STATUS succeeded
+record FINISHED_AT "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+log "Deployed ${release_id} (${mode}); record ${record_file}"
+if [[ "${first_install}" == true ]]; then
+  log "Next: deploy/bin/initialize reference-seed, deploy/bin/initialize bootstrap-admin, backup-now and restore-rehearsal before acceptance."
+fi

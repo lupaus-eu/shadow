@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-059G/review-003",
+  "task": {
+    "id": "TASK-059G",
+    "path": "tasks/TASK-059G-upcloud-docker-runtime.md"
+  },
+  "round": 3,
+  "reviewed_at": "2026-09-28T09:14:47Z",
+  "reviewer": {
+    "label": "Claude Code self-review"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "0b46930a1de936a5be3417e08f1debded6069936",
+    "head_sha": "48d453ebb19cc641bfcd4be484c82e34bd1a5333",
+    "comparison": "0b46930a1de936a5be3417e08f1debded6069936...48d453ebb19cc641bfcd4be484c82e34bd1a5333",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Reviewed the full committed TASK-059G implementation branch against main, excluding AI-review records. Rounds 1-2 covered the earlier planning documentation merged in #81; this round covers the runtime, build/release, backup, restore, cleanup and scheduler implementation. Reviewed production Compose, the Caddy image and Caddyfile, deploy/bin, deploy/lib and deploy/ops scripts, the Ofelia job file, CI scripts and workflow, and the deployment, testing, architecture and QA documentation. No security issues, regressions or out-of-scope changes were found. Hardening, socket confinement, frozen-image gating, migration gating, the single worker, encryption, retention scoping and rollback prefix checks match ADR-013 and the task. The Ofelia image contains Europe/Helsinki zone data. Script syntax checks, shellcheck at warning severity and verify-production-compose.sh passed. The disposable end-to-end verify-production-runtime.sh ran on an isolated Docker-in-Docker daemon at the reviewed head and passed with 34 PASS groups and no failures. No production host, DNS, tenant or backup directory was touched. There are two low findings and one informational finding. This review is advisory and does not replace human approval.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "bug",
+        "severity": "low",
+        "summary": "Docker cleanup can report success when its container or image listing commands fail.",
+        "rationale": "The cleanup job builds its candidate and protected lists from command substitutions and a pipeline in POSIX sh without pipefail. A failing docker ps or docker images call therefore yields an empty list and no failure count, and the job can end with status=completed. The task requires cleanup to report failures without claiming success. The initial API reachability check and Docker's refusal to remove in-use images limit the impact.",
+        "recommendation": "Capture each listing into a variable with an explicit status check, and count a failed listing as a failure. Alternatively, abort before any removal when a listing fails.",
+        "locations": [
+          {
+            "path": "deploy/ops/docker-cleanup.sh",
+            "line": 67
+          },
+          {
+            "path": "deploy/ops/docker-cleanup.sh",
+            "line": 105
+          },
+          {
+            "path": "deploy/ops/docker-cleanup.sh",
+            "line": 110
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "A failure after a successful migration leaves new-release containers running without documented recovery.",
+        "rationale": "When a health, worker-count or runtime-hardening gate fails after the migration job succeeds, the new API, worker and possibly frontend are already running on the migrated schema. The failure message and the deployment documentation only say that the release pointers are unchanged. An operator could read this as meaning the previous release still serves traffic. The documentation gives recovery guidance only for migration failure.",
+        "recommendation": "State in the failure message and in the DEPLOYMENT.md release gates that post-migration gate failures may leave the new release partly running. Document the recovery path: fix forward, or roll back with --rollback --confirm-schema-compatible. Alternatively, defer this explicitly to the TASK-059E runbook.",
+        "locations": [
+          {
+            "path": "deploy/bin/deploy-release",
+            "line": 70
+          },
+          {
+            "path": "docs/DEPLOYMENT.md",
+            "line": 364
+          }
+        ]
+      },
+      {
+        "id": "F-003",
+        "category": "documentation",
+        "severity": "info",
+        "summary": "The restore-evidence release gate accepts the latest successful rehearsal of any age.",
+        "rationale": "Unless --restore-evidence is given, deploy-release uses the newest restore-evidence file by modification time. It checks only STATUS=success, not the age of the evidence or how it relates to recent backups. This meets the task's requirement for successful restore evidence, but old evidence could keep satisfying the gate indefinitely.",
+        "recommendation": "Ask the developer whether a freshness policy is needed, such as a maximum evidence age or a rehearsal of a backup from the current retention window. If so, record it in the TASK-059E runbook or in a follow-up task.",
+        "locations": [
+          {
+            "path": "deploy/bin/deploy-release",
+            "line": 75
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": []
+  }
+}

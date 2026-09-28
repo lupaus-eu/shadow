@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# Create missing Schatten operator state under /opt/apps: release records,
+# deployment records, restore evidence and read-only lock files. Idempotent;
+# never changes existing files, /opt/caddy or the backup directory.
+#
+# Usage: deploy/bin/init-state
+
+source "$(dirname "$(readlink -f "$0")")/../lib/common.sh"
+load_config
+
+umask 022
+for directory in "${SCHATTEN_RELEASES_DIR}" "${SCHATTEN_RELEASES_DIR}/retired" \
+  "${SCHATTEN_STATE_DIR}" "${SCHATTEN_LOCK_DIR}" "${SCHATTEN_STATE_DIR}/deployments"; do
+  if [[ ! -d "${directory}" ]]; then
+    mkdir -p "${directory}"
+    log "Created ${directory}"
+  fi
+done
+if [[ ! -d "${SCHATTEN_STATE_DIR}/restore-evidence" ]]; then
+  mkdir -m 0700 "${SCHATTEN_STATE_DIR}/restore-evidence"
+  log "Created ${SCHATTEN_STATE_DIR}/restore-evidence"
+fi
+# Runners open these read-only; flock needs no write access.
+for lock in maintenance backup release; do
+  if [[ ! -e "${SCHATTEN_LOCK_DIR}/${lock}.lock" ]]; then
+    install -m 0644 /dev/null "${SCHATTEN_LOCK_DIR}/${lock}.lock"
+    log "Created ${SCHATTEN_LOCK_DIR}/${lock}.lock"
+  fi
+done
+log "Operator state is present. Backup directory ownership is verified, not changed: run deploy/bin/check-host."

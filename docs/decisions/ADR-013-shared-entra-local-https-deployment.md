@@ -1,6 +1,6 @@
 # ADR-013: Shared Entra Registration And Local HTTPS Deployment
 
-Status: Accepted; runtime and rollout pending TASK-059B through TASK-059G
+Status: Accepted; B/C/D/G implemented; integrated QA and rollout pending TASK-059E/F
 
 Date: 2026-09-11
 
@@ -253,10 +253,13 @@ alternate login admission path is introduced.
 
 TASK-059B implements local loopback Caddy HTTPS, direct Entra configuration,
 Authentik retirement and local-only administrator provisioning. It preserves
-old volumes, application data and identity ownership. The release configuration
-still contains the Coolify/HTTP-Caddy adapter until G. Historical QA results do
-not verify the accepted target, and authorized live-provider setup remains
-separate evidence.
+old volumes, application data and identity ownership. TASK-059G implements the
+production runtime, frozen-image build/release, encrypted backup/restore and
+hardened Ofelia tooling and removes the Coolify/HTTP-Caddy adapter; Ofelia job
+runners are pre-created hardened Compose containers started by `job-run
+container =`, so no weakening of the scheduler controls was needed. Historical
+QA results do not verify the accepted target, and authorized live-provider setup
+and schedule activation remain separate F evidence.
 
 | Task | Delivery | Dependency |
 | --- | --- | --- |

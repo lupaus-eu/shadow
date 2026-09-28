@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Retire a release record so weekly cleanup may remove its images after the
+# retention window. Refuses the current and previous (rollback) releases.
+#
+# Usage: deploy/bin/retire-release <release-id>
+
+source "$(dirname "$(readlink -f "$0")")/../lib/common.sh"
+
+load_config
+hold_release_lock
+release_id="${1:-}"
+directory="$(release_dir "${release_id}")"
+[[ -d "${directory}" ]] || die "Release ${release_id} does not exist"
+for pointer in current previous; do
+  [[ "$(pointer_value "${pointer}")" != "${release_id}" ]] || die "Refusing to retire the ${pointer} release"
+done
+mv "${directory}" "${SCHATTEN_RELEASES_DIR}/retired/${release_id}"
+log "Retired ${release_id}; its images become eligible for weekly cleanup after retention."

@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# Explicit, operator-controlled first-initialization commands (TASK-059C/D).
+# Never run automatically. Order for a fresh database after a first-install
+# deployment: reference-seed, then bootstrap-admin (interactive terminal).
+#
+# Usage: deploy/bin/initialize reference-seed|bootstrap-admin [--release <id>]
+
+source "$(dirname "$(readlink -f "$0")")/../lib/common.sh"
+
+command_name="${1:-}"
+release_id=""
+[[ "${2:-}" == "--release" ]] && release_id="${3:-}"
+load_config
+release_id="${release_id:-$(pointer_value current)}"
+[[ -n "${release_id}" ]] || die "No current release; pass --release <id>"
+directory="$(release_dir "${release_id}")"
+verify_release_images "${directory}"
+
+case "${command_name}" in
+  reference-seed)
+    compose_release "${directory}" run --rm --no-deps -T migration python -m app.seed_reference_data
+    ;;
+  bootstrap-admin)
+    [[ -t 0 && -t 1 ]] || die "bootstrap-admin requires a private interactive terminal"
+    compose_release "${directory}" run --rm --no-deps migration python -m app.bootstrap_admin
+    ;;
+  *)
+    die "Usage: initialize reference-seed|bootstrap-admin [--release <id>]"
+    ;;
+esac

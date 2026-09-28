@@ -9,15 +9,17 @@ Entra in development and production. Initially PostgreSQL 18 runs in Docker;
 This document records the accepted plan, not a completed
 deployment or authorization to change providers, credentials or production data.
 
-The checked-in release manifests/Caddy configuration still implement the earlier
-Coolify/Traefik -> HTTP frontend/Caddy:8080 topology with an external database.
-Local development now uses loopback Caddy HTTPS and direct Entra. Do not use
-the release manifests as if this target were implemented. G replaces the
-production adapter, C/D add initialization commands, E supplies
-tested operational commands/QA, and F performs separately approved setup/rollout.
-Earlier platform/federation choices are superseded. Initial backup identifiers
-and restore-rehearsal evidence remain release gates; the no-backup exception
-is withdrawn.
+TASK-059G implements the production runtime and tooling:
+`docker-compose.production.yml` (direct-TLS Caddy, private PostgreSQL 18,
+migration job, API, one prediction worker, Ofelia and hardened operational
+runners), the frozen-image build/release commands in `deploy/bin/`, and the
+encrypted backup, restore-rehearsal and Docker-cleanup jobs in `deploy/ops/`.
+The Coolify adapter and `docker-compose.release.yml` are removed. Local
+development uses loopback Caddy HTTPS and direct Entra (B); C/D provide the
+initialization commands. E supplies the integrated runbook/QA and F performs the
+separately approved host, DNS, tenant, backup activation and rollout. No
+production operation has been performed. Backup identifiers and
+restore-rehearsal evidence remain release gates.
 
 ## Release Topology
 
@@ -43,8 +45,9 @@ Frontend and backend are separate immutable images built from the same release
 commit. API, migration and worker share the backend artifact. Successful migration
 gates API/worker startup; backend health gates frontend readiness. Preserve
 one database-only prediction worker, its advisory lock, shutdown and health
-contract. G verifies cold start, certificate issuance, persistent storage,
-health/restart and host-reboot behavior without a circular dependency.
+contract. G's QA covers cold start, certificate issuance, persistent storage,
+health/restart and host-reboot behavior without a circular dependency; see
+[Production Runtime](#production-runtime-and-operator-commands-task-059g).
 
 ## Initial Database And Required Backups
 
@@ -169,23 +172,34 @@ guarded linking. B provides explicit local-only admin provisioning even when a
 development database already has seeded Users; it does not relax D's production
 empty-users-table rule. Real-Entra browser results are separate from mock tests.
 
-## Required Configuration Contract (Implementation Pending B/G)
+## Required Configuration Contract
+
+The protected env file `/opt/apps/schatten-config/production.env` (mode `0600`,
+owned by the operator running `deploy/bin/*`) is read by Compose for
+interpolation and by the commands without being sourced. Never paste it or
+rendered `docker compose config` output into evidence.
 
 | Setting | Contract |
 | --- | --- |
-| `BACKEND_IMAGE`, `FRONTEND_IMAGE` | Frozen matching release artifacts, verified IDs/digests |
-| `DATABASE_URL` | Secret private PostgreSQL connection, shared by API/migration/worker |
-| PostgreSQL credentials/storage | Private production configuration and persistent volume; exact wiring delivered by G |
+| `BACKEND_IMAGE`, `FRONTEND_IMAGE` | Never in the env file: `deploy/bin/*` passes the frozen image IDs from the release record |
+| `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | Private PostgreSQL 18 initialization; use a URL-safe password such as `openssl rand -hex 32` |
+| `DATABASE_URL` | Secret `postgresql://USER:PASSWORD@database:5432/DB`, shared by API/migration/worker and the backup runner |
 | `OIDC_DISCOVERY_URL`, `OIDC_ISSUER` | Exact tenant-specific HTTPS metadata/issuer |
 | `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` | Shared confidential app ID, production's own secret |
 | `PUBLIC_ORIGIN` | `https://schatten.lupaus.eu`, exact canonical application Host |
-| `TRUSTED_CADDY_PEER_CIDRS` | Only actual private Caddy peers trusted by FastAPI |
-| Caddy certificate storage | Persistent writable certificate/account storage with least privilege |
+| `DOCKER_SOCKET_GID` | Group ID of the host `/var/run/docker.sock` for Ofelia and the cleanup runner only |
+| `SCHATTEN_BACKUP_PUBLIC_KEY` | Path of the backup encryption **public** key, outside `/opt/postgres-backups` |
+| Optional `SCHATTEN_BACKUP_DIR`, `SCHATTEN_BACKUP_UID`/`GID` | Defaults `/opt/postgres-backups`, `10002:10002` |
+| Optional `SCHATTEN_STATE_DIR`, `SCHATTEN_RELEASES_DIR` | Defaults `/opt/apps/schatten-state`, `/opt/apps/schatten-releases` |
+| `SCHATTEN_OFELIA_CONFIG`, `SCHATTEN_DOCKER_SOCKET` | Leave unset in production (release job file, `/var/run/docker.sock`); disposable QA only. `verify-runtime-hardening` still checks the mounted job file |
+| Optional `SCHATTEN_EDGE_SUBNET`, `SCHATTEN_EDGE_IP_RANGE`, `SCHATTEN_CADDY_IPV4` | Defaults `172.30.59.0/24`, `172.30.59.128/25`, `172.30.59.2`; change together only on subnet conflict, keeping the Caddy address outside the dynamic range |
 
-The target has no upstream Traefik and needs no Coolify edge trust. The current
-`CADDY_TRUSTED_PROXY_CIDRS` edge-specific setting is retired/reworked under G;
-never substitute all private ranges. Caddy strips browser forwarding headers
-and sends fixed Host/scheme plus the verified client address to FastAPI.
+`TRUSTED_CADDY_PEER_CIDRS` is derived in Compose as the fixed Caddy address
+`/32` on the edge network; it is not operator configuration. There is no
+upstream proxy, so the retired `CADDY_TRUSTED_PROXY_CIDRS` setting is gone and
+Caddy treats the TCP peer as the client. Caddy strips browser forwarding headers
+and sends fixed Host/scheme plus the peer address to FastAPI. Caddy certificate
+and ACME account state persist in the `schatten_caddy_data` volume.
 Production retains secure cookies, `APP_ENV=production`, disabled CORS, the
 existing RS256/session/transaction limits and same-origin API behavior.
 
@@ -258,16 +272,285 @@ references, then freeze and verify their IDs/digests. Obtain release approval
 and deploy those artifacts **without rebuilding**. Retain prior matched release
 artifacts; mutable tags alone are insufficient release identity.
 
-The existing image contexts are repository root for backend and `frontend/`
-for frontend. G updates portable Compose/image checks and removes active Coolify
-adapter checks, preserving equivalent migration, ingress, worker and secret
-validation coverage. Existing checks against the old manifests do not prove the
-new topology. Tests use disposable data and simulated OIDC without tenant secrets.
+The image contexts are repository root for backend and `frontend/` for
+frontend. G replaced the Coolify adapter checks with standard Compose, image and
+disposable-daemon runtime checks (see `docs/TESTING.md`), preserving migration,
+ingress, worker and secret coverage. Tests use disposable data and simulated
+OIDC settings without tenant secrets.
 
 OOM/failing builds, sustained memory/swap/CPU contention affecting the app or
 unacceptable build duration trigger reassessment. GitHub Actions/GHCR can later
 build the same artifact contract, followed by approved deployment of frozen
 images. No automatic deployment or off-server workflow is implemented here.
+
+## Production Runtime And Operator Commands (TASK-059G)
+
+This section describes the implemented tooling. E turns it into the checked
+runbook; F runs it only under explicit operational approval. None of these
+commands provisions the host, installs Docker, reruns cloud-init or changes
+swap.
+
+### Services, Networks And Storage
+
+| Service | Image | Network | Persistent state | Restart |
+| --- | --- | --- | --- | --- |
+| `frontend` (Caddy) | frozen frontend image ID | `edge` (fixed `172.30.59.2`), publishes TCP 80/443 | `schatten_caddy_data` at `/data` | `unless-stopped` |
+| `backend` | frozen backend image ID | `edge` (ingress, Entra egress) + `data` | none | `unless-stopped` |
+| `prediction-worker` | same backend image ID | `data` only | none | `unless-stopped` |
+| `migration` (one-shot) | same backend image ID | `data` only | none | `no` |
+| `database` | `postgres:18.6@sha256:…` | `data` only | `schatten_postgres_data` | `unless-stopped` |
+| `ofelia` (profile `scheduler`) | `mcuadros/ofelia:0.3.22@sha256:…` | `network_mode: none` | none | `unless-stopped` |
+| `backup-runner` (profile `ops`) | same pinned PostgreSQL image | `data` only | writes `/opt/postgres-backups` | `no` |
+| `cleanup-runner` (profile `ops`) | `docker:28.5.2-cli@sha256:…` | `network_mode: none` | none | `no` |
+
+`data` is an internal Docker network without external routing. Every service
+and runner runs as a numeric non-root user with a read-only root filesystem,
+`cap_drop: [ALL]`, `no-new-privileges`, no privileged mode or host namespaces,
+and only declared `tmpfs` scratch space. Caddy binds 80/443 as user `10001`
+through the namespaced `net.ipv4.ip_unprivileged_port_start=80` sysctl; the
+image strips the upstream binary's file capability, which `no-new-privileges`
+would otherwise refuse to execute. Caddy advertises HTTP/1.1 and HTTP/2 only,
+because UDP 443 is not published.
+
+Host storage mappings and required ownership:
+
+| Host path | Use | Ownership / mode |
+| --- | --- | --- |
+| `/opt/apps/schatten` | Reviewed Git checkout used only as `build-release` input | `deploy` |
+| `/opt/apps/schatten-config/production.env` | Protected configuration | `deploy`, `0600` |
+| `/opt/apps/schatten-config/backup-public-key.asc` | Backup encryption public key (read-only mount) | `deploy`, `0644` |
+| `/opt/apps/schatten-releases/<release-id>/` | Frozen `git archive` source, `release.env`, `build.log`; `current`/`previous` pointers; `retired/` | `deploy`; source read-only |
+| `/opt/apps/schatten-state/` | `locks/*.lock` (read-only runner mounts), `deployments/*.env`, `restore-evidence/` (`0700`) | `deploy` |
+| `/opt/postgres-backups` | Encrypted backups and manifests; existing contents preserved | `10002:10002`, `0700` (or `0750`) |
+| `/opt/caddy` | Not mounted and not modified; Caddy state lives in `schatten_caddy_data` | unchanged |
+
+Containers never write under `/opt/apps`. PostgreSQL data and Caddy
+certificates live in named volumes created with the image directory ownership
+(`999` and `10001`). Volumes survive container replacement and host reboot but
+**are not backups**. Existing `/opt/postgres-backups` contents are never
+overwritten or pruned unless they match the job-owned naming pattern below.
+F sets its ownership explicitly; `check-host` only reports mismatches.
+
+### Commands
+
+Run `build-release` from the reviewed checkout. Run every other command from
+the frozen release directory of the target release
+(`/opt/apps/schatten-releases/<id>/source/deploy/bin/...`), so the tooling
+matches the deployed Compose file and job scripts.
+
+| Command | Purpose |
+| --- | --- |
+| `check-host [--allow-os-mismatch]` | Read-only check of Ubuntu 26.04, Docker Engine ≥ 25, Compose ≥ 2.24, Buildx, Git, env file privacy/keys, socket group/mode `660`, no Docker TCP listener, state/lock files, backup directory owner/mode and key placement; reports disk, memory and swap |
+| `init-state` | Creates missing state/release directories and lock files only |
+| `build-release <40-char commit>` | Builds both images from `git archive` of the exact commit with pinned base images, locked dependencies and `SOURCE_DATE_EPOCH`; records commit, image IDs, tool versions, duration and available memory in `release.env` |
+| `deploy-release <id> --approval <ref> …` | Deploys frozen image IDs without building or pulling application images (see gates below) |
+| `initialize reference-seed` / `initialize bootstrap-admin` | Explicit C/D first-initialization interfaces from the release backend image; bootstrap requires an interactive terminal |
+| `backup-now [--reason pre-release\|manual]` | On-demand encrypted backup through the hardened backup-runner; prints `BACKUP_ID=` only after completion |
+| `restore-rehearsal <backup-id> --private-key <file> [--passphrase-file <file>]` | Isolated restore and schema/data checks; writes evidence |
+| `docker-cleanup [--dry-run\|--apply]` | Inspect or apply the weekly cleanup through the same hardened runner |
+| `verify-runtime-hardening` | Checks effective container settings; failure blocks scheduler activation |
+| `retire-release <id>` | Makes a non-current, non-previous release's images eligible for cleanup |
+| `ops-status` | Release pointers, recent backups, latest restore evidence and scheduler results |
+
+Commands run Compose with the project name `schatten`, the release's frozen
+Compose file and a minimal environment, so stray shell variables cannot
+override the protected configuration. `SCHATTEN_COMPOSE_OVERRIDE_FILE` exists
+only for disposable QA (for example internal TLS) and is written into the
+deployment record when used.
+
+### Release, First Install And Rollback Gates
+
+`deploy-release` takes an exclusive release lock and the shared maintenance
+lock, then stops with nonzero status and unchanged `current`/`previous`
+pointers at the first failed gate:
+
+1. The frozen tags resolve to the recorded image IDs; pinned operational images
+   are preloaded by digest (application images are never pulled or built).
+2. The latest (or `--restore-evidence`) restore rehearsal is `STATUS=success`.
+   A first install skips this gate and rehearses after initialization.
+3. PostgreSQL is healthy; `--first-install` is refused if migration history
+   exists, and a normal release is refused if it does not.
+4. A pre-change `pre-release` backup completes; its ID is recorded. On first
+   install this is the pre-migration baseline.
+5. The one-shot migration job runs from the new backend image. A nonzero exit
+   stops the release before the new API, worker or frontend is created; the
+   previously running containers keep serving. Retry forward after fixing the
+   cause.
+6. API, worker and frontend become healthy, with exactly one worker.
+7. Runner containers are recreated; Ofelia is updated if already running or
+   started with `--enable-scheduler`; `verify-runtime-hardening` must pass or
+   the scheduler is stopped.
+
+Unchanged pointers do not mean the previous release is still serving. A failure
+at gate 6 or 7, or during a rollback's API/worker start, happens after the new
+release's containers started against the current schema. They may stay partly
+running, and the failure message and `SERVICES_REPLACED=true` in the record say
+so. Recover by fixing the cause and running the same release forward again, or
+by rolling back to a schema-compatible release with `deploy-release <id>
+--rollback --confirm-schema-compatible`. Never run down migrations or restore
+the database.
+
+Each run writes `deployments/<time>-<id>.env` with commit, image IDs, mode,
+approval reference, previous release, backup ID, restore evidence, migration
+exit code, whether services were replaced, scheduler state and result. It
+contains no secrets or identities.
+
+First installation: `deploy-release <id> --approval <ref> --first-install`,
+then `initialize reference-seed`, `initialize bootstrap-admin` in a private
+terminal, `backup-now`, `restore-rehearsal` of that backup, and only then
+`deploy-release … --enable-scheduler` to activate schedules. Subsequent
+releases never bootstrap.
+
+Rollback: `deploy-release <older-id> --approval <ref> --rollback
+--confirm-schema-compatible`. The confirmation records a human
+expand/contract review. The command also verifies inside the older image that
+its migrations are an exact prefix (version, filename, checksum) of the applied
+history, then replaces API and worker together (and then the frontend) without
+running the migration job. It never runs down migrations, deletes volumes,
+resets or restores the database. The first release has no rollback target.
+
+### Encrypted Backups And Restore Rehearsal
+
+- **Format:** `pg_dump --format=custom --compress=zstd:3` (one consistent
+  snapshot of the application database, restorable with PostgreSQL 18
+  `pg_restore`), streamed directly into `gpg --encrypt` for the configured
+  public key (AES-256, integrity-protected). Plaintext never touches disk.
+- **Keys:** the runner mounts only the public key and refuses a key file that
+  contains secret key material. Generate the key pair outside the backup
+  directory, keep the private key and any passphrase offline or in separately
+  protected operator storage, and record who can reach them for recovery.
+  Losing the private key makes every backup unrecoverable.
+- **Cluster objects:** the dump covers the application database's schema,
+  data and sequences. The only cluster role is recreated from the protected
+  `POSTGRES_USER`/`POSTGRES_PASSWORD` configuration; restores use
+  `--no-owner --no-acl` into that role.
+- **Files:** `schatten-<UTC YYYYmmddTHHMMSSZ>-<reason>-<6 hex>.dump.gpg` plus a
+  `.manifest` (`BACKUP_ID`, reason, completion time, size, SHA-256, key
+  fingerprint, server/pg_dump versions, schema migration version, table count),
+  mode `0600`. The dump is written to `.incomplete/`, checked for size and a
+  public-key encryption packet, checksummed and fsynced, then published by
+  rename; the manifest is published last and is the completion marker.
+- **Reporting:** one `status=completed … backup_id=… sha256=… retention=…
+  free_bytes=…` or `status=failed … error="…"` line, never data, URLs or
+  passwords. Missing key, missing/wrong credentials, unwritable directory, full
+  disk and encryption errors exit nonzero and publish nothing. `DATABASE_URL`
+  is split into libpq variables so the password never appears in process
+  arguments. Temporary files are removed on failure; interrupted leftovers in
+  `.incomplete/` are removed after one day.
+- **Retention:** after a successful backup, completed job-owned pairs whose
+  filename timestamp is older than **7 days** are removed, the newest backup is
+  always kept, and orphaned job-owned dumps without a manifest are removed after
+  one day. Any other file is never touched. A retention failure exits `2` after
+  reporting the completed backup.
+- **Non-overlap:** backups hold the shared maintenance lock and an exclusive
+  backup lock (default wait 30 minutes); the scheduled and on-demand runs
+  cannot overlap each other or the weekly cleanup.
+- **Restore rehearsal:** verifies the manifest checksum, starts a disposable
+  PostgreSQL 18 on a new internal network with no ports, decrypts inside a
+  hardened runner (backup user, backup directory mounted read-only) with the
+  separately supplied private key and optional passphrase, which are streamed
+  on stdin into the runner's tmpfs and never bind-mounted, runs
+  `pg_restore --exit-on-error --single-transaction`, and checks schema migration
+  version/contiguity, table count, validated constraints and per-table row
+  counts. The target and its volume are always removed. Evidence
+  (`restore-evidence/<time>-<backup-id>.txt`) holds identifiers, check results
+  and counts only. Production is never overwritten.
+
+Backup size, the encrypted copy and the rehearsal target all use the same small
+host's disk; `check-host` and every backup line report free space. These
+same-host backups do not protect against host or disk loss.
+
+### Operational Scheduler (Ofelia) And Docker Control Boundary
+
+`deploy/ofelia/config.ini` is the reviewed job file, mounted read-only from the
+frozen release. Ofelia starts without `--docker`, so container labels are
+never read as jobs, and each `job-run` names a pre-created Compose container
+(`container =`) instead of an image or command. Ofelia therefore creates,
+pulls and deletes nothing; the runners' effective settings are the Compose
+settings verified by `verify-runtime-hardening`. Schedules use the explicit
+`TZ=Europe/Helsinki`:
+
+| Job | Schedule | Runner |
+| --- | --- | --- |
+| `postgres-backup` | daily 02:30 | `schatten-backup-runner` |
+| `docker-cleanup` | Sundays 04:30 | `schatten-docker-cleanup` |
+
+`no-overlap` prevents a job overlapping itself; the file locks exclude the
+other operations. Ofelia logs each run with `failed: true|false` and the
+runner's output; there is no automatic retry. A failed daily backup is
+visible through `ops-status`/`docker logs` and is handled by running
+`backup-now` after fixing the cause.
+
+The Docker socket is mounted only into Ofelia and the cleanup runner, both with
+`network_mode: none`, user `65534` and the socket group as primary group; the
+backup runner, application and database never get it. There is no Docker TCP
+listener and socket permissions stay `660`. **Docker API access is
+host-administrator-equivalent**: a `:ro` socket mount would not make API calls
+read-only, and a compromised Ofelia or cleanup runner could reach every
+container and its secrets despite the separated mounts. Only authorized host
+operators may change the job file, and the Ofelia or job-image digests change
+only through a reviewed update. Without socket group access, Ofelia fails
+visibly (`permission denied`) instead of widening permissions.
+
+### Weekly Docker Cleanup
+
+`deploy/ops/docker-cleanup.sh` needs the maintenance lock exclusively and
+exits `75` (skipped) while a build, release, rollback, backup or restore holds
+it. With the default 7-day window it removes only exited/dead containers
+without the `eu.lupaus.schatten.retain=true` label (set on every Schatten
+Compose container, including the migration job and runners); dangling images and `schatten-backend`/`schatten-frontend` images
+not referenced by any non-retired release record or any container; and BuildKit
+build cache older than 7 days. It never runs `docker system prune`, never
+touches volumes, networks, running containers or other repositories' tagged
+images, and cannot reach `/opt/postgres-backups` or Caddy/PostgreSQL volumes.
+`docker-cleanup --dry-run` lists candidates. Any failed container or image
+listing, removal or build-cache prune exits `1` with `status=failed`. A failed
+listing aborts before its phase removes anything. Release records protect the current, previous and any frozen
+but not yet deployed release; `retire-release` makes older ones eligible.
+Docker cleanup is separate from the 7-day backup retention.
+
+### Health, Restart, Reboot And Certificates
+
+The database is healthy on `pg_isready`, the API on its `/health` check, the
+worker on its lock-owning health command, and Caddy on a loopback-only
+`127.0.0.1:8081/health` listener that does not depend on certificates. Startup
+order is database → migration → API/worker → frontend. Certificate issuance
+starts after Caddy starts and nothing waits on it, so a slow or failed ACME
+order cannot block readiness. On reboot, Docker restarts the `unless-stopped`
+services from their existing containers without Compose ordering: the API
+health check does not query the database, so database-backed requests fail
+until PostgreSQL is healthy, and a worker that cannot connect exits and is
+restarted. The completed migration job and the runners are not rerun. The API fetches
+Entra discovery during startup and exits if it is unreachable; the restart
+policy retries, and the frontend stays gated until the API is healthy. Caddy obtains
+and renews certificates over HTTP-01 on port 80 or TLS-ALPN-01 on port 443
+and keeps them in `schatten_caddy_data`.
+
+### Build Relocation And Managed PostgreSQL
+
+`release.env` records build duration and available memory. Reassess
+off-server builds after OOM kills or failed builds, sustained swap/CPU/memory
+contention with the running services during builds, or build time the
+operator finds unacceptable. A later GitHub Actions/GHCR pipeline must produce
+the same two images from the approved commit and hand over digests in the same
+release-record contract; nothing here implements it or any automatic
+deployment.
+
+`DATABASE_URL` stays portable to a managed PostgreSQL service
+(`?sslmode=`/`sslrootcert=` are honoured by the backup runner). The worker needs
+session-level advisory locks, so a managed endpoint must provide direct or
+session-mode pooling, not transaction pooling. Data transfer, cutover and
+backup placement need the separate plan described above.
+
+### Known Limitations
+
+- Docker publishes IPv6 through its userland proxy, so IPv6 clients may reach
+  FastAPI with the Docker gateway as client address, which weakens per-client
+  rate limiting and audit addresses for those clients. IPv4 preserves the
+  client address. E/F records the effective behavior.
+- Backups share the host and disk with the database (accepted until an
+  off-server solution is planned).
+- `docker compose config` output and the env file contain secrets.
 
 ## First Initialization (Reference Seed And Bootstrap Implemented)
 

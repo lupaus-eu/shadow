@@ -1,4 +1,4 @@
-FROM node:22-bookworm-slim AS base
+FROM docker.io/library/node:22-bookworm-slim@sha256:43ac6c60b8f89723f746e8a92ce91abd5017e627ce1ddfe4238355d3a30b772c AS base
 
 WORKDIR /app
 
@@ -24,17 +24,28 @@ RUN pnpm build
 
 FROM docker.io/library/caddy:2.11.4-alpine@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648 AS production
 
+# Drop the upstream file capability: no-new-privileges with cap_drop ALL refuses
+# to execute capability-bearing binaries. Compose instead allows ports 80/443
+# through the namespaced net.ipv4.ip_unprivileged_port_start sysctl.
+RUN cp /usr/bin/caddy /tmp/caddy \
+    && mv /tmp/caddy /usr/bin/caddy \
+    && chmod 0755 /usr/bin/caddy \
+    && mkdir -p /data /config \
+    && chown 10001:10001 /data /config \
+    && chmod 0700 /data /config
+
 COPY Caddyfile /etc/caddy/Caddyfile
 COPY --chmod=755 caddy-entrypoint.sh /usr/local/bin/schatten-caddy-entrypoint
 COPY --from=build /app/dist /srv
 
-ENV XDG_CONFIG_HOME=/tmp/caddy-config
-ENV XDG_DATA_HOME=/tmp/caddy-data
+ENV XDG_CONFIG_HOME=/config
+ENV XDG_DATA_HOME=/data
+ENV CADDY_TLS_MODE=acme
 
-EXPOSE 8080
+EXPOSE 80 443
 
 HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=5 \
-  CMD public_host="${PUBLIC_ORIGIN#https://}" && wget --quiet --spider --header="Host: ${public_host}" http://127.0.0.1:8080/health || exit 1
+  CMD wget --quiet --spider http://127.0.0.1:8081/health || exit 1
 
 USER 10001:10001
 

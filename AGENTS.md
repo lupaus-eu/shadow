@@ -79,7 +79,7 @@ Initial release requires daily encrypted on-server PostgreSQL backups in
 successful restore-rehearsal evidence. Persistent volumes survive container
 replacement but are not backups.
 Ofelia schedules backups and weekly Docker maintenance under ADR-013's mandatory
-hardening; implementation is pending G/E/F. Docker socket access grants host-level
+hardening; G implements it, E/F verify and activate it. Docker socket access grants host-level
 authority even when mounted `:ro`; verify scheduler and runner restrictions before
 activation. Ofelia never replaces the single application prediction worker.
 G delivers backup tooling, E the runbook/QA, and F authorized activation and
@@ -91,8 +91,10 @@ limitation is accepted until a separately planned off-server/managed solution.
 
 TASK-059A changes documentation only. The shared reference-data seed CLI is
 implemented by TASK-059C, and the empty-users-table administrator bootstrap is
-implemented by TASK-059D. Production runtime, QA and rollout remain pending
-G/E/F; the current Coolify adapter remains until G.
+implemented by TASK-059D. TASK-059G implements the production runtime,
+build/release, backup and scheduler tooling (`docker-compose.production.yml`,
+`deploy/`) and removes the Coolify adapter; runbook/QA and rollout remain
+pending E/F.
 The non-user metamodel seed is approved production reference data; development
 Users and example business data remain forbidden in production. First setup is
 migrations -> reference seed -> empty-users-table administrator bootstrap.

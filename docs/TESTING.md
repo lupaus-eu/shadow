@@ -103,18 +103,7 @@ artifact and deployment wiring:
 ```bash
 docker build --target production -t schatten-backend:local -f backend/Dockerfile .
 
-env \
-  BACKEND_IMAGE=schatten-backend:local \
-  FRONTEND_IMAGE=schatten-frontend:local \
-  DATABASE_URL=postgresql://user:password@database:5432/schatten \
-  OIDC_DISCOVERY_URL=https://login.microsoftonline.com/tenant-id/v2.0/.well-known/openid-configuration \
-  OIDC_ISSUER=https://login.microsoftonline.com/tenant-id/v2.0 \
-  OIDC_CLIENT_ID=test-client \
-  OIDC_CLIENT_SECRET=test-secret \
-  PUBLIC_ORIGIN=https://app.example.test \
-  TRUSTED_CADDY_PEER_CIDRS=172.30.0.0/24 \
-  CADDY_TRUSTED_PROXY_CIDRS=172.29.0.0/24 \
-  docker compose -f docker-compose.production.yml config --quiet
+.github/scripts/verify-production-compose.sh
 
 docker run --rm \
   --workdir /tmp \
@@ -127,10 +116,11 @@ Against disposable PostgreSQL, verify fresh `up`, repeated no-op `up`, failure
 blocking and concurrent-runner serialization before backend startup. Never use
 a developer's normal schema or production for destructive tests.
 
-CI runs `.github/scripts/verify-release-compose-failure.sh` against an isolated
-PostgreSQL container. The script corrupts disposable migration history, starts
-the real production Compose model and requires a nonzero migration-container
-exit plus no started backend, prediction worker or frontend service. It reads
+CI runs `.github/scripts/verify-release-compose-failure.sh` in a disposable
+Compose project using the production file's own PostgreSQL service. The script
+corrupts disposable migration history, starts the real production Compose model
+and requires a nonzero migration-container exit plus no started backend,
+prediction worker or frontend service. It removes only its own project volume. It reads
 the migration service exit directly because Compose CLI exit behavior can vary
 after a dependency fails.
 
@@ -188,8 +178,8 @@ implementation QA and never point this suite at production.
 
 ## Production Frontend And Authentication Deployment
 
-TASK-039G adds the immutable frontend/Caddy artifact and makes it the only
-public release service. Run the production Compose and live ingress regression:
+TASK-039G added the immutable frontend/Caddy artifact; TASK-059G makes it the
+direct TLS edge. Run the production Compose and live ingress regression:
 
 ```bash
 .github/scripts/verify-production-compose.sh
@@ -200,16 +190,20 @@ FRONTEND_IMAGE=schatten-frontend:local \
   .github/scripts/verify-production-frontend.sh
 ```
 
-The Compose check verifies required settings, database-only migration/worker
-configuration, immutable backend/worker/frontend image identity, internal ports,
-the migration -> API/worker gates and the backend health -> frontend gate. The
-live Caddy check covers
-configuration adaptation/startup, non-canonical, port-bearing, malformed or
-wildcard origin rejection, image health, SPA fallback, exact Host rejection,
-strict trusted-proxy parsing, forwarded-header replacement, HSTS,
-Referrer-Policy, nosniff, frame denial, enforced CSP and selective callback
-query redaction plus CSRF-header redaction while retaining ordinary request
-metadata.
+The Compose check renders all profiles and verifies required settings, no build
+sections, frozen image IDs and digest-pinned operational images, hardening on
+every service, only Caddy's TCP 80/443 published, internal `data` network,
+database-only migration/worker configuration, the database -> migration ->
+API/worker -> frontend gates, the fixed Caddy peer `/32`, confined socket,
+secret and backup mounts, and the absence of Coolify/Traefik/Authentik. The live
+Caddy check runs the image with production hardening and the internal issuer,
+and covers configuration adaptation for both TLS modes, unsupported TLS mode and
+non-canonical, port-bearing, malformed or wildcard origin rejection, loopback
+health, HTTP -> HTTPS redirect, SPA fallback, wrong-Host rejection on 80 and
+443, forwarded-header replacement with the actual peer address, no HTTP/3
+advertisement, HSTS, Referrer-Policy, nosniff, frame denial, enforced CSP and
+selective callback query redaction plus CSRF-header redaction while retaining
+ordinary request metadata.
 
 Automated checks do not replace provider/browser verification. Run simulated
 direct-Entra OIDC and local Caddy checks from
@@ -217,12 +211,51 @@ direct-Entra OIDC and local Caddy checks from
 the designated Entra account and is recorded separately; it does not prove the
 direct production client or authorize production activity.
 
-The standard production Compose model is validated locally. The thin Coolify
-manifest must additionally be parsed by Coolify because `exclude_from_hc` is a
-provider-specific field. There is no staging rehearsal. After each
-human-approved production deployment, operators run only the limited direct
-Entra smoke defined in `docs/DEPLOYMENT.md`; destructive, load, failure
-injection and broad automated testing are prohibited against production.
+There is no staging rehearsal. After each human-approved production
+deployment, operators run only the limited direct Entra smoke defined in
+`docs/DEPLOYMENT.md`; destructive, load, failure injection and broad automated
+testing are prohibited against production.
+
+## Production Runtime, Backups And Scheduler
+
+TASK-059G's `.github/scripts/verify-production-runtime.sh` exercises every
+`deploy/bin` command end to end on an **isolated Docker-in-Docker daemon**
+reached only through a Unix socket in a temporary directory. It never uses the
+developer's or production Docker resources, volumes or storage, generates a
+throwaway GPG key and synthetic secrets, and removes everything on exit:
+
+```bash
+.github/scripts/verify-production-runtime.sh
+# or, for uncommitted work, point it at a scratch clone with a WIP commit:
+QA_SOURCE_REPO=/path/to/scratch-clone .github/scripts/verify-production-runtime.sh
+# QA_LOG_FILE=/path/qa.log keeps the detailed, secret-free log as evidence.
+```
+
+Do not edit the harness while it runs; bash reads scripts incrementally, so run
+it from a frozen checkout or clone.
+
+It covers `check-host`/`init-state`; `build-release` from an exact commit with
+matching recorded image IDs; first-install deployment with baseline backup;
+published ports, internal-issuer TLS, redirect, headers, SPA, sanitized
+forwarding and exact Caddy-peer trust; the explicit seed/bootstrap interfaces;
+encrypted backup file mode and ownership, isolated restore with schema/data
+evidence; missing/secret key, missing/wrong credential, permission-denied,
+disk-full and overlapping-backup failures without published files; 7-day
+retention with fixture timestamps that preserves unrelated files; certificate
+and database persistence across replacement; daemon-restart (reboot)
+recovery without rerunning migration or runners; Ofelia scheduling of both
+jobs, label-job isolation, visible failure without socket group access and
+`verify-runtime-hardening` against effective container settings; cleanup
+dry-run, lock skip, failure reporting and protection of volumes, backups,
+current/previous/frozen release images and retained containers; the
+restore-evidence gate; failed-migration isolation; schema-compatible rollback
+without migrations and refusal on divergent history; and a secret scan of logs
+and image history. CI also runs shellcheck on the operator scripts.
+
+Real ACME issuance is not part of CI. `docs/qa/PRODUCTION-RUNTIME-QA.md`
+records a one-off local Pebble check of HTTP-01 and TLS-ALPN-01 with the
+production Caddyfile and the recorded runtime QA results. Production backup
+activation, host verification and real certificate issuance remain F evidence.
 
 ## Integration Change
 

@@ -47,10 +47,13 @@ jobs:
           test -f db/init/README.md
           test -f tasks/TASK-TEMPLATE.md
           test -f tasks/TASK-038-automatic-deployment-migrations.md
-          test -f docker-compose.release.yml
           test -f docker-compose.production.yml
-          test -f docker-compose.coolify.yml
+          test -f deploy/ofelia/config.ini
+          test -f docs/qa/PRODUCTION-RUNTIME-QA.md
           test -f .github/scripts/verify-production-worker.sh
+          test -f .github/scripts/verify-production-runtime.sh
+          test ! -e docker-compose.coolify.yml
+          test ! -e docker-compose.release.yml
           test -f frontend/Caddyfile
           test -f .github/PULL_REQUEST_TEMPLATE.md
 
@@ -63,7 +66,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:18.0
+        image: docker.io/library/postgres:18.6@sha256:4ef4dbc939d61acea57712655ddb4b4ab27419c913f94cca0cd57cb3ea3c2280
         env:
           POSTGRES_DB: schatten_test
           POSTGRES_USER: postgres
@@ -109,35 +112,7 @@ jobs:
         run: uv run pyright
 
       - name: Validate production Compose
-        env:
-          BACKEND_IMAGE: schatten-backend:${{ github.sha }}
-          FRONTEND_IMAGE: schatten-frontend:${{ github.sha }}
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/schatten_test
-          OIDC_DISCOVERY_URL: https://login.microsoftonline.com/tenant-id/v2.0/.well-known/openid-configuration
-          OIDC_ISSUER: https://login.microsoftonline.com/tenant-id/v2.0
-          OIDC_CLIENT_ID: test-client
-          OIDC_CLIENT_SECRET: test-secret
-          PUBLIC_ORIGIN: https://app.example.test
-          TRUSTED_CADDY_PEER_CIDRS: 172.30.0.0/24
-          CADDY_TRUSTED_PROXY_CIDRS: 172.29.0.0/24
         run: bash .github/scripts/verify-production-compose.sh
-
-      - name: Validate Coolify release identity and standard Compose fields
-        env:
-          COOLIFY_RESOURCE_UUID: ci-resource
-          SOURCE_COMMIT: ${{ github.sha }}
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/schatten_test
-          OIDC_DISCOVERY_URL: https://login.microsoftonline.com/tenant-id/v2.0/.well-known/openid-configuration
-          OIDC_ISSUER: https://login.microsoftonline.com/tenant-id/v2.0
-          OIDC_CLIENT_ID: test-client
-          OIDC_CLIENT_SECRET: test-secret
-          PUBLIC_ORIGIN: https://app.example.test
-          TRUSTED_CADDY_PEER_CIDRS: 172.30.0.0/24
-          CADDY_TRUSTED_PROXY_CIDRS: 172.29.0.0/24
-        run: |
-          sed '/exclude_from_hc:/d' docker-compose.coolify.yml \
-            | docker compose -f - config --format json \
-            | python3 -c 'import json, sys; services=json.load(sys.stdin)["services"]; backend="schatten-backend-ci-resource:${{ github.sha }}"; frontend="schatten-frontend-ci-resource:${{ github.sha }}"; assert services["migration"]["image"] == backend; assert services["backend"]["image"] == backend; assert services["prediction-worker"]["image"] == backend; assert services["frontend"]["image"] == frontend'
 
       - name: Build production backend image
         run: >-
@@ -257,3 +232,29 @@ jobs:
         env:
           FRONTEND_IMAGE: schatten-frontend:${{ github.sha }}
         run: bash .github/scripts/verify-production-frontend.sh
+
+  production-runtime:
+    runs-on: ubuntu-latest
+    needs: [backend-checks, frontend-checks]
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Check operator and runtime scripts
+        run: |
+          for script in deploy/bin/* deploy/ops/*.sh deploy/lib/common.sh .github/scripts/*.sh; do
+            if head -n 1 "${script}" | grep -q python; then
+              python3 -c "import ast, sys; ast.parse(open(sys.argv[1]).read())" "${script}"
+            else
+              bash -n "${script}"
+            fi
+          done
+          shellcheck --severity=warning deploy/bin/check-host deploy/bin/init-state \
+            deploy/bin/build-release deploy/bin/deploy-release deploy/bin/backup-now \
+            deploy/bin/restore-rehearsal deploy/bin/initialize deploy/bin/docker-cleanup \
+            deploy/bin/retire-release deploy/bin/ops-status deploy/lib/common.sh \
+            deploy/ops/backup.sh deploy/ops/restore-check.sh deploy/ops/docker-cleanup.sh \
+            .github/scripts/verify-production-runtime.sh
+
+      - name: Verify production runtime on an isolated Docker daemon
+        run: bash .github/scripts/verify-production-runtime.sh
