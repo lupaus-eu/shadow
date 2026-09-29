@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-059E/review-002",
+  "task": {
+    "id": "TASK-059E",
+    "path": "tasks/TASK-059E-upcloud-docker-runbook-qa.md"
+  },
+  "round": 2,
+  "reviewed_at": "2026-09-29T08:27:17Z",
+  "reviewer": {
+    "label": "Claude Code self-review"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "a3b18aa1b25e213671f70993f6c0862588598611",
+    "head_sha": "25aa415511eb2fd8ac997f8c10b3276f029f3fda",
+    "comparison": "a3b18aa1b25e213671f70993f6c0862588598611...25aa415511eb2fd8ac997f8c10b3276f029f3fda",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "The fix commit resolves all three round-1 findings. The runbook now makes /opt/apps deploy-owned without changing its contents, consistent with the existing check-host writability requirement. audit-host flags a non-deploy owner and distinguishes existing Schatten paths that need review. The reboot step holds the maintenance lock across the reboot command, and the ADR-005 wording and diagram title were corrected with a regenerated SVG. The changes were exercised in a disposable Ubuntu 26.04 container and shellcheck passed. One minor QA-record omission remains.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "The QA record's list of F-only verification omits the new /opt/apps ownership change.",
+        "rationale": "Runbook section 2.2 now adds an authorized host change that sets /opt/apps ownership, and the QA follow-up paragraph records only its disposable-container test. The Not Verified Here (F) list still names only the backup-directory ownership change, so the F checklist derived from it would miss verifying the real-host /opt/apps ownership.",
+        "recommendation": "Add the /opt/apps ownership change alongside the backup-directory ownership change in the Not Verified Here (F) list.",
+        "locations": [
+          {
+            "path": "docs/qa/UPCLOUD-RUNBOOK-QA.md",
+            "line": 202
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-059E/review-001",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "Runbook section 2.2 adds a non-recursive ownership step for /opt/apps and a stop-and-review rule for existing Schatten paths, the expected-attention table and deployment storage table include it, and audit-host now reports attention for a non-deploy owner. A disposable Ubuntu 26.04 test confirmed that unrelated contents were unchanged and that the Schatten paths could be created afterwards.",
+        "validated_by": {
+          "review_id": "TASK-059E/review-002",
+          "commit": "25aa415511eb2fd8ac997f8c10b3276f029f3fda"
+        }
+      },
+      {
+        "record_id": "TASK-059E/review-001",
+        "finding_id": "F-002",
+        "disposition": "fixed",
+        "rationale": "Runbook section 10.2 now runs the reboot inside a non-blocking exclusive maintenance-lock acquisition and refuses when the lock is busy. The disposable test ran the command when idle and refused it while a shared holder existed. The stray paragraph formatting was corrected.",
+        "validated_by": {
+          "review_id": "TASK-059E/review-002",
+          "commit": "25aa415511eb2fd8ac997f8c10b3276f029f3fda"
+        }
+      },
+      {
+        "record_id": "TASK-059E/review-001",
+        "finding_id": "F-003",
+        "disposition": "fixed",
+        "rationale": "The ADR-005 clause separator is restored, the topology diagram title now marks only the F rollout as pending, and the generated SVG was re-rendered from the source.",
+        "validated_by": {
+          "review_id": "TASK-059E/review-002",
+          "commit": "25aa415511eb2fd8ac997f8c10b3276f029f3fda"
+        }
+      }
+    ]
+  }
+}

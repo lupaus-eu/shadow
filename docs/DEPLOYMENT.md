@@ -16,9 +16,11 @@ runners), the frozen-image build/release commands in `deploy/bin/`, and the
 encrypted backup, restore-rehearsal and Docker-cleanup jobs in `deploy/ops/`.
 The Coolify adapter and `docker-compose.release.yml` are removed. Local
 development uses loopback Caddy HTTPS and direct Entra (B); C/D provide the
-initialization commands. E supplies the integrated runbook/QA and F performs the
-separately approved host, DNS, tenant, backup activation and rollout. No
-production operation has been performed. Backup identifiers and
+initialization commands. TASK-059E supplies the integrated, disposably tested
+operator procedure in [PRODUCTION-RUNBOOK.md](PRODUCTION-RUNBOOK.md) with
+evidence in [UPCLOUD-RUNBOOK-QA.md](qa/UPCLOUD-RUNBOOK-QA.md). F performs the
+separately approved host, DNS, tenant, backup activation and rollout by that
+runbook. No production operation has been performed. Backup identifiers and
 restore-rehearsal evidence remain release gates.
 
 ## Release Topology
@@ -257,8 +259,10 @@ Docker describes the [UFW interaction](https://docs.docker.com/engine/network/pa
 
 ### Remaining Setup And Builds
 
-E supplies tested verification and remaining-setup commands; G provides runtime
-tooling that uses the installed Engine/Compose. Under the existing approval
+E supplies tested verification and remaining-setup commands in
+[runbook sections 1-2](PRODUCTION-RUNBOOK.md#1-verify-the-existing-host-baseline-read-only),
+including the read-only `audit-host`; G provides runtime tooling that uses the
+installed Engine/Compose. Under the existing approval
 boundaries, F configures missing DNS, Caddy TLS/storage, private PostgreSQL,
 GitHub read-only source access, protected environment files and application
 deployment. Verify source-checkout tools such as Git are available; the supplied
@@ -285,10 +289,10 @@ images. No automatic deployment or off-server workflow is implemented here.
 
 ## Production Runtime And Operator Commands (TASK-059G)
 
-This section describes the implemented tooling. E turns it into the checked
-runbook; F runs it only under explicit operational approval. None of these
-commands provisions the host, installs Docker, reruns cloud-init or changes
-swap.
+This section describes the implemented tooling. The step-by-step procedure is
+[PRODUCTION-RUNBOOK.md](PRODUCTION-RUNBOOK.md); F runs it only under explicit
+operational approval. None of these commands provisions the host, installs
+Docker, reruns cloud-init or changes swap.
 
 ### Services, Networks And Storage
 
@@ -316,6 +320,7 @@ Host storage mappings and required ownership:
 
 | Host path | Use | Ownership / mode |
 | --- | --- | --- |
+| `/opt/apps` | Operator directory; `check-host` requires it writable by `deploy`; no container writes here | `deploy` (changed non-recursively if cloud-init left it root-owned) |
 | `/opt/apps/schatten` | Reviewed Git checkout used only as `build-release` input | `deploy` |
 | `/opt/apps/schatten-config/production.env` | Protected configuration | `deploy`, `0600` |
 | `/opt/apps/schatten-config/backup-public-key.asc` | Backup encryption public key (read-only mount) | `deploy`, `0644` |
@@ -340,10 +345,12 @@ matches the deployed Compose file and job scripts.
 
 | Command | Purpose |
 | --- | --- |
+| `audit-host` | Read-only, sanitized audit of the existing cloud-init baseline for F: cloud-init status counts, accounts, effective SSH, UFW, listeners, Docker, swap/sysctl, timezone, fail2ban, updates and `/opt` storage. Runs without the checkout (`git show <commit>:deploy/bin/audit-host \| ssh deploy@<host> bash -s`) |
 | `check-host [--allow-os-mismatch]` | Read-only check of Ubuntu 26.04, Docker Engine ≥ 25, Compose ≥ 2.24, Buildx, Git, env file privacy/keys, socket group/mode `660`, no Docker TCP listener, state/lock files, backup directory owner/mode and key placement; reports disk, memory and swap |
 | `init-state` | Creates missing state/release directories and lock files only |
 | `build-release <40-char commit>` | Builds both images from `git archive` of the exact commit with pinned base images, locked dependencies and `SOURCE_DATE_EPOCH`; records commit, image IDs, tool versions, duration and available memory in `release.env` |
 | `deploy-release <id> --approval <ref> …` | Deploys frozen image IDs without building or pulling application images (see gates below) |
+| `initialize status` | Read-only counts (schema version, active default metamodels, metamodel types, Users including deleted, active admins, identities, sessions, organisations); never names, emails or rows |
 | `initialize reference-seed` / `initialize bootstrap-admin` | Explicit C/D first-initialization interfaces from the release backend image; bootstrap requires an interactive terminal |
 | `backup-now [--reason pre-release\|manual]` | On-demand encrypted backup through the hardened backup-runner; prints `BACKUP_ID=` only after completion |
 | `restore-rehearsal <backup-id> --private-key <file> [--passphrase-file <file>]` | Isolated restore and schema/data checks; writes evidence |
@@ -396,10 +403,13 @@ exit code, whether services were replaced, scheduler state and result. It
 contains no secrets or identities.
 
 First installation: `deploy-release <id> --approval <ref> --first-install`,
-then `initialize reference-seed`, `initialize bootstrap-admin` in a private
-terminal, `backup-now`, `restore-rehearsal` of that backup, and only then
-`deploy-release … --enable-scheduler` to activate schedules. Subsequent
-releases never bootstrap.
+then `initialize status`, `initialize reference-seed`, `initialize
+bootstrap-admin` in a private terminal, `backup-now`, `restore-rehearsal` of
+that backup, and only then `deploy-release … --enable-scheduler` to activate
+schedules. The runbook's
+[first-installation table](PRODUCTION-RUNBOOK.md#4-first-installation-fresh-database-only)
+lists the expected status counts after each step. Subsequent releases never
+bootstrap.
 
 Rollback: `deploy-release <older-id> --approval <ref> --rollback
 --confirm-schema-compatible`. The confirmation records a human
@@ -547,7 +557,8 @@ backup placement need the separate plan described above.
 - Docker publishes IPv6 through its userland proxy, so IPv6 clients may reach
   FastAPI with the Docker gateway as client address, which weakens per-client
   rate limiting and audit addresses for those clients. IPv4 preserves the
-  client address. E/F records the effective behavior.
+  client address. The runbook recommends no `AAAA` record initially; F records
+  the effective behavior and the DNS decision.
 - Backups share the host and disk with the database (accepted until an
   off-server solution is planned).
 - `docker compose config` output and the env file contain secrets.
@@ -610,8 +621,10 @@ architecture review.
 
 ## Manual Release Gate And Narrow Smoke
 
-E integrates B/C/D/G and verifies commands against disposable infrastructure.
-F requires E and explicit operational approval. Before deployment:
+E integrated B/C/D/G and verified the commands against disposable
+infrastructure; the executable sequence, smoke and release record are in
+[PRODUCTION-RUNBOOK.md](PRODUCTION-RUNBOOK.md). F requires E and explicit
+operational approval. Before deployment:
 
 1. Record passing target-commit CI/local checks for the changed scope, including
    simulated OIDC and production-style Compose/ingress/worker verification.
@@ -685,6 +698,7 @@ test never triggers automatic database restoration.
 [C](../tasks/TASK-059C-production-reference-data-seed.md),
 [D](../tasks/TASK-059D-production-admin-bootstrap.md) and
 [G](../tasks/TASK-059G-upcloud-docker-runtime.md). D uses C for final sequence
-verification. [E](../tasks/TASK-059E-upcloud-docker-runbook-qa.md) integrates them;
+verification. [E](../tasks/TASK-059E-upcloud-docker-runbook-qa.md) integrates them
+in the runbook and disposable QA;
 [F](../tasks/TASK-059F-first-production-rollout.md) follows E and explicit
 operational approval. No production-Authentik task H is created.

@@ -1,0 +1,277 @@
+#!/usr/bin/env bash
+# Read-only audit of the existing, operator-reported cloud-init host baseline
+# (TASK-059E). Separates effective state from the supplied configuration so F
+# can record it. Uses `sudo -n` only for read-only inspection; never installs,
+# reruns cloud-init, touches swap, reloads services or changes files.
+#
+# Output is sanitized: counts and settings only, never SSH keys, user-data,
+# banned addresses, auth logs, environment files or secrets.
+#   ok        matches the documented baseline
+#   attention needs a recorded F decision or an authorized change
+#   manual    must be checked outside this host (workstation, provider panel)
+#   missing   could not be inspected (tool absent or no read permission)
+#
+# Usage: deploy/bin/audit-host
+
+set -Eeuo pipefail
+
+attention=0
+missing=0
+fact() { printf 'fact      %s\n' "$*"; }
+ok() { printf 'ok        %s\n' "$*"; }
+attn() { printf 'attention %s\n' "$*"; attention=$((attention + 1)); }
+manual() { printf 'manual    %s\n' "$*"; }
+miss() { printf 'missing   %s\n' "$*"; missing=$((missing + 1)); }
+section() { printf '\n[%s]\n' "$*"; }
+have() { command -v "$1" >/dev/null 2>&1; }
+count_lines() { grep -c . || true; }
+# Read-only privileged inspection; never prompts for a password.
+priv() { if [[ "$(id -u)" == 0 ]]; then "$@"; else sudo -n "$@"; fi; }
+unit() { local state; state="$(systemctl "$1" "$2" 2>/dev/null)" || true; printf '%s' "${state:-unknown}"; }
+
+section os
+# shellcheck disable=SC1091
+. /etc/os-release
+if [[ "${ID:-}" == ubuntu && "${VERSION_ID:-}" == 26.04 ]]; then ok "os ${PRETTY_NAME}"; else attn "os ${PRETTY_NAME:-unknown} is not the approved Ubuntu 26.04 LTS"; fi
+fact "kernel $(uname -r)"
+fact "coreutils $(stat --version 2>/dev/null | head -n 1)"
+fact "sudo $(sudo --version 2>/dev/null | head -n 1 || printf 'absent')"
+for tool in git python3 curl gpg openssl flock ss; do
+  if have "${tool}"; then ok "tool ${tool}"; else attn "tool ${tool} is not installed"; fi
+done
+
+section cloud-init
+if have cloud-init && have python3; then
+  set +e
+  status_json="$(cloud-init status --format json 2>/dev/null)"
+  status_code=$?
+  set -e
+  summary="$(python3 -c '
+import json, sys
+try:
+    data = json.loads(sys.stdin.read() or "{}")
+except ValueError:
+    data = {}
+recoverable = data.get("recoverable_errors") or {}
+status = str(data.get("extended_status") or data.get("status") or "unknown")
+print(status.replace(" ", "-"),
+      len(data.get("errors") or []),
+      sum(len(v) for v in recoverable.values()) if isinstance(recoverable, dict) else 0)
+' <<<"${status_json}")"
+  read -r cloud_status cloud_errors cloud_recoverable <<<"${summary}"
+  if [[ "${cloud_status}" == "done" && "${cloud_errors}" == 0 && "${cloud_recoverable}" == 0 ]]; then
+    ok "cloud-init status=${cloud_status} exit=${status_code} errors=0 recoverable=0"
+  else
+    attn "cloud-init status=${cloud_status} exit=${status_code} errors=${cloud_errors} recoverable=${cloud_recoverable}; inspect privately with: sudo cloud-init status --long"
+  fi
+else
+  miss "cloud-init status (cloud-init or python3 absent)"
+fi
+
+section accounts
+docker_members="$(getent group docker | cut -d: -f4 || true)"
+fact "docker group members (host-administrator-equivalent): ${docker_members:-none}"
+while IFS=: read -r name _ uid _ _ home shell; do
+  [[ "${uid}" == 0 || ( "${uid}" -ge 1000 && "${uid}" -lt 60000 ) ]] || continue
+  [[ "${shell}" == */nologin || "${shell}" == */false ]] && continue
+  password="$(priv passwd -S "${name}" 2>/dev/null | awk '{ print $2 }' || true)"
+  # Keys are counted, never printed.
+  if key_lines="$(priv cat "${home}/.ssh/authorized_keys" 2>/dev/null)"; then
+    keys="$(grep -Ev '^[[:space:]]*(#|$)' <<<"${key_lines}" | count_lines)" || true
+  else
+    keys=absent-or-unreadable
+  fi
+  groups="$(id -nG "${name}" 2>/dev/null | tr ' ' '\n' | grep -Ex 'sudo|docker|adm' | tr '\n' ',' || true)"
+  fact "account ${name} uid=${uid} password=${password:-unknown} authorized_keys=${keys:-unknown} groups=${groups%,}"
+  if [[ "${password}" == P || "${password}" == NP ]]; then
+    attn "account ${name} has a usable or empty password (status ${password})"
+  fi
+done < /etc/passwd
+if [[ "$(id -un)" == deploy ]]; then
+  if sudo -n true 2>/dev/null; then fact "deploy has passwordless sudo (privileged operator)"; else fact "deploy has no passwordless sudo"; fi
+fi
+manual "from an operator workstation, open a fresh session: ssh -o PasswordAuthentication=no -o KbdInteractiveAuthentication=no deploy@<host> true"
+manual "confirm password login is refused: ssh -o PubkeyAuthentication=no -o PreferredAuthentications=password,keyboard-interactive deploy@<host> (expect Permission denied)"
+
+section ssh
+if sshd_config="$(priv sshd -T 2>/dev/null)"; then
+  for key in port listenaddress permitrootlogin passwordauthentication kbdinteractiveauthentication \
+    pubkeyauthentication authenticationmethods permitemptypasswords usepam allowusers allowgroups maxauthtries; do
+    value="$(awk -v k="${key}" '$1 == k { $1 = ""; sub(/^ /, ""); print }' <<<"${sshd_config}" | paste -sd, -)"
+    fact "sshd ${key}=${value:-unset}"
+  done
+  root_login="$(awk '$1 == "permitrootlogin" { print $2 }' <<<"${sshd_config}")"
+  [[ "${root_login}" == no ]] && ok "root SSH login disabled" \
+    || attn "sshd permitrootlogin=${root_login}: root SSH is not disabled (cloud-init disable_root: false); record or change under F"
+  [[ "$(awk '$1 == "passwordauthentication" { print $2 }' <<<"${sshd_config}")" == no ]] && ok "SSH password authentication disabled" \
+    || attn "SSH password authentication is enabled"
+  [[ "$(awk '$1 == "kbdinteractiveauthentication" { print $2 }' <<<"${sshd_config}")" == no ]] && ok "SSH keyboard-interactive authentication disabled" \
+    || attn "SSH keyboard-interactive authentication is enabled"
+  match_files="$(priv grep -rlis '^[[:space:]]*Match[[:space:]]' /etc/ssh/sshd_config /etc/ssh/sshd_config.d 2>/dev/null | count_lines)" || true
+  [[ "${match_files}" == 0 ]] || attn "sshd has Match blocks in ${match_files} file(s); evaluate them with sshd -T -C user=...,host=...,addr=..."
+else
+  miss "effective sshd settings (needs sudo -n sshd -T)"
+fi
+for unit in ssh.socket ssh.service; do
+  fact "${unit} $(unit is-active "${unit}")"
+done
+
+section firewall
+if ufw_status="$(priv ufw status verbose 2>/dev/null)"; then
+  while IFS= read -r line; do
+    [[ -n "${line}" ]] && fact "ufw ${line}"
+  done <<<"${ufw_status}"
+  grep -q '^Status: active' <<<"${ufw_status}" && ok "ufw active" || attn "ufw is not active"
+  # Verbose rules read, for example, `22/tcp (OpenSSH)  ALLOW IN  Anywhere`.
+  if grep -Eq '^(22(/tcp)?|OpenSSH)([[:space:]]|$).*ALLOW IN[[:space:]]+Anywhere' <<<"${ufw_status}"; then
+    attn "SSH is allowed from Anywhere; SSH is not source-restricted (restrict via ufw or the provider firewall under F)"
+  fi
+else
+  miss "ufw status (needs sudo -n ufw status verbose)"
+fi
+manual "check the UpCloud provider firewall for IPv4 and IPv6: SSH limited to operator networks, TCP 80/443 public, nothing else"
+fact "Docker publishes container ports through its own iptables chains; UFW rules alone do not make a published port private"
+
+section listeners
+if have ss; then
+  while read -r proto address; do
+    port="${address##*:}"
+    host="${address%:*}"
+    case "${host}" in
+      127.*|\[::1\]|localhost|\[::ffff:127.*) fact "listener ${proto} ${address} (loopback)"; continue ;;
+    esac
+    fact "listener ${proto} ${address}"
+    # UFW denies incoming UDP and nothing publishes UDP; TCP is the exposure check.
+    case "${proto}/${port}" in
+      tcp/22|tcp/80|tcp/443|udp/*) ;;
+      tcp/2375|tcp/2376) attn "a Docker TCP API listener appears on ${address}; it must not exist" ;;
+      *) attn "non-loopback TCP listener ${address} is not part of the baseline (22/80/443)" ;;
+    esac
+  done < <(ss -H -ltnu 2>/dev/null | awk '{ print $1, $5 }' | sort -u)
+else
+  miss "listening sockets (ss absent)"
+fi
+
+section docker
+if server="$(docker version --format '{{.Server.Version}}' 2>/dev/null)"; then
+  fact "docker engine ${server}"
+  fact "docker components $(docker version --format '{{range .Server.Components}}{{.Name}}={{.Version}} {{end}}' 2>/dev/null)"
+  fact "docker compose $(docker compose version --short 2>/dev/null || printf 'absent')"
+  fact "docker buildx $(docker buildx version 2>/dev/null | awk '{ print $2 }' || printf 'absent')"
+  fact "docker info $(docker info --format 'root={{.DockerRootDir}} storage={{.Driver}} cgroup={{.CgroupVersion}} live-restore={{.LiveRestoreEnabled}} security={{join .SecurityOptions ","}}' 2>/dev/null)"
+  socket=/var/run/docker.sock
+  fact "docker socket $(stat -c 'mode=%a owner=%U group=%G gid=%g' "${socket}" 2>/dev/null)"
+  [[ "$(stat -c %a "${socket}" 2>/dev/null)" == 660 ]] && ok "docker socket mode 660" || attn "docker socket mode is not 660"
+  if [[ -r /etc/docker/daemon.json ]]; then
+    fact "daemon.json keys $(python3 -c 'import json, sys; print(",".join(sorted(json.load(sys.stdin))))' </etc/docker/daemon.json 2>/dev/null || printf 'unreadable')"
+  else
+    fact "daemon.json absent (Docker defaults, including the userland proxy for IPv6)"
+  fi
+  fact "containers running=$(docker ps --quiet | wc -l) all=$(docker ps --all --quiet | wc -l)"
+  while IFS=$'\t' read -r name ports; do
+    [[ -n "${ports}" ]] || continue
+    fact "published ${name}: ${ports}"
+    remaining="$(tr ',' '\n' <<<"${ports}" | grep -- '->' | grep -Ev ':(80|443)->(80|443)/tcp' || true)"
+    [[ -z "${remaining}" ]] || attn "container ${name} publishes ports other than 80/443: ${remaining//$'\n'/ }"
+  done < <(docker ps --format '{{.Names}}\t{{.Ports}}')
+else
+  miss "Docker Engine is not reachable by $(id -un)"
+fi
+
+section resources
+if have swapon; then
+  fact "swap $(swapon --show=NAME,TYPE,SIZE --noheadings 2>/dev/null | tr -s ' ' | paste -sd';' - || true)"
+fi
+fact "fstab swap entries $(awk '!/^[[:space:]]*#/ && $3 == "swap"' /etc/fstab 2>/dev/null | wc -l)"
+swappiness="$(sysctl -n vm.swappiness 2>/dev/null || printf 'unknown')"
+cache_pressure="$(sysctl -n vm.vfs_cache_pressure 2>/dev/null || printf 'unknown')"
+[[ "${swappiness}" == 10 && "${cache_pressure}" == 50 ]] && ok "sysctl vm.swappiness=${swappiness} vm.vfs_cache_pressure=${cache_pressure}" \
+  || attn "sysctl vm.swappiness=${swappiness} vm.vfs_cache_pressure=${cache_pressure} differ from the reported 10/50"
+fact "cpus $(nproc)"
+fact "$(free -m | awk '/^Mem:/ { print "memory total=" $2 "MiB available=" $7 "MiB" } /^Swap:/ { print "swap total=" $2 "MiB used=" $3 "MiB" }' | paste -sd' ' -)"
+for path in / /var/lib/docker /opt; do
+  [[ -e "${path}" ]] || continue
+  fact "disk ${path} $(df -P -B1M "${path}" 2>/dev/null | awk 'NR == 2 { print "filesystem=" $1 " size=" $2 "MiB available=" $4 "MiB mount=" $6 }')"
+done
+fact "build resources are not inferred from swap; record build duration/memory from release.env"
+
+section time
+timezone="$(timedatectl show --property=Timezone --value 2>/dev/null || cat /etc/timezone 2>/dev/null || printf 'unknown')"
+[[ "${timezone}" == Europe/Helsinki ]] && ok "timezone ${timezone}" || attn "timezone ${timezone} is not Europe/Helsinki"
+fact "ntp synchronized=$(timedatectl show --property=NTPSynchronized --value 2>/dev/null || printf 'unknown')"
+
+section fail2ban
+fact "fail2ban service $(unit is-active fail2ban)"
+if jail="$(priv fail2ban-client status sshd 2>/dev/null)"; then
+  ok "fail2ban sshd jail present"
+  fact "fail2ban sshd currently_banned=$(awk -F: '/Currently banned/ { gsub(/[[:space:]]/, "", $2); print $2 }' <<<"${jail}") total_banned=$(awk -F: '/Total banned/ { gsub(/[[:space:]]/, "", $2); print $2 }' <<<"${jail}")"
+  settings=""
+  for setting in maxretry findtime bantime; do
+    settings+="${setting}=$(priv fail2ban-client get sshd "${setting}" 2>/dev/null | tr -d '[:space:]' || printf 'unknown') "
+  done
+  [[ "${settings}" == "maxretry=5 findtime=600 bantime=3600 " ]] && ok "fail2ban sshd ${settings% }" \
+    || attn "fail2ban sshd ${settings% } differ from the reported 5/600/3600"
+else
+  attn "fail2ban sshd jail could not be read (needs sudo -n fail2ban-client status sshd)"
+fi
+
+section updates
+fact "unattended-upgrades enabled=$(unit is-enabled unattended-upgrades) active=$(unit is-active unattended-upgrades)"
+fact "apt-daily-upgrade.timer $(unit is-enabled apt-daily-upgrade.timer)"
+if have apt-config; then
+  for key in APT::Periodic::Update-Package-Lists APT::Periodic::Unattended-Upgrade \
+    Unattended-Upgrade::Automatic-Reboot Unattended-Upgrade::Automatic-Reboot-Time \
+    Unattended-Upgrade::Automatic-Reboot-WithUsers; do
+    value="$(apt-config dump 2>/dev/null | awk -v k="${key}" '$1 == k { gsub(/[";]/, "", $2); print $2 }' | tail -n 1)"
+    fact "apt ${key}=${value:-unset}"
+  done
+fi
+[[ -e /var/run/reboot-required ]] && attn "a reboot is pending (/var/run/reboot-required); schedule it outside a release" || fact "no reboot pending"
+held="$(apt-mark showhold 2>/dev/null | paste -sd, - || true)"
+fact "held packages ${held:-none}"
+
+section storage
+for path in /opt/apps /opt/caddy /opt/postgres-backups /opt/apps/schatten /opt/apps/schatten-config \
+  /opt/apps/schatten-state /opt/apps/schatten-releases; do
+  if [[ ! -e "${path}" ]]; then
+    fact "path ${path} absent"
+    continue
+  fi
+  if listing="$(priv find "${path}" -mindepth 1 -maxdepth 1 2>/dev/null)"; then
+    entries="$(count_lines <<<"${listing}")"
+  else
+    entries=unreadable
+  fi
+  fact "path ${path} $(stat -c 'owner=%u:%g(%U:%G) mode=%a' "${path}") entries=${entries} filesystem=$(df -P "${path}" 2>/dev/null | awk 'NR == 2 { print $1 }')"
+done
+# check-host and the setup steps write the Schatten paths as deploy; containers never write here.
+for path in /opt/apps /opt/apps/schatten /opt/apps/schatten-config /opt/apps/schatten-state /opt/apps/schatten-releases; do
+  [[ -e "${path}" ]] || continue
+  owner="$(stat -c %U "${path}")"
+  if [[ "${owner}" == deploy ]]; then
+    ok "${path} owned by deploy"
+  elif [[ "${path}" == /opt/apps ]]; then
+    attn "${path} owner ${owner}; deploy must own it (F changes ownership non-recursively, runbook 2.2)"
+  else
+    attn "${path} owner ${owner}; deploy must own it (existing path: stop and review before setup, runbook 2.2)"
+  fi
+done
+if [[ -d /opt/postgres-backups ]]; then
+  backup_owner="$(stat -c %u:%g /opt/postgres-backups)"
+  backup_mode="$(stat -c %a /opt/postgres-backups)"
+  [[ "${backup_owner}" == 10002:10002 && "${backup_mode}" =~ ^7[05]0$ ]] && ok "/opt/postgres-backups owner ${backup_owner} mode ${backup_mode}" \
+    || attn "/opt/postgres-backups owner ${backup_owner} mode ${backup_mode}; the backup runner needs 10002:10002 and 0700/0750 (F sets it, preserving contents)"
+  if listing="$(priv find /opt/postgres-backups -maxdepth 1 -name 'schatten-*.manifest' 2>/dev/null)"; then
+    fact "/opt/postgres-backups completed Schatten manifests=$(count_lines <<<"${listing}"); a directory alone is not backup evidence"
+  else
+    miss "/opt/postgres-backups contents (needs sudo -n find)"
+  fi
+fi
+if [[ -d /opt/apps/schatten/.git ]] && have git; then
+  remote="$(git -C /opt/apps/schatten remote get-url origin 2>/dev/null || true)"
+  sanitized="$(sed -E 's#^(https?://)[^@/]+@#\1#' <<<"${remote}")"
+  fact "source checkout remote ${sanitized:-none} head $(git -C /opt/apps/schatten rev-parse HEAD 2>/dev/null || printf 'unknown')"
+  [[ "${sanitized}" == "${remote}" ]] || attn "source checkout remote URL embeds credentials; use a read-only deploy key instead"
+fi
+
+printf '\nSUMMARY attention=%s missing=%s (record results under TASK-059F; this command changed nothing)\n' "${attention}" "${missing}"

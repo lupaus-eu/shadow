@@ -1,6 +1,6 @@
 # ADR-013: Shared Entra Registration And Local HTTPS Deployment
 
-Status: Accepted; B/C/D/G implemented; integrated QA and rollout pending TASK-059E/F
+Status: Accepted; B/C/D/G/E implemented; authorized setup and rollout pending TASK-059F
 
 Date: 2026-09-11
 
@@ -259,7 +259,11 @@ hardened Ofelia tooling and removes the Coolify/HTTP-Caddy adapter; Ofelia job
 runners are pre-created hardened Compose containers started by `job-run
 container =`, so no weakening of the scheduler controls was needed. Historical
 QA results do not verify the accepted target, and authorized live-provider setup
-and schedule activation remain separate F evidence.
+and schedule activation remain separate F evidence. TASK-059E integrates B/C/D/G
+in the [operator runbook](../PRODUCTION-RUNBOOK.md) and verified its sequence,
+scheduler hardening and backup/restore gates on disposable daemons, including an
+Ubuntu 26.04 operator userland with Docker Engine 29; no amendment of these
+controls was needed.
 
 | Task | Delivery | Dependency |
 | --- | --- | --- |

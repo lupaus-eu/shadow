@@ -10,6 +10,13 @@ Caddy TLS and direct Entra. The TASK-057E procedures/results below are preserved
 historical evidence for the earlier runtime, not verification of the new design.
 TASK-059G/E provides equivalent Compose and worker checks; old unavailable
 Coolify checks are not gates for the new deployment and must not be marked passed.
+On 2026-09-28 TASK-059E reran `.github/scripts/verify-production-worker.sh`
+(non-root start, health, isolation, exclusivity, restart, shutdown and safe
+logs) against a migrated disposable PostgreSQL 18 database, and the disposable
+runtime harness verified exactly one healthy worker after first install,
+releases, rollback and daemon restart. See
+[UPCLOUD-RUNBOOK-QA.md](UPCLOUD-RUNBOOK-QA.md). The production prediction-flow
+smoke is pending F under the [runbook](../PRODUCTION-RUNBOOK.md#7-narrow-production-smoke).
 
 ## Preconditions
 

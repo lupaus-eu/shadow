@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-059E/review-001",
+  "task": {
+    "id": "TASK-059E",
+    "path": "tasks/TASK-059E-upcloud-docker-runbook-qa.md"
+  },
+  "round": 1,
+  "reviewed_at": "2026-09-29T08:13:15Z",
+  "reviewer": {
+    "label": "Claude Code self-review"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "a3b18aa1b25e213671f70993f6c0862588598611",
+    "head_sha": "785b854b4d1cedf28256278c510ba9c8047c666d",
+    "comparison": "a3b18aa1b25e213671f70993f6c0862588598611...785b854b4d1cedf28256278c510ba9c8047c666d",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "The runbook, host audit, initialize status subcommand and extended disposable harness match the B/C/D/G tooling: documented commands, flags, output markers and configuration keys exist, relative links and anchors resolve, the diagram SVG was regenerated, and no active Coolify, Traefik or Authentik requirement remains. The scripts are read-only where claimed and avoid printing secrets or identities. One setup gap would block an operator on the reported baseline, and two smaller documentation issues remain.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "documentation",
+        "severity": "medium",
+        "summary": "Runbook setup steps write under /opt/apps as deploy without establishing that deploy can write there.",
+        "rationale": "The runbook itself states that cloud-init creates directories as root, and the QA baseline container used a root-owned /opt/apps. Sections 2.2, 2.3 and 2.8 nevertheless clone the source checkout, create the protected configuration directory and run init-state (which creates the state and release directories) under /opt/apps as the unprivileged deploy user. On the reported baseline these steps would fail with permission errors. The task requires verifying directory ownership and not assuming /opt/apps is writable, but audit-host only reports its ownership as a fact without flagging it, and no remaining-setup step creates the Schatten subdirectories with deploy ownership.",
+        "recommendation": "Add an approved F step that creates only the Schatten subdirectories under /opt/apps with deploy ownership and the documented modes, without changing /opt/apps contents or /opt/caddy. Make audit-host report attention when /opt/apps is not writable by deploy and none of the Schatten paths exist, and add the item to the expected-attention table.",
+        "locations": [
+          {
+            "path": "docs/PRODUCTION-RUNBOOK.md",
+            "line": 185
+          },
+          {
+            "path": "docs/PRODUCTION-RUNBOOK.md",
+            "line": 194
+          },
+          {
+            "path": "deploy/bin/audit-host",
+            "line": 233
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "The planned-reboot idle check releases the maintenance lock before the reboot starts.",
+        "rationale": "Section 10.2 acquires the maintenance lock only for a no-op and then reboots as a separate command, so a build, release, backup or restore can take the lock between the check and the reboot and be interrupted. The paragraph that follows the code block also begins with a stray leading space.",
+        "recommendation": "Hold the maintenance lock across the reboot command so no job can start in between, or state the race explicitly, and fix the paragraph formatting.",
+        "locations": [
+          {
+            "path": "docs/PRODUCTION-RUNBOOK.md",
+            "line": 667
+          }
+        ]
+      },
+      {
+        "id": "F-003",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "The ADR-005 status sentence lost its separator, and the topology diagram title still marks G as pending.",
+        "rationale": "The edited ADR-005 status now reads as a run-on sentence that joins the B/C/D and G/E clauses. The authentication topology diagram, updated in this change, still says production G/F is pending in its title even though G is merged and E is delivered here, so it contradicts the updated note in the same diagram.",
+        "recommendation": "Restore the clause separator in ADR-005, update the diagram title to show only F as pending, and regenerate the SVG.",
+        "locations": [
+          {
+            "path": "docs/decisions/ADR-005-production-only-environments.md",
+            "line": 18
+          },
+          {
+            "path": "docs/diagrams/component-authentication-topology.puml",
+            "line": 3
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": []
+  }
+}

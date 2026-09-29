@@ -102,7 +102,9 @@ else
   error "backup public key is missing or unreadable"
 fi
 
-available="$(df -P -B1 /var/lib/docker "${SCHATTEN_BACKUP_DIR}" 2>/dev/null | awk 'NR > 1 { print $6 "=" int($4 / 1048576) "MiB" }' | tr '\n' ' ')"
+# Informational only: a missing path (for example a non-default Docker data
+# root) must not abort the prerequisite report.
+available="$(df -P -B1 /var/lib/docker "${SCHATTEN_BACKUP_DIR}" 2>/dev/null | awk 'NR > 1 { print $6 "=" int($4 / 1048576) "MiB" }' | tr '\n' ' ' || true)"
 printf 'info   free disk %s\n' "${available:-unknown}"
 printf 'info   %s\n' "$(free -m | awk '/^Mem:/ { print "memory total=" $2 "MiB available=" $7 "MiB" } /^Swap:/ { print "swap total=" $2 "MiB used=" $3 "MiB" }' | tr '\n' ' ')"
 

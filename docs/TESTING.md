@@ -252,6 +252,37 @@ restore-evidence gate; failed-migration isolation; schema-compatible rollback
 without migrations and refusal on divergent history; and a secret scan of logs
 and image history. CI also runs shellcheck on the operator scripts.
 
+TASK-059E extends the same harness with the runbook's first-installation
+sequence: `initialize status` counts prove nothing is seeded at startup, the
+reference seed is explicit and idempotent, and `initialize bootstrap-admin` is
+driven through a pseudo-terminal with synthetic input. It must create exactly
+one active admin with no identity, session or development data, print its input
+only through the terminal echo, and refuse a repeat without change. The QA backup
+key is passphrase-protected; a wrong passphrase must produce failed restore
+evidence that blocks the next release, and the successful rehearsal of the
+initialized database must show the admin and reference-data row counts.
+
+`QA_DIND_IMAGE` selects another digest-pinned daemon. To approximate the target
+host, run the harness from an Ubuntu 26.04 container (uutils coreutils, Docker
+CLI/Compose/Buildx from Docker's APT repository, a non-root user in the host
+socket's group, `/tmp` shared at the same path) against a Docker Engine 29
+daemon; `docs/qa/UPCLOUD-RUNBOOK-QA.md` records the exact commands.
+
+## Operator Runbook And Host Audit
+
+`deploy/bin/audit-host` is read-only and cannot be exercised against the real
+host before F. Test changes to it in a disposable `ubuntu:26.04` container set
+up like the reported baseline (locked `deploy`/default users with authorized
+keys, NOPASSWD sudo, `sshd` with the cloud-init drop-in, UFW with the OpenSSH/
+80/443 rules, a fail2ban `sshd` jail and the `/opt` directories), run it as
+`deploy` both directly and through `bash -s` on stdin, and confirm the expected
+attention items: root SSH not disabled, SSH open to `Anywhere`, a root-owned
+`/opt/apps` and backup directory ownership. Run shellcheck on it, and do not run it with elevated
+privileges on shared machines beyond its read-only `sudo -n` probes.
+`docs/PRODUCTION-RUNBOOK.md` commands that cannot be exercised without the real
+host or provider (for example `systemctl reload ssh`, DNS, Entra, UpCloud
+firewall) are labelled untested there and remain F verification.
+
 Real ACME issuance is not part of CI. `docs/qa/PRODUCTION-RUNTIME-QA.md`
 records a one-off local Pebble check of HTTP-01 and TLS-ALPN-01 with the
 production Caddyfile and the recorded runtime QA results. Production backup

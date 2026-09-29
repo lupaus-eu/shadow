@@ -84,3 +84,5 @@ To rotate the development secret, deliberately replace only `.env.entra.local` u
 ## Browser evidence
 
 Automated tests simulate direct Entra; they do not prove a real tenant login. Record authorized browser verification separately with date, commit, tester, environment and redacted result for login, callback, guarded first-link, session role and logout. Until that setup is authorized, record it as pending; do not treat mock evidence as live-provider evidence.
+
+The authorized TASK-059B browser run is recorded in `docs/qa/AUTHENTICATION-QA-CHECKLIST.md`; TASK-059E repeated only the automated and read-only local probes. Local HTTPS and direct-Entra success does not establish production DNS, TLS or client-secret correctness; production setup follows `docs/PRODUCTION-RUNBOOK.md` under TASK-059F. When probing HMR without a browser, note that the Vite WebSocket requires the per-server `token` query value served in `/@vite/client`; a tokenless upgrade returns `400`.

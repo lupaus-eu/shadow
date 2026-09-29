@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # Explicit, operator-controlled first-initialization commands (TASK-059C/D).
 # Never run automatically. Order for a fresh database after a first-install
-# deployment: reference-seed, then bootstrap-admin (interactive terminal).
+# deployment: status, reference-seed, status, bootstrap-admin (interactive
+# terminal), status.
 #
-# Usage: deploy/bin/initialize reference-seed|bootstrap-admin [--release <id>]
+# Usage: deploy/bin/initialize status|reference-seed|bootstrap-admin [--release <id>]
+#   status is read-only and prints counts only, never names, emails or rows.
 
 source "$(dirname "$(readlink -f "$0")")/../lib/common.sh"
 
@@ -17,6 +19,23 @@ directory="$(release_dir "${release_id}")"
 verify_release_images "${directory}"
 
 case "${command_name}" in
+  status)
+    compose_release "${directory}" exec -T database sh -c \
+      'psql -X -A -t -F= -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' <<'SQL'
+SELECT 'schema_version', coalesce(max(version), 0)::bigint FROM schema_migrations
+UNION ALL SELECT 'active_default_metamodels', count(*) FROM metamodels
+  WHERE organisation_id IS NULL AND deleted_time IS NULL
+UNION ALL SELECT 'node_types', count(*) FROM node_types
+UNION ALL SELECT 'edge_types', count(*) FROM edge_types
+UNION ALL SELECT 'type_attributes', count(*) FROM type_attributes
+UNION ALL SELECT 'allowed_connections', count(*) FROM allowed_connections
+UNION ALL SELECT 'users_including_deleted', count(*) FROM users
+UNION ALL SELECT 'active_admins', count(*) FROM users WHERE role = 'admin' AND deleted_time IS NULL
+UNION ALL SELECT 'user_identities', count(*) FROM user_identities
+UNION ALL SELECT 'auth_sessions', count(*) FROM auth_sessions
+UNION ALL SELECT 'organisations', count(*) FROM organisations;
+SQL
+    ;;
   reference-seed)
     compose_release "${directory}" run --rm --no-deps -T migration python -m app.seed_reference_data
     ;;
@@ -25,6 +44,6 @@ case "${command_name}" in
     compose_release "${directory}" run --rm --no-deps migration python -m app.bootstrap_admin
     ;;
   *)
-    die "Usage: initialize reference-seed|bootstrap-admin [--release <id>]"
+    die "Usage: initialize status|reference-seed|bootstrap-admin [--release <id>]"
     ;;
 esac

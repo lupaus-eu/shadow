@@ -6,8 +6,10 @@ disposable local infrastructure, synthetic secrets, a throwaway GPG key and a
 simulated Entra discovery endpoint. **No production host, DNS, tenant,
 certificate, backup directory or database was touched.** Host verification,
 real certificate issuance, backup activation and rollout remain F evidence
-under [TASK-059F](../../tasks/TASK-059F-first-production-rollout.md); E owns
-the integrated runbook and any repeat of these checks.
+under [TASK-059F](../../tasks/TASK-059F-first-production-rollout.md). The
+TASK-059E integrated rerun, including the first-initialization sequence and an
+Ubuntu 26.04 / Docker Engine 29 run, is recorded separately in
+[UPCLOUD-RUNBOOK-QA.md](UPCLOUD-RUNBOOK-QA.md); results below are G's.
 
 ## Environment
 

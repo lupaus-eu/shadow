@@ -67,10 +67,12 @@ the accepted amendment. TASK-059B implements the local HTTPS/direct-Entra
 runtime, TASK-059C implements the non-user reference seed and TASK-059D
 implements the empty-users-table administrator bootstrap. TASK-059G implements
 the production runtime (`docker-compose.production.yml`) and the operator
-build/release, backup, restore and scheduler tooling in `deploy/`; integrated
-QA/runbook and rollout are pending E/F.
+build/release, backup, restore and scheduler tooling in `deploy/`. TASK-059E
+provides the integrated operator runbook
+([docs/PRODUCTION-RUNBOOK.md](docs/PRODUCTION-RUNBOOK.md)) and disposable QA;
+authorized setup and rollout are pending F.
 Volumes are not backups; release requires completed backup identifiers and
-successful restore-rehearsal evidence. Production backup activation is pending E/F.
+successful restore-rehearsal evidence. Production backup activation is pending F.
 
 ## Optional Make Convenience
 

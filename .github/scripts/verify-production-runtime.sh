@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Disposable end-to-end QA for the UpCloud production runtime (TASK-059G).
+# Disposable end-to-end QA for the UpCloud production runtime (TASK-059G) and
+# the integrated first-installation runbook sequence (TASK-059E).
 #
 # Runs every deploy/bin command against an isolated Docker-in-Docker daemon
 # with synthetic configuration, a throwaway GPG key and simulated OIDC
@@ -9,13 +10,15 @@
 #
 # Usage: .github/scripts/verify-production-runtime.sh
 #   QA_SOURCE_REPO / QA_COMMIT select the committed source to build (default HEAD).
+#   QA_DIND_IMAGE selects another digest-pinned daemon, for example the Engine
+#   major version expected on the target host.
 
 set -Eeuo pipefail
 
 repo="$(git rev-parse --show-toplevel)"
 source_repo="${QA_SOURCE_REPO:-${repo}}"
 commit="${QA_COMMIT:-$(git -C "${source_repo}" rev-parse HEAD)}"
-dind_image="docker.io/library/docker:28.5.2-dind@sha256:2a232a42256f70d78e3cc5d2b5d6b3276710a0de0596c145f627ecfae90282ac"
+dind_image="${QA_DIND_IMAGE:-docker.io/library/docker:28.5.2-dind@sha256:2a232a42256f70d78e3cc5d2b5d6b3276710a0de0596c145f627ecfae90282ac}"
 cli_image="docker.io/library/docker:28.5.2-cli@sha256:625d9431a9f54c5a2bc90f24f0e1c3d55b1349fd857dd85035f98c2c9acbdd4d"
 postgres_image="docker.io/library/postgres:18.6@sha256:4ef4dbc939d61acea57712655ddb4b4ab27419c913f94cca0cd57cb3ea3c2280"
 ofelia_image="docker.io/mcuadros/ofelia:0.3.22@sha256:efcbe2c5cf658a25de6443c1462d653f9cc03791d642e01fc6c638a00f97e492"
@@ -100,12 +103,17 @@ config_dir="${opt}/apps/schatten-config"
 mkdir -p "${config_dir}" "${opt}/apps/schatten-state" "${opt}/apps/schatten-releases" "${qa_root}/keys" "${opt}/caddy"
 as_root() { docker run --rm --volume "${qa_root}:${qa_root}" --entrypoint sh "${cli_image}" -c "$1"; }
 as_root "mkdir -p '${opt}/postgres-backups' && chown 10002:10002 '${opt}/postgres-backups' && chmod 0700 '${opt}/postgres-backups'"
+# The runbook recommends a passphrase-protected private key held offline.
+key_passphrase="qa-key-$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
+(umask 077 && printf '%s\n' "${key_passphrase}" >"${qa_root}/keys/backup-key-passphrase")
 docker run --rm --user "$(id -u):$(id -g)" --env HOME=/tmp --volume "${qa_root}:${qa_root}" \
   --entrypoint bash "${postgres_image}" -c "
     export GNUPGHOME=\$(mktemp -d)
-    gpg --batch --quiet --passphrase '' --quick-generate-key 'Schatten QA backup <qa@example.test>' default default never
+    gpg --batch --quiet --pinentry-mode loopback --passphrase-file '${qa_root}/keys/backup-key-passphrase' \
+      --quick-generate-key 'Schatten QA backup <qa@example.test>' default default never
     gpg --batch --armor --export > '${config_dir}/backup-public-key.asc'
-    gpg --batch --armor --export-secret-keys > '${qa_root}/keys/backup-private-key.asc'"
+    gpg --batch --pinentry-mode loopback --passphrase-file '${qa_root}/keys/backup-key-passphrase' \
+      --armor --export-secret-keys > '${qa_root}/keys/backup-private-key.asc'"
 chmod 0600 "${qa_root}/keys/backup-private-key.asc"
 db_password="qa-db-$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
 client_secret="qa-oidc-$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
@@ -233,26 +241,108 @@ direct="$(docker run --rm --network schatten_edge "${cli_image}" sh -c \
 [[ "${direct}" == 400 ]] || fail "backend trusted a non-Caddy peer (status ${direct})"
 pass "only Caddy 80/443 published; TLS, HSTS/CSP, redirect, SPA, sanitized forwarding and exact Caddy-peer trust"
 
-step "Explicit initialization interfaces"
+step "Explicit first initialization: migrations -> reference seed -> administrator bootstrap"
+# Count-only status; never prints names, emails or rows.
+init_status() {
+  local output
+  output="$("${bin}/initialize" status 2>&1)" || { printf '%s\n' "${output}" >&2; fail "initialize status"; }
+  printf '%s\n' "${output}" >>"${log_file}"
+  printf '%s' "${output}"
+}
+expect_status() {
+  local output="$1" description="$2" pair
+  shift 2
+  for pair in "$@"; do
+    grep -qx "${pair}" <<<"${output}" || { printf '%s\n' "${output}" >&2; fail "${description}: expected ${pair}"; }
+  done
+}
+migrations_expected="$(git -C "${source_repo}" ls-tree --name-only "${commit}" db/migrations/ | grep -E '/[0-9]{3}_.*\.sql$' | grep -vc '\.down\.sql$')"
+initial="$(init_status)"
+expect_status "${initial}" "no implicit startup seed or bootstrap" "schema_version=${migrations_expected}" active_default_metamodels=0 \
+  users_including_deleted=0 user_identities=0 auth_sessions=0 organisations=0
 run "${bin}/initialize" reference-seed
+seeded="$(init_status)"
+expect_status "${seeded}" "reference seed" active_default_metamodels=1 users_including_deleted=0 organisations=0
+grep -Eqx 'node_types=[1-9][0-9]*' <<<"${seeded}" && grep -Eqx 'allowed_connections=[1-9][0-9]*' <<<"${seeded}" \
+  || fail "reference seed did not create metamodel types and connection rules"
 run "${bin}/initialize" reference-seed
+[[ "$(init_status)" == "${seeded}" ]] || fail "repeated reference seed changed data"
 expect_failure "bootstrap-admin refuses a non-interactive session" 'interactive terminal' "${bin}/initialize" bootstrap-admin </dev/null
-pass "reference seed is explicit and idempotent; bootstrap requires a private terminal"
+# Drive the interactive prompts through a pseudo-terminal with synthetic input.
+# The container terminal echoes typed input once; the command must not print it.
+bootstrap_interactive() {
+  QA_ADMIN_NAME="QA Bootstrap Admin" QA_ADMIN_EMAIL="qa-bootstrap-admin@example.test" \
+    python3 - "${bin}/initialize" bootstrap-admin <<'PY'
+import os, pty, re, select, sys, time
+
+name, email = os.environ["QA_ADMIN_NAME"], os.environ["QA_ADMIN_EMAIL"]
+pid, fd = pty.fork()
+if pid == 0:
+    os.execv(sys.argv[1], sys.argv[1:])
+answers = [(rb"display name: ", name), (rb"Entra email: ", email)]
+output, position, deadline = b"", 0, time.time() + 300
+while time.time() < deadline:
+    if select.select([fd], [], [], 1)[0]:
+        try:
+            chunk = os.read(fd, 4096)
+        except OSError:
+            break
+        if not chunk:
+            break
+        output += chunk
+        if answers:
+            match = re.search(answers[0][0], output[position:])
+            if match:
+                position += match.end()
+                os.write(fd, answers.pop(0)[1].encode() + b"\n")
+else:
+    os.kill(pid, 9)
+_, status = os.waitpid(pid, 0)
+text = output.decode(errors="replace")
+print(f"email_occurrences={text.count(email)} name_occurrences={text.count(name)}")
+print(text.replace(email, "[synthetic-email]").replace(name, "[synthetic-name]"))
+sys.exit(os.waitstatus_to_exitcode(status))
+PY
+}
+output="$(bootstrap_interactive 2>&1)" || { printf '%s\n' "${output}" | tail -n 20 >&2; fail "interactive bootstrap-admin"; }
+printf '%s\n' "${output}" >>"${log_file}"
+grep -q 'Administrator bootstrap completed.' <<<"${output}" || fail "bootstrap did not report completion"
+grep -qx 'email_occurrences=1 name_occurrences=1' <<<"${output}" || fail "bootstrap printed its private input beyond the terminal echo"
+bootstrapped="$(init_status)"
+expect_status "${bootstrapped}" "administrator bootstrap" users_including_deleted=1 active_admins=1 \
+  user_identities=0 auth_sessions=0 organisations=0 active_default_metamodels=1
+output="$(bootstrap_interactive 2>&1)" && { printf '%s\n' "${output}" >&2; fail "repeated bootstrap unexpectedly succeeded"; }
+printf '%s\n' "${output}" >>"${log_file}"
+grep -q 'refused: the users table is not empty' <<<"${output}" || fail "repeated bootstrap was not refused"
+[[ "$(init_status)" == "${bootstrapped}" ]] || fail "refused bootstrap changed data"
+pass "status shows no startup seed; explicit idempotent seed; interactive empty-table bootstrap creates one admin, no identity/session/dev data; repeat refused unchanged"
 
 step "On-demand encrypted backup and isolated restore rehearsal"
 backup_id="$(capture BACKUP_ID "${bin}/backup-now" --reason manual)"
 facts="$(as_root "cd '${opt}/postgres-backups' && stat -c '%a %u' ${backup_id}.dump.gpg ${backup_id}.manifest && head -c 5 ${backup_id}.dump.gpg | od -An -c")"
 [[ "$(sed -n 1p <<<"${facts}")" == "600 10002" && "$(sed -n 2p <<<"${facts}")" == "600 10002" ]] || fail "backup file ownership/mode: ${facts}"
 grep -q 'P   G   D   M   P' <<<"${facts}" && fail "backup file is an unencrypted pg_dump archive"
-evidence="$(capture RESTORE_EVIDENCE "${bin}/restore-rehearsal" "${backup_id}" --private-key "${qa_root}/keys/backup-private-key.asc")"
+printf 'wrong-passphrase\n' >"${qa_root}/keys/wrong-passphrase"
+expect_failure "restore with the wrong key passphrase fails" 'Restore rehearsal failed' \
+  "${bin}/restore-rehearsal" "${backup_id}" --private-key "${qa_root}/keys/backup-private-key.asc" \
+  --passphrase-file "${qa_root}/keys/wrong-passphrase"
+expect_failure "failed latest restore evidence blocks release" 'not successful' \
+  "${bin}/deploy-release" "${release_one}" --approval qa-failed-restore-evidence
+evidence="$(capture RESTORE_EVIDENCE "${bin}/restore-rehearsal" "${backup_id}" --private-key "${qa_root}/keys/backup-private-key.asc" \
+  --passphrase-file "${qa_root}/keys/backup-key-passphrase")"
 grep -qx 'STATUS=success' "${evidence}" || fail "restore evidence"
 grep -q 'check=schema-migrations result=pass' "${evidence}" || fail "restore schema check"
 grep -q 'rows table=schema_migrations count=' "${evidence}" || fail "restore data check"
+# The initialized database, not an empty schema, is what restores.
+for pair in users=1 metamodels=1 user_identities=0 auth_sessions=0 organisations=0; do
+  grep -q "rows table=${pair%=*} count=${pair#*=}\$" "${evidence}" || fail "restored initialized data: expected ${pair}"
+done
+grep -Eq 'rows table=node_types count=[1-9]' "${evidence}" || fail "restored reference data"
 [[ -z "$(docker ps --all --quiet --filter label=eu.lupaus.schatten.disposable=restore)" ]] || fail "restore target not removed"
 status_output="$("${bin}/ops-status" 2>&1)" || fail "ops-status"
 printf '%s\n' "${status_output}" >>"${log_file}"
 grep -qx "${backup_id}" <<<"${status_output}" && grep -q 'STATUS=success' <<<"${status_output}" || fail "ops-status summary"
-pass "backup ${backup_id} is encrypted 0600 and restores into a removed disposable target"
+pass "initialized-database backup ${backup_id} is encrypted 0600; failed evidence blocks release; passphrase-key restore verifies admin/reference rows in a removed disposable target"
 
 step "Backup failure reporting and retention"
 variant() {
@@ -491,7 +581,7 @@ pass "evidence gate, failed-migration isolation, post-migration failure reportin
 
 step "Secret leakage scan"
 all_logs="$(cat "${log_file}"; for id in $(docker ps --all --quiet); do docker logs "${id}" 2>&1; done)"
-for secret in "${db_password}" "${client_secret}"; do
+for secret in "${db_password}" "${client_secret}" "${key_passphrase}" qa-bootstrap-admin@example.test; do
   grep -qF "${secret}" <<<"${all_logs}" && fail "a synthetic secret appeared in logs"
 done
 for kind in BACKEND FRONTEND; do
@@ -499,5 +589,5 @@ for kind in BACKEND FRONTEND; do
 done
 pass "synthetic secrets absent from QA, container logs and image history"
 
-printf '\nTASK-059G production runtime QA passed. Tools: %s; Compose %s.\n' \
+printf '\nTASK-059G/E production runtime and first-install runbook QA passed. Tools: %s; Compose %s.\n' \
   "$(docker version --format 'Engine {{.Server.Version}}')" "$(docker compose version --short)"

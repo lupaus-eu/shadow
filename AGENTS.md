@@ -93,8 +93,9 @@ TASK-059A changes documentation only. The shared reference-data seed CLI is
 implemented by TASK-059C, and the empty-users-table administrator bootstrap is
 implemented by TASK-059D. TASK-059G implements the production runtime,
 build/release, backup and scheduler tooling (`docker-compose.production.yml`,
-`deploy/`) and removes the Coolify adapter; runbook/QA and rollout remain
-pending E/F.
+`deploy/`) and removes the Coolify adapter. TASK-059E adds the integrated
+operator runbook `docs/PRODUCTION-RUNBOOK.md` and disposable QA; authorized
+setup and rollout remain pending F.
 The non-user metamodel seed is approved production reference data; development
 Users and example business data remain forbidden in production. First setup is
 migrations -> reference seed -> empty-users-table administrator bootstrap.

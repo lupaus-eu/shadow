@@ -50,6 +50,9 @@ jobs:
           test -f docker-compose.production.yml
           test -f deploy/ofelia/config.ini
           test -f docs/qa/PRODUCTION-RUNTIME-QA.md
+          test -f docs/qa/UPCLOUD-RUNBOOK-QA.md
+          test -f docs/PRODUCTION-RUNBOOK.md
+          test -x deploy/bin/audit-host
           test -f .github/scripts/verify-production-worker.sh
           test -f .github/scripts/verify-production-runtime.sh
           test ! -e docker-compose.coolify.yml
@@ -252,7 +255,7 @@ jobs:
           shellcheck --severity=warning deploy/bin/check-host deploy/bin/init-state \
             deploy/bin/build-release deploy/bin/deploy-release deploy/bin/backup-now \
             deploy/bin/restore-rehearsal deploy/bin/initialize deploy/bin/docker-cleanup \
-            deploy/bin/retire-release deploy/bin/ops-status deploy/lib/common.sh \
+            deploy/bin/retire-release deploy/bin/ops-status deploy/bin/audit-host deploy/lib/common.sh \
             deploy/ops/backup.sh deploy/ops/restore-check.sh deploy/ops/docker-cleanup.sh \
             .github/scripts/verify-production-runtime.sh
 

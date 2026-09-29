@@ -16,8 +16,9 @@ and Docker deployment on UpCloud Ubuntu 26.04 LTS with direct Caddy TLS and
 private Docker PostgreSQL 18. Daily encrypted on-server backups with 7-day
 retention and backup/restore evidence are required. The reference-data seed,
 empty-users-table administrator bootstrap, production runtime, build/release and
-backup/scheduler tooling are implemented; integrated QA/runbook and production
-activation/rollout remain pending E/F.
+backup/scheduler tooling, integrated QA and the operator runbook
+(`docs/PRODUCTION-RUNBOOK.md`) are implemented; production activation/rollout
+remain pending F.
 
 Teknologiapino on päätetty ADR-001:ssä.
 
@@ -666,8 +667,8 @@ Kielletty:
 # Deployment
 
 Status: ADR-013 amendment accepted; production runtime and tooling implemented
-by TASK-059G (`docker-compose.production.yml`, `deploy/`); runbook/QA and rollout
-pending E/F
+by TASK-059G (`docker-compose.production.yml`, `deploy/`); integrated runbook and
+disposable QA by TASK-059E (`docs/PRODUCTION-RUNBOOK.md`); rollout pending F
 
 Use Docker Engine/Compose on an **UpCloud Ubuntu 26.04 LTS** server. Caddy
 serves built React and terminates public TLS directly at
@@ -682,7 +683,8 @@ and mandatory hardening: pinned images, no scheduler network/ports, fixed read-o
 job configuration, confined local Docker socket and minimal runner mounts/secrets.
 Socket access is host-administrator-equivalent even when mounted `:ro`; verify
 the effective runner restrictions before activation. G implements the scheduler,
-runners and effective-settings verification; E/F verify and activate them.
+runners and effective-settings verification; E verified them on disposable
+daemons and F verifies and activates them on the host.
 
 Initial builds run on UpCloud from an approved commit and produce frozen,
 immutable matching frontend/backend images. API, migration and the single
@@ -717,7 +719,8 @@ coordinated application rollback only if compatible with migrated schema;
 use expand/contract changes. No automatic down migrations, volume deletion,
 database reset or restoration. Application rollback cannot recover lost data;
 first rollout has no previous stable release. Stop/escalate when rollback is
-unavailable. E integrates B/C/D/G; F performs separately authorized setup/rollout.
+unavailable. E integrates B/C/D/G in the runbook; F performs separately
+authorized setup/rollout.
 
 ## Infrastructure Principles
 

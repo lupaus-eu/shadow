@@ -23,7 +23,8 @@ encrypted on-server backups with 7-day retention and backup/restore evidence. Al
 TASK-039G/TASK-040 results below are historical, including their platform,
 registration and federation assumptions. They do not verify this target.
 New simulated-OIDC/Compose and live Entra evidence belongs to B/G/E/F; the
-pending production gates below reflect the amended plan.
+pending production gates below reflect the amended plan and are executed with
+[the production runbook](../PRODUCTION-RUNBOOK.md).
 
 ## TASK-059B Direct-Entra Local Evidence
 
@@ -123,6 +124,31 @@ This verification performed no production operation, schema change, volume
 deletion, manual identity rewrite, callback cleanup, Graph permission removal
 or other Entra/UpCloud mutation. The normal guarded first-link write and local
 administrator provisioning were the only identity/User changes in scope.
+
+## TASK-059E Integrated Evidence
+
+TASK-059E did not repeat the live browser run above; that TASK-059B record
+remains the separately recorded real local direct-Entra evidence. Before each
+production release F confirms that it still covers the release's
+authentication scope, or records a new authorized run. Local success does not
+establish production DNS, TLS or client-secret correctness, and the production
+gate and smoke below remain pending F.
+
+On 2026-09-28 E reran the automated/simulated boundary with no tenant secrets
+(details in [UPCLOUD-RUNBOOK-QA.md](UPCLOUD-RUNBOOK-QA.md)):
+
+- [x] Full backend suite, including the PostgreSQL auth, reference-seed parity
+      and bootstrap integration suites, against disposable PostgreSQL 18.
+- [x] Local direct-Entra Compose check with synthetic configuration and against
+      the private local files; read-only probes of the running local stack:
+      HTTPS `/health`, enforced security headers, `401` session without a
+      cookie and the Vite HMR WebSocket upgrade (`101`) through local Caddy.
+- [x] Production ingress through the disposable runtime: only Caddy 80/443,
+      TLS, redirect, headers, SPA fallback, forwarded-header sanitizing and
+      exact Caddy-peer trust with a simulated Entra discovery endpoint.
+- [x] Integrated migrations -> reference seed -> empty-table administrator
+      bootstrap without development Users, identities or sessions; repeated
+      bootstrap refused without change.
 
 TASK-059B does not authorize provider writes, callback cleanup, Graph permission
 removal, tenant changes or production verification. Historical Authentik results
