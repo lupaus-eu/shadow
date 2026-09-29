@@ -1,0 +1,118 @@
+# Manual source delivery to the production host (TASK-059H2, ADR-013).
+# Copies the exact main commit and its SOURCE_MANIFEST to
+# /opt/apps/schatten-upload/<commit>/ as the upload-only schatten-upload
+# account. It does not build, deploy or run anything on the host: the operator
+# accepts the upload with `schatten-receive <manifest SHA-256 from the summary>`
+# and builds there. The production environment must allow only main (F setup).
+name: Deploy to production
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  # Binary that appleboy/scp-action v1.0.0 runs. Its release assets are not
+  # immutable, so the run verifies this SHA-256 before the upload and hands the
+  # action that verified file (DRONE_SCP_RELEASE_URL=file://...).
+  DRONE_SCP_VERSION: "1.8.0"
+  DRONE_SCP_SHA256: 05bed7f47f57fffadfa9c3e53ef5b203cb66b1bc83751e261246584c59ed7649
+
+jobs:
+  main-only:
+    name: Refuse refs other than main
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Check ref
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          if [[ "${REF}" != refs/heads/main ]]; then
+            echo "::error::Deploy to production runs only from refs/heads/main, not ${REF}"
+            exit 1
+          fi
+
+  upload-source:
+    name: Upload source to the production host
+    needs: main-only
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: production
+    steps:
+      - name: Check upload secrets
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+          SSH_FINGERPRINT: ${{ secrets.SSH_FINGERPRINT }}
+        run: |
+          # Values are never printed. An empty fingerprint would make the SCP
+          # action skip host-key verification.
+          [[ -n "${SSH_HOST}" && -n "${SSH_KEY}" ]] || { echo "::error::SSH_HOST and SSH_KEY are required"; exit 1; }
+          [[ "${SSH_USER}" == schatten-upload ]] || { echo "::error::SSH_USER must be the upload-only account"; exit 1; }
+          # shellcheck disable=SC2153 # SSH_PORT is set in env above
+          [[ "${SSH_PORT}" =~ ^[0-9]{1,5}$ ]] || { echo "::error::SSH_PORT must be a port number"; exit 1; }
+          [[ "${SSH_FINGERPRINT}" =~ ^SHA256:[A-Za-z0-9+/]{43}$ ]] \
+            || { echo "::error::SSH_FINGERPRINT must be the host key's SHA256:... fingerprint"; exit 1; }
+
+      - name: Check out the commit
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - name: Export the commit and write its source manifest
+        id: prepare
+        run: .github/scripts/prepare-production-upload.sh release-source
+
+      - name: Verify the drone-scp binary and provide it to the action
+        run: |
+          # The action's entrypoint copies <DRONE_SCP_RELEASE_URL>/v<version>/<binary>
+          # with curl, so it runs this verified file instead of a new download.
+          [[ "${RUNNER_OS}/${RUNNER_ARCH}" == Linux/X64 ]] || { echo "::error::expected a Linux X64 runner"; exit 1; }
+          release="${RUNNER_TEMP}/drone-scp-release"
+          binary="${release}/v${DRONE_SCP_VERSION}/drone-scp-${DRONE_SCP_VERSION}-linux-amd64"
+          mkdir -p "${binary%/*}"
+          curl -fsSL --retry 5 -o "${binary}" \
+            "https://github.com/appleboy/drone-scp/releases/download/v${DRONE_SCP_VERSION}/drone-scp-${DRONE_SCP_VERSION}-linux-amd64"
+          echo "${DRONE_SCP_SHA256}  ${binary}" | sha256sum --check --strict
+          chmod 0444 "${binary}"
+          echo "DRONE_SCP_RELEASE_URL=file://${release}" >>"${GITHUB_ENV}"
+
+      - name: Upload the source
+        # Third-party action approved for TASK-059H2; pinned by full commit SHA.
+        uses: appleboy/scp-action@ff85246acaad7bdce478db94a363cd2bf7c90345 # v1.0.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          fingerprint: ${{ secrets.SSH_FINGERPRINT }}
+          source: release-source
+          target: /opt/apps/schatten-upload/${{ github.sha }}
+          overwrite: true
+          strip_components: 1
+          tar_tmp_path: /opt/apps/schatten-upload/
+          version: ${{ env.DRONE_SCP_VERSION }}
+
+      - name: Verify the drone-scp binary the action used
+        run: |
+          [[ "${DRONE_SCP_RELEASE_URL}" == "file://${RUNNER_TEMP}/drone-scp-release" ]] \
+            || { echo "::error::the action was not given the verified drone-scp"; exit 1; }
+          mapfile -t used < <(find "${RUNNER_WORKSPACE%/*}/_actions/appleboy/scp-action" \
+            -type f -name "drone-scp-${DRONE_SCP_VERSION}-linux-amd64")
+          (( ${#used[@]} == 1 )) || { echo "::error::expected one downloaded drone-scp binary, found ${#used[@]}"; exit 1; }
+          echo "${DRONE_SCP_SHA256}  ${used[0]}" | sha256sum --check --strict
+
+      - name: Record the completed upload
+        env:
+          DIGEST: ${{ steps.prepare.outputs.source_manifest_sha256 }}
+        run: |
+          printf '\nUpload completed. Manifest SHA-256: %s\n' "\`${DIGEST}\`" >>"${GITHUB_STEP_SUMMARY}"

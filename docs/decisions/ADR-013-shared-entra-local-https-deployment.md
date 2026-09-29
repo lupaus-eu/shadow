@@ -1,7 +1,7 @@
 # ADR-013: Shared Entra Registration And Local HTTPS Deployment
 
-Status: Accepted; B/C/D/G/E/H1 implemented; source delivery amendment pending
-TASK-059H2-H3; authorized setup and rollout pending TASK-059F
+Status: Accepted; B/C/D/G/E/H1/H2 implemented; source delivery amendment pending
+TASK-059H3; authorized setup and rollout pending TASK-059F
 
 Date: 2026-09-11
 
@@ -320,7 +320,11 @@ the secrets `SSH_HOST`, `SSH_USER`, `SSH_KEY`, `SSH_PORT` and
 `SSH_FINGERPRINT` (host-key verification). The workflow uses
 `permissions: contents: read`, checkout with `persist-credentials: false`, the
 third-party SCP action pinned by full commit SHA after developer approval, one
-run at a time and no secret output.
+run at a time and no secret output. H2 approved `appleboy/scp-action` v1.0.0
+(`ff85246acaad7bdce478db94a363cd2bf7c90345`); because it downloads its
+`drone-scp` 1.8.0 binary from a mutable release at run time, the workflow
+verifies that binary's recorded SHA-256 before the upload and hands the action
+the verified file, so an unverified binary never receives the upload key.
 
 H1 implements the manifest, receiver and Git-free build; H2 the upload gate and
 workflow; H3 the server Makefile and runbook. Creating the GitHub environment

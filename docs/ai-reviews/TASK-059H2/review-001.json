@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-059H2/review-001",
+  "task": {
+    "id": "TASK-059H2",
+    "path": "tasks/TASK-059H2-upload-account-deploy-action.md"
+  },
+  "round": 1,
+  "reviewed_at": "2026-09-29T14:30:13Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "b05bd6bd53564f3d51689af481221ed61944a9e7",
+    "head_sha": "337002c32665fd4b960613fe6bc7daf167512484",
+    "comparison": "b05bd6bd53564f3d51689af481221ed61944a9e7...337002c32665fd4b960613fe6bc7daf167512484",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "The workflow is dispatch-only, main-only and least privilege, uses the SHA-pinned action with a validated fingerprint and no persisted credentials, and the gate matches the whole command and runs its own fixed argv. The disposable test covers the acceptance criteria and the documentation is complete. Two security findings: the drone-scp hash check does not stop an unverified binary from receiving the upload key, and the gate's archive checks can race with a parallel session.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "security",
+        "severity": "medium",
+        "summary": "The pre-upload drone-scp hash check verifies a separate download; the action downloads the binary again and runs it with SSH_KEY before the post-upload check, so a swapped release asset gets the upload key before the run fails.",
+        "rationale": "At the pinned commit, entrypoint.sh always runs curl into GITHUB_ACTION_PATH and then runs the binary with the key inputs. The workflow's step 4 checks only its own copy in RUNNER_TEMP, and step 6 detects a mismatch only after the upload. The mutable release that the implementation record names as the threat could swap the asset between the two downloads, or serve it only to the action's request. The run then fails, but the key has already been used and may have been exfiltrated. The gate and the operator digest limit the impact, but the documentation presents steps 4 and 6 as preventing an unverified binary.",
+        "recommendation": "Make the action run the verified binary. For example, place the checked file at <dir>/v<version>/drone-scp-<version>-linux-amd64 and set DRONE_SCP_RELEASE_URL=file://<dir> in the upload step's env, which the entrypoint reads. Keep the post-upload hash check, cover the override in verify-upload-gate.sh, and correct the DEPLOYMENT.md and ADR-013 wording.",
+        "locations": [
+          {
+            "path": ".github/workflows/deploy-production.yml",
+            "line": 74
+          },
+          {
+            "path": ".github/workflows/deploy-production.yml",
+            "line": 97
+          },
+          {
+            "path": "docs/DEPLOYMENT.md"
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "security",
+        "severity": "low",
+        "summary": "upload-gate checks an archive's member types, and a folder's entry types, by path before a separate tar extract. A parallel session with the key can swap in an archive with symlink members in between, so the no-writes-outside-the-upload-area guarantee depends on no concurrent sessions.",
+        "rationale": "Code analysis, not reproduced. The gate allows rm -rf of an archive name and scp -tr of a name that no longer exists. Session A can pass the tar --list check. Session B then removes and re-uploads the same name with a symlink member, and A's exec tar reads the new file. The later folder check before an --overwrite extraction has the same window. Without the race, the disposable test shows the checks refuse such archives. Exploiting it needs the upload key, and writes stay limited to what schatten-upload can write, for example /tmp.",
+        "recommendation": "Serialize all gate commands, for example with an exclusive flock on a root-owned lock held until the exec'd command ends. Alternatively, list and extract from one open file descriptor, and extract only into a folder the gate itself locks. Add a note to the gate header and, if practical, a harness case.",
+        "locations": [
+          {
+            "path": "deploy/bin/upload-gate",
+            "line": 87
+          },
+          {
+            "path": "deploy/bin/upload-gate",
+            "line": 91
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": []
+  }
+}

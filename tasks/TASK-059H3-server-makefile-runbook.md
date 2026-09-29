@@ -85,6 +85,15 @@ Action-delivered source path, so TASK-059F can follow it end to end.
 
 ## Implementation Notes
 
+- From TASK-059H2 review-002: `upload-gate` already ends each `scp`/`tar`
+  after 10 minutes, so the busy lock cannot be held longer. Optionally (a
+  developer decision), the runbook's SSH hardening can add a
+  `Match User schatten-upload` block with `ChannelTimeout session=15m` as an
+  extra layer that also closes forgotten idle connections; it does not stop a
+  client that keeps sending data, which is why the gate timeout is the actual
+  limit. Troubleshooting should name the gate's
+  `another upload-gate command is running` refusal (wait up to 10 minutes or
+  end the upload account's session, then rerun the Action).
 - The harness (`.github/scripts/verify-production-runtime.sh`) should drive
   `receive`, `build`, `deploy`, `ps`, `logs`, `stop` and `start` through the
   Makefile for one release, with git absent from the server-side `PATH`.

@@ -1,0 +1,118 @@
+#!/bin/bash
+# Forced command for the schatten-upload key (TASK-059H2, ADR-013).
+# Installed root-owned as /usr/local/bin/upload-gate and bound to the upload
+# key in the root-owned authorized_keys file:
+#   restrict,command="/usr/local/bin/upload-gate" ssh-ed25519 AAAA... schatten-upload
+#
+# Allows only the remote commands that appleboy/scp-action v1.0.0 (drone-scp
+# 1.8.0) issues with the "Deploy to production" inputs (tar_tmp_path
+# /opt/apps/schatten-upload/, strip_components 1, overwrite true), as captured
+# from SSH_ORIGINAL_COMMAND by .github/scripts/verify-upload-gate.sh:
+#   scp -tr /opt/apps/schatten-upload/<10 letters/digits>.tar.gz
+#   mkdir -p /opt/apps/schatten-upload/<40-hex commit>
+#   tar -zxf <archive> --strip-components 1 --overwrite -C <commit folder>
+#   rm -rf <archive>
+# Everything else, including drone-scp's `ver` probe (Windows detection), a
+# shell, sftp and other paths, is refused with exit 1. The client's string is
+# never given to a shell: the whole command must match, and the gate runs its
+# own fixed argv with the matched paths. Archives may hold only regular files
+# and directories, and extraction refuses a folder that already holds anything
+# else, so `--overwrite` cannot write through a symlink. Commands are
+# serialized with a lock on the upload area, so those checks cannot race with
+# a parallel session, and scp/tar end after at most 10 minutes, so no session
+# can keep the gate busy.
+
+set -Eeuo pipefail
+umask 0027
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin LC_ALL=C
+
+readonly root=/opt/apps/schatten-upload
+readonly archive_re="^${root}/[A-Za-z0-9]{10}\\.tar\\.gz\$"
+readonly folder_re="^${root}/[0-9a-f]{40}\$"
+# Hard limit for one scp or tar, so no session can hold the lock for longer.
+# A real upload is a few MB and its extraction takes seconds.
+readonly limit=(timeout --kill-after=10s 10m)
+
+log() {
+  logger -t upload-gate -p auth.notice -- "$*" 2>/dev/null || true
+}
+
+refuse() {
+  local shown="${command:-}"
+  shown="${shown//[^A-Za-z0-9 ._\/-]/?}"
+  log "refused (${1}): ${shown:0:200}"
+  printf 'upload-gate: refused: %s\n' "$1" >&2
+  exit 1
+}
+
+real_dir() {
+  [[ -d "$1" && ! -L "$1" ]]
+}
+
+regular_file() {
+  [[ -f "$1" && ! -L "$1" ]]
+}
+
+command="${SSH_ORIGINAL_COMMAND-}"
+[[ -n "${command}" ]] || refuse "interactive login is not allowed"
+[[ "${command}" =~ ^[A-Za-z0-9\ ._/-]{1,300}$ ]] || refuse "command not allowed"
+read -r -a words <<<"${command}"
+# Exactly one space between words, so the matched words are the whole command.
+[[ "${words[*]}" == "${command}" ]] || refuse "command not allowed"
+real_dir "${root}" || refuse "upload area ${root} is missing"
+# One gate command at a time: the lock on the upload area is inherited by the
+# exec'd scp/tar and held until it ends, so no parallel session can replace an
+# archive or change a folder between the checks below and their use. The
+# action issues its commands one after another; a busy gate is refused. scp
+# and tar run under `timeout 10m`, so the lock is released at the latest then
+# (exit 124), even if the client keeps the session open.
+exec 9<"${root}"
+flock --nonblock 9 || refuse "another upload-gate command is running"
+
+case "${#words[@]} ${words[0]} ${words[1]:-}" in
+  "3 scp -tr")
+    archive="${words[2]}"
+    [[ "${archive}" =~ ${archive_re} ]] || refuse "upload path not allowed"
+    [[ ! -e "${archive}" && ! -L "${archive}" ]] || refuse "${archive} already exists"
+    log "upload ${archive}"
+    # No -r: the sink refuses directory records.
+    exec "${limit[@]}" scp -t -- "${archive}"
+    ;;
+  "3 mkdir -p")
+    folder="${words[2]}"
+    [[ "${folder}" =~ ${folder_re} ]] || refuse "folder not allowed"
+    if [[ -e "${folder}" || -L "${folder}" ]]; then
+      real_dir "${folder}" || refuse "${folder} is not a directory"
+    else
+      mkdir -m 0750 -- "${folder}"
+    fi
+    exit 0
+    ;;
+  "8 tar -zxf")
+    archive="${words[2]}" folder="${words[7]}"
+    [[ "${archive}" =~ ${archive_re} && "${words[*]:3:4}" == "--strip-components 1 --overwrite -C" \
+      && "${folder}" =~ ${folder_re} ]] || refuse "extract command not allowed"
+    regular_file "${archive}" || refuse "${archive} is not a regular file"
+    real_dir "${folder}" || refuse "${folder} is not a directory"
+    [[ -z "$(find "${folder}" -mindepth 1 ! -type f ! -type d -print -quit)" ]] \
+      || refuse "${folder} holds an entry that is not a regular file or directory"
+    # Each member's listing line starts with its type; a crafted name can only
+    # add lines, never hide a member's own line.
+    types="$(tar --list --verbose --gzip --file "${archive}" | cut -c 1 | sort -u | tr -d '\n')" \
+      || refuse "${archive} cannot be listed"
+    [[ "${types}" =~ ^[-d]+$ ]] || refuse "${archive} holds members other than regular files and directories"
+    log "extract ${archive} into ${folder}"
+    exec "${limit[@]}" tar --extract --gzip --file "${archive}" --strip-components 1 --overwrite \
+      --no-same-owner --no-same-permissions --directory "${folder}"
+    ;;
+  "3 rm -rf")
+    archive="${words[2]}"
+    [[ "${archive}" =~ ${archive_re} ]] || refuse "removal not allowed"
+    if [[ -e "${archive}" || -L "${archive}" ]]; then
+      regular_file "${archive}" || refuse "${archive} is not a regular file"
+      rm -f -- "${archive}"
+    fi
+    exit 0
+    ;;
+esac
+refuse "command not allowed"

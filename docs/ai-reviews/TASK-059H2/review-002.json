@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-059H2/review-002",
+  "task": {
+    "id": "TASK-059H2",
+    "path": "tasks/TASK-059H2-upload-account-deploy-action.md"
+  },
+  "round": 2,
+  "reviewed_at": "2026-09-29T14:46:36Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "b05bd6bd53564f3d51689af481221ed61944a9e7",
+    "head_sha": "e098ad085515196bbb81f50f835c1ccc0e331f69",
+    "comparison": "b05bd6bd53564f3d51689af481221ed61944a9e7...e098ad085515196bbb81f50f835c1ccc0e331f69",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Both review-001 findings are fixed and covered by the disposable test (14 PASS). The F-002 serialization gap was reproduced against the earlier gate. actionlint and shellcheck pass. Two remaining items are documented rather than defects: the GITHUB_ENV hand-off must be confirmed in the first real run (F), and one informational trade-off of the new lock is left for human review.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "security",
+        "severity": "info",
+        "summary": "The upload-gate lock lets a holder of the upload key keep the gate busy by holding a session open, so real uploads are refused until that session ends.",
+        "rationale": "The lock is non-blocking and held for the whole exec'd scp or tar, which is needed to close the race. An idle scp sink keeps it as long as the TCP connection stays alive. This needs the upload key, which could already fill the disk before the fix, so it adds only an availability concern. The gate's busy message and syslog make it visible, and the operator can end the session or rotate the key.",
+        "recommendation": "Accept as a residual risk, or in F/H3 consider an sshd limit for the upload account, such as a Match block with ChannelTimeout or MaxSessions, and name the busy message in the runbook's troubleshooting.",
+        "locations": [
+          {
+            "path": "deploy/bin/upload-gate",
+            "line": 64
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-059H2/review-001",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "The pre-upload step verifies drone-scp and publishes DRONE_SCP_RELEASE_URL=file://<verified folder> via GITHUB_ENV. The action's entrypoint then copies that file instead of downloading, so an unverified binary never receives SSH_KEY. The disposable test shows the action taking the file:// copy with the recorded hash. The post-upload step checks the variable and the hash. DEPLOYMENT.md requires F to confirm the file:// log line in the first real run.",
+        "validated_by": {
+          "review_id": "TASK-059H2/review-002",
+          "commit": "e098ad085515196bbb81f50f835c1ccc0e331f69"
+        }
+      },
+      {
+        "record_id": "TASK-059H2/review-001",
+        "finding_id": "F-002",
+        "disposition": "fixed",
+        "rationale": "Reproduced: with the earlier gate, a parallel rm -rf was accepted while another gate scp session ran. The gate now takes a non-blocking flock on the upload area, inherited by the exec'd scp or tar, and refuses parallel sessions. The disposable test shows parallel rm, scp and mkdir refused, the lock released afterwards, and all earlier checks still passing.",
+        "validated_by": {
+          "review_id": "TASK-059H2/review-002",
+          "commit": "e098ad085515196bbb81f50f835c1ccc0e331f69"
+        }
+      }
+    ]
+  }
+}

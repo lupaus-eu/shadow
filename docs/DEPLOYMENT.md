@@ -32,7 +32,9 @@ server** (see
 [ADR-013](decisions/ADR-013-shared-entra-local-https-deployment.md#source-delivery-without-git-on-the-server)).
 H1 implemented the manifest, the receiver and the Git-free
 `build-release --source` described in the command and storage tables below;
-H2 adds the upload gate and workflow, H3 the Makefile and runbook. Until H3,
+H2 implemented the upload gate and the workflow
+([Source Delivery Workflow And Upload Account](#source-delivery-workflow-and-upload-account-task-059h2));
+H3 adds the Makefile and runbook. Until H3,
 the runbook's Git-checkout build steps and firewall-level SSH restriction are
 superseded and must not be set up in F.
 
@@ -306,6 +308,115 @@ build the same artifact contract, followed by approved deployment of frozen
 images. The source-delivery Action only copies files; no automatic deployment
 or off-server build is implemented here.
 
+### Source Delivery Workflow And Upload Account (TASK-059H2)
+
+`.github/workflows/deploy-production.yml`, **"Deploy to production"**, is the
+only way source reaches the host
+([ADR-013](decisions/ADR-013-shared-entra-local-https-deployment.md#source-delivery-without-git-on-the-server)).
+It starts only manually (`workflow_dispatch`). A first job without secrets fails
+for any ref other than `refs/heads/main`; the upload job then runs in the
+`production` environment with `permissions: contents: read`, one run at a time
+(`concurrency: deploy-production`, never cancelling a running upload), and:
+
+1. checks the secrets without printing them: `SSH_USER` must be
+   `schatten-upload`, and `SSH_FINGERPRINT` must be a `SHA256:` fingerprint,
+   because an empty one would make the action skip host-key verification;
+2. checks out the commit with `actions/checkout` pinned by SHA (v5.1.0) and
+   `persist-credentials: false`;
+3. runs `.github/scripts/prepare-production-upload.sh release-source`, which
+   calls `create-source-manifest.sh` and writes the commit, ref, run ID, upload
+   folder and **manifest SHA-256** to the job summary;
+4. downloads `drone-scp` 1.8.0, checks its recorded SHA-256 and hands that
+   verified file to the action (`DRONE_SCP_RELEASE_URL=file://...` in
+   `GITHUB_ENV`, which the action's entrypoint reads);
+5. uploads with the developer-approved `appleboy/scp-action` v1.0.0, pinned as
+   `ff85246acaad7bdce478db94a363cd2bf7c90345` (`source: release-source`,
+   target `/opt/apps/schatten-upload/<commit>`, `overwrite: true`,
+   `strip_components: 1`, `tar_tmp_path: /opt/apps/schatten-upload/`);
+6. checks that the action was given the verified file's location and that the
+   binary it ran has the same SHA-256, and appends "Upload completed" to the summary.
+
+The action downloads `drone-scp` from a mutable GitHub release at run time, so
+pinning the action alone does not pin that binary. Step 4 verifies the binary
+**before** it ever sees `SSH_KEY`, and the action copies that verified file
+instead of downloading again, so a changed release asset fails the run before
+the upload. Step 6 checks the variable and the hash of the binary the action
+ran, but it cannot see where the action copied it from. The disposable test
+passes the variable to the entrypoint directly. In the first real run (F), the
+upload step's log must therefore show
+`Downloading drone-scp-1.8.0-linux-amd64 from file://.../drone-scp-release/v1.8.0`,
+which confirms that `GITHUB_ENV` reaches the composite action. Accept only
+uploads from successful runs. Changing the action, `drone-scp` or its inputs
+requires developer approval, a new hash, the disposable test in
+[TESTING.md](TESTING.md#source-delivery-workflow-and-upload-gate) and, if the
+remote commands change, an `upload-gate` change.
+
+GitHub `production` environment (created in F; deployment branches: `main`
+only; environment secrets, not repository secrets):
+
+| Secret | Value |
+| --- | --- |
+| `SSH_HOST` | Host name or public address of the UpCloud host |
+| `SSH_USER` | `schatten-upload` (the workflow refuses anything else) |
+| `SSH_KEY` | Private half of the dedicated upload key (Ed25519, no passphrase); never the `deploy` key |
+| `SSH_PORT` | `22` |
+| `SSH_FINGERPRINT` | `SHA256:...` of the host's **ECDSA** key: `ssh-keygen -l -E sha256 -f /etc/ssh/ssh_host_ecdsa_key.pub`. `drone-scp` 1.8.0 (Go x/crypto 0.37.0) prefers ECDSA P-256 over RSA and Ed25519, so with Ubuntu's default host keys the Ed25519 fingerprint fails with `host key fingerprint mismatch` |
+
+`deploy/bin/upload-gate`, installed root-owned as `/usr/local/bin/upload-gate`,
+is the forced command of the upload key. It matches the whole
+`SSH_ORIGINAL_COMMAND` against the four commands the pinned action issues, as
+captured in the disposable test, and runs its own fixed argv with the matched
+paths, never the client's string:
+
+| Captured command | Gate action |
+| --- | --- |
+| `scp -tr /opt/apps/schatten-upload/<10 letters/digits>.tar.gz` | `scp -t` (no directory records) to that new file; refused if the name exists |
+| `mkdir -p /opt/apps/schatten-upload/<40-hex>` | Creates that folder `0750` (an existing real folder is accepted) |
+| `tar -zxf <archive> --strip-components 1 --overwrite -C <folder>` | Refuses archives with members other than regular files and directories and folders that already hold anything else, then extracts with `--no-same-owner --no-same-permissions` |
+| `rm -rf <archive>` | Removes only that regular file |
+
+Everything else is refused with exit 1 and a short message, including the
+action's `ver` probe (so it treats the host as Unix), shells, sftp, both scp
+protocols, reads, other paths, extra words or spaces, and any other removal.
+`restrict` removes port, agent and X11 forwarding and the pty. The gate uses
+`umask 0027`, so `deploy` can read the upload through the group and other
+accounts cannot. It runs one command at a time: it takes a non-blocking lock on
+the upload area that the `scp`/`tar` it runs inherits, and refuses a parallel
+session (`another upload-gate command is running`), so no session can replace
+an archive or change a folder between the gate's checks and their use. The
+action issues its commands one after another. `scp` and `tar` run under
+`timeout --kill-after=10s 10m`, so even a session kept open on purpose releases
+the lock after at most 10 minutes (the command then ends with exit 124); a real
+upload of a few MB and its extraction take far less. Uploads, extractions and refusals are logged to syslog
+(`upload-gate`, `auth.notice`).
+
+Upload account setup for F, as root on the host after the SSH hardening
+checks and before TCP 22 is opened to anywhere (the runbook in H3 orders these
+steps; the upload key pair is created on an operator workstation and its
+private half goes only into `SSH_KEY`):
+
+```bash
+# Login shell must be a real shell: sshd runs the forced command through it.
+useradd --user-group --no-create-home --home-dir /home/schatten-upload --shell /bin/sh schatten-upload
+passwd --lock schatten-upload
+usermod --append --groups schatten-upload deploy
+id schatten-upload   # only its own group; no sudo, docker, adm or deploy groups
+# Root-owned home, .ssh and key file: the account cannot change its own restriction.
+install -d -o root -g root -m 0755 /home/schatten-upload /home/schatten-upload/.ssh
+install -d -o schatten-upload -g schatten-upload -m 0750 /opt/apps/schatten-upload
+install -o root -g root -m 0755 <approved main tree>/deploy/bin/upload-gate /usr/local/bin/upload-gate
+printf 'restrict,command="/usr/local/bin/upload-gate" %s\n' "$(cat schatten-upload.pub)" \
+  >/home/schatten-upload/.ssh/authorized_keys
+chown root:root /home/schatten-upload/.ssh/authorized_keys
+chmod 0644 /home/schatten-upload/.ssh/authorized_keys
+ssh-keygen -l -E sha256 -f /etc/ssh/ssh_host_ecdsa_key.pub   # SSH_FINGERPRINT
+```
+
+`deploy` must log in again for the new group. The account needs no sudo rule,
+and no `deploy` group membership may be added to it. After the first receive,
+the installed `upload-gate` must hash equal to its manifest entry, like
+`schatten-receive`.
+
 ## Production Runtime And Operator Commands (TASK-059G)
 
 This section describes the implemented tooling. The step-by-step procedure is
@@ -340,9 +451,12 @@ Host storage mappings and required ownership:
 | Host path | Use | Ownership / mode |
 | --- | --- | --- |
 | `/opt/apps` | Operator directory; `check-host` requires it writable by `deploy`; no container writes here | `deploy` (changed non-recursively if cloud-init left it root-owned) |
-| `/opt/apps/schatten-upload/<commit>/` | Delivered upload (source plus `SOURCE_MANIFEST`); read by `schatten-receive` only as data, never executed; stale files are ignored | upload account (H2/F) |
+| `/opt/apps/schatten-upload/` | Upload area written only through `upload-gate`: `<commit>/` folders and the SCP action's transient `<10 letters/digits>.tar.gz` | `schatten-upload:schatten-upload`, `0750`; `deploy` reads through the group |
+| `/opt/apps/schatten-upload/<commit>/` | Delivered upload (source plus `SOURCE_MANIFEST`), files `0640`/folders `0750`; read by `schatten-receive` only as data, never executed; stale files are ignored | `schatten-upload` |
 | `/opt/apps/schatten-sources/<commit>/` | Verified read-only source accepted by `schatten-receive` (only the manifest-listed files, manifest modes, `SOURCE_MANIFEST`); the only `build-release` input and where tooling runs from; `<commit>.incomplete` is transient staging | `deploy`; read-only tree |
 | `/usr/local/bin/schatten-receive` | Installed receiver, run directly | `root`, not group/other writable |
+| `/usr/local/bin/upload-gate` | Forced command of the upload key | `root`, `0755` |
+| `/home/schatten-upload/.ssh/authorized_keys` | The one upload key with `restrict,command="/usr/local/bin/upload-gate"` | `root`, `0644`; home and `.ssh` `root` `0755` |
 | `/opt/apps/schatten-config/production.env` | Protected configuration | `deploy`, `0600` |
 | `/opt/apps/schatten-config/backup-public-key.asc` | Backup encryption public key (read-only mount) | `deploy`, `0644` |
 | `/opt/apps/schatten-releases/<release-id>/` | Frozen, re-verified copy of the verified source, `release.env`, `build.log`; `current`/`previous` pointers; `retired/` | `deploy`; source read-only |

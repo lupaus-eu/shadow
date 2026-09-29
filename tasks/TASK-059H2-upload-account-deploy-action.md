@@ -95,3 +95,27 @@ Not applicable:
   required files). Runbook setup steps follow in H3.
 
 Record eventual Step 13 reviews under `docs/ai-reviews/TASK-059H2/`.
+
+## Implementation Record
+
+- Developer approval (2026-09-29): `appleboy/scp-action` v1.0.0, pinned as
+  `ff85246acaad7bdce478db94a363cd2bf7c90345`, with a hash check of the
+  `drone-scp` 1.8.0 linux-amd64 binary it downloads at run time
+  (`05bed7f47f57fffadfa9c3e53ef5b203cb66b1bc83751e261246584c59ed7649`, equal to
+  the release's `checksums.txt`). The release is not immutable, so the workflow
+  verifies the binary before the upload and hands that file to the action via
+  `DRONE_SCP_RELEASE_URL=file://...` (review-001 F-001); the step after the
+  upload confirms it was used.
+- `upload-gate` serializes its commands with a non-blocking lock on the upload
+  area, so its archive and folder checks cannot race with a parallel session
+  (review-001 F-002; the missing serialization was reproduced in the disposable
+  test against the earlier gate). `scp` and `tar` run under
+  `timeout --kill-after=10s 10m`, so a session kept open cannot hold the lock
+  for longer (review-002 F-001); a per-account sshd limit is left to H3/F as an
+  optional extra layer.
+- `tar_tmp_path: /opt/apps/schatten-upload/` keeps the action's temporary
+  archive inside the upload area; `schatten-receive` ignores it (not a commit
+  name).
+- `SSH_FINGERPRINT` is the host's ECDSA key fingerprint: drone-scp's Go SSH
+  client prefers ECDSA P-256 over Ed25519.
+- Evidence: [SOURCE-DELIVERY-QA.md](../docs/qa/SOURCE-DELIVERY-QA.md#upload-gate-and-deploy-to-production-task-059h2).

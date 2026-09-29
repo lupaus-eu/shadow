@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-059H2/review-003",
+  "task": {
+    "id": "TASK-059H2",
+    "path": "tasks/TASK-059H2-upload-account-deploy-action.md"
+  },
+  "round": 3,
+  "reviewed_at": "2026-09-29T15:03:27Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "b05bd6bd53564f3d51689af481221ed61944a9e7",
+    "head_sha": "3acb2b5c8844ec626260781495ccf27d16b40f4c",
+    "comparison": "b05bd6bd53564f3d51689af481221ed61944a9e7...3acb2b5c8844ec626260781495ccf27d16b40f4c",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "clean",
+    "summary": "The gate's scp and tar now run under timeout --kill-after=10s 10m, so a session kept open cannot hold the lock for longer than that. The disposable test triggers the expiry, sees exit 124 and a released lock, and all 14 checks pass; shellcheck and actionlint pass. A timed-out scp or tar can leave a partial random-named archive or a partial commit folder, which the failed run makes visible, the action's rm or a rerun clears, and the manifest-based receive rejects. The optional sshd layer is recorded as a developer decision in the H3 task. No new findings.",
+    "findings": [],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-059H2/review-002",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "upload-gate runs scp and tar under timeout --kill-after=10s 10m while holding the lock, so the lock is released after at most about 10 minutes even if the client keeps the session open or keeps sending data. The disposable test holds an scp sink open, confirms the timeout wrapper, triggers its expiry path with SIGALRM, sees exit 124 and a released lock, and the real uploads still pass under the limit.",
+        "validated_by": {
+          "review_id": "TASK-059H2/review-003",
+          "commit": "3acb2b5c8844ec626260781495ccf27d16b40f4c"
+        }
+      }
+    ]
+  }
+}

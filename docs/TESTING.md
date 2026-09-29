@@ -291,6 +291,60 @@ are also checked in an Ubuntu 26.04 container **without Git installed**
 (`init-state`, `check-host`, root-installed `schatten-receive`,
 `build-release --source`), as recorded in `docs/qa/SOURCE-DELIVERY-QA.md`.
 
+## Source Delivery Workflow And Upload Gate
+
+TASK-059H2 adds a disposable sshd test for the "Deploy to production" workflow
+and `deploy/bin/upload-gate`. Run it from the repository on an x86_64
+workstation with Docker, Git, curl, Python 3 and the OpenSSH client (it needs
+APT and GitHub access; it changes nothing outside a container and a temporary
+folder and uses synthetic keys only):
+
+```bash
+.github/scripts/verify-upload-gate.sh
+# QA_UBUNTU_IMAGE=<digest-pinned ubuntu:26.04> selects another base image.
+```
+
+It reads the pinned `appleboy/scp-action` SHA, the `drone-scp` version and
+hash, and the upload step's `with:` inputs from the workflow, so it always
+tests what the workflow uses. `prepare-production-upload.sh` writes the job
+summary for `HEAD` (and refuses a non-`main` ref). An Ubuntu 26.04 container
+runs sshd with the upload account set up as in
+[DEPLOYMENT.md](DEPLOYMENT.md#source-delivery-workflow-and-upload-account-task-059h2).
+The action's `entrypoint.sh` at the pinned commit then runs with the same
+inputs as on the runner, first through a recording forced command: the captured
+`SSH_ORIGINAL_COMMAND` sequence must be exactly `ver`, `scp -tr`, `mkdir -p`,
+`tar -zxf ... --overwrite` and `rm -rf` in the forms the gate allows. The same
+upload must then succeed through `upload-gate`, a repeat must overwrite, a wrong
+host fingerprint must stop it, the action must take the pre-verified
+`drone-scp` through `DRONE_SCP_RELEASE_URL=file://...` as in the workflow and
+that binary must have the
+recorded hash, and `schatten-receive` must accept the upload as `deploy` with
+the digest taken from the summary. The key must be refused for a shell (with
+and without a pty), other commands, reads, other paths, command injection,
+extra spaces, removal of anything but the action's archive, sftp, scp in both
+protocols and `-W`/`-R` forwarding. While one gate command is held open (an `scp`
+sink waiting for data), a parallel `rm -rf`, `scp -tr` and `mkdir -p` must be
+refused as busy. The held `scp` must run under the gate's
+`timeout --kill-after=10s 10m`; its expiry, triggered with `SIGALRM` (which
+coreutils `timeout` handles like its own timer), must end the session with exit
+124 and release the lock. Crafted archives sent through the allowed
+commands must not write outside the upload area: `..` and absolute members stay
+inside, while symlink and hardlink members and a folder holding a planted
+symlink are refused. No file owned by the upload account may exist outside the
+upload area.
+
+Lint the workflow with the actionlint Docker image (not a project dependency)
+and the scripts with shellcheck; CI runs both:
+
+```bash
+docker run --rm -v "$PWD:/repo:ro" -w /repo \
+  rhysd/actionlint:1.7.9@sha256:a0383f60d92601e2694e24b24d37df7b6a40bed7cedbc447611c50009bf02d94 \
+  .github/workflows/deploy-production.yml
+```
+
+GitHub offers the manual run only once the workflow is on `main`; the first
+real run is F work.
+
 ## Operator Runbook And Host Audit
 
 `deploy/bin/audit-host` is read-only and cannot be exercised against the real

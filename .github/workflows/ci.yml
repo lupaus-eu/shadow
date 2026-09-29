@@ -55,7 +55,11 @@ jobs:
           test -f docs/PRODUCTION-RUNBOOK.md
           test -x deploy/bin/audit-host
           test -x deploy/bin/schatten-receive
+          test -x deploy/bin/upload-gate
           test -x .github/scripts/create-source-manifest.sh
+          test -x .github/scripts/prepare-production-upload.sh
+          test -x .github/scripts/verify-upload-gate.sh
+          test -f .github/workflows/deploy-production.yml
           test -f .github/scripts/verify-production-worker.sh
           test -f .github/scripts/verify-production-runtime.sh
           test ! -e docker-compose.coolify.yml
@@ -260,7 +264,15 @@ jobs:
             deploy/bin/restore-rehearsal deploy/bin/initialize deploy/bin/docker-cleanup \
             deploy/bin/retire-release deploy/bin/ops-status deploy/bin/audit-host deploy/lib/common.sh \
             deploy/ops/backup.sh deploy/ops/restore-check.sh deploy/ops/docker-cleanup.sh \
-            .github/scripts/verify-production-runtime.sh .github/scripts/create-source-manifest.sh
+            .github/scripts/verify-production-runtime.sh .github/scripts/create-source-manifest.sh \
+            deploy/bin/upload-gate .github/scripts/prepare-production-upload.sh \
+            .github/scripts/verify-upload-gate.sh
+
+      - name: Lint the Deploy to production workflow
+        run: >-
+          docker run --rm --volume "${PWD}:/repo:ro" --workdir /repo
+          rhysd/actionlint:1.7.9@sha256:a0383f60d92601e2694e24b24d37df7b6a40bed7cedbc447611c50009bf02d94
+          .github/workflows/deploy-production.yml
 
       - name: Verify production runtime on an isolated Docker daemon
         run: bash .github/scripts/verify-production-runtime.sh
