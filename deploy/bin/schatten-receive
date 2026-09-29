@@ -1,0 +1,521 @@
+#!/usr/bin/env python3
+"""Accept a delivered Schatten source upload (TASK-059H1, ADR-013).
+
+Installed root-owned as /usr/local/bin/schatten-receive and run as `deploy`,
+always directly (never through a delivered Makefile). The upload folder is
+read only as data: nothing in it is executed, sourced or run, and Git is not
+used. Standard library only.
+
+Receive, in this order: copy only SOURCE_MANIFEST into deploy-owned staging
+<sources>/<commit>.incomplete; check its SHA-256 against the digest the
+operator copied from the GitHub run summary; parse those staged bytes (format,
+count, relative paths, refs/heads/main, commit equal to the upload folder
+name); then copy only the listed files into staging, opening every upload path
+component without following symlinks and accepting regular files only; verify
+the staged copy (never the upload in place); set modes from the manifest, make
+the tree read-only and rename it to <sources>/<commit>. Unlisted upload files
+are ignored. Staging is removed on failure.
+
+Usage:
+  schatten-receive <manifest-sha256> [--upload <folder>]
+      Without --upload, the upload under SCHATTEN_UPLOAD_DIR whose manifest has
+      this digest is used. Prints SOURCE_DIR=, SOURCE_COMMIT= and
+      SOURCE_MANIFEST_SHA256=.
+  schatten-receive --verify <source folder>
+      Re-verify an accepted (read-only) folder or its frozen release copy in
+      place: exactly the listed files plus SOURCE_MANIFEST, hashes, executable
+      bits and no write bits. Prints the manifest fields.
+
+Environment (host defaults; overridden only by disposable QA):
+  SCHATTEN_UPLOAD_DIR   /opt/apps/schatten-upload
+  SCHATTEN_SOURCES_DIR  /opt/apps/schatten-sources
+"""
+
+import errno
+import hashlib
+import os
+import re
+import stat
+import sys
+
+MANIFEST = "SOURCE_MANIFEST"
+MANIFEST_LIMIT = 16 * 1024 * 1024
+REQUIRED_REF = "refs/heads/main"
+HEADER = (
+    ("SOURCE_MANIFEST_VERSION", re.compile(r"1")),
+    ("SOURCE_COMMIT", re.compile(r"[0-9a-f]{40}")),
+    ("SOURCE_REF", re.compile(r"refs/[A-Za-z0-9._/-]{1,200}")),
+    ("SOURCE_DATE_EPOCH", re.compile(r"[0-9]{1,12}")),
+    ("SOURCE_RUN_ID", re.compile(r"[0-9]{1,20}")),
+    ("SOURCE_FILE_COUNT", re.compile(r"[1-9][0-9]{0,5}")),
+)
+ENTRY = re.compile(r"(644|755) ([0-9a-f]{64}) (.+)")
+# Same rule as create-source-manifest.sh.
+COMPONENT = re.compile(r"[A-Za-z0-9._@#%+=,~-]+")
+COMMIT = re.compile(r"[0-9a-f]{40}")
+DIGEST = re.compile(r"[0-9a-f]{64}")
+DIR_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+# O_NONBLOCK keeps a FIFO from blocking open(); fstat then rejects it.
+FILE_FLAGS = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC
+
+
+class Refused(Exception):
+    pass
+
+
+def open_error(error, what, kind):
+    if error.errno == errno.ENOENT:
+        return Refused(f"{what} is missing")
+    if error.errno in (errno.ELOOP, errno.ENOTDIR):
+        return Refused(f"{what} is a symlink or not a {kind}")
+    return Refused(f"{what} cannot be opened ({error.strerror})")
+
+
+def open_dir(parent_fd, name, what):
+    try:
+        return os.open(name, DIR_FLAGS, dir_fd=parent_fd)
+    except OSError as error:
+        raise open_error(error, what, "directory") from None
+
+
+def walk(root_fd, parts, label, create=False):
+    """Open the directory root/parts... without following any symlink."""
+    fd = os.dup(root_fd)
+    try:
+        for index, part in enumerate(parts):
+            if create:
+                try:
+                    os.mkdir(part, 0o700, dir_fd=fd)
+                except FileExistsError:
+                    pass
+            child = open_dir(
+                fd, part, f"parent {'/'.join(parts[: index + 1])} of {label}"
+            )
+            os.close(fd)
+            fd = child
+        return fd
+    except BaseException:
+        os.close(fd)
+        raise
+
+
+def open_regular(root_fd, path):
+    parts = path.split("/")
+    parent = walk(root_fd, parts[:-1], path)
+    try:
+        fd = os.open(parts[-1], FILE_FLAGS, dir_fd=parent)
+    except OSError as error:
+        raise open_error(error, path, "regular file") from None
+    finally:
+        os.close(parent)
+    if not stat.S_ISREG(os.fstat(fd).st_mode):
+        os.close(fd)
+        raise Refused(f"{path} is not a regular file")
+    return fd
+
+
+def read_all(fd, limit=None):
+    chunks, size = [], 0
+    while chunk := os.read(fd, 1 << 20):
+        size += len(chunk)
+        if limit is not None and size > limit:
+            raise Refused(f"{MANIFEST} is larger than {limit} bytes")
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
+def file_sha256(root_fd, path):
+    fd = open_regular(root_fd, path)
+    try:
+        digest = hashlib.sha256()
+        while chunk := os.read(fd, 1 << 20):
+            digest.update(chunk)
+        return digest.hexdigest()
+    finally:
+        os.close(fd)
+
+
+def check_path(path):
+    if path.startswith("/"):
+        raise Refused(f"manifest path {path!r} is absolute")
+    for part in path.split("/"):
+        if part in ("", ".", ".."):
+            raise Refused(f"manifest path {path!r} has an empty, '.' or '..' component")
+        if not COMPONENT.fullmatch(part):
+            raise Refused(f"manifest path {path!r} has unsupported characters")
+    if path == MANIFEST:
+        raise Refused(f"manifest lists the reserved path {MANIFEST}")
+
+
+def parse_manifest(data):
+    try:
+        text = data.decode("ascii")
+    except UnicodeDecodeError:
+        raise Refused(f"{MANIFEST} is not ASCII") from None
+    if not text.endswith("\n"):
+        raise Refused(f"{MANIFEST} does not end with a newline")
+    lines = text[:-1].split("\n")
+    if len(lines) < len(HEADER):
+        raise Refused(f"{MANIFEST} header is incomplete")
+    fields = {}
+    for line, (key, pattern) in zip(lines, HEADER, strict=False):
+        name, separator, value = line.partition("=")
+        if name != key or not separator or not pattern.fullmatch(value):
+            raise Refused(f"{MANIFEST} header line {line!r} is not a valid {key}")
+        fields[key] = value
+    if fields["SOURCE_REF"] != REQUIRED_REF:
+        raise Refused(f"SOURCE_REF {fields['SOURCE_REF']} is not {REQUIRED_REF}")
+    entries, seen, previous = [], set(), ""
+    for line in lines[len(HEADER) :]:
+        match = ENTRY.fullmatch(line)
+        if not match:
+            raise Refused(f"manifest entry {line!r} is not '<644|755> <sha256> <path>'")
+        mode, digest, path = match.groups()
+        check_path(path)
+        if path in seen:
+            raise Refused(f"manifest has a duplicate entry for {path}")
+        if path < previous:
+            raise Refused(f"manifest entries are not sorted at {path}")
+        seen.add(path)
+        previous = path
+        entries.append((int(mode, 8), digest, path))
+    if len(entries) != int(fields["SOURCE_FILE_COUNT"]):
+        raise Refused(
+            f"manifest lists {len(entries)} files, "
+            f"not SOURCE_FILE_COUNT={fields['SOURCE_FILE_COUNT']}"
+        )
+    directories = {
+        "/".join(path.split("/")[:i])
+        for _, _, path in entries
+        for i in range(1, path.count("/") + 1)
+    }
+    for _, _, path in entries:
+        if path in directories:
+            raise Refused(f"manifest lists {path} both as a file and as a directory")
+    fields["entries"] = entries
+    fields["directories"] = directories
+    return fields
+
+
+def copy_file(src_root, dst_root, path, limit=None):
+    source = open_regular(src_root, path)
+    parts = path.split("/")
+    try:
+        parent = walk(dst_root, parts[:-1], path, create=True)
+        try:
+            target = os.open(
+                parts[-1],
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
+                0o600,
+                dir_fd=parent,
+            )
+        finally:
+            os.close(parent)
+        try:
+            size = 0
+            while chunk := os.read(source, 1 << 20):
+                size += len(chunk)
+                if limit is not None and size > limit:
+                    raise Refused(f"{path} is larger than {limit} bytes")
+                view = memoryview(chunk)
+                while view:
+                    view = view[os.write(target, view) :]
+        finally:
+            os.close(target)
+    finally:
+        os.close(source)
+
+
+def set_mode(root_fd, path, mode, directory):
+    fd = (
+        walk(root_fd, path.split("/"), path)
+        if directory
+        else open_regular(root_fd, path)
+    )
+    try:
+        os.fchmod(fd, mode)
+    finally:
+        os.close(fd)
+
+
+def remove_tree(parent_fd, name):
+    try:
+        fd = os.open(name, DIR_FLAGS, dir_fd=parent_fd)
+    except FileNotFoundError:
+        return
+    try:
+        os.fchmod(fd, 0o700)
+        with os.scandir(fd) as entries:
+            children = [
+                (entry.name, entry.is_dir(follow_symlinks=False)) for entry in entries
+            ]
+        for child, is_dir in children:
+            if is_dir:
+                remove_tree(fd, child)
+            else:
+                os.unlink(child, dir_fd=fd)
+    finally:
+        os.close(fd)
+    os.rmdir(name, dir_fd=parent_fd)
+
+
+def open_folder(path):
+    path = os.path.abspath(path)
+    parent = os.open(os.path.dirname(path), os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+    try:
+        return path, open_dir(parent, os.path.basename(path), path)
+    finally:
+        os.close(parent)
+
+
+def find_upload(upload_root, digest):
+    matches = []
+    try:
+        root_fd = os.open(upload_root, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+    except OSError as error:
+        raise Refused(
+            f"upload area {upload_root} cannot be read ({error.strerror})"
+        ) from None
+    try:
+        with os.scandir(root_fd) as entries:
+            names = sorted(
+                entry.name for entry in entries if COMMIT.fullmatch(entry.name)
+            )
+        for name in names:
+            try:
+                folder = open_dir(root_fd, name, name)
+                try:
+                    fd = open_regular(folder, MANIFEST)
+                finally:
+                    os.close(folder)
+                try:
+                    data = read_all(fd, MANIFEST_LIMIT)
+                finally:
+                    os.close(fd)
+            except Refused:
+                continue
+            if hashlib.sha256(data).hexdigest() == digest:
+                matches.append(os.path.join(upload_root, name))
+    finally:
+        os.close(root_fd)
+    if not matches:
+        raise Refused(
+            f"no upload under {upload_root} has a {MANIFEST} with SHA-256 {digest}; "
+            "check the digest or pass --upload"
+        )
+    if len(matches) > 1:
+        raise Refused(
+            f"several uploads have a {MANIFEST} with SHA-256 {digest}; pass --upload"
+        )
+    return matches[0]
+
+
+def receive(digest, upload):
+    sources_dir = os.environ.get("SCHATTEN_SOURCES_DIR", "/opt/apps/schatten-sources")
+    upload_root = os.environ.get("SCHATTEN_UPLOAD_DIR", "/opt/apps/schatten-upload")
+    if upload is None:
+        upload = find_upload(upload_root, digest)
+    upload, upload_fd = open_folder(upload)
+    try:
+        commit = os.path.basename(upload)
+        if not COMMIT.fullmatch(commit):
+            raise Refused(
+                f"upload folder name {commit!r} is not a 40-character commit SHA"
+            )
+        try:
+            sources_fd = os.open(
+                sources_dir, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC
+            )
+        except OSError as error:
+            raise Refused(
+                f"{sources_dir} cannot be opened ({error.strerror}); "
+                "run deploy/bin/init-state"
+            ) from None
+        try:
+            info = os.fstat(sources_fd)
+            if info.st_uid != os.geteuid() or info.st_mode & 0o022:
+                raise Refused(
+                    f"{sources_dir} must be owned by uid {os.geteuid()} "
+                    "and not group/other writable"
+                )
+            return receive_into(sources_dir, sources_fd, upload_fd, commit, digest)
+        finally:
+            os.close(sources_fd)
+    finally:
+        os.close(upload_fd)
+
+
+def receive_into(sources_dir, sources_fd, upload_fd, commit, digest):
+    def target_exists():
+        try:
+            os.stat(commit, dir_fd=sources_fd, follow_symlinks=False)
+            return True
+        except FileNotFoundError:
+            return False
+
+    if target_exists():
+        raise Refused(
+            f"{sources_dir}/{commit} already exists; "
+            "an accepted source is never replaced"
+        )
+    staging = f"{commit}.incomplete"
+    try:
+        os.mkdir(staging, 0o700, dir_fd=sources_fd)
+    except FileExistsError:
+        raise Refused(
+            f"{sources_dir}/{staging} exists: another receive may be running; "
+            "remove it only after confirming none is"
+        ) from None
+    try:
+        staging_fd = open_dir(sources_fd, staging, staging)
+        try:
+            # (1) the manifest alone, (2) its digest and (3) its content,
+            # all from the staged bytes.
+            copy_file(upload_fd, staging_fd, MANIFEST, limit=MANIFEST_LIMIT)
+            fd = open_regular(staging_fd, MANIFEST)
+            try:
+                data = read_all(fd, MANIFEST_LIMIT)
+            finally:
+                os.close(fd)
+            actual = hashlib.sha256(data).hexdigest()
+            if actual != digest:
+                raise Refused(
+                    f"{MANIFEST} SHA-256 {actual} does not equal "
+                    f"the operator-supplied digest {digest}"
+                )
+            manifest = parse_manifest(data)
+            if manifest["SOURCE_COMMIT"] != commit:
+                raise Refused(
+                    f"SOURCE_COMMIT {manifest['SOURCE_COMMIT']} does not match "
+                    f"the upload folder name {commit}"
+                )
+            # (4) only the listed files; the staged copy is what gets verified.
+            for _, _, path in manifest["entries"]:
+                copy_file(upload_fd, staging_fd, path)
+            for _, expected, path in manifest["entries"]:
+                if file_sha256(staging_fd, path) != expected:
+                    raise Refused(
+                        f"{path} does not match its manifest SHA-256 (changed file)"
+                    )
+            for mode, _, path in manifest["entries"]:
+                set_mode(staging_fd, path, mode & 0o555, directory=False)
+            set_mode(staging_fd, MANIFEST, 0o444, directory=False)
+            for directory in sorted(
+                manifest["directories"], key=lambda item: item.count("/"), reverse=True
+            ):
+                set_mode(staging_fd, directory, 0o555, directory=True)
+            os.fchmod(staging_fd, 0o555)
+        finally:
+            os.close(staging_fd)
+        if target_exists():
+            raise Refused(
+                f"{sources_dir}/{commit} appeared during the receive; not replaced"
+            )
+        os.rename(staging, commit, src_dir_fd=sources_fd, dst_dir_fd=sources_fd)
+    except BaseException:
+        remove_tree(sources_fd, staging)
+        raise
+    print(f"Accepted {len(manifest['entries'])} files for {commit}", file=sys.stderr)
+    return {
+        "SOURCE_DIR": f"{sources_dir}/{commit}",
+        "SOURCE_COMMIT": commit,
+        "SOURCE_MANIFEST_SHA256": digest,
+    }
+
+
+def verify(folder):
+    folder, root_fd = open_folder(folder)
+    try:
+        fd = open_regular(root_fd, MANIFEST)
+        try:
+            data = read_all(fd, MANIFEST_LIMIT)
+        finally:
+            os.close(fd)
+        manifest = parse_manifest(data)
+        files = {path: (mode, digest) for mode, digest, path in manifest["entries"]}
+        seen = set()
+
+        def scan(fd, prefix):
+            info = os.fstat(fd)
+            if info.st_mode & 0o222:
+                raise Refused(
+                    f"directory {prefix or '.'} is writable; "
+                    "accepted source is read-only"
+                )
+            with os.scandir(fd) as entries:
+                children = sorted(
+                    (entry.name, entry.is_dir(follow_symlinks=False))
+                    for entry in entries
+                )
+            for name, is_dir in children:
+                path = f"{prefix}{name}"
+                if is_dir:
+                    if path not in manifest["directories"]:
+                        raise Refused(f"unexpected directory {path}")
+                    child = open_dir(fd, name, path)
+                    try:
+                        scan(child, f"{path}/")
+                    finally:
+                        os.close(child)
+                elif path in files or path == MANIFEST:
+                    seen.add(path)
+                else:
+                    raise Refused(f"unexpected entry {path}")
+
+        scan(root_fd, "")
+        for path, (mode, expected) in files.items():
+            if path not in seen:
+                raise Refused(f"{path} is missing")
+            fd = open_regular(root_fd, path)
+            try:
+                actual_mode = os.fstat(fd).st_mode
+            finally:
+                os.close(fd)
+            if actual_mode & 0o222:
+                raise Refused(f"{path} is writable; accepted source is read-only")
+            if bool(actual_mode & 0o100) != (mode == 0o755) or (
+                mode == 0o644 and actual_mode & 0o111
+            ):
+                raise Refused(
+                    f"{path} executable bits do not match manifest mode {mode:o}"
+                )
+            if file_sha256(root_fd, path) != expected:
+                raise Refused(
+                    f"{path} does not match its manifest SHA-256 (changed file)"
+                )
+    finally:
+        os.close(root_fd)
+    result = {"SOURCE_DIR": folder}
+    result.update({key: manifest[key] for key, _ in HEADER})
+    result["SOURCE_MANIFEST_SHA256"] = hashlib.sha256(data).hexdigest()
+    return result
+
+
+def main(argv):
+    usage = (
+        "Usage: schatten-receive <manifest-sha256> [--upload <folder>] | "
+        "schatten-receive --verify <source folder>"
+    )
+    if os.geteuid() == 0:
+        raise Refused("run as deploy, not root")
+    os.umask(0o022)
+    if len(argv) == 2 and argv[0] == "--verify":
+        result = verify(argv[1])
+    elif (
+        len(argv) in (1, 3)
+        and DIGEST.fullmatch(argv[0])
+        and (len(argv) == 1 or argv[1] == "--upload")
+    ):
+        result = receive(argv[0], argv[2] if len(argv) == 3 else None)
+    else:
+        raise Refused(usage)
+    for key, value in result.items():
+        print(f"{key}={value}")
+
+
+if __name__ == "__main__":
+    try:
+        main(sys.argv[1:])
+    except Refused as refusal:
+        print(f"ERROR: schatten-receive: {refusal}", file=sys.stderr)
+        sys.exit(1)

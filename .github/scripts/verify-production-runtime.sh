@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
-# Disposable end-to-end QA for the UpCloud production runtime (TASK-059G) and
-# the integrated first-installation runbook sequence (TASK-059E).
+# Disposable end-to-end QA for the UpCloud production runtime (TASK-059G), the
+# integrated first-installation runbook sequence (TASK-059E) and the Git-free
+# source path (TASK-059H1): source manifest -> upload-style folder ->
+# schatten-receive -> build-release --source.
 #
 # Runs every deploy/bin command against an isolated Docker-in-Docker daemon
 # with synthetic configuration, a throwaway GPG key and simulated OIDC
 # settings. Never touches the developer's or production Docker resources:
 # all containers, volumes and images live inside the disposable daemon and
-# all host paths live under a temporary directory.
+# all host paths live under a temporary directory. Git is used only for the
+# runner-side manifest; every server-side step runs with a PATH without Git.
 #
 # Usage: .github/scripts/verify-production-runtime.sh
 #   QA_SOURCE_REPO / QA_COMMIT select the committed source to build (default HEAD).
@@ -133,10 +136,12 @@ SCHATTEN_BACKUP_PUBLIC_KEY=${config_dir}/backup-public-key.asc
 SCHATTEN_BACKUP_DIR=${opt}/postgres-backups
 SCHATTEN_STATE_DIR=${opt}/apps/schatten-state
 SCHATTEN_RELEASES_DIR=${opt}/apps/schatten-releases
+SCHATTEN_SOURCES_DIR=${opt}/apps/schatten-sources
 SCHATTEN_BACKUP_LOCK_TIMEOUT_SECONDS=3
 EOF
 chmod 0600 "${env_file}"
-export SCHATTEN_ENV_FILE="${env_file}" SCHATTEN_SOURCE_REPO="${source_repo}"
+upload_root="${opt}/apps/schatten-upload"
+export SCHATTEN_ENV_FILE="${env_file}" SCHATTEN_SOURCES_DIR="${opt}/apps/schatten-sources" SCHATTEN_UPLOAD_DIR="${upload_root}"
 # QA-only override: internal TLS issuer and a simulated Entra discovery endpoint
 # on a separate network, trusted through a throwaway CA. Production is unchanged.
 override="${qa_root}/qa-override.yml"
@@ -175,6 +180,76 @@ set -e
 locks="${opt}/apps/schatten-state/locks"
 pass "synthetic configuration, throwaway key pair and QA-only internal TLS override"
 
+step "Source manifest of ${commit} (runner side; the only Git use)"
+manifest_tool="${repo}/.github/scripts/create-source-manifest.sh"
+in_dir() { (cd "$1" && shift && "$@"); }
+qa_run_id=1059
+upload="${upload_root}/${commit}"
+manifest_args=(--commit "${commit}" --ref refs/heads/main --run-id "${qa_run_id}")
+digest="$(capture SOURCE_MANIFEST_SHA256 in_dir "${source_repo}" "${manifest_tool}" "${manifest_args[@]}" --output "${upload}")"
+repeat="$(capture SOURCE_MANIFEST_SHA256 in_dir "${source_repo}" "${manifest_tool}" "${manifest_args[@]}" --output "${qa_root}/manifest-repeat")"
+[[ "${repeat}" == "${digest}" ]] && cmp -s "${upload}/SOURCE_MANIFEST" "${qa_root}/manifest-repeat/SOURCE_MANIFEST" \
+  || fail "manifest is not byte-identical for the same commit and inputs"
+[[ "$(sha256sum <"${upload}/SOURCE_MANIFEST" | cut -d ' ' -f 1)" == "${digest}" ]] || fail "printed manifest digest"
+tree="$(git -C "${source_repo}" ls-tree -r --full-tree "${commit}")"
+listed="$(sed -n '7,$p' "${upload}/SOURCE_MANIFEST")"
+[[ "$(wc -l <<<"${listed}")" == "$(wc -l <<<"${tree}")" ]] \
+  && grep -qx "SOURCE_FILE_COUNT=$(wc -l <<<"${tree}")" "${upload}/SOURCE_MANIFEST" || fail "manifest does not list every tracked file"
+[[ "$(grep -c '^755 ' <<<"${listed}")" == "$(grep -c '^100755 ' <<<"${tree}")" ]] || fail "manifest executable modes"
+compose_hash="$(git -C "${source_repo}" show "${commit}:docker-compose.production.yml" | sha256sum | cut -d ' ' -f 1)"
+grep -qx "644 ${compose_hash} docker-compose.production.yml" <<<"${listed}" || fail "manifest hash of docker-compose.production.yml"
+grep -Eqx '755 [0-9a-f]{64} deploy/bin/build-release' <<<"${listed}" || fail "manifest mode of deploy/bin/build-release"
+source_date_epoch="$(git -C "${source_repo}" show -s --format=%ct "${commit}")"
+grep -qx "SOURCE_DATE_EPOCH=${source_date_epoch}" "${upload}/SOURCE_MANIFEST" || fail "manifest SOURCE_DATE_EPOCH"
+qa_git() {
+  GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 \
+    git -C "$1" -c user.name=QA -c user.email=qa@example.test -c commit.gpgsign=false "${@:2}"
+}
+for kind in symlink submodule; do
+  scratch="${qa_root}/manifest-${kind}"
+  mkdir -p "${scratch}"
+  qa_git "${scratch}" init --quiet
+  printf 'fixture\n' >"${scratch}/file"
+  qa_git "${scratch}" add file
+  qa_git "${scratch}" commit --quiet -m base
+  if [[ "${kind}" == symlink ]]; then
+    ln -s file "${scratch}/link"
+    qa_git "${scratch}" add link
+  else
+    qa_git "${scratch}" update-index --add --cacheinfo "160000,$(qa_git "${scratch}" rev-parse HEAD),vendored"
+  fi
+  qa_git "${scratch}" commit --quiet -m "${kind}"
+  expect_failure "manifest refuses a ${kind}" "${kind} [a-z]+ is not allowed" in_dir "${scratch}" "${manifest_tool}" \
+    --commit "$(qa_git "${scratch}" rev-parse HEAD)" --ref refs/heads/main --run-id 1 --output "${scratch}-export"
+done
+# Like repeated SCP uploads: a stale file from an earlier upload and modes
+# that differ from the manifest.
+printf 'stale\n' >"${upload}/stale-from-an-earlier-upload.txt"
+mkdir -p "${upload}/stale-dir"
+printf 'stale\n' >"${upload}/stale-dir/old.txt"
+chmod 0755 "${upload}/docker-compose.production.yml"
+chmod 0644 "${upload}/deploy/bin/build-release"
+pass "deterministic manifest ${digest} lists all $(wc -l <<<"${tree}") tracked files with Git modes and hashes; symlink and submodule refused"
+
+step "Server-side steps run with a PATH without Git"
+nogit_bin="${qa_root}/nogit-bin"
+mkdir -p "${nogit_bin}"
+# The real interpreter, not a version-manager shim that would search PATH.
+ln -s "$(python3 -c 'import os, sys; print(os.path.realpath(sys.executable))')" "${nogit_bin}/python3"
+IFS=: read -r -a path_dirs <<<"${PATH}"
+for directory in "${path_dirs[@]}"; do
+  [[ -d "${directory}" ]] || continue
+  for tool in "${directory}"/*; do
+    name="${tool##*/}"
+    [[ -x "${tool}" && ! -d "${tool}" && "${name}" != git && "${name}" != git-* ]] || continue
+    [[ -e "${nogit_bin}/${name}" || -L "${nogit_bin}/${name}" ]] || ln -s "${tool}" "${nogit_bin}/${name}"
+  done
+done
+export PATH="${nogit_bin}"
+hash -r
+if command -v git >/dev/null 2>&1; then fail "git is still reachable on the server-side PATH"; fi
+pass "git is not on PATH for the remaining steps"
+
 step "Host prerequisite check and explicit state initialization"
 expect_failure "check-host reports missing lock files before init-state" 'missing .*maintenance.lock' \
   "${bin}/check-host" --allow-os-mismatch
@@ -186,10 +261,94 @@ expect_failure "protected env file must be private" 'must not be group/other acc
 chmod 0600 "${env_file}"
 pass "check-host accepts the prepared baseline"
 
-step "Build frozen release artifacts from ${commit}"
-release_one="$(capture RELEASE_ID "${bin}/build-release" "${commit}")"
+step "Verified receive: rejections, acceptance, stale files and manifest modes"
+sources="${opt}/apps/schatten-sources"
+rejects="${qa_root}/rejects"
+reject_copy() {
+  mkdir -p "${rejects}/$1"
+  cp -a "${upload}" "${rejects}/$1/${commit}"
+  printf '%s' "${rejects}/$1/${commit}"
+}
+# A crafted manifest with its own digest, so the check under test is reached.
+craft() {
+  mkdir -p "${rejects}/$1/${commit}"
+  sed "$2" "${upload}/SOURCE_MANIFEST" >"${rejects}/$1/${commit}/SOURCE_MANIFEST"
+  printf '%s %s' "$(sha256sum <"${rejects}/$1/${commit}/SOURCE_MANIFEST" | cut -d ' ' -f 1)" "${rejects}/$1/${commit}"
+}
+receive() { "${bin}/schatten-receive" "$@"; }
+expect_failure "receive rejects a wrong digest" 'does not equal the operator-supplied digest' \
+  receive "$(printf '0%.0s' {1..64})" --upload "${upload}"
+expect_failure "receive finds no upload for an unknown digest" 'no upload under' receive "$(printf 'a%.0s' {1..64})"
+dir="$(reject_copy changed)"
+printf 'tampered\n' >>"${dir}/docker-compose.production.yml"
+expect_failure "receive rejects a changed file" 'docker-compose.production.yml does not match its manifest' receive "${digest}" --upload "${dir}"
+dir="$(reject_copy missing)"
+rm "${dir}/frontend/Caddyfile"
+expect_failure "receive rejects a missing file" 'frontend/Caddyfile is missing' receive "${digest}" --upload "${dir}"
+dir="$(reject_copy symlinked-file)"
+mv "${dir}/frontend/Caddyfile" "${rejects}/Caddyfile.elsewhere"
+ln -s "${rejects}/Caddyfile.elsewhere" "${dir}/frontend/Caddyfile"
+expect_failure "receive rejects a symlinked file" 'frontend/Caddyfile is a symlink' receive "${digest}" --upload "${dir}"
+dir="$(reject_copy symlinked-parent)"
+mv "${dir}/frontend" "${rejects}/frontend.elsewhere"
+ln -s "${rejects}/frontend.elsewhere" "${dir}/frontend"
+expect_failure "receive rejects a symlinked parent" 'parent frontend of frontend/.* is a symlink' receive "${digest}" --upload "${dir}"
+mkdir -p "${rejects}/symlinked-upload"
+ln -s "${upload}" "${rejects}/symlinked-upload/${commit}"
+expect_failure "receive rejects a symlinked upload folder" "${commit} is a symlink" receive "${digest}" --upload "${rejects}/symlinked-upload/${commit}"
+dir="$(reject_copy fifo)"
+rm "${dir}/frontend/Caddyfile"
+mkfifo "${dir}/frontend/Caddyfile"
+expect_failure "receive rejects a non-regular file" 'frontend/Caddyfile is not a regular file' receive "${digest}" --upload "${dir}"
+read -r crafted dir <<<"$(craft dotdot '7s# [^ ]*$# ../outside#')"
+expect_failure "receive rejects a '..' path" "'\.\.' component" receive "${crafted}" --upload "${dir}"
+read -r crafted dir <<<"$(craft absolute '7s# [^ ]*$# /etc/passwd#')"
+expect_failure "receive rejects an absolute path" 'is absolute' receive "${crafted}" --upload "${dir}"
+read -r crafted dir <<<"$(craft duplicate '7p')"
+expect_failure "receive rejects a duplicate entry" 'duplicate entry' receive "${crafted}" --upload "${dir}"
+read -r crafted dir <<<"$(craft ref 's#^SOURCE_REF=.*#SOURCE_REF=refs/heads/feature#')"
+expect_failure "receive rejects a non-main ref" 'is not refs/heads/main' receive "${crafted}" --upload "${dir}"
+other="${rejects}/other-commit/$(printf 'f%.0s' {1..40})"
+mkdir -p "${other}"
+cp "${upload}/SOURCE_MANIFEST" "${other}/"
+expect_failure "receive rejects a commit that is not the upload folder name" 'does not match the upload folder name' receive "${digest}" --upload "${other}"
+[[ -z "$(ls -A "${sources}")" ]] || fail "a rejected receive left files in ${sources}"
+source_dir="$(capture SOURCE_DIR receive "${digest}")"
+[[ "${source_dir}" == "${sources}/${commit}" ]] || fail "receive SOURCE_DIR ${source_dir}"
+[[ ! -e "${source_dir}/stale-from-an-earlier-upload.txt" && ! -e "${source_dir}/stale-dir" ]] || fail "stale upload files were accepted"
+[[ "$(stat -c %a "${source_dir}/docker-compose.production.yml") $(stat -c %a "${source_dir}/deploy/bin/build-release")" == "444 555" ]] \
+  || fail "accepted modes do not come from the manifest"
+[[ -z "$(find "${source_dir}" -perm /222 -print -quit)" ]] || fail "accepted source is not read-only"
+printf 'changed after acceptance\n' >>"${upload}/docker-compose.production.yml"
+run receive --verify "${source_dir}" >/dev/null || fail "accepted source does not verify against its manifest"
+[[ "$(sha256sum <"${source_dir}/docker-compose.production.yml" | cut -d ' ' -f 1)" == "${compose_hash}" ]] \
+  || fail "an upload change after acceptance reached the accepted source"
+expect_failure "receive never replaces an accepted source" 'already exists' receive "${digest}" --upload "${upload}"
+expect_failure "build-release no longer takes a commit" 'Usage: build-release --source' "${bin}/build-release" "${commit}"
+# A self-consistent read-only folder verifies against its own manifest, so only
+# the location check stops a folder that never passed the operator digest.
+mkdir -p "${rejects}/outside"
+cp -a "${source_dir}" "${rejects}/outside/${commit}"
+run "${bin}/schatten-receive" --verify "${rejects}/outside/${commit}" >/dev/null || fail "outside copy should verify on its own"
+expect_failure "build-release refuses a folder outside the sources directory" 'is not an accepted source under' \
+  "${bin}/build-release" --source "${rejects}/outside/${commit}"
+unverified="${sources}/$(printf 'e%.0s' {1..40})"
+cp -a "${rejects}/changed/${commit}" "${unverified}"
+expect_failure "build-release refuses a folder that fails verification" 'failed manifest verification' \
+  "${bin}/build-release" --source "${unverified}"
+rm -rf "${unverified}"
+[[ -z "$(find "${opt}/apps/schatten-releases" -maxdepth 1 -name '*.incomplete' -print -quit)" ]] || fail "failed build left a work directory"
+pass "all rejection cases leave nothing behind; the accepted read-only copy ignores stale files, takes manifest modes and is unaffected by later upload changes; build-release accepts only verified folders under the sources directory"
+
+step "Build frozen release artifacts from the verified source"
+release_one="$(capture RELEASE_ID "${bin}/build-release" --source "${source_dir}")"
 dir_one="$(release_dir "${release_one}")"
-grep -qx "SOURCE_COMMIT=${commit}" "${dir_one}/release.env" || fail "release commit"
+for pair in "SOURCE_COMMIT=${commit}" "SOURCE_MANIFEST_SHA256=${digest}" SOURCE_REF=refs/heads/main \
+  "SOURCE_RUN_ID=${qa_run_id}" "SOURCE_DATE_EPOCH=${source_date_epoch}"; do
+  grep -qx "${pair}" "${dir_one}/release.env" || fail "release.env lacks ${pair}"
+done
+grep -q '^GIT_VERSION=' "${dir_one}/release.env" && fail "release.env still records GIT_VERSION"
+run "${bin}/schatten-receive" --verify "${dir_one}/source" >/dev/null || fail "frozen release source does not match its manifest"
 for kind in BACKEND FRONTEND; do
   tag="$(release_value "${dir_one}" "${kind}_IMAGE")"
   [[ "$(docker image inspect --format '{{.Id}}' "${tag}")" == "$(release_value "${dir_one}" "${kind}_IMAGE_ID")" ]] || fail "${kind} image ID"
@@ -197,7 +356,7 @@ done
 [[ ! -w "${dir_one}/source/docker-compose.production.yml" ]] || fail "release source is not frozen read-only"
 # As documented for operators, later commands run from the frozen release.
 bin="${dir_one}/source/deploy/bin"
-pass "release ${release_one} records commit, tools and matching immutable image IDs"
+pass "release ${release_one} records commit, manifest digest, ref, run ID, tools and matching immutable image IDs"
 
 step "Simulated Entra discovery endpoint"
 docker network create schatten-qa-oidc >/dev/null
@@ -256,7 +415,7 @@ expect_status() {
     grep -qx "${pair}" <<<"${output}" || { printf '%s\n' "${output}" >&2; fail "${description}: expected ${pair}"; }
   done
 }
-migrations_expected="$(git -C "${source_repo}" ls-tree --name-only "${commit}" db/migrations/ | grep -E '/[0-9]{3}_.*\.sql$' | grep -vc '\.down\.sql$')"
+migrations_expected="$(find "${dir_one}/source/db/migrations" -maxdepth 1 -name '[0-9][0-9][0-9]_*.sql' ! -name '*.down.sql' | wc -l)"
 initial="$(init_status)"
 expect_status "${initial}" "no implicit startup seed or bootstrap" "schema_version=${migrations_expected}" active_default_metamodels=0 \
   users_including_deleted=0 user_identities=0 auth_sessions=0 organisations=0
@@ -532,7 +691,7 @@ pass "cleanup dry-run, lock skip, failure reporting and protected volumes/backup
 
 step "Standard release, restore-evidence gate, migration failure gate and rollback"
 sleep 1
-release_two="$(capture RELEASE_ID "${bin}/build-release" "${commit}")"
+release_two="$(capture RELEASE_ID "${bin}/build-release" --source "${source_dir}")"
 [[ "${release_two}" != "${release_one}" ]] || fail "second build-release reused the release ID"
 dir_two="$(release_dir "${release_two}")"
 mv "${opt}/apps/schatten-state/restore-evidence" "${opt}/apps/schatten-state/restore-evidence.hidden"
@@ -589,5 +748,5 @@ for kind in BACKEND FRONTEND; do
 done
 pass "synthetic secrets absent from QA, container logs and image history"
 
-printf '\nTASK-059G/E production runtime and first-install runbook QA passed. Tools: %s; Compose %s.\n' \
+printf '\nTASK-059G/E/H1 production runtime, first-install runbook and Git-free source QA passed. Tools: %s; Compose %s.\n' \
   "$(docker version --format 'Engine {{.Server.Version}}')" "$(docker compose version --short)"

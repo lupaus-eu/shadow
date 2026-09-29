@@ -45,6 +45,8 @@ load_config() {
   {
     SCHATTEN_STATE_DIR="$(config_value SCHATTEN_STATE_DIR /opt/apps/schatten-state)"
     SCHATTEN_RELEASES_DIR="$(config_value SCHATTEN_RELEASES_DIR /opt/apps/schatten-releases)"
+    # Must match schatten-receive's SCHATTEN_SOURCES_DIR (same default).
+    SCHATTEN_SOURCES_DIR="$(config_value SCHATTEN_SOURCES_DIR /opt/apps/schatten-sources)"
     SCHATTEN_BACKUP_DIR="$(config_value SCHATTEN_BACKUP_DIR /opt/postgres-backups)"
     SCHATTEN_BACKUP_UID="$(config_value SCHATTEN_BACKUP_UID 10002)"
     SCHATTEN_BACKUP_GID="$(config_value SCHATTEN_BACKUP_GID 10002)"

@@ -1,7 +1,7 @@
 # ADR-013: Shared Entra Registration And Local HTTPS Deployment
 
-Status: Accepted; B/C/D/G/E implemented; source delivery amendment pending
-TASK-059H1-H3; authorized setup and rollout pending TASK-059F
+Status: Accepted; B/C/D/G/E/H1 implemented; source delivery amendment pending
+TASK-059H2-H3; authorized setup and rollout pending TASK-059F
 
 Date: 2026-09-11
 

@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-059H1/review-001",
+  "task": {
+    "id": "TASK-059H1",
+    "path": "tasks/TASK-059H1-source-manifest-git-free-build.md"
+  },
+  "round": 1,
+  "reviewed_at": "2026-09-29T12:21:48Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "c6a78fb2c4bfc4aa37c6f9316baa5b115ce8f1ef",
+    "head_sha": "eef4587f35818f3723d4d850773e3c7c3b39a512",
+    "comparison": "c6a78fb2c4bfc4aa37c6f9316baa5b115ce8f1ef...eef4587f35818f3723d4d850773e3c7c3b39a512",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "The manifest generator, receiver, host checks, harness and documentation match the task and ADR-013, and the receive ordering, symlink-safe copy and staged-copy verification are sound. One finding: build-release accepts any self-consistent read-only folder, not only one accepted by schatten-receive.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "security",
+        "severity": "medium",
+        "summary": "build-release --source does not require the folder to be under the accepted sources directory, so it can build a folder that never passed the operator-digest check.",
+        "rationale": "The re-verification only checks the copy against the manifest inside that same folder; it never compares the manifest digest with an operator-approved value or checks where the folder is. A local test showed that a hand-made read-only folder named after a commit, with its own matching manifest, passes --verify. The upload account controls its upload folder and can make it read-only, so passing an upload path (by operator error or a later H3 wrapper) would build unapproved source. ADR-013 says build-release builds only from a verified folder under /opt/apps/schatten-sources.",
+        "recommendation": "In build-release, after load_config, require the resolved source folder's parent to equal the resolved SCHATTEN_SOURCES_DIR (and refuse otherwise), and add a harness case that an upload-style read-only folder outside the sources directory is refused before copying.",
+        "locations": [
+          {
+            "path": "deploy/bin/build-release",
+            "line": 15
+          },
+          {
+            "path": ".github/scripts/verify-production-runtime.sh"
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": []
+  }
+}

@@ -131,6 +131,32 @@ class AiReviewRecordsTests(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("finding.location.line must be a positive integer", result.stderr)
 
+    def test_accepts_letter_digit_task_suffix_and_rejects_other_suffixes(self) -> None:
+        temporary_directory, records_directory = self.copy_valid_records()
+        with temporary_directory:
+            for task_id, valid in (
+                ("TASK-900H1", True),
+                ("TASK-900A", True),
+                ("TASK-900H12", False),
+                ("TASK-9001", False),
+                ("TASK-900h1", False),
+            ):
+                task_directory = records_directory / task_id
+                task_directory.mkdir()
+                data = json.loads((FIXTURES / "TASK-900" / "review-001.json").read_text())
+                data["record_id"] = f"{task_id}/review-001"
+                data["task"]["id"] = task_id
+                (task_directory / "review-001.json").write_text(
+                    json.dumps(data), encoding="utf-8"
+                )
+                result = self.command("validate", "--records-dir", str(records_directory))
+                if valid:
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                else:
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn("task.id must match TASK-XXX", result.stderr)
+                    shutil.rmtree(task_directory)
+
     def test_rejects_duplicate_record_id_round_gap_and_invalid_prior_reference(self) -> None:
         temporary_directory, records_directory = self.copy_valid_records()
         with temporary_directory:

@@ -29,7 +29,8 @@ else
   error "OS ${os_version} is not the approved ubuntu 26.04"
 fi
 
-for tool in git python3 flock sha256sum tar; do
+# Git is not used on the server (ADR-013); python3 runs schatten-receive.
+for tool in python3 flock sha256sum tar; do
   if command -v "${tool}" >/dev/null 2>&1; then ok "tool ${tool}"; else error "missing tool ${tool}"; fi
 done
 
@@ -68,9 +69,22 @@ if ss -ltnH 2>/dev/null | awk '{ print $4 }' | grep -Eq ':(2375|2376)$'; then
   error "A Docker TCP listener appears to be open on 2375/2376"
 fi
 
-for directory in "$(dirname "${SCHATTEN_STATE_DIR}")" "${SCHATTEN_STATE_DIR}" "${SCHATTEN_RELEASES_DIR}"; do
+for directory in "$(dirname "${SCHATTEN_STATE_DIR}")" "${SCHATTEN_STATE_DIR}" "${SCHATTEN_RELEASES_DIR}" "${SCHATTEN_SOURCES_DIR}"; do
   if [[ -d "${directory}" && -w "${directory}" ]]; then ok "writable ${directory}"; else error "missing or unwritable ${directory}"; fi
 done
+receiver=/usr/local/bin/schatten-receive
+if [[ -L "${receiver}" ]]; then
+  error "${receiver} is a symlink; install the file itself root-owned"
+elif [[ -f "${receiver}" ]]; then
+  receiver_facts="$(stat -c '%u %a' "${receiver}")"
+  if [[ "${receiver_facts%% *}" == 0 && -x "${receiver}" ]] && (( (8#${receiver_facts#* } & 8#022) == 0 )); then
+    ok "${receiver} root-owned mode ${receiver_facts#* }"
+  else
+    error "${receiver} (owner uid ${receiver_facts%% *}, mode ${receiver_facts#* }) must be root-owned, executable and not group/other writable"
+  fi
+else
+  warn "${receiver} is not installed (F installs it root-owned before the first receive)"
+fi
 for lock in maintenance backup release; do
   [[ -r "${SCHATTEN_LOCK_DIR}/${lock}.lock" ]] || error "missing ${SCHATTEN_LOCK_DIR}/${lock}.lock (run deploy/bin/init-state)"
 done

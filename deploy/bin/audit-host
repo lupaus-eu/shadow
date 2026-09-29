@@ -36,9 +36,11 @@ if [[ "${ID:-}" == ubuntu && "${VERSION_ID:-}" == 26.04 ]]; then ok "os ${PRETTY
 fact "kernel $(uname -r)"
 fact "coreutils $(stat --version 2>/dev/null | head -n 1)"
 fact "sudo $(sudo --version 2>/dev/null | head -n 1 || printf 'absent')"
-for tool in git python3 curl gpg openssl flock ss; do
+for tool in python3 curl gpg openssl flock ss; do
   if have "${tool}"; then ok "tool ${tool}"; else attn "tool ${tool} is not installed"; fi
 done
+# Git is not used on the server (ADR-013); its presence is only recorded.
+if have git; then fact "git $(git --version 2>/dev/null | awk '{ print $3 }') present (not used by Schatten)"; else fact "git absent (not needed)"; fi
 
 section cloud-init
 if have cloud-init && have python3; then
@@ -232,7 +234,7 @@ fact "held packages ${held:-none}"
 
 section storage
 for path in /opt/apps /opt/caddy /opt/postgres-backups /opt/apps/schatten /opt/apps/schatten-config \
-  /opt/apps/schatten-state /opt/apps/schatten-releases; do
+  /opt/apps/schatten-state /opt/apps/schatten-releases /opt/apps/schatten-sources; do
   if [[ ! -e "${path}" ]]; then
     fact "path ${path} absent"
     continue
@@ -245,7 +247,8 @@ for path in /opt/apps /opt/caddy /opt/postgres-backups /opt/apps/schatten /opt/a
   fact "path ${path} $(stat -c 'owner=%u:%g(%U:%G) mode=%a' "${path}") entries=${entries} filesystem=$(df -P "${path}" 2>/dev/null | awk 'NR == 2 { print $1 }')"
 done
 # check-host and the setup steps write the Schatten paths as deploy; containers never write here.
-for path in /opt/apps /opt/apps/schatten /opt/apps/schatten-config /opt/apps/schatten-state /opt/apps/schatten-releases; do
+for path in /opt/apps /opt/apps/schatten /opt/apps/schatten-config /opt/apps/schatten-state /opt/apps/schatten-releases \
+  /opt/apps/schatten-sources; do
   [[ -e "${path}" ]] || continue
   owner="$(stat -c %U "${path}")"
   if [[ "${owner}" == deploy ]]; then
@@ -267,11 +270,45 @@ if [[ -d /opt/postgres-backups ]]; then
     miss "/opt/postgres-backups contents (needs sudo -n find)"
   fi
 fi
-if [[ -d /opt/apps/schatten/.git ]] && have git; then
-  remote="$(git -C /opt/apps/schatten remote get-url origin 2>/dev/null || true)"
-  sanitized="$(sed -E 's#^(https?://)[^@/]+@#\1#' <<<"${remote}")"
-  fact "source checkout remote ${sanitized:-none} head $(git -C /opt/apps/schatten rev-parse HEAD 2>/dev/null || printf 'unknown')"
-  [[ "${sanitized}" == "${remote}" ]] || attn "source checkout remote URL embeds credentials; use a read-only deploy key instead"
+[[ -e /opt/apps/schatten ]] && fact "/opt/apps/schatten is the superseded Git checkout path; builds use /opt/apps/schatten-sources"
+
+section source
+receiver=/usr/local/bin/schatten-receive
+if [[ -L "${receiver}" ]]; then
+  attn "${receiver} is a symlink; install the file itself root-owned"
+elif [[ -f "${receiver}" ]]; then
+  receiver_facts="$(stat -c '%u %U %a' "${receiver}")"
+  read -r receiver_uid receiver_owner receiver_mode <<<"${receiver_facts}"
+  fact "${receiver} owner=${receiver_owner} mode=${receiver_mode} sha256=$(sha256sum <"${receiver}" | cut -d' ' -f1)"
+  if [[ "${receiver_uid}" == 0 ]] && (( (8#${receiver_mode} & 8#022) == 0 )); then
+    ok "${receiver} is root-owned and not group/other writable"
+  else
+    attn "${receiver} must be root-owned and not group/other writable"
+  fi
+else
+  fact "${receiver} absent (F installs it root-owned before the first receive)"
+fi
+if [[ -d /opt/apps/schatten-sources ]]; then
+  shopt -s nullglob
+  received=(/opt/apps/schatten-sources/*)
+  shopt -u nullglob
+  fact "received sources entries=${#received[@]} (newest 5 shown)"
+  if (( ${#received[@]} > 0 )); then
+    while read -r _ entry; do
+      name="${entry##*/}"
+      if [[ "${name}" =~ ^[0-9a-f]{40}$ ]]; then
+        if [[ -f "${entry}/SOURCE_MANIFEST" && ! -L "${entry}/SOURCE_MANIFEST" ]]; then
+          fact "received ${name} manifest=present sha256=$(sha256sum <"${entry}/SOURCE_MANIFEST" | cut -d' ' -f1)"
+        else
+          attn "received ${name} has no SOURCE_MANIFEST; it is not an accepted source"
+        fi
+      elif [[ "${name}" == *.incomplete ]]; then
+        attn "staging ${name} was left by an interrupted receive; remove it once no receive runs"
+      else
+        attn "unexpected entry ${name} in /opt/apps/schatten-sources"
+      fi
+    done < <(stat -c '%Y %n' "${received[@]}" | sort -rn | head -n 5)
+  fi
 fi
 
 printf '\nSUMMARY attention=%s missing=%s (record results under TASK-059F; this command changed nothing)\n' "${attention}" "${missing}"

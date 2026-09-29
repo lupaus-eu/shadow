@@ -30,10 +30,11 @@ account; a root-owned receiver verifies it against the manifest digest from the
 run summary, and builds run from that verified copy with **no Git on the
 server** (see
 [ADR-013](decisions/ADR-013-shared-entra-local-https-deployment.md#source-delivery-without-git-on-the-server)).
-H1-H3 implement it. Until then, the Git-checkout build input described in the
-command and storage tables and runbook below is implemented but superseded as
-the target and must not be set up in F, and neither must the runbook's
-firewall-level SSH restriction.
+H1 implemented the manifest, the receiver and the Git-free
+`build-release --source` described in the command and storage tables below;
+H2 adds the upload gate and workflow, H3 the Makefile and runbook. Until H3,
+the runbook's Git-checkout build steps and firewall-level SSH restriction are
+superseded and must not be set up in F.
 
 ## Release Topology
 
@@ -339,10 +340,12 @@ Host storage mappings and required ownership:
 | Host path | Use | Ownership / mode |
 | --- | --- | --- |
 | `/opt/apps` | Operator directory; `check-host` requires it writable by `deploy`; no container writes here | `deploy` (changed non-recursively if cloud-init left it root-owned) |
-| `/opt/apps/schatten` | Reviewed Git checkout used only as `build-release` input | `deploy` |
+| `/opt/apps/schatten-upload/<commit>/` | Delivered upload (source plus `SOURCE_MANIFEST`); read by `schatten-receive` only as data, never executed; stale files are ignored | upload account (H2/F) |
+| `/opt/apps/schatten-sources/<commit>/` | Verified read-only source accepted by `schatten-receive` (only the manifest-listed files, manifest modes, `SOURCE_MANIFEST`); the only `build-release` input and where tooling runs from; `<commit>.incomplete` is transient staging | `deploy`; read-only tree |
+| `/usr/local/bin/schatten-receive` | Installed receiver, run directly | `root`, not group/other writable |
 | `/opt/apps/schatten-config/production.env` | Protected configuration | `deploy`, `0600` |
 | `/opt/apps/schatten-config/backup-public-key.asc` | Backup encryption public key (read-only mount) | `deploy`, `0644` |
-| `/opt/apps/schatten-releases/<release-id>/` | Frozen `git archive` source, `release.env`, `build.log`; `current`/`previous` pointers; `retired/` | `deploy`; source read-only |
+| `/opt/apps/schatten-releases/<release-id>/` | Frozen, re-verified copy of the verified source, `release.env`, `build.log`; `current`/`previous` pointers; `retired/` | `deploy`; source read-only |
 | `/opt/apps/schatten-state/` | `locks/*.lock` (read-only runner mounts), `deployments/*.env`, `restore-evidence/` (`0700`) | `deploy` |
 | `/opt/postgres-backups` | Encrypted backups and manifests; existing contents preserved | `10002:10002`, `0700` (or `0750`) |
 | `/opt/caddy` | Not mounted and not modified; Caddy state lives in `schatten_caddy_data` | unchanged |
@@ -356,17 +359,20 @@ F sets its ownership explicitly; `check-host` only reports mismatches.
 
 ### Commands
 
-Run `build-release` from the reviewed checkout. Run every other command from
-the frozen release directory of the target release
+Run the installed `/usr/local/bin/schatten-receive` directly, never from an
+upload or a delivered Makefile. Run `build-release` from the verified source
+copy (`/opt/apps/schatten-sources/<commit>/deploy/bin/build-release`). Run
+every other command from the frozen release directory of the target release
 (`/opt/apps/schatten-releases/<id>/source/deploy/bin/...`), so the tooling
 matches the deployed Compose file and job scripts.
 
 | Command | Purpose |
 | --- | --- |
-| `audit-host` | Read-only, sanitized audit of the existing cloud-init baseline for F: cloud-init status counts, accounts, effective SSH, UFW, listeners, Docker, swap/sysctl, timezone, fail2ban, updates and `/opt` storage. Runs without the checkout (`git show <commit>:deploy/bin/audit-host \| ssh deploy@<host> bash -s`) |
-| `check-host [--allow-os-mismatch]` | Read-only check of Ubuntu 26.04, Docker Engine ≥ 25, Compose ≥ 2.24, Buildx, Git, env file privacy/keys, socket group/mode `660`, no Docker TCP listener, state/lock files, backup directory owner/mode and key placement; reports disk, memory and swap |
-| `init-state` | Creates missing state/release directories and lock files only |
-| `build-release <40-char commit>` | Builds both images from `git archive` of the exact commit with pinned base images, locked dependencies and `SOURCE_DATE_EPOCH`; records commit, image IDs, tool versions, duration and available memory in `release.env` |
+| `audit-host` | Read-only, sanitized audit of the existing cloud-init baseline for F: cloud-init status counts, accounts, effective SSH, UFW, listeners, Docker, swap/sysctl, timezone, fail2ban, updates, `/opt` storage, the newest received sources with their manifest digest (or attention if a manifest is missing or staging was left behind) and `schatten-receive` ownership; Git presence is only a fact. Runs without the checkout (`git show <commit>:deploy/bin/audit-host \| ssh deploy@<host> bash -s`) |
+| `check-host [--allow-os-mismatch]` | Read-only check of Ubuntu 26.04, Docker Engine ≥ 25, Compose ≥ 2.24, Buildx, `python3`/`flock`/`sha256sum`/`tar` (not Git), env file privacy/keys, socket group/mode `660`, no Docker TCP listener, state/release/source directories and lock files, backup directory owner/mode and key placement; reports whether `/usr/local/bin/schatten-receive` is installed root-owned and not group/other writable (missing is a warning until F installs it); reports disk, memory and swap |
+| `init-state` | Creates missing state, release and `/opt/apps/schatten-sources` directories and lock files only |
+| `schatten-receive <manifest-sha256> [--upload <folder>]` | Installed root-owned receiver, run as `deploy`. Stages and checks only `SOURCE_MANIFEST` first (digest from the run summary, format, count, relative unique sorted paths, `SOURCE_REF=refs/heads/main`, `SOURCE_COMMIT` equal to the upload folder name), then copies only listed regular files without following symlinks, verifies the staged copy, applies manifest modes read-only and renames it to `/opt/apps/schatten-sources/<commit>`; never replaces an existing commit folder and removes staging on failure. Without `--upload` it uses the upload whose manifest has that digest. Prints `SOURCE_DIR=`, `SOURCE_COMMIT=`, `SOURCE_MANIFEST_SHA256=`. `--verify <folder>` re-verifies an accepted folder in place |
+| `build-release --source <verified folder>` | Refuses any folder that is not directly under `SCHATTEN_SOURCES_DIR` (`/opt/apps/schatten-sources`), because `--verify` checks a folder only against its own manifest. Copies the verified folder into the release, re-verifies that copy against its manifest, then builds both images with pinned base images, locked dependencies and the manifest's `SOURCE_DATE_EPOCH`; no Git. `release.env` records `SOURCE_COMMIT`, `SOURCE_DATE_EPOCH`, `SOURCE_REF`, `SOURCE_RUN_ID`, `SOURCE_MANIFEST_SHA256`, image tags and IDs, Docker Engine/Compose/Buildx and kernel versions, duration and available memory |
 | `deploy-release <id> --approval <ref> …` | Deploys frozen image IDs without building or pulling application images (see gates below) |
 | `initialize status` | Read-only counts (schema version, active default metamodels, metamodel types, Users including deleted, active admins, identities, sessions, organisations); never names, emails or rows |
 | `initialize reference-seed` / `initialize bootstrap-admin` | Explicit C/D first-initialization interfaces from the release backend image; bootstrap requires an interactive terminal |

@@ -669,8 +669,8 @@ Kielletty:
 Status: ADR-013 amendment accepted; production runtime and tooling implemented
 by TASK-059G (`docker-compose.production.yml`, `deploy/`); integrated runbook and
 disposable QA by TASK-059E (`docs/PRODUCTION-RUNBOOK.md`); source delivery
-without Git on the server amended by TASK-059H, implementation pending H1-H3;
-rollout pending F
+without Git on the server amended by TASK-059H; manifest, receiver and Git-free
+build implemented by H1, H2-H3 pending; rollout pending F
 
 Use Docker Engine/Compose on an **UpCloud Ubuntu 26.04 LTS** server. Caddy
 serves built React and terminates public TLS directly at
@@ -764,7 +764,7 @@ ADR-003 Coolify Deployment And Release Migrations: deployment superseded by ADR-
 ADR-004 Authentication, Identity And Session Architecture: accepted
 ADR-005 Production-Only Deployment Environments: accepted
 ADR-006 Local Authentik TLS And Optional Entra Federation: target superseded by ADR-013
-ADR-013 Shared Entra Registration And Local HTTPS Deployment: accepted; source delivery H1-H3 and rollout pending
+ADR-013 Shared Entra Registration And Local HTTPS Deployment: accepted; H1 implemented, source delivery H2-H3 and rollout pending
 ```
 
 ---

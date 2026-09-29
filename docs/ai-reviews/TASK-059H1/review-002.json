@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-059H1/review-002",
+  "task": {
+    "id": "TASK-059H1",
+    "path": "tasks/TASK-059H1-source-manifest-git-free-build.md"
+  },
+  "round": 2,
+  "reviewed_at": "2026-09-29T12:51:39Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "c6a78fb2c4bfc4aa37c6f9316baa5b115ce8f1ef",
+    "head_sha": "e51638486fe3286694a29ca4f60634f8aa7ef9fd",
+    "comparison": "c6a78fb2c4bfc4aa37c6f9316baa5b115ce8f1ef...e51638486fe3286694a29ca4f60634f8aa7ef9fd",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "clean",
+    "summary": "F-001 is fixed: build-release refuses any folder not directly under SCHATTEN_SOURCES_DIR, and the harness covers it. The same branch extends the review-record validator to TASK-XXXA1 IDs with a test and schema documentation, recorded in the task file. No new issues were found.",
+    "findings": [],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-059H1/review-001",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "build-release now resolves SCHATTEN_SOURCES_DIR after load_config and refuses a source folder whose parent is not that directory. The harness shows that a self-consistent read-only copy outside it passes --verify but is refused by build-release, and the unverified-folder case now runs inside the sources directory. The Engine 28.5.2 harness passed on a tree identical to this commit apart from QA documentation.",
+        "validated_by": {
+          "review_id": "TASK-059H1/review-002",
+          "commit": "e51638486fe3286694a29ca4f60634f8aa7ef9fd"
+        }
+      }
+    ]
+  }
+}

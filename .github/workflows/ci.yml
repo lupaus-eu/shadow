@@ -51,8 +51,11 @@ jobs:
           test -f deploy/ofelia/config.ini
           test -f docs/qa/PRODUCTION-RUNTIME-QA.md
           test -f docs/qa/UPCLOUD-RUNBOOK-QA.md
+          test -f docs/qa/SOURCE-DELIVERY-QA.md
           test -f docs/PRODUCTION-RUNBOOK.md
           test -x deploy/bin/audit-host
+          test -x deploy/bin/schatten-receive
+          test -x .github/scripts/create-source-manifest.sh
           test -f .github/scripts/verify-production-worker.sh
           test -f .github/scripts/verify-production-runtime.sh
           test ! -e docker-compose.coolify.yml
@@ -257,7 +260,7 @@ jobs:
             deploy/bin/restore-rehearsal deploy/bin/initialize deploy/bin/docker-cleanup \
             deploy/bin/retire-release deploy/bin/ops-status deploy/bin/audit-host deploy/lib/common.sh \
             deploy/ops/backup.sh deploy/ops/restore-check.sh deploy/ops/docker-cleanup.sh \
-            .github/scripts/verify-production-runtime.sh
+            .github/scripts/verify-production-runtime.sh .github/scripts/create-source-manifest.sh
 
       - name: Verify production runtime on an isolated Docker daemon
         run: bash .github/scripts/verify-production-runtime.sh

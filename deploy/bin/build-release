@@ -1,39 +1,62 @@
 #!/usr/bin/env bash
-# Build matching frontend/backend images from one approved exact commit and
-# freeze them in a release record. Builds from `git archive`, so untracked or
-# modified checkout files cannot enter the images. Uses no secrets.
+# Build matching frontend/backend images from one manifest-verified source
+# folder accepted by schatten-receive and freeze them in a release record. The
+# folder is copied into the release and that copy is re-verified against its
+# manifest before building, so only listed, unchanged files enter the images.
+# Uses no secrets and no Git.
 #
-# Usage: deploy/bin/build-release <40-character commit SHA>
-#   SCHATTEN_SOURCE_REPO defaults to /opt/apps/schatten.
+# Usage: deploy/bin/build-release --source <verified source folder>
+#   for example /opt/apps/schatten-sources/<commit>
 
 source "$(dirname "$(readlink -f "$0")")/../lib/common.sh"
+bin_dir="$(dirname "$(readlink -f "$0")")"
 
-commit="${1:-}"
-[[ "${commit}" =~ ^[0-9a-f]{40}$ ]] || die "Usage: build-release <approved 40-character commit SHA>"
-source_repo="${SCHATTEN_SOURCE_REPO:-/opt/apps/schatten}"
+[[ $# == 2 && "$1" == --source ]] || die "Usage: build-release --source <verified source folder>"
+[[ -d "$2" && ! -L "$2" ]] || die "Source folder $2 is missing or a symlink"
+source_dir="$(cd "$2" && pwd -P)"
+commit="$(basename "${source_dir}")"
+[[ "${commit}" =~ ^[0-9a-f]{40}$ ]] || die "Source folder name must be the 40-character commit accepted by schatten-receive"
 
 load_config
+# Only folders accepted by schatten-receive: --verify checks a folder against
+# its own manifest, not against the operator-supplied digest.
+sources_dir="$(cd "${SCHATTEN_SOURCES_DIR}" 2>/dev/null && pwd -P)" \
+  || die "Sources directory ${SCHATTEN_SOURCES_DIR} is missing; run deploy/bin/init-state"
+[[ "$(dirname "${source_dir}")" == "${sources_dir}" ]] \
+  || die "${source_dir} is not an accepted source under ${sources_dir}; receive it with schatten-receive first"
 hold_release_lock
 hold_maintenance_lock
-
-git -C "${source_repo}" cat-file -e "${commit}^{commit}" 2>/dev/null \
-  || die "Commit ${commit} is not present in ${source_repo}; fetch it first"
 
 release_id="$(date -u +%Y%m%dT%H%M%SZ)-${commit:0:12}"
 final_dir="$(release_dir "${release_id}")"
 work_dir="${final_dir}.incomplete"
 [[ ! -e "${final_dir}" && ! -e "${work_dir}" ]] || die "Release ${release_id} already exists"
 mkdir -p "${work_dir}/source"
-trap 'rm -rf "${work_dir}"' EXIT
+# The copied source is read-only; make it removable again on failure.
+trap 'chmod -R u+w "${work_dir}" 2>/dev/null || true; rm -rf "${work_dir}"' EXIT
 
-git -C "${source_repo}" archive --format=tar "${commit}" | tar -x -C "${work_dir}/source"
-source_date_epoch="$(git -C "${source_repo}" show -s --format=%ct "${commit}")"
+tar -C "${source_dir}" -cf - . | tar -C "${work_dir}/source" -xf -
+verified="$("${bin_dir}/schatten-receive" --verify "${work_dir}/source")" \
+  || die "The release copy of ${source_dir} failed manifest verification"
+manifest_value() {
+  local value
+  value="$(sed -n "s/^$1=//p" <<<"${verified}")"
+  [[ -n "${value}" ]] || die "Manifest verification reported no $1"
+  printf '%s' "${value}"
+}
+[[ "$(manifest_value SOURCE_COMMIT)" == "${commit}" ]] || die "Manifest SOURCE_COMMIT does not match ${source_dir}"
+source_date_epoch="$(manifest_value SOURCE_DATE_EPOCH)"
+source_ref="$(manifest_value SOURCE_REF)"
+source_run_id="$(manifest_value SOURCE_RUN_ID)"
+manifest_sha256="$(manifest_value SOURCE_MANIFEST_SHA256)"
+# Build from 0644/0755 files as before the manifest path; frozen read-only below.
+chmod -R u+w "${work_dir}/source"
 backend_image="schatten-backend:${release_id}"
 frontend_image="schatten-frontend:${release_id}"
 
 started="$(date +%s)"
 memory_before="$(awk '/^MemAvailable:/ { print $2 * 1024 }' /proc/meminfo)"
-log "Building ${backend_image} and ${frontend_image} from ${commit}"
+log "Building ${backend_image} and ${frontend_image} from ${commit} (manifest ${manifest_sha256})"
 {
   docker buildx build --load --provenance=false --sbom=false \
     --build-arg SOURCE_DATE_EPOCH="${source_date_epoch}" \
@@ -59,6 +82,9 @@ done
   printf 'RELEASE_ID=%s\n' "${release_id}"
   printf 'SOURCE_COMMIT=%s\n' "${commit}"
   printf 'SOURCE_DATE_EPOCH=%s\n' "${source_date_epoch}"
+  printf 'SOURCE_REF=%s\n' "${source_ref}"
+  printf 'SOURCE_RUN_ID=%s\n' "${source_run_id}"
+  printf 'SOURCE_MANIFEST_SHA256=%s\n' "${manifest_sha256}"
   printf 'BUILT_AT=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   printf 'BUILD_DURATION_SECONDS=%s\n' "${duration}"
   printf 'BUILD_MEMORY_AVAILABLE_BEFORE_BYTES=%s\n' "${memory_before}"
@@ -69,7 +95,6 @@ done
   printf 'DOCKER_ENGINE_VERSION=%s\n' "$(docker version --format '{{.Server.Version}}')"
   printf 'DOCKER_COMPOSE_VERSION=%s\n' "$(docker compose version --short)"
   printf 'DOCKER_BUILDX_VERSION=%s\n' "$(docker buildx version | awk '{ print $2 }')"
-  printf 'GIT_VERSION=%s\n' "$(git --version | awk '{ print $3 }')"
   printf 'KERNEL=%s\n' "$(uname -r)"
 } >"${work_dir}/release.env"
 chmod -R a-w "${work_dir}/source"

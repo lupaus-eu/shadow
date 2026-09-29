@@ -26,7 +26,7 @@ SEVERITIES = ("critical", "high", "medium", "low", "info")
 OUTCOMES = ("clean", "findings", "inconclusive")
 DISPOSITIONS = ("fixed", "accepted_risk", "not_reproduced")
 SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
-TASK_PATTERN = re.compile(r"^TASK-\d{3}[A-Z]?$")
+TASK_PATTERN = re.compile(r"^TASK-\d{3}(?:[A-Z]\d?)?$")
 FINDING_PATTERN = re.compile(r"^F-\d{3}$")
 
 
@@ -142,7 +142,7 @@ def validate_task_identity(
     require_exact_keys(task, {"id", "path"}, path, "task")
     task_id = require_nonempty_string(task["id"], path, "task.id")
     if not TASK_PATTERN.fullmatch(task_id):
-        fail(path, "task.id must match TASK-XXX or TASK-XXXA")
+        fail(path, "task.id must match TASK-XXX, TASK-XXXA or TASK-XXXA1")
     require_relative_path(task["path"], path, "task.path")
     if record.path.parent.name != task_id:
         fail(path, "task directory must match task.id")

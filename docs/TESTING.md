@@ -234,8 +234,8 @@ QA_SOURCE_REPO=/path/to/scratch-clone .github/scripts/verify-production-runtime.
 Do not edit the harness while it runs; bash reads scripts incrementally, so run
 it from a frozen checkout or clone.
 
-It covers `check-host`/`init-state`; `build-release` from an exact commit with
-matching recorded image IDs; first-install deployment with baseline backup;
+It covers `check-host`/`init-state`; the Git-free source path (below);
+`build-release --source` with matching recorded image IDs; first-install deployment with baseline backup;
 published ports, internal-issuer TLS, redirect, headers, SPA, sanitized
 forwarding and exact Caddy-peer trust; the explicit seed/bootstrap interfaces;
 encrypted backup file mode and ownership, isolated restore with schema/data
@@ -252,6 +252,25 @@ restore-evidence gate; failed-migration isolation; schema-compatible rollback
 without migrations and refusal on divergent history; and a secret scan of logs
 and image history. CI also runs shellcheck on the operator scripts.
 
+TASK-059H1 replaced the harness's `build-release <commit>` with the delivered
+source path. On the runner side only, `create-source-manifest.sh` exports the
+commit into an upload-style folder; the harness checks that a second export
+gives a byte-identical manifest, that it lists every tracked file with its Git
+mode and SHA-256, and that scratch repositories with a symlink or a submodule
+are refused. It then adds a stale file and wrong modes to the upload, **drops
+Git from `PATH`** (a symlink farm of every other tool; `command -v git` must
+fail) and runs every remaining step without Git. `schatten-receive` must
+reject a wrong or unknown digest, a changed, missing, symlinked or non-regular
+(FIFO) file, a symlinked parent or upload folder, `..` and absolute paths, a
+duplicate entry, a non-`main` ref and a commit that is not the upload folder
+name, each leaving the sources folder empty. The accepted copy must omit the
+stale files, carry manifest modes read-only, keep verifying after the upload
+is changed, and must not be replaced by a second receive. `build-release`
+refuses the old commit argument, a self-consistent read-only folder outside the
+sources directory and an unverified folder inside it, and its
+`release.env` must carry the manifest digest, ref, run ID and commit time with
+no `GIT_VERSION`; the frozen release source re-verifies against its manifest.
+
 TASK-059E extends the same harness with the runbook's first-installation
 sequence: `initialize status` counts prove nothing is seeded at startup, the
 reference seed is explicit and idempotent, and `initialize bootstrap-admin` is
@@ -266,7 +285,11 @@ initialized database must show the admin and reference-data row counts.
 host, run the harness from an Ubuntu 26.04 container (uutils coreutils, Docker
 CLI/Compose/Buildx from Docker's APT repository, a non-root user in the host
 socket's group, `/tmp` shared at the same path) against a Docker Engine 29
-daemon; `docs/qa/UPCLOUD-RUNBOOK-QA.md` records the exact commands.
+daemon; `docs/qa/UPCLOUD-RUNBOOK-QA.md` records the exact commands. That image
+needs Git for the harness's runner-side manifest, so the server-side commands
+are also checked in an Ubuntu 26.04 container **without Git installed**
+(`init-state`, `check-host`, root-installed `schatten-receive`,
+`build-release --source`), as recorded in `docs/qa/SOURCE-DELIVERY-QA.md`.
 
 ## Operator Runbook And Host Audit
 

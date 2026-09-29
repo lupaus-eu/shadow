@@ -118,3 +118,11 @@ docker run --rm -v "$PWD:/mnt:ro" -w /mnt koalaman/shellcheck:stable --severity=
   script and required-file checks. Runbook changes follow in H3.
 
 Record eventual Step 13 reviews under `docs/ai-reviews/TASK-059H1/`.
+
+## Included Fix: Review Record Task IDs
+
+The AI-review record validator accepted only `TASK-XXX` and `TASK-XXXA`, so
+`TASK-059H1` records failed validation. With developer approval this branch
+also extends `scripts/ai_review_records.py` to accept `TASK-XXXA1`, adds a
+validator test for accepted and rejected suffixes, and documents the form in
+`docs/AI-REVIEW-RECORDS.md`. H2 and H3 records use the same form.

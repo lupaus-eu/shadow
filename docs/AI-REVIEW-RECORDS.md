@@ -17,7 +17,8 @@ docs/ai-reviews/TASK-051/review-001.json
 docs/ai-reviews/TASK-051/review-002.json
 ```
 
-Hakemiston nimi on taskin tunnus. Kierrosnumerot alkavat yhdestä, ovat
+Hakemiston nimi on taskin tunnus: `TASK-XXX`, `TASK-XXXA` tai jaetun
+alitaskin `TASK-XXXA1` (esimerkiksi `TASK-059H1`). Kierrosnumerot alkavat yhdestä, ovat
 kolminumeroisia ja kasvavat ilman aukkoja. Arkisto ei sisällä takautuvasti
 luotuja recordeja aiemmista taskeista.
 
@@ -48,7 +49,7 @@ kentät, joten seuraavat kentät ovat tämän version koko sopimus.
 | --- | --- | --- |
 | `schema_version` | `1` | Record-sopimuksen versio. |
 | `record_id` | `TASK-XXX/review-NNN` | Yksilöllinen record-tunnus, joka vastaa tiedostopolkua. |
-| `task.id`, `task.path` | task-tunnus ja repository-relative polku | Reviewn pysyvä scope-lähde. |
+| `task.id`, `task.path` | task-tunnus (`TASK-XXX`, `TASK-XXXA` tai `TASK-XXXA1`) ja repository-relative polku | Reviewn pysyvä scope-lähde. |
 | `round` | positiivinen kokonaisluku | Taskin review-kierros. |
 | `reviewed_at` | UTC-aika, jonka pääte on `Z` | Reviewn ajankohta. |
 | `reviewer.label` | lyhyt, ei-sensitiivinen merkkijono | Reviewn tehnyt agentti tai palvelu. |
