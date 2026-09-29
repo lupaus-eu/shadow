@@ -71,7 +71,12 @@ Both environments share the existing single-tenant confidential Entra registrati
 with separate secrets and independent databases. Use exact tenant issuer,
 `openid profile email`, no Graph calls and no `email_verified` requirement.
 Guarded pre-provisioned User linking, permanent identity ownership, sessions,
-CSRF and database roles remain unchanged. Builds initially run on UpCloud;
+CSRF and database roles remain unchanged. Builds initially run on UpCloud.
+Source delivery is amended by TASK-059H: a manual, `main`-only "Deploy to
+production" GitHub Action copies the exact commit and a source manifest to a
+dedicated upload-only account; builds run on UpCloud from the manifest-verified
+source. Git is not used on the server and there is no GitHub deploy key; H1-H3
+implement this and F performs the GitHub/host setup.
 GitHub Actions/GHCR is a possible later build location with the same image contract.
 
 Initial release requires daily encrypted on-server PostgreSQL backups in
@@ -94,8 +99,10 @@ implemented by TASK-059C, and the empty-users-table administrator bootstrap is
 implemented by TASK-059D. TASK-059G implements the production runtime,
 build/release, backup and scheduler tooling (`docker-compose.production.yml`,
 `deploy/`) and removes the Coolify adapter. TASK-059E adds the integrated
-operator runbook `docs/PRODUCTION-RUNBOOK.md` and disposable QA; authorized
-setup and rollout remain pending F.
+operator runbook `docs/PRODUCTION-RUNBOOK.md` and disposable QA. TASK-059H
+records the Git-free source delivery in ADR-013; TASK-059H1-H3 implement the
+manifest/receiver/build, the upload gate and workflow, and the server Makefile
+and runbook update. Authorized setup and rollout remain pending F.
 The non-user metamodel seed is approved production reference data; development
 Users and example business data remain forbidden in production. First setup is
 migrations -> reference seed -> empty-users-table administrator bootstrap.

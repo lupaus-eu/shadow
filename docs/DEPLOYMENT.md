@@ -23,6 +23,18 @@ separately approved host, DNS, tenant, backup activation and rollout by that
 runbook. No production operation has been performed. Backup identifiers and
 restore-rehearsal evidence remain release gates.
 
+The ADR-013 amendment of 2026-09-29 (TASK-059H) replaces the host Git checkout
+and GitHub deploy key with a manual "Deploy to production" GitHub Action that
+uploads the exact `main` commit and a source manifest to an upload-only
+account; a root-owned receiver verifies it against the manifest digest from the
+run summary, and builds run from that verified copy with **no Git on the
+server** (see
+[ADR-013](decisions/ADR-013-shared-entra-local-https-deployment.md#source-delivery-without-git-on-the-server)).
+H1-H3 implement it. Until then, the Git-checkout build input described in the
+command and storage tables and runbook below is implemented but superseded as
+the target and must not be set up in F, and neither must the runbook's
+firewall-level SSH restriction.
+
 ## Release Topology
 
 ```text
@@ -38,7 +50,9 @@ Ofelia scheduler ---------------------------> backup and Docker maintenance jobs
 ```
 
 Caddy owns public TLS for `https://schatten.lupaus.eu` and HTTP :80 for the
-required certificate/redirect flow. Restrict SSH to authorized operators.
+required certificate/redirect flow. SSH port 22 stays open for the
+source-delivery Action; `AllowUsers` limits `deploy` to operator networks and
+SSH accepts public keys only (ADR-013 amendment).
 Only Caddy publishes application ports. API, migration job, worker and database
 have no public ports or domains. No Authentik, Traefik, Coolify, forward-auth,
 `auth.lupaus.eu` or new staging environment is required.
@@ -240,8 +254,9 @@ The remaining checks must distinguish configuration intent from effective state:
   operator account, not an application service identity. Validate any authorized
   SSH change before reload and keep a working session to avoid lockout.
 - The OpenSSH UFW allow rule has no source restriction in the supplied config.
-  Verify actual host/provider IPv4/IPv6 rules and document any remaining
-  restriction to operator networks; do not claim it is already source-restricted.
+  Under the source-delivery amendment it stays open for GitHub-hosted runners;
+  verify actual host/provider IPv4/IPv6 rules, and that `AllowUsers` and
+  public-key-only settings are effective before relying on the open rule.
   Check Docker-published ports separately: UFW alone does not establish container
   privacy. Keep API/worker/migration/PostgreSQL ports unpublished.
 - Verify swap/sysctl, free disk/memory, fail2ban's SSH jail and update settings,
@@ -264,13 +279,15 @@ E supplies tested verification and remaining-setup commands in
 including the read-only `audit-host`; G provides runtime tooling that uses the
 installed Engine/Compose. Under the existing approval
 boundaries, F configures missing DNS, Caddy TLS/storage, private PostgreSQL,
-GitHub read-only source access, protected environment files and application
-deployment. Verify source-checkout tools such as Git are available; the supplied
-package list does not explicitly install Git. Make only necessary, reviewed
-host changes. Store secrets privately, never in image layers, source control
+the upload-only account and GitHub `production` environment secrets for the
+source-delivery Action, protected environment files and application
+deployment. Git is not needed or used on the server for deployment; if it is
+present, its presence is only recorded. Make
+only necessary, reviewed host changes. Store secrets privately, never in image layers, source control
 or rendered Compose/log evidence.
 
-Initially build on UpCloud from an approved exact commit and locked inputs.
+Initially build on UpCloud from the manifest-verified source of an approved
+exact commit and locked inputs.
 Record commit/tool versions and matching immutable frontend/backend image
 references, then freeze and verify their IDs/digests. Obtain release approval
 and deploy those artifacts **without rebuilding**. Retain prior matched release
@@ -285,7 +302,8 @@ OIDC settings without tenant secrets.
 OOM/failing builds, sustained memory/swap/CPU contention affecting the app or
 unacceptable build duration trigger reassessment. GitHub Actions/GHCR can later
 build the same artifact contract, followed by approved deployment of frozen
-images. No automatic deployment or off-server workflow is implemented here.
+images. The source-delivery Action only copies files; no automatic deployment
+or off-server build is implemented here.
 
 ## Production Runtime And Operator Commands (TASK-059G)
 
@@ -699,6 +717,13 @@ test never triggers automatic database restoration.
 [D](../tasks/TASK-059D-production-admin-bootstrap.md) and
 [G](../tasks/TASK-059G-upcloud-docker-runtime.md). D uses C for final sequence
 verification. [E](../tasks/TASK-059E-upcloud-docker-runbook-qa.md) integrates them
-in the runbook and disposable QA;
-[F](../tasks/TASK-059F-first-production-rollout.md) follows E and explicit
-operational approval. No production-Authentik task H is created.
+in the runbook and disposable QA.
+[H](../tasks/TASK-059H-github-source-delivery-architecture.md) amends ADR-013
+for Git-free source delivery after E;
+[H1](../tasks/TASK-059H1-source-manifest-git-free-build.md) (manifest, receiver,
+Git-free build) precedes
+[H2](../tasks/TASK-059H2-upload-account-deploy-action.md) (upload gate and
+workflow), and [H3](../tasks/TASK-059H3-server-makefile-runbook.md) (server
+Makefile and runbook) follows both.
+[F](../tasks/TASK-059F-first-production-rollout.md) follows H3 and explicit
+operational approval. Production Authentik remains excluded.

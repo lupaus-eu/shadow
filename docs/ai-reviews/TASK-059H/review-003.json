@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-059H/review-003",
+  "task": {
+    "id": "TASK-059H",
+    "path": "tasks/TASK-059H-github-source-delivery-architecture.md"
+  },
+  "round": 3,
+  "reviewed_at": "2026-09-29T09:25:48Z",
+  "reviewer": {
+    "label": "Claude Code independent review agent"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "322b505390fbf29a627ee26b83d080159cc7958e",
+    "head_sha": "3ce4840fe6a6b771fce18c54bcbd207a9d8115f3",
+    "comparison": "322b505390fbf29a627ee26b83d080159cc7958e...3ce4840fe6a6b771fce18c54bcbd207a9d8115f3",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "clean",
+    "summary": "All three round-2 findings are fixed with targeted edits to the ADR, H1 and H3. The full diff remains documentation only, the ADR, TASK-059F and H1-H3 are consistent, and no new issues were found.",
+    "findings": [],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-059H/review-002",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "H1 and the ADR now stage and verify the manifest's digest, paths, ref and commit before copying any listed file without following symlinks.",
+        "validated_by": {
+          "review_id": "TASK-059H/review-003",
+          "commit": "3ce4840fe6a6b771fce18c54bcbd207a9d8115f3"
+        }
+      },
+      {
+        "record_id": "TASK-059H/review-002",
+        "finding_id": "F-002",
+        "disposition": "fixed",
+        "rationale": "H3 now installs both tools from the approved commit via an operator workstation before the first upload and compares their hashes with the manifest after the first receive, matching the ADR and TASK-059F.",
+        "validated_by": {
+          "review_id": "TASK-059H/review-003",
+          "commit": "3ce4840fe6a6b771fce18c54bcbd207a9d8115f3"
+        }
+      },
+      {
+        "record_id": "TASK-059H/review-002",
+        "finding_id": "F-003",
+        "disposition": "fixed",
+        "rationale": "The ADR now states changes reach main only through pull requests and has F record whether approvals apply and administrators can bypass the protection.",
+        "validated_by": {
+          "review_id": "TASK-059H/review-003",
+          "commit": "3ce4840fe6a6b771fce18c54bcbd207a9d8115f3"
+        }
+      }
+    ]
+  }
+}

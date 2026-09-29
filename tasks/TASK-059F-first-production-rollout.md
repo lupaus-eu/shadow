@@ -4,7 +4,11 @@
 
 Approved [ADR-013](../docs/decisions/ADR-013-shared-entra-local-https-deployment.md)
 amendment and completed
-[TASK-059E](TASK-059E-upcloud-docker-runbook-qa.md), integrating B/C/D/G after A.
+[TASK-059E](TASK-059E-upcloud-docker-runbook-qa.md), integrating B/C/D/G after A,
+and the source-delivery amendment
+[TASK-059H](TASK-059H-github-source-delivery-architecture.md) implemented by
+H1-H3 (manifest-verified receive, upload gate and "Deploy to production"
+workflow, server Makefile and runbook).
 Every provider mutation and production operation requires explicit operational
 approval. This specification and documentation amendment grant no such approval.
 The earlier Coolify/federation setup is superseded. Backup identifiers and
@@ -36,15 +40,36 @@ deployment, DNS/TLS, Entra setup and database initialization remain pending.
 - Verify fresh `deploy` key access and effective password/keyboard-interactive,
   root and default-user SSH policy. The supplied `disable_root: false` is not
   evidence that root SSH is disabled. Check UFW and any provider firewall for
-  IPv4/IPv6 exposure: the supplied OpenSSH allow rule is not source-restricted.
-  Apply only necessary authorized access/firewall changes, validating SSH config
-  and keeping a working session. Preserve public TCP 80/443 and check Docker
+  IPv4/IPv6 exposure. Under the source-delivery amendment TCP 22 stays open for
+  GitHub-hosted runners and `AllowUsers deploy@<operator-cidr> schatten-upload`
+  restricts `deploy` to operator networks. Before opening TCP 22 to anywhere,
+  confirm with `sshd -T` that `PasswordAuthentication no`,
+  `KbdInteractiveAuthentication no`, `PermitRootLogin no` and the `AllowUsers`
+  line are effective and that password/keyboard-interactive logins are refused
+  in a fresh session; any missing setting blocks opening the port. Apply only
+  necessary authorized
+  access/firewall changes, validating SSH config with `sshd -t` and keeping a
+  working session. Preserve public TCP 80/443 and check Docker
   publication separately; UFW alone does not protect published container ports.
 - Verify existing swap/sysctls, free resources, timezone, fail2ban SSH jail and
   unattended-update/reboot policy. Do not infer sufficient build resources from
   swap alone. Record sanitized outcomes without keys, user-data or raw auth logs.
-- Configure missing least-privilege GitHub source access and checkout tooling,
-  protected environment files and persistent storage mappings/permissions.
+- Under authorization, create the `schatten-upload` account (locked password,
+  no sudo, `docker` or `adm`, member of none of `deploy`'s groups; key
+  restricted by `restrict` and the `upload-gate` forced command),
+  `/opt/apps/schatten-upload` (group: the upload account's primary group, with
+  `deploy` as supplementary member) and `/opt/apps/schatten-sources`. Before the
+  first upload, install the root-owned `upload-gate` and `schatten-receive` from
+  the approved `main` commit on an operator workstation, as `deploy` from an
+  operator network; after the first receive, confirm their hashes equal the
+  manifest entries. Verify `main` protection and create the GitHub `production`
+  environment limited to `main` with secrets `SSH_HOST`, `SSH_USER`, `SSH_KEY`,
+  `SSH_PORT` and `SSH_FINGERPRINT`. No GitHub deploy key, host checkout or Git
+  use is configured for deployment; Git's presence on the host is only
+  recorded. The first real "Deploy to production" run, confirming its workflow,
+  event, branch and commit, and receiving its digest are F work.
+- Configure protected environment files and persistent storage
+  mappings/permissions.
   Inspect `/opt/apps` and `/opt/caddy` before use; do not assume creation set
   appropriate ownership. Reuse cloud-init-created `/opt/postgres-backups` as the
   backup destination, verifying permissions and the job mount while preserving
@@ -98,8 +123,8 @@ deployment, DNS/TLS, Entra setup and database initialization remain pending.
   row contents. Missing/failed backup or restore evidence blocks release.
   Subsequent releases require a completed pre-change backup identifier and latest
   successful restore evidence. Never overwrite production as a rehearsal.
-- Build initially on UpCloud from the approved exact commit using G's reproducible
-  process. If resources are inadequate, stop and arrange reviewed off-server
+- Build initially on UpCloud from the manifest-verified source of the approved
+  exact `main` commit using G's reproducible process as amended by H1. If resources are inadequate, stop and arrange reviewed off-server
   builds using the same immutable image contract. Freeze matching frontend/
   backend refs and check evidence before deployment approval. Deploy without
   rebuilding; API/migration/worker share the backend artifact.
@@ -137,6 +162,10 @@ deployment, DNS/TLS, Entra setup and database initialization remain pending.
       with no bootstrap rerun, swap recreation or implicit host reprovisioning.
 - [ ] E's integrated prerequisites and real local direct-Entra verification are
       complete; provider/host/tenant changes have recorded operational approval.
+- [ ] Source reaches the host only through the "Deploy to production" Action and
+      the upload-only account, is accepted by `schatten-receive` with the digest
+      from the run summary; no deploy key or checkout is on the host and Git
+      is not used for deployment.
 - [ ] Ubuntu 26.04 LTS UpCloud host, direct Caddy TLS and private Docker
       PostgreSQL 18 are verified without public backend/database exposure.
 - [ ] Shared registration callbacks, separate secrets, issuer/claims and consumer-
@@ -153,7 +182,7 @@ deployment, DNS/TLS, Entra setup and database initialization remain pending.
 
 ## Execution And Evidence
 
-Follow E's runbook and `docs/AI-DEVELOPMENT-WORKFLOW.md` approval boundaries.
+Follow the runbook as updated by H3 and `docs/AI-DEVELOPMENT-WORKFLOW.md` approval boundaries.
 Do not execute this task merely because its specification exists. Record only
 operations/checks actually performed; leave blocked/unperformed checks pending.
 Keep evidence in the relevant QA/deployment record without identity or credential

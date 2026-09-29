@@ -1,6 +1,7 @@
 # ADR-013: Shared Entra Registration And Local HTTPS Deployment
 
-Status: Accepted; B/C/D/G/E implemented; authorized setup and rollout pending TASK-059F
+Status: Accepted; B/C/D/G/E implemented; source delivery amendment pending
+TASK-059H1-H3; authorized setup and rollout pending TASK-059F
 
 Date: 2026-09-11
 
@@ -13,6 +14,11 @@ superseding the off-server requirement without removing the remaining release ga
 
 Amended: 2026-09-18 to record Ofelia for operational scheduling and its mandatory
 Docker control-plane hardening, pending implementation and verification in G/E/F.
+
+Amended: 2026-09-29 to replace the host Git checkout and GitHub deploy key with
+manual GitHub Action source delivery, a manifest-verified receive step and no
+Git on the server (TASK-059H); see
+[Source Delivery Without Git On The Server](#source-delivery-without-git-on-the-server).
 
 # Context And Supersession
 
@@ -113,9 +119,11 @@ Bind development ingress and any exposed development ports to loopback. Reuse
 valid local CA material where possible and separate application TLS tooling
 from Authentik; do not delete old volumes or reset existing application data.
 
-Production exposes Caddy HTTP/HTTPS (80/443) and restricts SSH to authorized
-operators. API, migration job, single worker and PostgreSQL have no public
-ports or domains. Fix and sanitize forwarded headers at Caddy; FastAPI trusts
+Production exposes Caddy HTTP/HTTPS (80/443). SSH port 22 is reachable for
+GitHub-hosted runners, but only the upload-only account may log in from outside
+operator networks (see
+[SSH exposure](#source-delivery-without-git-on-the-server)). API, migration
+job, single worker and PostgreSQL have no public ports or domains. Fix and sanitize forwarded headers at Caddy; FastAPI trusts
 only its actual Caddy peers, with no broad private-network trust. No upstream
 Traefik trust is needed. Preserve migration-success gates for API/worker and
 backend health gating frontend readiness, including the certificate-issuance
@@ -206,15 +214,18 @@ disabling the existing jobs. Runtime and real scheduler activation remain pendin
 ## Builds And Releases
 
 Initially build on UpCloud from an approved exact commit using reproducible,
-locked inputs. Freeze immutable frontend/backend image references; API,
+locked inputs. Since the 2026-09-29 amendment the build input is the
+manifest-verified source delivered by the "Deploy to production" Action, not a
+host Git checkout. Freeze immutable frontend/backend image references; API,
 migration and worker use the same backend artifact. Deploy those artifacts
 without rebuilding. Keep matching previous release artifacts for coordinated
 application rollback where compatible with the already migrated schema.
 
 Memory exhaustion, sustained swap/CPU pressure affecting the app, excessive
 build time or failed builds trigger reassessment and possible GitHub Actions /
-GHCR builds using the same image contract. This does not implement automatic
-deployment or an off-server workflow. Releases require explicit human approval.
+GHCR builds using the same image contract. The source-delivery Action only
+copies files; it does not build, deploy or implement automatic deployment.
+Releases require explicit human approval.
 
 Application rollback never runs automatic down migrations, deletes volumes,
 resets or restores the database, and cannot recover lost database contents.
@@ -223,6 +234,98 @@ escalate for a separately approved forward fix. A first rollout with no stable
 release has no application rollback target. QA uses simulated OIDC and
 disposable databases locally, separately recorded real-Entra browser checks,
 and narrow authorized production smoke tests.
+
+## Source Delivery Without Git On The Server
+
+Amendment 2026-09-29 (TASK-059H). It replaces the GitHub read-only deploy key,
+the host Git checkout and Git-based exact-commit verification documented for
+TASK-059E/G. Runtime, backups, scheduler hardening, release gates and rollback
+above are unchanged.
+
+**Delivery.** A manually started GitHub workflow, "Deploy to production"
+(`workflow_dispatch` only, refusing any ref other than `refs/heads/main`),
+checks out the exact commit, exports it and writes a source manifest, then
+copies both with a pinned SCP action (`overwrite: true`) to
+`/opt/apps/schatten-upload/<commit>/`. Images are still built on the host from
+the delivered source; nothing is built or deployed on GitHub and no deployment
+starts automatically. Building on GitHub and GHCR image delivery remain a later
+option with the same image contract.
+
+**No Git on the server.** Git runs only on the GitHub runner and in local QA.
+The manifest records `SOURCE_COMMIT`, `SOURCE_REF`, `SOURCE_DATE_EPOCH` (commit
+time), `SOURCE_RUN_ID`, the file count and, per tracked file, mode, SHA-256 and
+relative path. The run writes the manifest SHA-256 to its job summary. A
+root-owned receiver (`schatten-receive`, run as `deploy`) takes that digest
+from the operator and reads the upload only as data. It first copies only the
+manifest into deploy-owned staging and verifies it there: its digest, its paths,
+`SOURCE_REF` as `refs/heads/main` and `SOURCE_COMMIT` against the upload folder
+name. Only then does it copy the listed files into staging, opening upload
+paths without following symlinks and accepting only regular files, and verify
+every staged file's hash. Only the verified staged copy, with modes from the
+manifest, becomes the read-only `/opt/apps/schatten-sources/<commit>/`, so
+later writes to the upload folder cannot change accepted source. `build-release`
+builds only from such a verified folder, re-verifies it, and records the
+manifest digest, ref and run ID in `release.env`. Tooling and `make` commands
+run from the verified copy, never from the upload folder.
+
+**Tool bootstrap and upgrade.** The upload gate must exist before the first
+upload, so F installs `upload-gate` and `schatten-receive` root-owned in
+`/usr/local/bin` from the approved `main` commit on an operator workstation
+(Git there is permitted), as `deploy` from an operator network. After the first
+receive, their hashes must equal the manifest entries for the same paths. The
+installed receiver is always run directly, never through a newly delivered
+Makefile. When a later manifest changes either file, the operator reinstalls
+it from the verified source copy after that copy was accepted by the existing
+receiver.
+
+**Trust consequence.** The server can no longer verify files against a Git
+commit hash; the commit ID in the manifest is a label, not a proof. Integrity
+rests on GitHub (repository, `main` protection and the workflow run), the run
+summary the operator reads over HTTPS and the digest the operator enters.
+Before copying the digest, the operator confirms the run's workflow name,
+`workflow_dispatch` event, `main` branch and commit. This is a weaker guarantee
+than a host-side `git archive` of a fetched commit and is accepted. Because
+acceptance requires the operator-entered digest and verification of the staged
+copy, the upload key alone cannot inject accepted source: files that do not
+match are rejected, and unlisted files are ignored. A GitHub account able to
+change `main` or the workflow remains within the trust boundary.
+
+**Upload account boundary.** The SCP action authenticates as a dedicated,
+unprivileged `schatten-upload` account, never with the `deploy` key. It has a
+locked password, no sudo, no `docker` or `adm` membership, and write access
+only to its upload folder and `/tmp`. Its key is restricted by `restrict` and a
+root-owned forced command (`upload-gate`) that allows only the SCP action's
+upload commands within the upload area. The upload folder's group is the
+upload account's own primary group; `deploy` is a supplementary member of it
+and the upload account is a member of none of `deploy`'s groups. `deploy`
+reads the upload folder only as data and never executes, sources or runs tools
+inside it.
+
+**SSH exposure.** UFW allows TCP 22 from anywhere, because GitHub-hosted
+runners have no fixed addresses. `AllowUsers deploy@<operator-cidr>
+schatten-upload` keeps `deploy` restricted to operator networks; the only
+internet-reachable login can upload files and nothing else. SSH is
+public-key only: the effective `sshd -T` configuration must show
+`PasswordAuthentication no`, `KbdInteractiveAuthentication no` and
+`PermitRootLogin no`, and both allowed accounts keep locked passwords. F
+verifies this, in addition to `AllowUsers`, before TCP 22 is opened to
+anywhere; a missing setting blocks opening the port.
+
+**GitHub-side controls.** `main` is protected against direct and force pushes
+and deletion, so changes reach it only through pull requests; F records
+whether required approvals apply and whether administrators can bypass the
+protection. A
+`production` environment limited to `main` holds
+the secrets `SSH_HOST`, `SSH_USER`, `SSH_KEY`, `SSH_PORT` and
+`SSH_FINGERPRINT` (host-key verification). The workflow uses
+`permissions: contents: read`, checkout with `persist-credentials: false`, the
+third-party SCP action pinned by full commit SHA after developer approval, one
+run at a time and no secret output.
+
+H1 implements the manifest, receiver and Git-free build; H2 the upload gate and
+workflow; H3 the server Makefile and runbook. Creating the GitHub environment
+and secrets, the upload account, SSH/UFW changes and the first real run are
+authorized F setup.
 
 ## Explicit Initial Data
 
@@ -273,10 +376,16 @@ controls was needed.
 | [D](../../tasks/TASK-059D-production-admin-bootstrap.md) | Empty-users-table administrator CLI | A; C for final sequence verification |
 | [G](../../tasks/TASK-059G-upcloud-docker-runtime.md) | Production runtime, build/release and backup tooling | A |
 | [E](../../tasks/TASK-059E-upcloud-docker-runbook-qa.md) | Integrated runbook and QA | B/C/D/G |
-| [F](../../tasks/TASK-059F-first-production-rollout.md) | Authorized setup and first rollout | E and explicit operational approval |
+| [H](../../tasks/TASK-059H-github-source-delivery-architecture.md) | Source delivery amendment (this section and task specs) | E |
+| [H1](../../tasks/TASK-059H1-source-manifest-git-free-build.md) | Source manifest, verified receive, Git-free build | H |
+| [H2](../../tasks/TASK-059H2-upload-account-deploy-action.md) | Upload gate and "Deploy to production" workflow | H1 |
+| [H3](../../tasks/TASK-059H3-server-makefile-runbook.md) | Server Makefile, `service` command, runbook | H1, H2 |
+| [F](../../tasks/TASK-059F-first-production-rollout.md) | Authorized setup and first rollout | H3 and explicit operational approval |
 
-TASK-059H is not created: production Authentik is excluded. B is implemented on
-its own task branch. Acceptance of this ADR does not authorize tenant/DNS
+TASK-059H is the source-delivery amendment; production Authentik remains
+excluded. Until H1-H3 are implemented, the TASK-059G/E tooling and runbook still
+build from a host Git checkout; that path is superseded and must not be set up
+in F. B is implemented on its own task branch. Acceptance of this ADR does not authorize tenant/DNS
 changes, production writes or deployment.
 
 # Options And Consequences
@@ -295,6 +404,14 @@ maintenance and the required backup/restore procedures. Backups reduce recovery
 risk but application rollback alone cannot recover lost contents. Server builds
 reduce initial infrastructure while immutable artifacts preserve a route to
 off-server builds.
+
+Delivering source by a manual Action removes the deploy key, Git and GitHub
+network access from the host, but the host now trusts GitHub and the
+operator-entered digest instead of verifying a commit itself, and SSH port 22
+is internet-reachable for the upload-only account. A self-hosted runner or
+fixed runner addresses would allow a source-restricted port but add
+infrastructure; building on GitHub would move trust further to GitHub and GHCR
+and remains a later option.
 
 # Related
 

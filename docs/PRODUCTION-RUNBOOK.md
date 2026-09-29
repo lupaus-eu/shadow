@@ -16,6 +16,18 @@ backup-activation and production step is TASK-059F work and needs explicit
 operational approval first. Until F records it, every live fact below is
 *reported* or *pending*, never *verified*.
 
+> **Superseded source path and SSH restriction.** The Git installation, GitHub
+> deploy key, host checkout and `build-release <commit>` steps below (sections
+> 0, 1.2, 2.2, 3, 5 and 13) and the UFW operator-CIDR SSH rule in section 2.1
+> are superseded by the
+> [ADR-013 source-delivery amendment](decisions/ADR-013-shared-entra-local-https-deployment.md#source-delivery-without-git-on-the-server):
+> source arrives through the "Deploy to production" Action and a
+> manifest-verified receive, with no Git on the server. UFW keeps TCP 22 open;
+> SSH is limited by `AllowUsers deploy@<operator-cidr> schatten-upload` and
+> public-key-only settings (`PasswordAuthentication no`,
+> `KbdInteractiveAuthentication no`, `PermitRootLogin no`). Do not set up the
+> old path in F; TASK-059H3 replaces these sections.
+
 ## 0. Ground Rules
 
 Evidence labels used in this runbook and the F record:

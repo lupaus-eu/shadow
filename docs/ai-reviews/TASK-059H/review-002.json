@@ -1,0 +1,136 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-059H/review-002",
+  "task": {
+    "id": "TASK-059H",
+    "path": "tasks/TASK-059H-github-source-delivery-architecture.md"
+  },
+  "round": 2,
+  "reviewed_at": "2026-09-29T09:24:40Z",
+  "reviewer": {
+    "label": "Claude Code independent review agent"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "322b505390fbf29a627ee26b83d080159cc7958e",
+    "head_sha": "f5327ee6a0bba3c8627d4aa360cb329b0c59e052",
+    "comparison": "322b505390fbf29a627ee26b83d080159cc7958e...f5327ee6a0bba3c8627d4aa360cb329b0c59e052",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "All six round-1 findings are fixed and the change remains documentation only. The fixes introduce three low-severity issues: the H1 receiver order selects files from a manifest before verifying it, one H3 phrase keeps the superseded tool installation order, and the ADR claims reviewed pull requests without a matching listed control.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "security",
+        "severity": "low",
+        "summary": "The H1 receiver stages the listed files before verifying the manifest digest and paths, so an unverified manifest selects which files deploy reads.",
+        "rationale": "Selecting files to stage requires parsing the manifest before its digest and path checks. A forged manifest from the upload account could list parent-relative paths, causing deploy to read files outside the upload folder into staging before verification fails. The no-follow rule does not stop plain parent-relative paths.",
+        "recommendation": "Order the receiver as: stage the manifest, verify its digest, parse and validate paths, ref and commit from those bytes, and only then copy the listed files without following symlinks and verify their hashes; state the same order in the ADR.",
+        "locations": [
+          {
+            "path": "tasks/TASK-059H1-source-manifest-git-free-build.md",
+            "line": 29
+          },
+          {
+            "path": "docs/decisions/ADR-013-shared-entra-local-https-deployment.md",
+            "line": 259
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "H3 still describes installing the gate and receiver after verifying them against the run summary, contradicting the new bootstrap order.",
+        "rationale": "The ADR and TASK-059F now install both tools from the approved commit on an operator workstation before the first upload and compare hashes after the first receive. The H3 runbook item states both the old and the new order.",
+        "recommendation": "Reword the H3 item to install from the approved commit via an operator workstation before the first upload and confirm the hashes against the manifest after the first receive.",
+        "locations": [
+          {
+            "path": "tasks/TASK-059H3-server-makefile-runbook.md",
+            "line": 44
+          }
+        ]
+      },
+      {
+        "id": "F-003",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "The ADR says main changes arrive only through reviewed pull requests, but the listed protection covers only direct pushes, force pushes and deletion.",
+        "rationale": "Blocking direct and force pushes does not require approving reviews and may not apply to administrators. The trust model depends on main integrity, so the stated guarantee should match the controls F verifies.",
+        "recommendation": "State that changes reach main only through pull requests, or list the additional controls such as required approvals and administrator enforcement for F to verify.",
+        "locations": [
+          {
+            "path": "docs/decisions/ADR-013-shared-entra-local-https-deployment.md",
+            "line": 314
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-059H/review-001",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "The runbook banner now covers sections 0, 1.2, 2.1, 2.2, 3, 5 and 13 including the UFW rule, and DEPLOYMENT.md topology and baseline SSH text match the amendment.",
+        "validated_by": {
+          "review_id": "TASK-059H/review-002",
+          "commit": "f5327ee6a0bba3c8627d4aa360cb329b0c59e052"
+        }
+      },
+      {
+        "record_id": "TASK-059H/review-001",
+        "finding_id": "F-002",
+        "disposition": "fixed",
+        "rationale": "The ADR and H1 now require copying into deploy-owned staging without following symlinks, accepting only regular files and verifying only the staged copy, with an acceptance case for post-staging upload changes.",
+        "validated_by": {
+          "review_id": "TASK-059H/review-002",
+          "commit": "f5327ee6a0bba3c8627d4aa360cb329b0c59e052"
+        }
+      },
+      {
+        "record_id": "TASK-059H/review-001",
+        "finding_id": "F-003",
+        "disposition": "fixed",
+        "rationale": "The ADR and TASK-059F define workstation installation of the gate and receiver before the first upload and a reinstall rule; H3 runs the installed receiver directly and drops the receive target.",
+        "validated_by": {
+          "review_id": "TASK-059H/review-002",
+          "commit": "f5327ee6a0bba3c8627d4aa360cb329b0c59e052"
+        }
+      },
+      {
+        "record_id": "TASK-059H/review-001",
+        "finding_id": "F-004",
+        "disposition": "fixed",
+        "rationale": "H1 requires the main ref and a commit matching the upload folder, the operator confirms the run identity before copying the digest, and main protection is listed and verified in F.",
+        "validated_by": {
+          "review_id": "TASK-059H/review-002",
+          "commit": "f5327ee6a0bba3c8627d4aa360cb329b0c59e052"
+        }
+      },
+      {
+        "record_id": "TASK-059H/review-001",
+        "finding_id": "F-005",
+        "disposition": "fixed",
+        "rationale": "The ADR, H2 and TASK-059F specify the upload account's primary group with deploy as supplementary member and the upload account in none of deploy's groups.",
+        "validated_by": {
+          "review_id": "TASK-059H/review-002",
+          "commit": "f5327ee6a0bba3c8627d4aa360cb329b0c59e052"
+        }
+      },
+      {
+        "record_id": "TASK-059H/review-001",
+        "finding_id": "F-006",
+        "disposition": "fixed",
+        "rationale": "The AGENTS.md sentence is repaired, H2 names a candidate action, and DEPLOYMENT.md and TASK-059F state Git is not used for deployment with presence only recorded.",
+        "validated_by": {
+          "review_id": "TASK-059H/review-002",
+          "commit": "f5327ee6a0bba3c8627d4aa360cb329b0c59e052"
+        }
+      }
+    ]
+  }
+}

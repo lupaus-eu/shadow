@@ -1,0 +1,165 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-059H/review-001",
+  "task": {
+    "id": "TASK-059H",
+    "path": "tasks/TASK-059H-github-source-delivery-architecture.md"
+  },
+  "round": 1,
+  "reviewed_at": "2026-09-29T09:21:51Z",
+  "reviewer": {
+    "label": "Claude Code independent review agent"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "322b505390fbf29a627ee26b83d080159cc7958e",
+    "head_sha": "716c86dc833169ab943c5bb29c3c2f0e51148d23",
+    "comparison": "322b505390fbf29a627ee26b83d080159cc7958e...716c86dc833169ab943c5bb29c3c2f0e51148d23",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "The change is documentation only and within scope, including the developer-approved runbook banner and public-key-only SSH requirement. Relative links and the new ADR anchor resolve, and the ADR-013 amendment covers every point TASK-059H requires. Remaining issues: runbook section 2.1 and DEPLOYMENT.md still direct F to restrict port 22 to operator networks; the receiver specification leaves a check-then-copy race that makes the stated upload-key guarantee too strong; the first installation of the gate and receiver has an unresolved ordering; and several smaller specification and wording gaps.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "documentation",
+        "severity": "medium",
+        "summary": "The runbook banner omits section 2.1, which restricts UFW port 22 to operator networks, and DEPLOYMENT.md still says to restrict SSH at the firewall.",
+        "rationale": "Runbook 2.1 replaces the open OpenSSH rule with an operator-CIDR rule and sets only PermitRootLogin, so following it in F would block GitHub-hosted runners and skip the required public-key-only and AllowUsers settings. The banner lists only sections 1.2, 2.2 and 3, although sections 5 and 13 also depend on the old path. DEPLOYMENT.md's superseded note covers only the Git build input, while its topology and baseline text still describe firewall-level SSH restriction.",
+        "recommendation": "Add sections 2.1, 5 and 13 to the runbook banner, stating that UFW keeps port 22 open and SSH is limited by AllowUsers and public-key-only settings. Align the DEPLOYMENT.md topology and baseline SSH text with the amendment.",
+        "locations": [
+          {
+            "path": "docs/PRODUCTION-RUNBOOK.md",
+            "line": 19
+          },
+          {
+            "path": "docs/PRODUCTION-RUNBOOK.md",
+            "line": 148
+          },
+          {
+            "path": "docs/DEPLOYMENT.md",
+            "line": 52
+          },
+          {
+            "path": "docs/DEPLOYMENT.md",
+            "line": 253
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "security",
+        "severity": "medium",
+        "summary": "The receiver specification verifies files in the writable upload folder and then copies them, leaving a check-then-copy race and symlink exposure.",
+        "rationale": "The upload folder remains writable by the internet-reachable upload key while the receiver runs. The specification does not require parsing the manifest from the digest-verified bytes, hashing the bytes actually copied, or refusing non-regular files and symlinked parents. The later build re-verifies only against the copied manifest and does not compare its digest with the operator-entered value, so the ADR claim that the upload key alone cannot inject accepted source is stronger than the specified design guarantees.",
+        "recommendation": "Require in H1 and the ADR that the receiver copies into deploy-owned staging and verifies the copy (or hashes while copying), parses the manifest from the verified bytes, opens upload paths without following links and accepts only regular files, and that the operator-entered digest is checked against the recorded manifest digest before build.",
+        "locations": [
+          {
+            "path": "docs/decisions/ADR-013-shared-entra-local-https-deployment.md",
+            "line": 261
+          },
+          {
+            "path": "docs/decisions/ADR-013-shared-entra-local-https-deployment.md",
+            "line": 272
+          },
+          {
+            "path": "tasks/TASK-059H1-source-manifest-git-free-build.md",
+            "line": 28
+          }
+        ]
+      },
+      {
+        "id": "F-003",
+        "category": "documentation",
+        "severity": "medium",
+        "summary": "The first installation of the upload gate and receiver, and the Makefile receive target, have an unresolved bootstrap order.",
+        "rationale": "The upload key's forced command must exist before the first Action run, yet F installs it only after verifying it against a run's manifest. H3 invokes the receive target from the verified source copy that only exists after receiving, and the ADR forbids running tooling from the upload folder. The upgrade path for the root-owned gate and receiver when later commits change them is not specified.",
+        "recommendation": "Specify the first-install order in F and H3 (or as a rule in the ADR), state that receive calls the installed receiver directly rather than the new commit's Makefile, and define how the installed gate and receiver are upgraded.",
+        "locations": [
+          {
+            "path": "tasks/TASK-059F-first-production-rollout.md",
+            "line": 56
+          },
+          {
+            "path": "tasks/TASK-059H3-server-makefile-runbook.md",
+            "line": 26
+          },
+          {
+            "path": "docs/decisions/ADR-013-shared-entra-local-https-deployment.md",
+            "line": 266
+          }
+        ]
+      },
+      {
+        "id": "F-004",
+        "category": "security",
+        "severity": "low",
+        "summary": "The receiver is not required to check the manifest ref and commit, and main protection is missing from the listed GitHub-side controls.",
+        "rationale": "The trust statement relies on main protection and the workflow run, but anyone with repository write access can produce a convincing run summary from another branch; only the environment restriction keeps the secrets from it. H1 does not require the ref to be the main branch or the commit to match the upload folder name, and the operator is not told to confirm the run's workflow, event, branch and commit before copying the digest.",
+        "recommendation": "Require in H1 that the manifest ref is the main branch and the commit matches the upload folder, have H3 and F instruct the operator to confirm the run identity before copying the digest, and list main branch protection among the GitHub-side controls F verifies.",
+        "locations": [
+          {
+            "path": "docs/decisions/ADR-013-shared-entra-local-https-deployment.md",
+            "line": 268
+          },
+          {
+            "path": "docs/decisions/ADR-013-shared-entra-local-https-deployment.md",
+            "line": 295
+          },
+          {
+            "path": "tasks/TASK-059H1-source-manifest-git-free-build.md",
+            "line": 29
+          }
+        ]
+      },
+      {
+        "id": "F-005",
+        "category": "security",
+        "severity": "low",
+        "summary": "The shared group through which deploy reads the upload folder is not defined.",
+        "rationale": "If F placed the upload account into one of deploy's groups rather than a dedicated group, the internet-reachable account would gain group access to deploy-owned files. The impact is limited while the forced command holds, but the direction of membership should be fixed in the specification.",
+        "recommendation": "Specify a dedicated group for the upload area with deploy as a supplementary member and the upload account in none of deploy's groups.",
+        "locations": [
+          {
+            "path": "docs/decisions/ADR-013-shared-entra-local-https-deployment.md",
+            "line": 280
+          },
+          {
+            "path": "tasks/TASK-059H2-upload-account-deploy-action.md",
+            "line": 45
+          }
+        ]
+      },
+      {
+        "id": "F-006",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "Smaller wording gaps: a split sentence in AGENTS.md, a self-referential action placeholder in H2, and inconsistent Git-presence wording.",
+        "rationale": "The AGENTS.md insertion splits the sentence about initial UpCloud builds and later GitHub builds. H2 compares the placeholder action with itself, giving no real candidate. DEPLOYMENT.md says Git is not installed and the F acceptance criterion requires no Git on the host, while the ADR says only that Git is not used and H1 records its presence as a fact, which could force an unplanned package removal.",
+        "recommendation": "Reflow the AGENTS.md paragraph, name the candidate SCP action in H2 or state that it is to be identified, and align DEPLOYMENT.md and TASK-059F on Git not being used for deployment with presence only recorded.",
+        "locations": [
+          {
+            "path": "AGENTS.md",
+            "line": 74
+          },
+          {
+            "path": "tasks/TASK-059H2-upload-account-deploy-action.md",
+            "line": 25
+          },
+          {
+            "path": "docs/DEPLOYMENT.md",
+            "line": 280
+          },
+          {
+            "path": "tasks/TASK-059F-first-production-rollout.md",
+            "line": 162
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": []
+  }
+}

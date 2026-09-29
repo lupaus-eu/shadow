@@ -668,14 +668,29 @@ Kielletty:
 
 Status: ADR-013 amendment accepted; production runtime and tooling implemented
 by TASK-059G (`docker-compose.production.yml`, `deploy/`); integrated runbook and
-disposable QA by TASK-059E (`docs/PRODUCTION-RUNBOOK.md`); rollout pending F
+disposable QA by TASK-059E (`docs/PRODUCTION-RUNBOOK.md`); source delivery
+without Git on the server amended by TASK-059H, implementation pending H1-H3;
+rollout pending F
 
 Use Docker Engine/Compose on an **UpCloud Ubuntu 26.04 LTS** server. Caddy
 serves built React and terminates public TLS directly at
 `https://schatten.lupaus.eu`; it proxies `/api` to private FastAPI. Certificate
 storage persists across replacements. PostgreSQL 18 initially runs privately
 in Docker with persistent storage. Only Caddy exposes public application ports.
-SSH is restricted; FastAPI trusts only actual Caddy peers and no upstream edge.
+SSH port 22 is reachable for GitHub-hosted runners, but `AllowUsers` limits
+`deploy` to operator networks, the only other account can upload files only,
+and SSH accepts public keys only (no password, keyboard-interactive or root login).
+FastAPI trusts only actual Caddy peers and no upstream edge.
+
+Source reaches the host through a manually started "Deploy to production"
+GitHub Action restricted to `main`: it exports the exact commit, writes a source
+manifest (commit, ref, `SOURCE_DATE_EPOCH`, run ID, per-file mode and SHA-256)
+and copies both with a pinned SCP action to a dedicated upload-only account.
+**Git is not used on the server.** A root-owned receiver verifies the upload
+against the manifest digest the operator copies from the run summary and
+copies only listed files into a read-only verified source folder. Integrity
+therefore rests on GitHub and the operator-entered digest rather than a
+host-side commit check; ADR-013 records this weaker, accepted guarantee.
 
 A dedicated Ofelia container schedules daily backups and weekly Docker cleanup;
 it does not run application predictions. ADR-013 records its technology choice
@@ -686,8 +701,9 @@ the effective runner restrictions before activation. G implements the scheduler,
 runners and effective-settings verification; E verified them on disposable
 daemons and F verifies and activates them on the host.
 
-Initial builds run on UpCloud from an approved commit and produce frozen,
-immutable matching frontend/backend images. API, migration and the single
+Initial builds run on UpCloud from the verified delivered source of an approved
+`main` commit and produce frozen, immutable matching frontend/backend images.
+The Action builds and deploys nothing. API, migration and the single
 prediction worker use the backend artifact; deployment does not rebuild.
 Migration success gates API/worker, and backend health gates frontend readiness.
 If builds fail or resource contention is unacceptable, consider GitHub Actions /
@@ -748,7 +764,7 @@ ADR-003 Coolify Deployment And Release Migrations: deployment superseded by ADR-
 ADR-004 Authentication, Identity And Session Architecture: accepted
 ADR-005 Production-Only Deployment Environments: accepted
 ADR-006 Local Authentik TLS And Optional Entra Federation: target superseded by ADR-013
-ADR-013 Shared Entra Registration And Local HTTPS Deployment: accepted; runtime/rollout pending
+ADR-013 Shared Entra Registration And Local HTTPS Deployment: accepted; source delivery H1-H3 and rollout pending
 ```
 
 ---
