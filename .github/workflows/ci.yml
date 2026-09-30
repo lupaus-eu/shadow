@@ -56,6 +56,8 @@ jobs:
           test -x deploy/bin/audit-host
           test -x deploy/bin/schatten-receive
           test -x deploy/bin/upload-gate
+          test -x deploy/bin/service
+          test -f deploy/Makefile
           test -x .github/scripts/create-source-manifest.sh
           test -x .github/scripts/prepare-production-upload.sh
           test -x .github/scripts/verify-upload-gate.sh
@@ -266,7 +268,8 @@ jobs:
             deploy/ops/backup.sh deploy/ops/restore-check.sh deploy/ops/docker-cleanup.sh \
             .github/scripts/verify-production-runtime.sh .github/scripts/create-source-manifest.sh \
             deploy/bin/upload-gate .github/scripts/prepare-production-upload.sh \
-            .github/scripts/verify-upload-gate.sh
+            .github/scripts/verify-upload-gate.sh deploy/bin/service
+          make -s -C deploy help >/dev/null
 
       - name: Lint the Deploy to production workflow
         run: >-

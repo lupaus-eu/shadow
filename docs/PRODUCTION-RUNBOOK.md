@@ -4,29 +4,28 @@ This is the integrated operator runbook for Schatten on the existing UpCloud
 **Ubuntu 26.04 LTS** host: Docker Engine/Compose, direct Caddy TLS for
 `https://schatten.lupaus.eu`, private PostgreSQL 18 in Docker, direct Entra
 OIDC, daily encrypted on-server backups with 7-day retention and the hardened
-Ofelia scheduler. It integrates TASK-059B/C/D/G under
+Ofelia scheduler. It integrates TASK-059B/C/D/G and the Git-free source
+delivery of TASK-059H1-H3 under
 [ADR-013](decisions/ADR-013-shared-entra-local-https-deployment.md). The
 architecture, configuration contract and tooling reference live in
-[DEPLOYMENT.md](DEPLOYMENT.md). The disposable verification behind every
-command below is recorded in
-[UPCLOUD-RUNBOOK-QA.md](qa/UPCLOUD-RUNBOOK-QA.md).
+[DEPLOYMENT.md](DEPLOYMENT.md). The disposable verification behind the
+commands below is recorded in
+[UPCLOUD-RUNBOOK-QA.md](qa/UPCLOUD-RUNBOOK-QA.md) (E) and
+[SOURCE-DELIVERY-QA.md](qa/SOURCE-DELIVERY-QA.md) (H1-H3).
 
 **This runbook authorizes nothing.** Every host, DNS, firewall, GitHub, Entra,
 backup-activation and production step is TASK-059F work and needs explicit
 operational approval first. Until F records it, every live fact below is
 *reported* or *pending*, never *verified*.
 
-> **Superseded source path and SSH restriction.** The Git installation, GitHub
-> deploy key, host checkout and `build-release <commit>` steps below (sections
-> 0, 1.2, 2.2, 3, 5 and 13) and the UFW operator-CIDR SSH rule in section 2.1
-> are superseded by the
-> [ADR-013 source-delivery amendment](decisions/ADR-013-shared-entra-local-https-deployment.md#source-delivery-without-git-on-the-server):
-> source arrives through the "Deploy to production" Action and a
-> manifest-verified receive, with no Git on the server. UFW keeps TCP 22 open;
-> SSH is limited by `AllowUsers deploy@<operator-cidr> schatten-upload` and
-> public-key-only settings (`PasswordAuthentication no`,
-> `KbdInteractiveAuthentication no`, `PermitRootLogin no`). Do not set up the
-> old path in F; TASK-059H3 replaces these sections.
+Source reaches the host only through the manually started "Deploy to
+production" GitHub Action and a manifest-verified receive
+([ADR-013 source-delivery amendment](decisions/ADR-013-shared-entra-local-https-deployment.md#source-delivery-without-git-on-the-server)).
+There is **no Git, deploy key or checkout on the server**. UFW keeps TCP 22
+open for GitHub-hosted runners; SSH is limited by
+`AllowUsers deploy@<operator-cidr> schatten-upload` and public-key-only
+settings. The order is: tool bootstrap (2.2) -> Action -> run check -> digest
+-> receive -> build -> deploy (sections 3-5).
 
 ## 0. Ground Rules
 
@@ -35,19 +34,54 @@ Evidence labels used in this runbook and the F record:
 | Label | Meaning |
 | --- | --- |
 | Reported | Operator-supplied configuration (the cloud-init baseline); not evidence |
-| Tested (E) | Exercised against disposable local infrastructure; see the QA record |
+| Tested (E, H1-H3) | Exercised against disposable local infrastructure; see the QA records |
 | Verified (F) | Observed on the real host/provider under approval and recorded by F |
 | Pending | Not yet performed; never mark it complete without doing it |
 
 Always:
 
-- Run tooling from the frozen release you act on:
-  `B=/opt/apps/schatten-releases/<release-id>/source/deploy/bin`. Only
-  `build-release` runs from the reviewed checkout.
+- Run tooling from the **verified source copy** of the release you act on,
+  which `schatten-receive` prints as `SOURCE_DIR=`:
+
+  ```bash
+  S=/opt/apps/schatten-sources/<commit>   # read-only, manifest-verified
+  M="make -C $S/deploy"                   # $M help lists the targets below
+  B=$S/deploy/bin                         # direct commands that make does not offer
+  ```
+
+  Each frozen release keeps an identical, re-verified copy in
+  `/opt/apps/schatten-releases/<release-id>/source`; a rollback runs the
+  target release's copy (section 6). The only command outside these copies is
+  the installed `/usr/local/bin/schatten-receive`, always run directly.
 - Record sanitized outcomes only: identifiers, counts, statuses, versions and
   times. Keep a working SSH session open while changing SSH or firewall rules.
 - Stop at the first failed gate. Commands leave release pointers unchanged on
   failure and print the next safe action.
+
+`deploy/Makefile` targets are thin wrappers; every gate stays in the command
+they run. A missing required variable stops with a usage message (exit 2),
+values are passed through the environment and never evaluated by a shell, and
+`deploy`/`first-install` refuse a release that was not built from the copy
+they run from (the release ID ends with the first 12 characters of its commit).
+
+| Target | Runs |
+| --- | --- |
+| `$M check` | `check-host` |
+| `$M audit` | `audit-host` |
+| `$M build` | `build-release --source $S` |
+| `$M deploy RELEASE=<id> APPROVAL=<ref>` | `deploy-release <id> --approval <ref>` |
+| `$M first-install RELEASE=<id> APPROVAL=<ref>` | `deploy-release <id> --approval <ref> --first-install` |
+| `$M status` | `ops-status` |
+| `$M ps`, `$M logs [SERVICE=<service>]`, `$M stop`, `$M start` | `service ps\|logs\|stop\|start` for the current release (section 10) |
+| `$M backup` | `backup-now --reason manual` |
+| `$M restore BACKUP=<id> KEY=<file> [PASSPHRASE=<file>]` | `restore-rehearsal`, into a disposable database only (8.3); `KEY` and `PASSPHRASE` must be absolute paths because `make -C` runs in the deploy folder |
+| `$M cleanup-dry-run` | `docker-cleanup --dry-run` |
+
+No target runs `docker compose down -v`, prunes, deletes volumes, runs down
+migrations, restores production, seeds or bootstraps. These stay direct `$B`
+commands with their own gates: `init-state`, `initialize`,
+`verify-runtime-hardening`, `deploy-release ... --enable-scheduler`,
+`deploy-release ... --rollback`, `retire-release` and `docker-cleanup --apply`.
 
 Never:
 
@@ -63,6 +97,9 @@ Never:
   seed (`002_seed_development_data.sql`) or any restore onto production.
 - Deploy without a recorded human approval, or treat a merge to `main` as
   approval.
+- Execute, source or `make` anything inside `/opt/apps/schatten-upload`: the
+  upload is data for `schatten-receive` only. Install Git, a deploy key or a
+  checkout on the host.
 
 `deploy` is a **privileged operator**: passwordless sudo plus membership of the
 `docker` group, which is itself host-administrator-equivalent. It is not an
@@ -93,12 +130,16 @@ Repeat the refusal check for `root` and the image's default user. Record only
 ### 1.2 Sanitized host audit
 
 `deploy/bin/audit-host` inspects the effective state with `sudo -n` read-only
-commands and prints counts and settings only. It does not need the checkout,
-so run the reviewed version straight from the workstation:
+commands and prints counts and settings only. Before the first receive there
+is no verified copy on the host, so run the version of the approved `main`
+commit from an operator workstation (Git is allowed there, never on the host):
 
 ```bash
-git show <reviewed-commit>:deploy/bin/audit-host | ssh deploy@<host> bash -s > audit-host.txt
+git fetch origin && git merge-base --is-ancestor <approved-commit> origin/main
+git show <approved-commit>:deploy/bin/audit-host | ssh deploy@<host> bash -s > audit-host.txt
 ```
+
+After the first receive, run `$M audit > audit-host.txt` on the host instead.
 
 It reports `ok`, `attention`, `manual` and `missing` lines and a final
 `SUMMARY attention=N missing=M`. It exits 0: attention items are decisions for
@@ -106,29 +147,33 @@ F, not script failures. It covers:
 
 | Area | Checked |
 | --- | --- |
-| OS/tools | Ubuntu 26.04, kernel, uutils coreutils and sudo-rs versions, `git`, `python3`, `curl`, `gpg`, `openssl`, `flock`, `ss` |
+| OS/tools | Ubuntu 26.04, kernel, uutils coreutils and sudo-rs versions, `python3`, `curl`, `gpg`, `openssl`, `flock`, `ss`, `make`; Git presence is only a fact |
 | cloud-init | `cloud-init status --format json`: status, error and recoverable-error **counts** only |
 | Accounts | Human accounts and root: password status (`L` locked), authorized-key **counts**, `sudo`/`docker`/`adm` membership; `docker` group members; passwordless sudo for `deploy` |
-| SSH | `sshd -T` effective `permitrootlogin`, password/keyboard-interactive/pubkey settings, `authenticationmethods`, `allowusers`/`allowgroups`, ports; `Match` blocks; `ssh.socket`/`ssh.service` state |
-| Firewall | `ufw status verbose` rules; SSH allowed from `Anywhere` |
+| SSH | `sshd -T` effective `permitrootlogin`, password/keyboard-interactive/pubkey settings, `authenticationmethods`, `allowusers`/`allowgroups`, ports; `AllowUsers` must restrict `deploy` to `deploy@<cidr>` patterns, admit `schatten-upload` and nothing else; `Match` blocks; `ssh.socket`/`ssh.service` state |
+| Firewall | `ufw status verbose` rules; SSH allowed from `Anywhere` is a fact when root, password and keyboard-interactive login are off, otherwise attention |
 | Listeners | Non-loopback TCP listeners other than 22/80/443; any 2375/2376 Docker API listener |
 | Docker | Engine/containerd/Compose/Buildx versions, storage/cgroup/security options, socket mode/group, `daemon.json` keys, containers publishing ports other than 80/443 |
 | Resources | Swap devices, fstab swap entries, `vm.swappiness`/`vm.vfs_cache_pressure`, CPUs, memory, disk for `/`, `/var/lib/docker`, `/opt` |
 | Time | Timezone `Europe/Helsinki`, NTP synchronization |
 | fail2ban | `sshd` jail, current/total ban **counts** (no addresses), `maxretry`/`findtime`/`bantime` |
 | Updates | unattended-upgrades units, APT periodic and automatic-reboot settings, pending reboot, held packages |
-| Storage | Owner/mode/entry count/filesystem of `/opt/apps`, `/opt/caddy`, `/opt/postgres-backups` and the Schatten paths; `deploy` ownership of `/opt/apps` and existing Schatten paths; completed-manifest count; checkout remote without embedded credentials |
+| Storage | Owner/mode/entry count/filesystem of `/opt/apps`, `/opt/caddy`, `/opt/postgres-backups` and the Schatten paths; `deploy` ownership of `/opt/apps` and existing Schatten paths; completed-manifest count |
+| Upload | `schatten-upload`: locked password, only its own group, no sudo rules, `deploy` in its group, root-owned home/`.ssh`/`authorized_keys`, key **counts** and how many start with `restrict,command="/usr/local/bin/upload-gate"`, no `authorized_keys2`; `/opt/apps/schatten-upload` `schatten-upload:schatten-upload` `0750` |
+| Source | `/usr/local/bin/upload-gate` and `schatten-receive`: root-owned, not group/other writable, SHA-256; newest received sources with their manifest digest; leftover staging |
 
 Expected attention items on the reported baseline, and the F decision each
 needs:
 
 | Audit finding | Why | F action (approval required) |
 | --- | --- | --- |
-| `permitrootlogin` is not `no` | cloud-init `disable_root: false` keeps root key login | Disable root SSH (2.1) or record an accepted exception |
-| SSH allowed from `Anywhere` | The supplied OpenSSH UFW rule has no source | Restrict to operator networks in UFW and/or the UpCloud firewall (2.1) |
+| `permitrootlogin` is not `no` | cloud-init `disable_root: false` keeps root key login | Disable root SSH (2.1); required before SSH may stay open to anywhere |
+| `AllowUsers is not set` or `deploy is not source-restricted` | The baseline has no `AllowUsers` | Set `AllowUsers deploy@<operator-cidr> schatten-upload` (2.1) |
+| SSH allowed from `Anywhere` while root, password or keyboard-interactive login is enabled | The OpenSSH UFW rule has no source, which ADR-013 accepts only for public-key-only SSH | Harden SSH first (2.1). Afterwards SSH from Anywhere is reported as an accepted fact, not attention |
+| `tool make is not installed` | Not in the supplied package list | Install `make` (2.2) |
 | `/opt/apps` not owned by `deploy` | cloud-init creates directories as root by default; `check-host` and the setup steps need `deploy` to write there | Set ownership non-recursively (2.2) |
 | `/opt/postgres-backups` not `10002:10002` `0700` | cloud-init creates directories as root by default | Set ownership/mode non-recursively (2.5) |
-| `tool git is not installed` | Not in the supplied package list | Install Git (2.2) |
+| Upload account, upload folder, `upload-gate`, `schatten-receive` absent (facts) | Not part of the baseline | Create and install them (2.2) |
 | cloud-init errors/recoverable errors | Provisioning did not finish cleanly | Inspect privately with `sudo cloud-init status --long`; decide before rollout |
 | Pending reboot | Kernel/library updates waiting | Reboot in a quiet window before the first release (10.2) |
 | sysctl/fail2ban values differ from 10/50 and 5/600/3600 | Reported settings not effective | Record; correct only if approved |
@@ -149,72 +194,175 @@ reported settings and verified results in separate columns.
 Each step is an authorized change. Record who approved it and the sanitized
 result. Nothing here reprovisions the host.
 
-### 2.1 SSH and firewall restrictions
+### 2.1 Public-key-only SSH, `AllowUsers` and port 22
 
-If approved, disable root SSH and restrict SSH sources without losing access:
+GitHub-hosted runners have no fixed addresses, so TCP 22 stays reachable from
+anywhere and SSH itself is restricted: only `deploy` from operator networks
+and the upload-only `schatten-upload` may log in, with keys only. Keep the
+existing session open throughout:
 
 ```bash
-# Keep the existing session open. Drop-in files are read in lexical order;
-# the first value of each option wins, so use a low number.
-printf 'PermitRootLogin no\n' | sudo tee /etc/ssh/sshd_config.d/10-schatten-hardening.conf >/dev/null
-sudo sshd -t && sudo sshd -T | grep -Ei '^(permitrootlogin|passwordauthentication|kbdinteractiveauthentication) '
-sudo systemctl reload ssh.service   # Ubuntu 26.04 starts ssh.service from ssh.socket
-# Verify from the workstation in a NEW session (1.1) before closing the old one.
-
-# Restrict SSH in UFW: add the restricted rule first, then remove the open one.
-sudo ufw allow from <operator-cidr> to any port 22 proto tcp comment 'schatten operators'
-sudo ufw status numbered
-sudo ufw delete allow OpenSSH             # removes the IPv4 and the IPv6 OpenSSH rule
+# Drop-in files are read in lexical order and the first value of each option
+# wins, so use a low number. One deploy@<cidr> pattern per operator network
+# (IPv4 and, if used, IPv6), for example deploy@198.51.100.0/24.
+sudo tee /etc/ssh/sshd_config.d/10-schatten-hardening.conf >/dev/null <<'EOF'
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PermitRootLogin no
+AllowUsers deploy@<operator-cidr> schatten-upload
+EOF
+sudo sshd -t
+sudo sshd -T | grep -Ei '^(permitrootlogin|passwordauthentication|kbdinteractiveauthentication|allowusers) '
 ```
 
-If operators connect over IPv6, add their IPv6 rule before the delete, or
-restrict SSH in the UpCloud firewall instead. Keep TCP 80 and 443 public:
-port 80 serves ACME HTTP-01 and the HTTPS redirect. Rerun `audit-host` and
-record the new effective state. The drop-in, `sshd -t`/`sshd -T` and UFW
-sequence were tested in a disposable Ubuntu 26.04 container (root login then
-reported disabled, SSH no longer open to `Anywhere`); the `systemctl reload`
-and the real-host result were not, so validate each before continuing.
+`sshd -t` must print nothing, and `sshd -T` must show `permitrootlogin no`,
+`passwordauthentication no`, `kbdinteractiveauthentication no` and one
+`allowusers` line per pattern: each `deploy@<operator-cidr>` and
+`schatten-upload`. Only then reload and verify in a **new** session from the
+workstation before closing the old one:
 
-### 2.2 Operator directory, Git and read-only GitHub source access
+```bash
+sudo systemctl reload ssh.service   # Ubuntu 26.04 starts ssh.service from ssh.socket
+# From the workstation: repeat 1.1. deploy must be accepted from the operator
+# network; root and password/keyboard-interactive logins must be refused.
+```
 
-`deploy` creates the Schatten paths under `/opt/apps` and `check-host` requires
-`/opt/apps` to be writable by it; no container writes there. If `audit-host`
-reported another owner, inspect it and change only the directory itself, never
-its existing contents; `/opt/caddy` stays unchanged:
+`AllowUsers` also shuts out root, the image's default user and every other
+account over SSH; the UpCloud console stays the recovery path. Record that in
+the F record. If the new session fails, fix the drop-in from the old session.
+
+Port 22: the reported baseline's UFW `OpenSSH` rule already allows 22 from
+`Anywhere`; keep it and add no source restriction. Confirm it only after the
+four settings are shown by `sshd -T` and the new session worked, because a
+missing setting blocks leaving 22 open:
+
+```bash
+sudo ufw status verbose            # 22/tcp (OpenSSH) ALLOW IN Anywhere (and v6); 80/443 public
+sudo ufw allow OpenSSH             # only if a source-restricted rule replaced it earlier
+```
+
+In the UpCloud provider firewall, allow TCP 22 from anywhere for IPv4 (and
+IPv6 only if SSH over IPv6 is intended) and TCP 80/443 publicly, nothing else.
+Rerun `audit-host`: root, password and keyboard-interactive login `ok`,
+`deploy is source-restricted by AllowUsers`, `AllowUsers admits
+schatten-upload`, and SSH from `Anywhere` reported as an accepted fact.
+
+Optional, **a developer decision** (not the default): an idle limit for upload
+sessions. `upload-gate` already ends each `scp`/`tar` after 10 minutes, which
+is the actual limit on how long the gate stays busy; this block additionally
+closes forgotten idle connections but does not stop a client that keeps
+sending data. Append it at the end of the drop-in (a `Match` block applies to
+everything after it), then validate as above:
+
+```bash
+printf '\nMatch User schatten-upload\n  ChannelTimeout session=15m\n' \
+  | sudo tee -a /etc/ssh/sshd_config.d/10-schatten-hardening.conf >/dev/null
+sudo sshd -t && sudo sshd -T -C user=schatten-upload,host=runner,addr=203.0.113.9 | grep -i '^channeltimeout'
+```
+
+With it, `audit-host` reports the `Match` block as attention to evaluate; that
+is expected. The drop-in, `sshd -t`/`sshd -T`, `AllowUsers` CIDR matching and
+the optional block were tested in a disposable Ubuntu 26.04 container
+([QA](qa/SOURCE-DELIVERY-QA.md#server-makefile-service-command-and-runbook-task-059h3));
+`systemctl reload` and the real host were not, so validate each before
+continuing.
+
+### 2.2 Operator directory, upload account, source tools and GitHub environment
+
+This is the tool bootstrap: the upload gate must exist before the first
+upload, and the receiver before the first receive. Both come from the
+**approved `main` commit** through an operator workstation.
+
+**Step 1: `/opt/apps`, `make` and the sources folder.** `deploy` creates the
+Schatten paths under `/opt/apps` and `check-host` requires `/opt/apps` to be
+writable by it; no container writes there. If `audit-host` reported another
+owner, inspect it and change only the directory itself, never its existing
+contents; `/opt/caddy` stays unchanged:
 
 ```bash
 sudo ls -la /opt/apps                          # look; do not record names of unrelated files
 sudo chown deploy:deploy /opt/apps             # not recursive
 sudo chmod 0755 /opt/apps
+command -v make || sudo apt-get install --yes make   # only if audit-host reported it missing
+install -d -m 0755 /opt/apps/schatten-sources  # as deploy; the receiver refuses a missing or foreign folder
 ```
 
 If a Schatten path (`schatten`, `schatten-config`, `schatten-state`,
-`schatten-releases`) already exists with another owner, stop and review it
-instead of changing it.
+`schatten-releases`, `schatten-sources`, `schatten-upload`) already exists with
+another owner, stop and review it instead of changing it. `/opt/apps/schatten`
+is the superseded checkout path and is not created.
+
+**Step 2: upload key pair (workstation).** Its private half goes only into the
+GitHub secret `SSH_KEY` (step 6); it is never the `deploy` key:
 
 ```bash
-command -v git || sudo apt-get install --yes git        # only if audit-host reported it missing
-ssh-keygen -t ed25519 -N '' -C 'schatten-upcloud-readonly' -f ~/.ssh/schatten_github_ro
-cat >> ~/.ssh/config <<'EOF'
-Host github-schatten
-  HostName github.com
-  User git
-  IdentityFile ~/.ssh/schatten_github_ro
-  IdentitiesOnly yes
-EOF
-ssh-keyscan -t ed25519 github.com | ssh-keygen -lf -   # compare with GitHub's published fingerprint
-ssh-keyscan -t ed25519 github.com >> ~/.ssh/known_hosts
+ssh-keygen -t ed25519 -N '' -C 'schatten-upload' -f schatten-upload
 ```
 
-A GitHub repository admin adds `~/.ssh/schatten_github_ro.pub` as a **read-only
-deploy key** (write access unchecked). Then:
+**Step 3: copy the tools of the approved commit (workstation).**
 
 ```bash
-git clone git@github-schatten:reflector-oy/schatten.git /opt/apps/schatten
+git fetch origin && git merge-base --is-ancestor <approved-commit> origin/main
+mkdir -m 0700 schatten-tools
+for f in upload-gate schatten-receive; do git show "<approved-commit>:deploy/bin/$f" > "schatten-tools/$f"; done
+sha256sum schatten-tools/upload-gate schatten-tools/schatten-receive   # note both values
+ssh deploy@<host> 'install -d -m 0700 ~/schatten-tools'
+scp schatten-tools/upload-gate schatten-tools/schatten-receive schatten-upload.pub deploy@<host>:schatten-tools/
 ```
 
-Never use a personal token or an HTTPS remote with embedded credentials;
-`audit-host` flags one.
+**Step 4: install the tools and create the upload account (host, as
+`deploy`).** The account's details are in
+[DEPLOYMENT.md](DEPLOYMENT.md#source-delivery-workflow-and-upload-account-task-059h2):
+
+```bash
+sha256sum ~/schatten-tools/upload-gate ~/schatten-tools/schatten-receive   # equal to the workstation values
+sudo install -o root -g root -m 0755 ~/schatten-tools/upload-gate /usr/local/bin/upload-gate
+sudo install -o root -g root -m 0755 ~/schatten-tools/schatten-receive /usr/local/bin/schatten-receive
+# Login shell must be a real shell: sshd runs the forced command through it.
+sudo useradd --user-group --no-create-home --home-dir /home/schatten-upload --shell /bin/sh schatten-upload
+sudo passwd --lock schatten-upload
+sudo usermod --append --groups schatten-upload deploy
+id schatten-upload        # only its own group: no sudo, docker, adm or deploy groups
+# Root-owned home, .ssh and key file: the account cannot change its own restriction.
+sudo install -d -o root -g root -m 0755 /home/schatten-upload /home/schatten-upload/.ssh
+sudo install -d -o schatten-upload -g schatten-upload -m 0750 /opt/apps/schatten-upload
+printf 'restrict,command="/usr/local/bin/upload-gate" %s\n' "$(cat ~/schatten-tools/schatten-upload.pub)" \
+  | sudo tee /home/schatten-upload/.ssh/authorized_keys >/dev/null
+sudo chown root:root /home/schatten-upload/.ssh/authorized_keys
+sudo chmod 0644 /home/schatten-upload/.ssh/authorized_keys
+rm -rf ~/schatten-tools
+```
+
+Log out and in again as `deploy` so the new group applies. Give the upload
+account no sudo rule and no further group. Delete the workstation's
+`schatten-upload` private key after step 6; a lost key is replaced with a new
+pair, not recovered.
+
+**Step 5: host key fingerprint (host).** `drone-scp` prefers the ECDSA host
+key, so `SSH_FINGERPRINT` is its SHA-256 fingerprint:
+
+```bash
+ssh-keygen -lf /etc/ssh/ssh_host_ecdsa_key.pub    # 256 SHA256:... (ECDSA); the SHA256:... part is the secret value
+```
+
+Compare it with the fingerprint shown by the UpCloud console or a trusted
+session.
+
+**Step 6: GitHub `production` environment (repository admin).** Create the
+environment with deployment branches limited to `main` and these environment
+secrets (details in
+[DEPLOYMENT.md](DEPLOYMENT.md#source-delivery-workflow-and-upload-account-task-059h2)):
+`SSH_HOST`, `SSH_USER=schatten-upload`, `SSH_KEY` (the step 2 private key),
+`SSH_PORT=22` and `SSH_FINGERPRINT` (step 5). Record that `main` is protected
+against direct and force pushes and deletion, whether required approvals apply
+and whether administrators can bypass the protection. Record names, dates and
+the fingerprint, never secret values.
+
+**After the first receive** (section 3 step 5), both installed tools must equal
+the manifest entries of the same commit; `$M audit` then reports both
+root-owned with their hash. When a later manifest changes either file, the
+receive still runs with the installed receiver; after it has accepted the new
+copy, reinstall the changed file from that copy (section 3 step 6).
 
 ### 2.3 Protected configuration
 
@@ -329,24 +477,30 @@ No Authentik, Traefik, Coolify, forward-auth or `auth.lupaus.eu` is required.
 
 To rotate the production secret: add the new secret in Entra, replace
 `OIDC_CLIENT_SECRET` in `production.env`, redeploy the **current** release
-(`$B/deploy-release <current-id> --approval <ref>`; Compose recreates only
-containers whose configuration changed), verify login, then delete the old
-secret in Entra.
+from its verified copy (`$M deploy RELEASE=<current-id> APPROVAL=<ref>`;
+Compose recreates only containers whose configuration changed), verify login,
+then delete the old secret in Entra.
 
 ### 2.8 Operator state and prerequisites
 
+These run from the verified copy, so they follow the **first receive**
+(section 3 step 5):
+
 ```bash
-/opt/apps/schatten/deploy/bin/init-state     # creates missing state/lock files only
-/opt/apps/schatten/deploy/bin/check-host     # must print PASSED host prerequisites
+$B/init-state     # creates missing state/lock files only
+$M check          # must print PASSED host prerequisites
 ```
 
 `check-host` rejects a non-Ubuntu-26.04 OS, old Docker/Compose, missing
-Buildx/Git, a group-readable env file, image references in the env file, a
-socket not mode `660` or with the wrong group, a Docker TCP listener, missing
+Buildx, `python3`, `flock`, `sha256sum`, `tar` or `make`, a group-readable env
+file, image references in the env file, a socket not mode `660` or with the
+wrong group, a Docker TCP listener, missing state/release/source directories or
 lock files, wrong backup-directory ownership/mode and a public key inside the
-backup directory.
+backup directory. It warns while `/usr/local/bin/schatten-receive` is missing
+and fails if it is not root-owned or is group/other writable. Git is not
+required.
 
-## 3. Build And Freeze A Release
+## 3. Deliver, Receive, Build And Freeze A Release
 
 Before approval, for the exact commit to release:
 
@@ -356,31 +510,95 @@ Before approval, for the exact commit to release:
 2. Confirm real local direct-Entra browser evidence exists for the release
    scope (see the [authentication checklist](qa/AUTHENTICATION-QA-CHECKLIST.md));
    it does not prove production DNS, TLS or secrets.
-3. Build on the host from the reviewed checkout:
+3. **Run the Action.** In GitHub: Actions -> "Deploy to production" -> Run
+   workflow -> branch `main`. A manual run always uses the branch head, so the
+   approved commit must be the head of `main` when you start it. The run
+   uploads source only; it builds and deploys nothing.
+4. **Check the run and copy the digest.** On the run page, over HTTPS, confirm
+   before copying anything: workflow **Deploy to production**, event
+   **`workflow_dispatch`**, branch **`main`**, commit equal to the approved
+   commit, conclusion **success**, and the job summary's commit, run ID and
+   upload folder. If the commit differs because `main` moved, stop: that commit
+   needs its own approval. With the GitHub CLI on the workstation the same
+   fields are
+   `gh run view <run-id> --json workflowName,event,headBranch,headSha,conclusion`.
+   Copy **`SOURCE_MANIFEST_SHA256`** from the job summary; never take it from
+   the host. On the first real run (F), the upload step's log must also show
+   `Downloading drone-scp-1.8.0-linux-amd64 from file://.../drone-scp-release/v1.8.0`
+   ([why](DEPLOYMENT.md#source-delivery-workflow-and-upload-account-task-059h2)).
+5. **Receive** with the installed receiver, directly (there is no make target:
+   the verified copy does not exist yet):
 
    ```bash
-   cd /opt/apps/schatten
-   git fetch origin
-   git merge-base --is-ancestor <sha> origin/main     # the commit must be on main
-   git checkout --detach <sha>                        # tooling matches the commit
-   deploy/bin/build-release <sha>                     # prints release.env
+   /usr/local/bin/schatten-receive <SOURCE_MANIFEST_SHA256>
+   # SOURCE_DIR=/opt/apps/schatten-sources/<commit>  SOURCE_COMMIT=<commit>  SOURCE_MANIFEST_SHA256=<digest>
+   S=/opt/apps/schatten-sources/<commit>; M="make -C $S/deploy"; B=$S/deploy/bin
    ```
 
-   `build-release` uses `git archive`, so untracked or modified files cannot
-   enter the images. Record the printed `RELEASE_ID`, `SOURCE_COMMIT`, both
-   image IDs, tool versions, `BUILD_DURATION_SECONDS` and
-   `BUILD_MEMORY_AVAILABLE_BEFORE_BYTES`. `release.env` contains no secrets.
-4. Watch the running application during the build (`free -m`,
+   `SOURCE_COMMIT` must be the approved commit. The receiver copies only the
+   manifest-listed files of that upload into a read-only copy and refuses
+   everything else; see [troubleshooting](#31-delivery-troubleshooting). On the
+   first receive, continue with section 2.8 (`$B/init-state`, `$M check`).
+6. **Compare the installed tools** with the manifest of the received copy:
+
+   ```bash
+   for f in upload-gate schatten-receive; do
+     listed="$(awk -v p="deploy/bin/$f" '$3 == p { print $2 }' "$S/SOURCE_MANIFEST")"
+     installed="$(sha256sum < "/usr/local/bin/$f" | cut -d' ' -f1)"
+     [ "$listed" = "$installed" ] && echo "$f matches" || echo "$f differs"
+   done
+   ```
+
+   On the first receive both must match (they came from the same approved
+   commit in 2.2); otherwise stop. On a later release, a difference means the
+   new commit changed the tool: review that change, then reinstall it from the
+   copy the existing receiver accepted and rerun the loop:
+
+   ```bash
+   sudo install -o root -g root -m 0755 "$S/deploy/bin/<changed tool>" "/usr/local/bin/<changed tool>"
+   ```
+
+7. **Build** on the host from the verified copy:
+
+   ```bash
+   $M check
+   $M build          # build-release --source $S; prints release.env
+   ```
+
+   `build-release` builds only from a folder directly under
+   `/opt/apps/schatten-sources`, re-verifies its release copy against the
+   manifest and uses no Git. Record the printed `RELEASE_ID`, `SOURCE_COMMIT`,
+   `SOURCE_MANIFEST_SHA256`, `SOURCE_RUN_ID`, both image IDs, tool versions,
+   `BUILD_DURATION_SECONDS` and `BUILD_MEMORY_AVAILABLE_BEFORE_BYTES`.
+   `release.env` contains no secrets.
+8. Watch the running application during the build (`free -m`,
    `docker stats --no-stream`). Reassess off-server builds after an OOM kill
    or failed build, sustained swap/CPU/memory contention with the running
    services, or a build duration the operator finds unacceptable. A later
    GitHub Actions/GHCR pipeline must deliver the same two images and release
    record; none is implemented.
-5. Freeze: after approval nothing is rebuilt. `deploy-release` refuses tags
+9. Freeze: after approval nothing is rebuilt. `deploy-release` refuses tags
    that no longer resolve to the recorded image IDs and never pulls or builds
    application images.
-6. Record the approval reference: a short non-personal identifier such as a
-   PR number or change ID, passed as `--approval`.
+10. Record the approval reference: a short non-personal identifier such as a
+    PR number or change ID, passed as `APPROVAL=` (`--approval`).
+
+### 3.1 Delivery troubleshooting
+
+| Symptom | Cause and action |
+| --- | --- |
+| The Action fails in its ref check | It was started from another branch; start it from `main` |
+| The Action fails before uploading: secret check | `SSH_USER` is not `schatten-upload` or `SSH_FINGERPRINT` is not a `SHA256:` value (2.2 step 6) |
+| `host key fingerprint mismatch` | `SSH_FINGERPRINT` is not the **ECDSA** host key's fingerprint (2.2 step 5) |
+| `Permission denied (publickey)` in the upload step | `AllowUsers` lacks `schatten-upload` (2.1), or the authorized key or its `restrict,command=` prefix is wrong; `$M audit` or `audit-host` shows which |
+| `upload-gate: refused: another upload-gate command is running` | Another upload session holds the gate's lock. Wait up to 10 minutes (the gate ends each `scp`/`tar` after 10 minutes) or end the upload account's session on the host (`sudo pkill -u schatten-upload`), then rerun the Action |
+| `upload-gate: refused: ...` otherwise | The action issued a command the gate does not allow; do not widen the gate on the host. A changed action or input needs developer review ([DEPLOYMENT.md](DEPLOYMENT.md#source-delivery-workflow-and-upload-account-task-059h2)) |
+| `schatten-receive`: `no upload under ...` | Wrong digest copied or the upload did not finish; recheck the run summary |
+| `schatten-receive`: `does not equal the operator-supplied digest`, `does not match its manifest`, `is a symlink`, `is not refs/heads/main` | The upload is not the approved one; stop and investigate, never edit the upload folder |
+| `schatten-receive`: `... already exists` | The commit was received before; use that `S` (it is read-only and cannot change) |
+| `schatten-receive`: `... exists: another receive may be running` | Leftover staging after an interrupted receive; once no receive runs, remove it (`chmod -R u+w "$S.incomplete" && rm -rf "$S.incomplete"`) and retry |
+| `Services are stopped by service stop` from `deploy`, `first-install` or a rollback | `$M stop` recorded stopped services; run `$M start` (10.2), then deploy again |
+| `make: release ... was not built from this source copy` | Run `make` from `/opt/apps/schatten-sources/<that release's commit>/deploy` |
 
 ## 4. First Installation (Fresh Database Only)
 
@@ -389,25 +607,25 @@ Use only when the database volume has never been initialized. `deploy-release
 around that. Existing-database adoption is out of scope.
 
 ```bash
-R=<release-id>; B=/opt/apps/schatten-releases/$R/source/deploy/bin
+R=<release-id>; S=/opt/apps/schatten-sources/<commit>; M="make -C $S/deploy"; B=$S/deploy/bin
 ```
 
 | Step | Command | Expected result; stop otherwise |
 | --- | --- | --- |
-| 1 | `$B/check-host` | `PASSED host prerequisites` |
-| 2 | `$B/deploy-release $R --approval <ref> --first-install` | Pre-migration baseline `BACKUP_ID` recorded as `PRE_CHANGE_BACKUP_ID`; all migrations exit 0; API, one worker and frontend healthy; `STATUS=succeeded`; `current` set; no `previous` |
+| 1 | `$M check` | `PASSED host prerequisites` |
+| 2 | `$M first-install RELEASE=$R APPROVAL=<ref>` | Pre-migration baseline `BACKUP_ID` recorded as `PRE_CHANGE_BACKUP_ID`; all migrations exit 0; API, one worker and frontend healthy; `STATUS=succeeded`; `current` set; no `previous` |
 | 3 | `$B/verify-runtime-hardening` | `PASSED runtime hardening`; `deploy-release` already required this, rerun it to capture the output for the record (Ofelia is checked on activation in step 11) |
 | 4 | `$B/initialize status` | `users_including_deleted=0`, `active_default_metamodels=0`, `organisations=0`: nothing was seeded at startup |
 | 5 | `$B/initialize reference-seed` then `$B/initialize status` | `active_default_metamodels=1`, non-zero `node_types`/`edge_types`/`type_attributes`/`allowed_connections`, still `users_including_deleted=0` |
 | 6 | `$B/initialize bootstrap-admin` in a private terminal | Prompts for the designated display name and Entra email; prints `Administrator bootstrap completed.` |
 | 7 | `$B/initialize status` | `users_including_deleted=1`, `active_admins=1`, `user_identities=0`, `auth_sessions=0` |
-| 8 | `$B/backup-now --reason manual` | `BACKUP_ID=` of the initialized database |
+| 8 | `$M backup` | `BACKUP_ID=` of the initialized database |
 | 9 | Restore rehearsal of that ID (section 8.3) | `STATUS=success`; evidence shows `rows table=users count=1` and `rows table=metamodels count=1` |
-| 10 | `$B/ops-status` | Both backups listed; latest restore evidence `STATUS=success` |
+| 10 | `$M status` | Both backups listed; latest restore evidence `STATUS=success` |
 | 11 | `$B/deploy-release $R --approval <ref> --enable-scheduler` | Scheduler activation (section 9): hardening passes including Ofelia; `SCHEDULER=active` in the record |
 | 12 | First direct-Entra login by the designated admin | Guarded first link; then provision the designated consultant through the normal Users administration |
 | 13 | Narrow production smoke (section 7) | All items pass |
-| 14 | Next day: `$B/ops-status` | A `-scheduled-` backup is listed and Ofelia logged `failed: false` |
+| 14 | Next day: `$M status` | A `-scheduled-` backup is listed and Ofelia logged `failed: false` |
 
 Step 6 details: run it in a private terminal with screen sharing and session
 recording off. It accepts no arguments; the name and email are typed only at
@@ -435,18 +653,19 @@ scheduler.
 ## 5. Subsequent Releases
 
 ```bash
-R2=<new-release-id>; B2=/opt/apps/schatten-releases/$R2/source/deploy/bin
+R2=<new-release-id>; S2=/opt/apps/schatten-sources/<new-commit>; M2="make -C $S2/deploy"
 ```
 
-1. Build and freeze `R2` (section 3). Review its migrations for
-   expand/contract compatibility and record whether the current release could
-   run against the new schema (this decides the rollback option).
+1. Deliver, receive and build `R2` (section 3), including the tool comparison
+   in step 6. Review its migrations for expand/contract compatibility and
+   record whether the current release could run against the new schema (this
+   decides the rollback option).
 2. Rehearse the newest completed backup (section 8.3) so the evidence is
    current. The gate needs the **latest** evidence file to be `STATUS=success`;
    a failed or missing rehearsal blocks the release until a successful one exists.
-3. `$B2/check-host`, then `$B2/deploy-release $R2 --approval <ref>`. It takes
-   the pre-change backup, runs migrations, replaces API/worker/frontend,
-   recreates runners and updates Ofelia if it is running.
+3. `$M2 check`, then `$M2 deploy RELEASE=$R2 APPROVAL=<ref>`. It takes the
+   pre-change backup, runs migrations, replaces API/worker/frontend, recreates
+   runners and updates Ofelia if it is running.
 4. Run the narrow smoke (section 7) and complete the release record
    (section 11).
 
@@ -475,6 +694,10 @@ compatible with every applied migration:
 B_old=/opt/apps/schatten-releases/<older-release-id>/source/deploy/bin   # the target release's own tooling
 $B_old/deploy-release <older-release-id> --approval <ref> --rollback --confirm-schema-compatible
 ```
+
+Rollback has no make target on purpose: it needs the explicit schema review.
+Like every release, it is refused while `$M stop` has services recorded as
+stopped (10.2).
 
 `--confirm-schema-compatible` records the human expand/contract review. The
 command still verifies inside the older image that its migrations are an exact
@@ -522,7 +745,7 @@ time, commit, image IDs and pass/fail, without identities or credentials.
 | Item | Behavior |
 | --- | --- |
 | Daily backup | Ofelia job `postgres-backup`, 02:30 `Europe/Helsinki`, runner `schatten-backup-runner` |
-| On demand | `$B/backup-now [--reason pre-release\|manual]`; every release takes a `pre-release` backup automatically |
+| On demand | `$M backup` (`$B/backup-now --reason manual`); every release takes a `pre-release` backup automatically |
 | Format | `pg_dump --format=custom` streamed into `gpg --encrypt` for the public key; plaintext never touches disk |
 | Files | `/opt/postgres-backups/schatten-<UTC>-<reason>-<hex>.dump.gpg` + `.manifest`, mode `0600`, owner `10002` |
 | Completion | The manifest is published last; only manifested backups count |
@@ -545,7 +768,7 @@ same disk, so watch the `free_bytes` value and `check-host` disk report.
 ### 8.2 Status
 
 ```bash
-$B/ops-status     # pointers, newest completed backups, latest restore evidence, scheduler results
+$M status     # ops-status: pointers, newest completed backups, latest restore evidence, scheduler results
 ```
 
 ### 8.3 Restore rehearsal
@@ -558,10 +781,10 @@ install -d -m 0700 "/run/user/$(id -u)/schatten-restore"
 # From the workstation, from the two separate vault entries; the passphrase
 # file contains only the passphrase on its first line:
 scp backup-private-key.asc backup-key-passphrase deploy@<host>:/run/user/<uid>/schatten-restore/
-# On the host:
-$B/restore-rehearsal <backup-id> \
-  --private-key "/run/user/$(id -u)/schatten-restore/backup-private-key.asc" \
-  --passphrase-file "/run/user/$(id -u)/schatten-restore/backup-key-passphrase"
+# On the host (restore-rehearsal into a disposable database, never production):
+$M restore BACKUP=<backup-id> \
+  KEY="/run/user/$(id -u)/schatten-restore/backup-private-key.asc" \
+  PASSPHRASE="/run/user/$(id -u)/schatten-restore/backup-key-passphrase"
 rm -rf "/run/user/$(id -u)/schatten-restore"
 ```
 
@@ -654,7 +877,7 @@ networks, running containers, backups or other repositories' tagged images and
 never runs `docker system prune`.
 
 ```bash
-$B/docker-cleanup --dry-run      # lists candidates, removes nothing
+$M cleanup-dry-run               # docker-cleanup --dry-run: lists candidates, removes nothing
 $B/retire-release <old-id>       # makes an old, non-current, non-previous release eligible
 ```
 
@@ -667,10 +890,16 @@ backup retention.
 ### 10.1 Health and diagnosis
 
 ```bash
-docker ps --all --filter label=com.docker.compose.project=schatten --format 'table {{.Names}}\t{{.Status}}'
+$M ps                          # containers of the current release with state and health
+$M logs SERVICE=backend        # last 200 lines; without SERVICE= every service
 curl -sS https://schatten.lupaus.eu/health
-docker logs --since 30m <container> 2>&1 | tail -n 50
+docker logs --since 30m <container> 2>&1 | tail -n 50   # a longer or older window
 ```
+
+`ps` and `logs` act on the `current` release through its frozen Compose file
+and never print `docker compose config` or environments. `SERVICE=` is one of
+`database`, `migration`, `backend`, `prediction-worker`, `frontend`, `ofelia`,
+`backup-runner`, `cleanup-runner`.
 
 Health checks: database `pg_isready`; API `/health`; worker its lock-owning
 health command; Caddy a loopback `127.0.0.1:8081/health` that does not depend
@@ -679,10 +908,39 @@ summarize rather than paste auth logs. Use `docker inspect --format` for
 specific fields; plain `docker inspect` of application, database or backup
 containers prints their secret environment.
 
-### 10.2 Restart and reboot
+### 10.2 Stop and start the application
+
+```bash
+$M stop      # stops the running services, scheduler included; keeps containers, volumes and networks
+$M start     # starts exactly the services that stop recorded, in order, and waits until healthy
+```
+
+`stop` refuses while a build, release, rollback or backup runs, records the
+services it stopped in `/opt/apps/schatten-state/stopped-services` and stops
+them in reverse order with their grace periods. While stopped, the site and
+scheduled backups are down. `start` starts those same containers (database,
+API, worker, frontend, then Ofelia if it was running), never the completed
+migration job or the runners, and refuses when nothing was recorded or the
+record names another release. A second `stop` before `start` is refused.
+Neither command creates, recreates or removes containers or volumes; after a
+configuration change, `$M start` and then redeploy the current release
+(`$M deploy RELEASE=<current-id> APPROVAL=<ref>`). Never use
+`docker compose down`.
+
+While the record exists:
+
+- `deploy-release` refuses every release, first install and rollback, so a
+  deploy cannot leave the stopped scheduler off; run `$M start` first.
+- The services stay stopped across reboots and Docker daemon restarts
+  (`restart: unless-stopped`) until `$M start`.
+- `$M status` lists the recorded release and services under
+  `stopped by service stop`.
+
+### 10.3 Restart and reboot
 
 Services use `restart: unless-stopped`. On reboot Docker restarts database, API,
-worker and frontend from their existing containers; the completed migration
+worker and frontend from their existing containers, except services stopped
+with `$M stop`, which stay stopped until `$M start` (10.2); the completed migration
 job and the runners are not rerun. Until PostgreSQL is healthy, database-backed
 API requests fail and the worker restarts. The API exits if Entra discovery is
 unreachable at startup and is retried; the frontend waits for a healthy API.
@@ -698,12 +956,13 @@ sudo flock --exclusive --nonblock /opt/apps/schatten-state/locks/maintenance.loc
 ```
 
 The lock is held until the reboot has been started; if it is busy, nothing
-happens. Afterwards confirm healthy containers, `/health` and `ops-status`.
+happens. Afterwards confirm healthy containers (`$M ps`), `/health` and
+`$M status` (which lists services still stopped by `$M stop`).
 Record the effective unattended-upgrades automatic-reboot setting from
 `audit-host`; an automatic reboot at an unplanned time follows the same
 recovery path.
 
-### 10.3 Persistence
+### 10.4 Persistence
 
 `schatten_postgres_data` and `schatten_caddy_data` survive container
 replacement and reboots; they are **not backups**. Never delete, prune or
@@ -718,6 +977,7 @@ identities or restored data:
 | Field | Source |
 | --- | --- |
 | Release ID, approved commit, CI run URL | `release.env`, CI |
+| "Deploy to production" run URL, `SOURCE_RUN_ID`, `SOURCE_MANIFEST_SHA256`, the run checks of section 3 step 4 | Run page, `release.env` |
 | Backend and frontend image IDs | `release.env` |
 | Tool versions, build duration and available memory | `release.env` |
 | Local/CI evidence and real local Entra evidence reference | CI, authentication checklist |
@@ -755,19 +1015,21 @@ evidence gates are required now.
 
 ## 13. Command Verification Status
 
-What TASK-059E exercised on disposable infrastructure
-([QA record](qa/UPCLOUD-RUNBOOK-QA.md)); everything else is F verification.
+What TASK-059E and TASK-059H1-H3 exercised on disposable infrastructure
+([E QA record](qa/UPCLOUD-RUNBOOK-QA.md),
+[H1-H3 QA record](qa/SOURCE-DELIVERY-QA.md)); everything else is F
+verification.
 
-| Section | Tested (E) | Not testable before F |
+| Section | Tested (E, H1-H3) | Not testable before F |
 | --- | --- | --- |
-| 1 Host audit | `audit-host` in a disposable Ubuntu 26.04 baseline container, directly and through `bash -s` | Real host results, fresh SSH sessions, provider firewall |
-| 2.1 SSH/UFW | Drop-in, `sshd -t`/`sshd -T`, UFW restrict-then-delete in that container | `systemctl reload ssh`, lockout safety on the real host |
-| 2.2 Directory, source access | `/opt/apps` ownership change and `deploy`-created Schatten paths in the 26.04 container, confirmed by `audit-host` | Deploy key, GitHub fingerprint, clone |
+| 1 Host audit | `audit-host` in a disposable Ubuntu 26.04 baseline container, directly, through `bash -s` and as `make audit` from a read-only verified copy, before and after the 2.1/2.2 setup and with negative variants (H3) | Real host results, fresh SSH sessions, provider firewall |
+| 2.1 SSH | Hardening drop-in, `sshd -t`/`sshd -T`, `AllowUsers deploy@<cidr>` accepting and refusing by source address, root and password refused, the optional `Match` block (H3) | `systemctl reload ssh`, lockout safety, the real UFW/provider rules |
+| 2.2 Directory, upload account, tools | `/opt/apps` ownership (E); the upload account, root-owned key file with `restrict,command=`, upload folder, `install` of both tools and the gate refusing shells and commands (H2, H3) | The workstation copy of the real approved commit, GitHub environment and secrets, real fingerprint |
 | 2.3 Configuration | Configuration contract and privacy checks (`check-host`) with synthetic values | Real secrets |
 | 2.4 Backup keys | Key generation/export commands with gpg 2.4.8 on Ubuntu 26.04; passphrase-protected key used for all harness restores | Vault storage and custodians |
 | 2.5-2.6 Storage, DNS | Backup directory ownership/mode checks | DNS, public certificate issuance |
 | 2.7 Entra | Simulated discovery only | Callbacks, secret, assignments, cleanup |
-| 2.8, 3-6 | `init-state`, `check-host`, `build-release`, first install, initialization, releases, gates, rollback on Engine 28.5.2 and 29.8.1 daemons | The real host and its resources |
+| 3 Delivery | The pinned action's upload through `upload-gate` in an sshd container, the job summary digest, `schatten-receive` acceptance and rejections, Git-free `make build` (H1-H3) | The real Action run, its run page checks and the `file://` log line |
+| 2.8, 4-6 | `init-state`, `check-host`, `make build`, `make first-install`, `make deploy` and its guards, initialization, `make backup`/`restore`/`status`, gates and direct-command rollback on Engine 28.5.2 and 29.8.1 daemons, with Git absent from `PATH` | The real host and its resources |
 | 7 Smoke | Local simulated-OIDC suites | Production smoke |
-| 8-10 | Backups, failures, retention, passphrase restore, scheduler, cleanup, persistence, daemon restart; the reboot lock refusing while a holder exists (with `echo` in place of `systemctl reboot`) | Real schedule runs, real reboot, certificate renewal |
-
+| 8-10 | Backups, failures, retention, passphrase restore, scheduler, cleanup, persistence, daemon restart; `make ps`/`logs`/`stop`/`start` keeping containers and volumes, with and without Ofelia (H3); the reboot lock refusing while a holder exists (with `echo` in place of `systemctl reboot`) | Real schedule runs, real reboot, certificate renewal |

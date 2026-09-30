@@ -45,7 +45,10 @@ help:
 		'  provision-local-admin  Interactively pre-provision a designated local Entra admin' \
 		'' \
 		'Production, Entra, release, rollback, baseline, reset, and cleanup operations' \
-		'are intentionally not available through Make. See the documented direct commands.'
+		'are intentionally not available through this Makefile. Production server' \
+		'commands are in deploy/Makefile, run on the host from the verified source copy:' \
+		'  make -C /opt/apps/schatten-sources/<commit>/deploy help' \
+		'See docs/PRODUCTION-RUNBOOK.md.'
 
 backend-install:
 	cd backend && uv sync

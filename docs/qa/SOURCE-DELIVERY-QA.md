@@ -1,4 +1,4 @@
-# Git-Free Source Delivery QA (TASK-059H1)
+# Git-Free Source Delivery QA (TASK-059H1-H3)
 
 This record holds TASK-059H1 evidence for the source manifest, the verified
 receive (`schatten-receive`) and `build-release --source`
@@ -6,8 +6,10 @@ receive (`schatten-receive`) and `build-release --source`
 All runs used **disposable** local infrastructure and synthetic secrets. **No
 production host, GitHub setting, secret, upload account, SSH/UFW rule or
 provider was touched.** TASK-059H2 evidence for the upload gate and workflow
-is in [its own section](#upload-gate-and-deploy-to-production-task-059h2); the
-Makefile and runbook (H3) are not covered here.
+is in [its own section](#upload-gate-and-deploy-to-production-task-059h2), and
+TASK-059H3 evidence for the server Makefile, the `service` command, the host
+audit and the runbook in
+[the last section](#server-makefile-service-command-and-runbook-task-059h3).
 
 ## Environment
 
@@ -169,3 +171,101 @@ host account or server was touched.
 | Held session | While an `scp` sink was held open (stdin kept open), a parallel `rm -rf`, `scp -tr` and `mkdir -p` were refused as busy; the held `scp` ran as `timeout --kill-after=10s 10m scp -t -- <archive>` |
 | Expiry | `SIGALRM` to that `timeout` (its own expiry path) ended the session with exit 124, left no archive, and the gate accepted the next command |
 | Result | **pass** (`EXIT=0`, 14 `PASS` lines); `shellcheck --severity=warning` and `actionlint` 1.7.9 pass |
+
+## Server Makefile, Service Command And Runbook (TASK-059H3)
+
+Disposable runs on 2026-09-29. Only isolated Docker daemons, throwaway
+containers, temporary folders, synthetic secrets and synthetic keys were used;
+**no production host, GitHub environment, secret, upload account, SSH/UFW rule
+or provider was touched**, and the Action has not run on GitHub.
+
+### Disposable Runtime Harness Through The Makefile
+
+The TASK-059H3 working tree was committed only in a scratch clone as
+`a4453ae484d0` (`main` at `472a6f1f` plus this branch's changes; not a
+repository commit) and the harness ran from that clone, so the uploaded,
+received and built source is that tree.
+
+| Run | Daemon | Result |
+| --- | --- | --- |
+| A | `docker:28.5.2-dind@sha256:2a232a42…` (harness default) | **pass** (`EXIT=0`, 82 `PASS` lines) |
+| B | `QA_DIND_IMAGE=docker:29.8.1-dind@sha256:3f3c01aa…` | **pass** (`EXIT=0`, 82 `PASS` lines) |
+
+| Check | Evidence (both runs) |
+| --- | --- |
+| Git-free `PATH` | `make` and every server-side step ran with `command -v git` failing |
+| Makefile shape | Exactly the targets `help check audit build deploy first-install status ps logs stop start backup restore cleanup-dry-run`; the nine wrapped commands (`check-host`, `audit-host`, `build-release`, `deploy-release`, `ops-status`, `service`, `backup-now`, `restore-rehearsal`, `docker-cleanup`) exist in the verified copy; no recipe runs `down`, prune, volume removal, `--apply`, rollback, initialization or the receiver |
+| Required variables | `deploy`/`first-install` without `RELEASE` or `APPROVAL` and `restore` without `BACKUP` or `KEY` stop with `... is required` and a usage line (exit 2); a release ID of another commit is refused (`was not built from this source copy`) |
+| Injection | `SERVICE='backend; touch /tmp/pwned'` is refused as an unknown service; values reach the commands through the environment |
+| `make check` | Off Ubuntu 26.04 it stops only at the OS check |
+| `make build` | Built the first frozen release from the read-only verified copy; the recorded commit, manifest digest, ref, run ID and image IDs match as before |
+| `make first-install`, `make deploy` | First install of release one; release two deployed through `make deploy` after the restore-evidence gate; the existing gate, rollback (direct command) and fix-forward checks passed unchanged |
+| `make backup`, `make restore`, `make status` | Encrypted backup `0600`; passphrase-key restore with the initialized admin/reference rows; status lists the backup and `STATUS=success` |
+| `make ps`, `make logs` | `ps` names the current release and lists database, migration, API, worker and frontend; `logs` shows each service, `SERVICE=backend` only the API; no `POSTGRES_PASSWORD=`, `DATABASE_URL=` or `OIDC_CLIENT_SECRET=` in the output |
+| `make stop` / `make start` | Stop left no service running, with the same container IDs and volumes, recorded `database backend prediction-worker frontend`, and refused a second stop; start brought the same containers back healthy, HTTPS `/health` returned `OK`, the migration container's start time was unchanged, the record was removed and a start without a record was refused |
+| With the scheduler | After `--enable-scheduler`, stop recorded and stopped Ofelia too and start restarted it |
+| Secret scan | The synthetic secrets were absent from the QA log (which includes all make output), container logs and image history |
+
+One defect was found by the harness and fixed before these runs: `service logs
+<unknown>` checked for a current release before validating its argument; the
+arguments are now checked first.
+
+### Rerun After Review-001 Fixes (TASK-059H3)
+
+Disposable reruns on 2026-09-30 after the fixes for
+`docs/ai-reviews/TASK-059H3/review-001.json`. As above, the working tree was
+committed only in a scratch clone as `0a950cab7b75` (the branch commit
+`08814c6841f9` plus the fixes; not a repository commit). No production host,
+GitHub environment, secret or provider was touched.
+
+| Check | Evidence (both runs) |
+| --- | --- |
+| F-001 fix | While `make stop` has services recorded, `make deploy` and a direct `deploy-release --rollback --confirm-schema-compatible` are refused with `Services are stopped by service stop`. Nothing is started, `current` is unchanged and no deployment record is written. After `make start`, the later release-two deployment, rollback and scheduler checks pass unchanged. The refusal happens under the release lock, which `service stop` also holds. The earlier behavior was found by code analysis and was not reproduced against the old `deploy-release` |
+| F-002 fix | While stopped, `make status` lists `stopped by service stop` with the recorded release and `SERVICES=database backend prediction-worker frontend`; after `make start` the section is gone |
+| F-003 fix | `make restore` refuses a relative `KEY=` (`KEY must be an absolute path`) and a relative `PASSPHRASE=`; the absolute-path restore rehearsal still passes |
+| Run A, `docker:28.5.2-dind` (harness default) | **pass** (`EXIT=0`, 86 `PASS` lines: the earlier 82 plus the four new refusal cases) |
+| Run B, `QA_DIND_IMAGE=docker:29.8.1-dind@sha256:3f3c01aa…` | **pass** (`EXIT=0`, 86 `PASS` lines) |
+| Secret scan | The synthetic secrets were absent from both QA logs, container logs and image history |
+
+`shellcheck --severity=warning` (koalaman/shellcheck:stable) passed on
+`service`, `deploy-release`, `ops-status`, `audit-host`, `check-host` and
+`verify-production-runtime.sh`. `audit-host` was not changed, so the host
+audit below was not rerun.
+
+### Host Audit And SSH Setup (Ubuntu 26.04 Container)
+
+`ubuntu:26.04@sha256:da6fc2be…` without Git, OpenSSH 10.2p1, sudo-rs, set up
+like the reported baseline (locked `deploy` with a key and NOPASSWD sudo, the
+image's `ubuntu` user, a root key, the cloud-init `PasswordAuthentication no`
+drop-in, UFW with OpenSSH/80/443 from `Anywhere`, a fail2ban `sshd` jail
+5/600/3600, `Europe/Helsinki`, root-owned `/opt` directories, no `make`). The
+repository was mounted read-only; `make audit` ran from a read-only copy under
+a 40-hex commit name.
+
+| Stage | Result |
+| --- | --- |
+| Baseline, `audit-host` as `deploy` directly and through `bash -s` | Identical findings, exit 0. Attention: `tool make is not installed`, root SSH not disabled (`prohibit-password`), `AllowUsers is not set`, SSH from `Anywhere` while root login is enabled, root-owned `/opt/apps`, backup directory `0:0 755`. Facts: `git absent (not needed)`, upload account, upload folder, `upload-gate` and `schatten-receive` absent |
+| Runbook 2.1 drop-in | `sshd -t` silent; `sshd -T` showed `permitrootlogin no`, `passwordauthentication no`, `kbdinteractiveauthentication no`, `allowusers deploy@127.0.0.1/32` and `allowusers schatten-upload` |
+| Optional `Match User schatten-upload` block | `sshd -t` valid; `sshd -T -C user=schatten-upload,...` showed `channeltimeout session=15m`, `deploy` showed `none`; removed again |
+| SSH access after reload (`SIGHUP` in place of `systemctl reload`) | `deploy` from inside the CIDR accepted; root and password/keyboard-interactive refused (`Permission denied (publickey)`); the upload key reached only the gate (`refused: interactive login is not allowed`, `refused: command not allowed` for `id`); with `deploy@192.0.2.0/24` the same `deploy` login was refused |
+| Runbook 2.2 | GNU Make 4.4.1 installed; `/opt/apps` changed non-recursively; account, root-owned home/`.ssh`/`authorized_keys` with `restrict,command=`, `0750` upload folder, both tools installed with `install -o root -g root -m 0755` and hash-equal to the source; `ssh-keygen -lf /etc/ssh/ssh_host_ecdsa_key.pub` printed a `SHA256:` value of type `(ECDSA)` |
+| `make audit` after 2.1/2.2 | Only container artefacts remain (cloud-init, no Docker daemon, host sysctl). `ok`: `tool make`, `deploy is source-restricted by AllowUsers (1 pattern(s))`, `AllowUsers admits schatten-upload`, upload password locked, only its own group, no sudo rules, `deploy` in its group, root-owned home/`.ssh`/key file, every key with `restrict` and the gate, upload folder `750`, both tools root-owned; fact: SSH from `Anywhere` accepted as public-key only |
+| Negative variants | Attention for `AllowUsers deploy schatten-upload ubuntu` (bare `deploy`, extra account, no source-restricted `deploy`), the upload account in `docker`, a second key without the forced command (`1 of 2`), a `0775` gate, a `0770` upload folder; with password login re-enabled, SSH from `Anywhere` became attention again |
+| Sanitization | Neither public key's material appeared in any audit output |
+
+`shellcheck --severity=warning` (koalaman/shellcheck:stable) passed on
+`service`, `audit-host`, `check-host` and `verify-production-runtime.sh`. The
+relative links and anchors of the changed documents resolve. The historical
+records `UPCLOUD-RUNBOOK-QA.md` and `PRODUCTION-RUNTIME-QA.md` are unchanged.
+
+### Not Covered
+
+- `systemctl reload ssh.service`, the real UFW and UpCloud firewall rules,
+  lockout safety and fresh sessions from the real operator network (F).
+- The workstation copy of the real approved commit, the GitHub `production`
+  environment and secrets, the first real Action run with its run page checks
+  and `file://` log line, and the first real receive and tool hash comparison
+  (F).
+- `make check` and `make audit` against a real Ubuntu 26.04 host with Docker;
+  `check-host` passing on Ubuntu 26.04 without Git is recorded in Run C above.
+

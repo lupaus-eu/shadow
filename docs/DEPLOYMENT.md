@@ -34,9 +34,9 @@ H1 implemented the manifest, the receiver and the Git-free
 `build-release --source` described in the command and storage tables below;
 H2 implemented the upload gate and the workflow
 ([Source Delivery Workflow And Upload Account](#source-delivery-workflow-and-upload-account-task-059h2));
-H3 adds the Makefile and runbook. Until H3,
-the runbook's Git-checkout build steps and firewall-level SSH restriction are
-superseded and must not be set up in F.
+H3 added the server `deploy/Makefile`, the `service` command and the
+integrated runbook for this path
+([Server Makefile](#server-makefile-task-059h3)); F follows that runbook.
 
 ## Release Topology
 
@@ -285,7 +285,8 @@ boundaries, F configures missing DNS, Caddy TLS/storage, private PostgreSQL,
 the upload-only account and GitHub `production` environment secrets for the
 source-delivery Action, protected environment files and application
 deployment. Git is not needed or used on the server for deployment; if it is
-present, its presence is only recorded. Make
+present, its presence is only recorded. `make` is required for
+`deploy/Makefile` and is installed in F if the baseline lacks it. Make
 only necessary, reviewed host changes. Store secrets privately, never in image layers, source control
 or rendered Compose/log evidence.
 
@@ -391,9 +392,11 @@ upload of a few MB and its extraction take far less. Uploads, extractions and re
 (`upload-gate`, `auth.notice`).
 
 Upload account setup for F, as root on the host after the SSH hardening
-checks and before TCP 22 is opened to anywhere (the runbook in H3 orders these
-steps; the upload key pair is created on an operator workstation and its
-private half goes only into `SSH_KEY`):
+checks of [runbook 2.1](PRODUCTION-RUNBOOK.md#21-public-key-only-ssh-allowusers-and-port-22)
+([runbook 2.2](PRODUCTION-RUNBOOK.md#22-operator-directory-upload-account-source-tools-and-github-environment)
+gives the same steps with `sudo` and orders them with the tool bootstrap; the
+upload key pair is created on an operator workstation and its private half goes
+only into `SSH_KEY`):
 
 ```bash
 # Login shell must be a real shell: sshd runs the forced command through it.
@@ -453,14 +456,15 @@ Host storage mappings and required ownership:
 | `/opt/apps` | Operator directory; `check-host` requires it writable by `deploy`; no container writes here | `deploy` (changed non-recursively if cloud-init left it root-owned) |
 | `/opt/apps/schatten-upload/` | Upload area written only through `upload-gate`: `<commit>/` folders and the SCP action's transient `<10 letters/digits>.tar.gz` | `schatten-upload:schatten-upload`, `0750`; `deploy` reads through the group |
 | `/opt/apps/schatten-upload/<commit>/` | Delivered upload (source plus `SOURCE_MANIFEST`), files `0640`/folders `0750`; read by `schatten-receive` only as data, never executed; stale files are ignored | `schatten-upload` |
-| `/opt/apps/schatten-sources/<commit>/` | Verified read-only source accepted by `schatten-receive` (only the manifest-listed files, manifest modes, `SOURCE_MANIFEST`); the only `build-release` input and where tooling runs from; `<commit>.incomplete` is transient staging | `deploy`; read-only tree |
+| `/opt/apps/schatten-sources/` | Accepted sources; must exist, owned by `deploy` and not group/other writable, before the first receive | `deploy`, `0755` |
+| `/opt/apps/schatten-sources/<commit>/` | Verified read-only source accepted by `schatten-receive` (only the manifest-listed files, manifest modes, `SOURCE_MANIFEST`); the only `build-release` input and where `make` and the tooling run from; `<commit>.incomplete` is transient staging | `deploy`; read-only tree |
 | `/usr/local/bin/schatten-receive` | Installed receiver, run directly | `root`, not group/other writable |
 | `/usr/local/bin/upload-gate` | Forced command of the upload key | `root`, `0755` |
 | `/home/schatten-upload/.ssh/authorized_keys` | The one upload key with `restrict,command="/usr/local/bin/upload-gate"` | `root`, `0644`; home and `.ssh` `root` `0755` |
 | `/opt/apps/schatten-config/production.env` | Protected configuration | `deploy`, `0600` |
 | `/opt/apps/schatten-config/backup-public-key.asc` | Backup encryption public key (read-only mount) | `deploy`, `0644` |
 | `/opt/apps/schatten-releases/<release-id>/` | Frozen, re-verified copy of the verified source, `release.env`, `build.log`; `current`/`previous` pointers; `retired/` | `deploy`; source read-only |
-| `/opt/apps/schatten-state/` | `locks/*.lock` (read-only runner mounts), `deployments/*.env`, `restore-evidence/` (`0700`) | `deploy` |
+| `/opt/apps/schatten-state/` | `locks/*.lock` (read-only runner mounts), `deployments/*.env`, `restore-evidence/` (`0700`), transient `stopped-services` written by `service stop` and removed by `service start` | `deploy` |
 | `/opt/postgres-backups` | Encrypted backups and manifests; existing contents preserved | `10002:10002`, `0700` (or `0750`) |
 | `/opt/caddy` | Not mounted and not modified; Caddy state lives in `schatten_caddy_data` | unchanged |
 
@@ -474,16 +478,18 @@ F sets its ownership explicitly; `check-host` only reports mismatches.
 ### Commands
 
 Run the installed `/usr/local/bin/schatten-receive` directly, never from an
-upload or a delivered Makefile. Run `build-release` from the verified source
-copy (`/opt/apps/schatten-sources/<commit>/deploy/bin/build-release`). Run
-every other command from the frozen release directory of the target release
-(`/opt/apps/schatten-releases/<id>/source/deploy/bin/...`), so the tooling
-matches the deployed Compose file and job scripts.
+upload or a delivered Makefile. Run every other command from the verified
+source copy of the target release (`/opt/apps/schatten-sources/<commit>/deploy`,
+through `make` or `bin/...`), so the tooling matches the release's Compose file
+and job scripts. The frozen release directory
+(`/opt/apps/schatten-releases/<id>/source/deploy/bin/...`) holds an identical,
+re-verified copy; a rollback runs the target release's copy from there.
+Nothing is ever run from `/opt/apps/schatten-upload`.
 
 | Command | Purpose |
 | --- | --- |
-| `audit-host` | Read-only, sanitized audit of the existing cloud-init baseline for F: cloud-init status counts, accounts, effective SSH, UFW, listeners, Docker, swap/sysctl, timezone, fail2ban, updates, `/opt` storage, the newest received sources with their manifest digest (or attention if a manifest is missing or staging was left behind) and `schatten-receive` ownership; Git presence is only a fact. Runs without the checkout (`git show <commit>:deploy/bin/audit-host \| ssh deploy@<host> bash -s`) |
-| `check-host [--allow-os-mismatch]` | Read-only check of Ubuntu 26.04, Docker Engine ≥ 25, Compose ≥ 2.24, Buildx, `python3`/`flock`/`sha256sum`/`tar` (not Git), env file privacy/keys, socket group/mode `660`, no Docker TCP listener, state/release/source directories and lock files, backup directory owner/mode and key placement; reports whether `/usr/local/bin/schatten-receive` is installed root-owned and not group/other writable (missing is a warning until F installs it); reports disk, memory and swap |
+| `audit-host` | Read-only, sanitized audit of the existing cloud-init baseline for F: cloud-init status counts, accounts, effective SSH including `AllowUsers` (`deploy` only as `deploy@<cidr>`, `schatten-upload`, nothing else), UFW (SSH from `Anywhere` is attention only while root, password or keyboard-interactive login is enabled), listeners, Docker, swap/sysctl, timezone, fail2ban, updates, `/opt` storage, the upload account (locked, own group only, no sudo rules, root-owned key file, key **counts** with `restrict` and the gate as forced command, `deploy` in its group), the upload folder, `upload-gate` and `schatten-receive` ownership and hash, and the newest received sources with their manifest digest (or attention if a manifest is missing or staging was left behind); Git presence is only a fact. Before the first receive it runs from a workstation (`git show <commit>:deploy/bin/audit-host \| ssh deploy@<host> bash -s`), afterwards as `make audit` |
+| `check-host [--allow-os-mismatch]` | Read-only check of Ubuntu 26.04, Docker Engine ≥ 25, Compose ≥ 2.24, Buildx, `python3`/`flock`/`sha256sum`/`tar`/`make` (not Git), env file privacy/keys, socket group/mode `660`, no Docker TCP listener, state/release/source directories and lock files, backup directory owner/mode and key placement; reports whether `/usr/local/bin/schatten-receive` is installed root-owned and not group/other writable (missing is a warning until F installs it); reports disk, memory and swap |
 | `init-state` | Creates missing state, release and `/opt/apps/schatten-sources` directories and lock files only |
 | `schatten-receive <manifest-sha256> [--upload <folder>]` | Installed root-owned receiver, run as `deploy`. Stages and checks only `SOURCE_MANIFEST` first (digest from the run summary, format, count, relative unique sorted paths, `SOURCE_REF=refs/heads/main`, `SOURCE_COMMIT` equal to the upload folder name), then copies only listed regular files without following symlinks, verifies the staged copy, applies manifest modes read-only and renames it to `/opt/apps/schatten-sources/<commit>`; never replaces an existing commit folder and removes staging on failure. Without `--upload` it uses the upload whose manifest has that digest. Prints `SOURCE_DIR=`, `SOURCE_COMMIT=`, `SOURCE_MANIFEST_SHA256=`. `--verify <folder>` re-verifies an accepted folder in place |
 | `build-release --source <verified folder>` | Refuses any folder that is not directly under `SCHATTEN_SOURCES_DIR` (`/opt/apps/schatten-sources`), because `--verify` checks a folder only against its own manifest. Copies the verified folder into the release, re-verifies that copy against its manifest, then builds both images with pinned base images, locked dependencies and the manifest's `SOURCE_DATE_EPOCH`; no Git. `release.env` records `SOURCE_COMMIT`, `SOURCE_DATE_EPOCH`, `SOURCE_REF`, `SOURCE_RUN_ID`, `SOURCE_MANIFEST_SHA256`, image tags and IDs, Docker Engine/Compose/Buildx and kernel versions, duration and available memory |
@@ -495,7 +501,39 @@ matches the deployed Compose file and job scripts.
 | `docker-cleanup [--dry-run\|--apply]` | Inspect or apply the weekly cleanup through the same hardened runner |
 | `verify-runtime-hardening` | Checks effective container settings; failure blocks scheduler activation |
 | `retire-release <id>` | Makes a non-current, non-previous release's images eligible for cleanup |
-| `ops-status` | Release pointers, recent backups, latest restore evidence and scheduler results |
+| `ops-status` | Release pointers, services stopped by `service stop`, recent backups, latest restore evidence and scheduler results |
+| `service ps\|logs [service]\|stop\|start` | For the `current` release through its frozen Compose file: container state, the last 200 log lines (all or one service), stop of the running services (scheduler included; refused during a build, release or backup) and start of exactly those services in dependency order with health waits. Keeps containers, volumes and networks, never starts the migration job or the runners and never prints `docker compose config`, environments or `docker inspect` output. While the `stopped-services` record exists, `deploy-release` (including rollback) refuses, `ops-status` lists it and the services stay stopped across reboots |
+
+### Server Makefile (TASK-059H3)
+
+`deploy/Makefile` gives operators short commands over these tools. It runs from
+the verified copy, `make -C /opt/apps/schatten-sources/<commit>/deploy
+<target>`; receiving is not a target because the copy exists only after it.
+Every target is a thin wrapper, so all gates stay in the commands:
+
+| Target | Command |
+| --- | --- |
+| `help` | Lists the targets |
+| `check`, `audit` | `check-host`, `audit-host` |
+| `build` | `build-release --source <this copy>` |
+| `deploy RELEASE= APPROVAL=` | `deploy-release <id> --approval <ref>` |
+| `first-install RELEASE= APPROVAL=` | `deploy-release <id> --approval <ref> --first-install` |
+| `status` | `ops-status` |
+| `ps`, `logs [SERVICE=]`, `stop`, `start` | `service ...` |
+| `backup` | `backup-now --reason manual` |
+| `restore BACKUP= KEY= [PASSPHRASE=]` | `restore-rehearsal <id> --private-key <file> [--passphrase-file <file>]`; `KEY` and `PASSPHRASE` must be absolute paths |
+| `cleanup-dry-run` | `docker-cleanup --dry-run` |
+
+A missing required variable stops with a usage message and exit 2. Values
+reach the commands through the environment, never through the recipe text, so
+they cannot inject shell syntax. `deploy` and `first-install` refuse a release
+whose ID does not end with the first 12 characters of the copy's commit, so a
+release is always deployed with the tooling it was built from. No target runs
+`docker compose down -v`, prunes, deletes volumes, runs down migrations,
+restores production, seeds or bootstraps; `init-state`, `initialize`,
+`verify-runtime-hardening`, scheduler activation, rollback, `retire-release`
+and `docker-cleanup --apply` stay direct commands. The repository-root
+`Makefile` has no production commands.
 
 Commands run Compose with the project name `schatten`, the release's frozen
 Compose file and a minimal environment, so stray shell variables cannot

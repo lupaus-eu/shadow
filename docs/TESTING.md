@@ -271,6 +271,28 @@ sources directory and an unverified folder inside it, and its
 `release.env` must carry the manifest digest, ref, run ID and commit time with
 no `GIT_VERSION`; the frozen release source re-verifies against its manifest.
 
+TASK-059H3 drives the operator steps through `deploy/Makefile` from the
+verified read-only copy, still with Git absent from `PATH`: `make build`,
+`make first-install`, `make deploy`, `make backup`, `make restore`,
+`make status` and `make cleanup-dry-run` replace the direct calls (receive stays
+a direct receiver call, as on the host). A static check requires exactly the
+documented targets, that every wrapped command exists in `deploy/bin` and that
+no recipe runs `down`, prune, volume removal, `--apply`, rollback,
+initialization or the receiver. `deploy`/`first-install` must fail with a usage
+message without `RELEASE` or `APPROVAL` and refuse a release of another commit;
+`restore` must require `BACKUP` and `KEY` and refuse relative `KEY` or
+`PASSPHRASE` paths; `logs` must refuse an unknown
+service and shell syntax in `SERVICE`; `make check` may fail only at the OS
+check off Ubuntu 26.04. After the first install, `make ps` and `make logs`
+must show the current release without environment variables; `make stop` must
+stop every long-running service while keeping the same containers and volumes,
+record them and refuse a second stop; while stopped, `make deploy` and a
+direct rollback must be refused without starting services, moving `current` or
+writing a deployment record, and `make status` must list the stopped services;
+`make start` must start the same containers healthy without rerunning the
+migration job, and refuse without a record. With the scheduler active, `stop`/`start` must include Ofelia (retrying
+while a scheduled QA backup holds the backup lock).
+
 TASK-059E extends the same harness with the runbook's first-installation
 sequence: `initialize status` counts prove nothing is seeded at startup, the
 reference seed is explicit and idempotent, and `initialize bootstrap-admin` is
@@ -348,14 +370,28 @@ real run is F work.
 ## Operator Runbook And Host Audit
 
 `deploy/bin/audit-host` is read-only and cannot be exercised against the real
-host before F. Test changes to it in a disposable `ubuntu:26.04` container set
-up like the reported baseline (locked `deploy`/default users with authorized
-keys, NOPASSWD sudo, `sshd` with the cloud-init drop-in, UFW with the OpenSSH/
-80/443 rules, a fail2ban `sshd` jail and the `/opt` directories), run it as
-`deploy` both directly and through `bash -s` on stdin, and confirm the expected
-attention items: root SSH not disabled, SSH open to `Anywhere`, a root-owned
-`/opt/apps` and backup directory ownership. Run shellcheck on it, and do not run it with elevated
-privileges on shared machines beyond its read-only `sudo -n` probes.
+host before F. Test changes to it in a disposable `ubuntu:26.04` container
+**without Git** set up like the reported baseline (locked `deploy`/default
+users with authorized keys, NOPASSWD sudo, `sshd` with the cloud-init drop-in,
+UFW with the OpenSSH/80/443 rules, a fail2ban `sshd` jail, the `/opt`
+directories and no `make`). Run it as `deploy` both directly and through
+`bash -s` on stdin, and confirm the expected baseline attention items: `make`
+missing, root SSH not disabled, `AllowUsers` not set, SSH open to `Anywhere`
+while root login is enabled, a root-owned `/opt/apps` and backup directory
+ownership; the upload account, upload folder and both tools are reported as
+absent facts. Then apply runbook 2.1 and 2.2 (hardening drop-in with
+`AllowUsers deploy@<cidr> schatten-upload`, `make`, the upload account with its
+root-owned `restrict,command=` key, the upload folder and both tools) and run
+`make audit` from a read-only copy named after a commit: the SSH, `AllowUsers`,
+upload and tool lines must be `ok`, and SSH from `Anywhere` a fact. Negative
+variants must be attention: bare `deploy` or another account in `AllowUsers`,
+an upload account in an extra group, a key without the forced command, a
+group-writable gate, a `0770` upload folder, and SSH from `Anywhere` once
+password login is re-enabled. Check that `ssh` as `deploy` is accepted only
+from an address inside the `AllowUsers` CIDR, that root and password logins
+are refused, that the upload key reaches only `upload-gate`, and that no key
+material appears in the output. Run shellcheck on it, and do not run it with
+elevated privileges on shared machines beyond its read-only `sudo -n` probes.
 `docs/PRODUCTION-RUNBOOK.md` commands that cannot be exercised without the real
 host or provider (for example `systemctl reload ssh`, DNS, Entra, UpCloud
 firewall) are labelled untested there and remain F verification.

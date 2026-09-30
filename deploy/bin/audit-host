@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Read-only audit of the existing, operator-reported cloud-init host baseline
-# (TASK-059E). Separates effective state from the supplied configuration so F
+# (TASK-059E) and the source-delivery setup (TASK-059H1/H3: upload account,
+# upload-gate, AllowUsers, public-key-only SSH, upload and source folders).
+# Separates effective state from the supplied configuration so F
 # can record it. Uses `sudo -n` only for read-only inspection; never installs,
 # reruns cloud-init, touches swap, reloads services or changes files.
 #
@@ -11,7 +13,7 @@
 #   manual    must be checked outside this host (workstation, provider panel)
 #   missing   could not be inspected (tool absent or no read permission)
 #
-# Usage: deploy/bin/audit-host
+# Usage: deploy/bin/audit-host   (or: make audit, from the verified source copy)
 
 set -Eeuo pipefail
 
@@ -36,7 +38,7 @@ if [[ "${ID:-}" == ubuntu && "${VERSION_ID:-}" == 26.04 ]]; then ok "os ${PRETTY
 fact "kernel $(uname -r)"
 fact "coreutils $(stat --version 2>/dev/null | head -n 1)"
 fact "sudo $(sudo --version 2>/dev/null | head -n 1 || printf 'absent')"
-for tool in python3 curl gpg openssl flock ss; do
+for tool in python3 curl gpg openssl flock ss make; do
   if have "${tool}"; then ok "tool ${tool}"; else attn "tool ${tool} is not installed"; fi
 done
 # Git is not used on the server (ADR-013); its presence is only recorded.
@@ -96,6 +98,9 @@ manual "from an operator workstation, open a fresh session: ssh -o PasswordAuthe
 manual "confirm password login is refused: ssh -o PubkeyAuthentication=no -o PreferredAuthentications=password,keyboard-interactive deploy@<host> (expect Permission denied)"
 
 section ssh
+# true only when root, password and keyboard-interactive login are all off;
+# it decides whether SSH from Anywhere is the accepted ADR-013 exposure.
+ssh_pubkey_only=unknown
 if sshd_config="$(priv sshd -T 2>/dev/null)"; then
   for key in port listenaddress permitrootlogin passwordauthentication kbdinteractiveauthentication \
     pubkeyauthentication authenticationmethods permitemptypasswords usepam allowusers allowgroups maxauthtries; do
@@ -109,6 +114,33 @@ if sshd_config="$(priv sshd -T 2>/dev/null)"; then
     || attn "SSH password authentication is enabled"
   [[ "$(awk '$1 == "kbdinteractiveauthentication" { print $2 }' <<<"${sshd_config}")" == no ]] && ok "SSH keyboard-interactive authentication disabled" \
     || attn "SSH keyboard-interactive authentication is enabled"
+  if [[ "${root_login}" == no \
+    && "$(awk '$1 == "passwordauthentication" { print $2 }' <<<"${sshd_config}")" == no \
+    && "$(awk '$1 == "kbdinteractiveauthentication" { print $2 }' <<<"${sshd_config}")" == no ]]; then
+    ssh_pubkey_only=true
+  else
+    ssh_pubkey_only=false
+  fi
+  # ADR-013: AllowUsers deploy@<operator-cidr> schatten-upload.
+  read -r -a allowed <<<"$(awk '$1 == "allowusers" { $1 = ""; print }' <<<"${sshd_config}" | tr '\n' ' ')"
+  if (( ${#allowed[@]} == 0 )); then
+    attn "AllowUsers is not set: deploy is not source-restricted (set AllowUsers deploy@<operator-cidr> schatten-upload, runbook 2.1)"
+  else
+    deploy_patterns=0
+    for pattern in "${allowed[@]}"; do
+      case "${pattern}" in
+        deploy) attn "AllowUsers admits deploy from any address: deploy is not source-restricted" ;;
+        deploy@\*|deploy@\*.\*|deploy@0.0.0.0/0|deploy@::/0) attn "AllowUsers pattern ${pattern} does not source-restrict deploy" ;;
+        deploy@*) deploy_patterns=$((deploy_patterns + 1)) ;;
+        schatten-upload) ;;
+        *) attn "AllowUsers also admits ${pattern}; only deploy@<operator-cidr> and schatten-upload are expected (record or remove under F)" ;;
+      esac
+    done
+    (( deploy_patterns > 0 )) && ok "deploy is source-restricted by AllowUsers (${deploy_patterns} pattern(s))" \
+      || attn "AllowUsers does not admit deploy from an operator network"
+    [[ " ${allowed[*]} " == *" schatten-upload "* ]] && ok "AllowUsers admits schatten-upload" \
+      || attn "AllowUsers does not admit schatten-upload; the Deploy to production Action cannot upload"
+  fi
   match_files="$(priv grep -rlis '^[[:space:]]*Match[[:space:]]' /etc/ssh/sshd_config /etc/ssh/sshd_config.d 2>/dev/null | count_lines)" || true
   [[ "${match_files}" == 0 ]] || attn "sshd has Match blocks in ${match_files} file(s); evaluate them with sshd -T -C user=...,host=...,addr=..."
 else
@@ -126,7 +158,12 @@ if ufw_status="$(priv ufw status verbose 2>/dev/null)"; then
   grep -q '^Status: active' <<<"${ufw_status}" && ok "ufw active" || attn "ufw is not active"
   # Verbose rules read, for example, `22/tcp (OpenSSH)  ALLOW IN  Anywhere`.
   if grep -Eq '^(22(/tcp)?|OpenSSH)([[:space:]]|$).*ALLOW IN[[:space:]]+Anywhere' <<<"${ufw_status}"; then
-    attn "SSH is allowed from Anywhere; SSH is not source-restricted (restrict via ufw or the provider firewall under F)"
+    # Accepted by ADR-013 for GitHub-hosted runners once SSH is public-key only.
+    if [[ "${ssh_pubkey_only}" == true ]]; then
+      fact "SSH is allowed from Anywhere (accepted: public-key only, root login disabled; AllowUsers is checked under [ssh])"
+    else
+      attn "SSH is allowed from Anywhere while root, password or keyboard-interactive login is enabled or unverified; harden SSH first (runbook 2.1)"
+    fi
   fi
 else
   miss "ufw status (needs sudo -n ufw status verbose)"
@@ -234,7 +271,7 @@ fact "held packages ${held:-none}"
 
 section storage
 for path in /opt/apps /opt/caddy /opt/postgres-backups /opt/apps/schatten /opt/apps/schatten-config \
-  /opt/apps/schatten-state /opt/apps/schatten-releases /opt/apps/schatten-sources; do
+  /opt/apps/schatten-state /opt/apps/schatten-releases /opt/apps/schatten-sources /opt/apps/schatten-upload; do
   if [[ ! -e "${path}" ]]; then
     fact "path ${path} absent"
     continue
@@ -272,22 +309,84 @@ if [[ -d /opt/postgres-backups ]]; then
 fi
 [[ -e /opt/apps/schatten ]] && fact "/opt/apps/schatten is the superseded Git checkout path; builds use /opt/apps/schatten-sources"
 
-section source
-receiver=/usr/local/bin/schatten-receive
-if [[ -L "${receiver}" ]]; then
-  attn "${receiver} is a symlink; install the file itself root-owned"
-elif [[ -f "${receiver}" ]]; then
-  receiver_facts="$(stat -c '%u %U %a' "${receiver}")"
-  read -r receiver_uid receiver_owner receiver_mode <<<"${receiver_facts}"
-  fact "${receiver} owner=${receiver_owner} mode=${receiver_mode} sha256=$(sha256sum <"${receiver}" | cut -d' ' -f1)"
-  if [[ "${receiver_uid}" == 0 ]] && (( (8#${receiver_mode} & 8#022) == 0 )); then
-    ok "${receiver} is root-owned and not group/other writable"
+section upload
+# root-owned and not group/other writable; $2 names the file in messages.
+root_owned() {
+  local facts uid owner mode
+  facts="$(stat -c '%u %U %a' "$1")"
+  read -r uid owner mode <<<"${facts}"
+  [[ "${uid}" == 0 ]] && (( (8#${mode} & 8#022) == 0 )) && return 0
+  attn "$1 (owner=${owner} mode=${mode}) must be root-owned and not group/other writable"
+  return 1
+}
+upload_user=schatten-upload
+if upload_entry="$(getent passwd "${upload_user}")"; then
+  IFS=: read -r _ _ upload_uid _ _ upload_home upload_shell <<<"${upload_entry}"
+  fact "account ${upload_user} uid=${upload_uid} home=${upload_home} shell=${upload_shell}"
+  password="$(priv passwd -S "${upload_user}" 2>/dev/null | awk '{ print $2 }' || true)"
+  [[ "${password}" == L ]] && ok "${upload_user} password locked" \
+    || attn "${upload_user} password status ${password:-unknown} is not locked (L)"
+  upload_groups="$(id -nG "${upload_user}" 2>/dev/null || true)"
+  [[ "${upload_groups}" == "${upload_user}" ]] && ok "${upload_user} is only in its own group" \
+    || attn "${upload_user} groups '${upload_groups}': it must be in its own group only (no sudo, docker, adm or deploy groups)"
+  if sudo_rules="$(priv sudo -n -l -U "${upload_user}" 2>&1)"; then
+    grep -qi 'may run' <<<"${sudo_rules}" && attn "${upload_user} has sudo rules" || ok "${upload_user} has no sudo rules"
+  elif grep -qi 'not allowed' <<<"${sudo_rules}"; then
+    ok "${upload_user} has no sudo rules"
   else
-    attn "${receiver} must be root-owned and not group/other writable"
+    miss "sudo rules of ${upload_user} (needs sudo -n -l -U)"
+  fi
+  id -nG deploy 2>/dev/null | tr ' ' '\n' | grep -qx "${upload_user}" && ok "deploy reads uploads through the ${upload_user} group" \
+    || attn "deploy is not a member of the ${upload_user} group and cannot read uploads"
+  keys_file="${upload_home}/.ssh/authorized_keys"
+  for path in "${upload_home}" "${upload_home}/.ssh" "${keys_file}"; do
+    if [[ -L "${path}" ]]; then
+      attn "${path} is a symlink"
+    elif [[ -e "${path}" ]]; then
+      root_owned "${path}" && ok "${path} is root-owned; ${upload_user} cannot change its key restriction"
+    fi
+  done
+  if key_lines="$(priv cat "${keys_file}" 2>/dev/null)"; then
+    # Keys are counted, never printed.
+    keys="$(grep -Ev '^[[:space:]]*(#|$)' <<<"${key_lines}" | count_lines)" || true
+    gated="$(grep -Ec '^restrict,command="/usr/local/bin/upload-gate" (ssh-ed25519|ecdsa-sha2-nistp256|ssh-rsa) ' <<<"${key_lines}")" || true
+    fact "${upload_user} authorized_keys=${keys} with restrict and upload-gate=${gated}"
+    if [[ "${keys}" -ge 1 && "${keys}" == "${gated}" ]]; then
+      ok "every ${upload_user} key has restrict and the upload-gate forced command"
+    else
+      attn "every ${upload_user} key must start with restrict,command=\"/usr/local/bin/upload-gate\" (${gated} of ${keys})"
+    fi
+  else
+    attn "${keys_file} is missing or unreadable"
+  fi
+  if priv test -e "${upload_home}/.ssh/authorized_keys2"; then
+    attn "${upload_home}/.ssh/authorized_keys2 exists; sshd also reads it by default"
   fi
 else
-  fact "${receiver} absent (F installs it root-owned before the first receive)"
+  fact "account ${upload_user} absent (F creates it, runbook 2.2)"
 fi
+upload_dir=/opt/apps/schatten-upload
+if [[ -L "${upload_dir}" ]]; then
+  attn "${upload_dir} is a symlink"
+elif [[ -d "${upload_dir}" ]]; then
+  upload_dir_facts="$(stat -c '%U:%G %a' "${upload_dir}")"
+  [[ "${upload_dir_facts}" == "${upload_user}:${upload_user} 750" ]] && ok "${upload_dir} ${upload_dir_facts}" \
+    || attn "${upload_dir} is ${upload_dir_facts}; expected ${upload_user}:${upload_user} 750"
+else
+  fact "${upload_dir} absent (F creates it, runbook 2.2)"
+fi
+
+section source
+for tool in /usr/local/bin/upload-gate /usr/local/bin/schatten-receive; do
+  if [[ -L "${tool}" ]]; then
+    attn "${tool} is a symlink; install the file itself root-owned"
+  elif [[ -f "${tool}" ]]; then
+    fact "${tool} $(stat -c 'owner=%U mode=%a' "${tool}") sha256=$(sha256sum <"${tool}" | cut -d' ' -f1)"
+    root_owned "${tool}" && ok "${tool} is root-owned and not group/other writable"
+  else
+    fact "${tool} absent (F installs it root-owned before the first upload, runbook 2.2)"
+  fi
+done
 if [[ -d /opt/apps/schatten-sources ]]; then
   shopt -s nullglob
   received=(/opt/apps/schatten-sources/*)

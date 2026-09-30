@@ -69,8 +69,11 @@ implements the empty-users-table administrator bootstrap. TASK-059G implements
 the production runtime (`docker-compose.production.yml`) and the operator
 build/release, backup, restore and scheduler tooling in `deploy/`. TASK-059E
 provides the integrated operator runbook
-([docs/PRODUCTION-RUNBOOK.md](docs/PRODUCTION-RUNBOOK.md)) and disposable QA;
-authorized setup and rollout are pending F.
+([docs/PRODUCTION-RUNBOOK.md](docs/PRODUCTION-RUNBOOK.md)) and disposable QA.
+TASK-059H1-H3 replace the host Git checkout with a manual "Deploy to
+production" GitHub Action, a manifest-verified receive and server `make`
+commands in `deploy/Makefile`; there is no Git on the server. Authorized setup
+and rollout are pending F.
 Volumes are not backups; release requires completed backup identifiers and
 successful restore-rehearsal evidence. Production backup activation is pending F.
 
@@ -96,7 +99,8 @@ prerequisites, applies migrations and the idempotent development seed, and
 starts Caddy, API, prediction worker and Vite against the ready schema. It uses
 local Docker resources only. Production, provider mutation, release, rollback,
 baseline, reset and destructive cleanup operations are intentionally not
-available through Make.
+available through the root Makefile; production server commands live in
+`deploy/Makefile` and run on the host (see the runbook).
 
 Frontendin voi ajaa Dockerissa:
 

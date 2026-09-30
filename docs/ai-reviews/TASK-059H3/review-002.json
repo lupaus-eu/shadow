@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-059H3/review-002",
+  "task": {
+    "id": "TASK-059H3",
+    "path": "tasks/TASK-059H3-server-makefile-runbook.md"
+  },
+  "round": 2,
+  "reviewed_at": "2026-09-30T08:35:29Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "472a6f1446a27de69ddf971ba005c61957f1c7ea",
+    "head_sha": "b7bf5204cff34fa7bae6dc0a03fda9dadcdd7e76",
+    "comparison": "472a6f1446a27de69ddf971ba005c61957f1c7ea...b7bf5204cff34fa7bae6dc0a03fda9dadcdd7e76",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "clean",
+    "summary": "All three review-001 findings are fixed and nothing new was found. deploy-release now refuses every mode, including rollback, while the stopped-services record exists. It checks under the release lock, which service stop also holds, so a stop cannot race past the check. make start always clears the record, including an obsolete one. ops-status lists the record, the runbook states that stopped services stay stopped across reboots, and make restore refuses relative KEY or PASSPHRASE paths. New harness cases cover the refusals: no services are started, current is unchanged, no deployment record is written, and make status lists and then clears the stopped services. Both daemon versions pass with 86 PASS lines, run on the exact committed deploy and .github trees. shellcheck passes, links and anchors resolve, and the historical QA records are unchanged. Production releases do not exist yet, so every rollback target's tooling will include the check.",
+    "findings": [],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-059H3/review-001",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "deploy-release checks for the stopped-services record after taking the release and maintenance locks and refuses before writing a deployment record. So neither a release nor a rollback can leave a stopped Ofelia off or leave the record at a dead end. The harness shows make deploy and a direct rollback refused while stopped, with no services started, the current pointer unchanged and no new deployment record. The later scheduler, release-two and rollback steps pass unchanged on Engine 28.5.2 and 29.8.1. Runbook 6, 10.2 and 3.1 document the refusal and the make start remedy.",
+        "validated_by": {
+          "review_id": "TASK-059H3/review-002",
+          "commit": "b7bf5204cff34fa7bae6dc0a03fda9dadcdd7e76"
+        }
+      },
+      {
+        "record_id": "TASK-059H3/review-001",
+        "finding_id": "F-002",
+        "disposition": "fixed",
+        "rationale": "Runbook 10.2 and 10.3 now state that services stopped with make stop stay stopped across reboots and daemon restarts until make start. ops-status prints the recorded release and services under 'stopped by service stop'. The harness checks that make status shows the record while stopped and no longer shows it after start. DEPLOYMENT.md describes both behaviors.",
+        "validated_by": {
+          "review_id": "TASK-059H3/review-002",
+          "commit": "b7bf5204cff34fa7bae6dc0a03fda9dadcdd7e76"
+        }
+      },
+      {
+        "record_id": "TASK-059H3/review-001",
+        "finding_id": "F-003",
+        "disposition": "fixed",
+        "rationale": "The restore target now refuses a relative KEY or PASSPHRASE with a message naming the deploy folder that make -C runs in. The help text, usage message, runbook target table and DEPLOYMENT.md state the absolute-path requirement. The harness covers both refusals, and the absolute-path restore rehearsal still passes.",
+        "validated_by": {
+          "review_id": "TASK-059H3/review-002",
+          "commit": "b7bf5204cff34fa7bae6dc0a03fda9dadcdd7e76"
+        }
+      }
+    ]
+  }
+}

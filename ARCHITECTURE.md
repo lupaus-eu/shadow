@@ -670,7 +670,9 @@ Status: ADR-013 amendment accepted; production runtime and tooling implemented
 by TASK-059G (`docker-compose.production.yml`, `deploy/`); integrated runbook and
 disposable QA by TASK-059E (`docs/PRODUCTION-RUNBOOK.md`); source delivery
 without Git on the server amended by TASK-059H; manifest, receiver and Git-free
-build implemented by H1, H2-H3 pending; rollout pending F
+build (H1), upload gate and "Deploy to production" workflow (H2), and server
+`deploy/Makefile`, `service` command and runbook (H3) implemented; rollout
+pending F
 
 Use Docker Engine/Compose on an **UpCloud Ubuntu 26.04 LTS** server. Caddy
 serves built React and terminates public TLS directly at
@@ -688,7 +690,9 @@ manifest (commit, ref, `SOURCE_DATE_EPOCH`, run ID, per-file mode and SHA-256)
 and copies both with a pinned SCP action to a dedicated upload-only account.
 **Git is not used on the server.** A root-owned receiver verifies the upload
 against the manifest digest the operator copies from the run summary and
-copies only listed files into a read-only verified source folder. Integrity
+copies only listed files into a read-only verified source folder, from which
+operators build and deploy with `make -C <verified folder>/deploy <target>`
+(thin wrappers over `deploy/bin`). Integrity
 therefore rests on GitHub and the operator-entered digest rather than a
 host-side commit check; ADR-013 records this weaker, accepted guarantee.
 
@@ -764,7 +768,7 @@ ADR-003 Coolify Deployment And Release Migrations: deployment superseded by ADR-
 ADR-004 Authentication, Identity And Session Architecture: accepted
 ADR-005 Production-Only Deployment Environments: accepted
 ADR-006 Local Authentik TLS And Optional Entra Federation: target superseded by ADR-013
-ADR-013 Shared Entra Registration And Local HTTPS Deployment: accepted; H1 implemented, source delivery H2-H3 and rollout pending
+ADR-013 Shared Entra Registration And Local HTTPS Deployment: accepted; source delivery H1-H3 implemented, rollout pending
 ```
 
 ---

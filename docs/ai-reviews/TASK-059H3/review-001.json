@@ -1,0 +1,86 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-059H3/review-001",
+  "task": {
+    "id": "TASK-059H3",
+    "path": "tasks/TASK-059H3-server-makefile-runbook.md"
+  },
+  "round": 1,
+  "reviewed_at": "2026-09-30T07:53:26Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "472a6f1446a27de69ddf971ba005c61957f1c7ea",
+    "head_sha": "08814c6841f96feda3cede8c1f9df6df4a8b530c",
+    "comparison": "472a6f1446a27de69ddf971ba005c61957f1c7ea...08814c6841f96feda3cede8c1f9df6df4a8b530c",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "deploy/Makefile has exactly the required thin targets. It passes values through the environment, requires variables with a usage message, refuses a release from another commit and has no destructive recipe. service keeps containers and volumes and holds the release, maintenance and backup locks. audit-host covers the upload account, gate, AllowUsers, public-key-only SSH and upload folder, and treats SSH from Anywhere as specified. The harness runs the operator steps through make with Git absent from PATH, the runbook covers bootstrap through deploy, links and anchors resolve, and the historical QA records are unchanged. One medium interaction bug: a deploy after make stop leaves the scheduler off and the stop record at a dead end. Two low documentation gaps: stopped services stay stopped after a reboot, and make -C changes how relative KEY and PASSPHRASE paths resolve.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "bug",
+        "severity": "medium",
+        "summary": "A deploy-release after service stop does not restart Ofelia: it restarts the scheduler only if Ofelia is running, so the release records SCHEDULER=not-activated and scheduled backups stay off. For a new release, the stopped-services record then blocks both service start (release mismatch) and the next service stop (Ofelia still recorded as stopped).",
+        "rationale": "deploy-release's ofelia_running check uses compose ps without --all, which lists only running containers. After make stop, Ofelia is stopped, so a subsequent make deploy or direct rollback succeeds without the scheduler and writes a record that no longer matches the current release. The runbook's 10.2 advice to redeploy after a configuration change, and the release gate's dependence on daily backups, make this reachable in normal operation. Operators get no warning; recovery needs --enable-scheduler and manual removal of the state file. Code analysis; the harness does not cover stop followed by deploy.",
+        "recommendation": "Make deploy-release, including rollback, refuse while /opt/apps/schatten-state/stopped-services exists, with the message 'services are stopped by service stop; run make start first'. Alternatively, treat a recorded Ofelia as running when deciding whether to restart the scheduler, and clear the record. Add a harness case for stop followed by deploy, and document the rule in runbook 10.2.",
+        "locations": [
+          {
+            "path": "deploy/bin/service",
+            "line": 78
+          },
+          {
+            "path": "deploy/bin/deploy-release",
+            "line": 159
+          },
+          {
+            "path": "docs/PRODUCTION-RUNBOOK.md",
+            "line": 908
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "Runbook 10.3 says a reboot restarts database, API, worker and frontend, but services stopped with make stop stay stopped across a reboot or daemon restart (restart: unless-stopped), and make status does not show the stopped-services record.",
+        "rationale": "After an unplanned or unattended reboot during a maintenance stop, an operator following 10.3 would expect the site and the scheduled backups to be up. They stay down until make start. Nothing in ops-status points at the record.",
+        "recommendation": "Add to 10.2 or 10.3 that stopped services stay stopped across reboots until make start. Optionally have ops-status print the recorded release and services when the record exists.",
+        "locations": [
+          {
+            "path": "docs/PRODUCTION-RUNBOOK.md",
+            "line": 927
+          },
+          {
+            "path": "deploy/bin/ops-status"
+          }
+        ]
+      },
+      {
+        "id": "F-003",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "make -C runs recipes in the verified copy's deploy folder, so a relative KEY= or PASSPHRASE= path resolves against that folder instead of the operator's working directory. The help text and the target table do not say that absolute paths are required.",
+        "rationale": "The runbook's 8.3 example uses absolute paths, so the documented flow works. A relative path fails with a file-not-found error from restore-rehearsal, which is safe but confusing during a restore rehearsal that gates releases.",
+        "recommendation": "State that KEY and PASSPHRASE must be absolute paths in the make help text and in the runbook target table. Alternatively, have the restore target refuse a relative path with that message.",
+        "locations": [
+          {
+            "path": "deploy/Makefile",
+            "line": 105
+          },
+          {
+            "path": "docs/PRODUCTION-RUNBOOK.md",
+            "line": 77
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": []
+  }
+}

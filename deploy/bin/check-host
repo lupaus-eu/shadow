@@ -29,8 +29,9 @@ else
   error "OS ${os_version} is not the approved ubuntu 26.04"
 fi
 
-# Git is not used on the server (ADR-013); python3 runs schatten-receive.
-for tool in python3 flock sha256sum tar; do
+# Git is not used on the server (ADR-013); python3 runs schatten-receive and
+# make runs deploy/Makefile.
+for tool in python3 flock sha256sum tar make; do
   if command -v "${tool}" >/dev/null 2>&1; then ok "tool ${tool}"; else error "missing tool ${tool}"; fi
 done
 

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Summarize release pointers, recent completed backups, latest restore
-# evidence and recent scheduler results without printing secrets.
+# Summarize release pointers, services stopped by service stop, recent
+# completed backups, latest restore evidence and recent scheduler results
+# without printing secrets.
 #
 # Usage: deploy/bin/ops-status
 
@@ -9,6 +10,12 @@ load_config
 
 printf 'current release:  %s\n' "$(pointer_value current)"
 printf 'previous release: %s\n' "$(pointer_value previous)"
+# Stopped services stay stopped across reboots until service start.
+stopped_record="${SCHATTEN_STATE_DIR}/stopped-services"
+if [[ -f "${stopped_record}" ]]; then
+  printf '\nstopped by service stop (start again with: service start):\n'
+  grep -E '^(RELEASE_ID|SERVICES)=' "${stopped_record}" | sed 's/^/  /'
+fi
 printf '\ncompleted backups (newest first):\n'
 # The backup directory belongs to the backup user; list it through a hardened
 # container instead of widening its permissions.

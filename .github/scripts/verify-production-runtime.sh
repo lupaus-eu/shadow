@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 # Disposable end-to-end QA for the UpCloud production runtime (TASK-059G), the
-# integrated first-installation runbook sequence (TASK-059E) and the Git-free
+# integrated first-installation runbook sequence (TASK-059E), the Git-free
 # source path (TASK-059H1): source manifest -> upload-style folder ->
-# schatten-receive -> build-release --source.
+# schatten-receive -> build-release --source, and the server Makefile and
+# service command (TASK-059H3): build, first-install, deploy, backup, restore,
+# status, ps, logs, stop and start run through deploy/Makefile from the
+# verified source copy.
 #
 # Runs every deploy/bin command against an isolated Docker-in-Docker daemon
 # with synthetic configuration, a throwaway GPG key and simulated OIDC
@@ -340,8 +343,49 @@ rm -rf "${unverified}"
 [[ -z "$(find "${opt}/apps/schatten-releases" -maxdepth 1 -name '*.incomplete' -print -quit)" ]] || fail "failed build left a work directory"
 pass "all rejection cases leave nothing behind; the accepted read-only copy ignores stale files, takes manifest modes and is unaffected by later upload changes; build-release accepts only verified folders under the sources directory"
 
+step "Server Makefile: thin wrappers without destructive operations"
+# As on the host, make runs from the verified read-only copy (runbook 3).
+make_dir="${source_dir}/deploy"
+op() { make -C "${make_dir}" "$@"; }
+makefile="${make_dir}/Makefile"
+targets="$(sed -n 's/^\.PHONY: //p' "${makefile}" | tr ' ' '\n' | sort | paste -sd' ' -)"
+[[ "${targets}" == "audit backup build check cleanup-dry-run deploy first-install help logs ps restore start status stop" ]] \
+  || fail "Makefile targets: ${targets}"
+wrapped="$(grep -o "'\$(BIN)/[a-z-]*'" "${makefile}" | tr -d "'" | sed 's#.*/##' | sort -u)"
+for command in ${wrapped}; do
+  [[ -x "${make_dir}/bin/${command}" ]] || fail "Makefile wraps a missing command ${command}"
+done
+[[ "$(wc -w <<<"${wrapped}")" == 9 ]] || fail "Makefile wraps: ${wrapped}"
+if grep -F '$(BIN)/' "${makefile}" | grep -Eq -- '(down|prune|volume|rm |--apply|--rollback|initialize|seed|bootstrap|schatten-receive)'; then
+  fail "a Makefile recipe runs a destructive or initialization command"
+fi
+for target in deploy first-install; do
+  expect_failure "make ${target} requires RELEASE" 'RELEASE is required' op "${target}"
+  expect_failure "make ${target} requires APPROVAL" 'APPROVAL is required' op "${target}" RELEASE=20260101T000000Z-000000000000
+  expect_failure "make ${target} refuses a release of another commit" 'was not built from this source copy' \
+    op "${target}" RELEASE=20260101T000000Z-000000000000 APPROVAL=qa
+done
+expect_failure "make restore requires BACKUP" 'BACKUP is required' op restore KEY=/dev/null
+expect_failure "make restore requires KEY" 'KEY is required' op restore BACKUP=schatten-x
+expect_failure "make restore refuses a relative KEY" 'KEY must be an absolute path' op restore BACKUP=schatten-x KEY=key.asc
+expect_failure "make restore refuses a relative PASSPHRASE" 'PASSPHRASE must be an absolute path' \
+  op restore BACKUP=schatten-x KEY=/dev/null PASSPHRASE=passphrase
+expect_failure "make logs refuses an unknown service" 'Unknown service' op logs SERVICE=bogus
+expect_failure "make logs refuses shell syntax in SERVICE" 'Unknown service' op logs 'SERVICE=backend; touch /tmp/pwned'
+expect_failure "make ps needs a current release" 'No current release' op ps
+# check-host itself is tested above with --allow-os-mismatch; through make it
+# must pass on Ubuntu 26.04 and otherwise stop only at the OS check.
+if output="$(op check 2>&1)"; then
+  grep -q 'PASSED host prerequisites' <<<"${output}" || fail "make check"
+else
+  [[ "$(grep -c '^error' <<<"${output}")" == 1 ]] && grep -q '^error  OS .* is not the approved ubuntu 26.04' <<<"${output}" \
+    || { printf '%s\n' "${output}" >&2; fail "make check reported more than the OS mismatch"; }
+fi
+printf '%s\n' "${output}" >>"${log_file}"
+pass "Makefile has exactly the documented targets over ${wrapped//$'\n'/, }; variables are required and not evaluated by a shell; restore paths must be absolute; no destructive recipe"
+
 step "Build frozen release artifacts from the verified source"
-release_one="$(capture RELEASE_ID "${bin}/build-release" --source "${source_dir}")"
+release_one="$(capture RELEASE_ID op build)"
 dir_one="$(release_dir "${release_one}")"
 for pair in "SOURCE_COMMIT=${commit}" "SOURCE_MANIFEST_SHA256=${digest}" SOURCE_REF=refs/heads/main \
   "SOURCE_RUN_ID=${qa_run_id}" "SOURCE_DATE_EPOCH=${source_date_epoch}"; do
@@ -369,7 +413,7 @@ pass "simulated login.microsoftonline.com discovery on an isolated QA network"
 
 step "First-install deployment (no previous release)"
 expect_failure "deployment requires an approval reference" 'approval' "${bin}/deploy-release" "${release_one}" --first-install
-run "${bin}/deploy-release" "${release_one}" --approval qa-first-install --first-install
+run op first-install RELEASE="${release_one}" APPROVAL=qa-first-install
 [[ "$(cat "${opt}/apps/schatten-releases/current")" == "${release_one}" ]] || fail "current pointer"
 [[ ! -e "${opt}/apps/schatten-releases/previous" ]] || fail "first release must have no previous target"
 expect_failure "second first-install is refused on an initialized database" 'already has migration history' \
@@ -399,6 +443,60 @@ direct="$(docker run --rm --network schatten_edge "${cli_image}" sh -c \
   "wget -S -O /dev/null --header 'Host: app.example.test' --header 'X-Schatten-Client-IP: 203.0.113.40' http://backend:8000/api/v1/auth/session 2>&1 | grep -Eo 'HTTP/1\.[01] [0-9]{3}' | head -n 1 | cut -d' ' -f2")"
 [[ "${direct}" == 400 ]] || fail "backend trusted a non-Caddy peer (status ${direct})"
 pass "only Caddy 80/443 published; TLS, HSTS/CSP, redirect, SPA, sanitized forwarding and exact Caddy-peer trust"
+
+step "Service commands through make: ps, logs, stop and start keep containers and volumes"
+project_containers() { docker ps --all --quiet --no-trunc --filter label=com.docker.compose.project=schatten | sort; }
+running_services() { compose_release "${dir_one}" ps --status running --services | sort | paste -sd' ' -; }
+ps_output="$(op ps 2>&1)" || { printf '%s\n' "${ps_output}" >&2; fail "make ps"; }
+printf '%s\n' "${ps_output}" >>"${log_file}"
+grep -q "^release ${release_one}\$" <<<"${ps_output}" || fail "make ps does not name the current release"
+for service in database migration backend prediction-worker frontend; do
+  grep -Eq "^${service} +schatten-${service}-1 " <<<"${ps_output}" || fail "make ps lacks ${service}"
+done
+logs_output="$(op logs 2>&1)" || fail "make logs"
+backend_logs="$(op logs SERVICE=backend 2>&1)" || fail "make logs SERVICE=backend"
+printf '%s\n%s\n' "${logs_output}" "${backend_logs}" >>"${log_file}"
+grep -q '^database-1 ' <<<"${logs_output}" && grep -q '^backend-1 ' <<<"${logs_output}" || fail "make logs lacks service output"
+grep -Ev '^backend-1 ' <<<"${backend_logs}" | grep -q -- '-1 ' && fail "make logs SERVICE=backend printed other services"
+grep -Eq '(POSTGRES_PASSWORD|DATABASE_URL|OIDC_CLIENT_SECRET)=' <<<"${ps_output}${logs_output}" && fail "service output contains environment"
+containers_before="$(project_containers)"
+volumes_before="$(docker volume ls --quiet | sort)"
+migration_started="$(docker inspect --format '{{.State.StartedAt}}' "$(compose_release "${dir_one}" ps --all --quiet migration)")"
+[[ "$(running_services)" == "backend database frontend prediction-worker" ]] || fail "unexpected running services: $(running_services)"
+run op stop
+[[ -z "$(running_services)" ]] || fail "make stop left $(running_services) running"
+[[ "$(project_containers)" == "${containers_before}" && "$(docker volume ls --quiet | sort)" == "${volumes_before}" ]] \
+  || fail "make stop removed or created containers or volumes"
+grep -qx 'SERVICES=database backend prediction-worker frontend' "${opt}/apps/schatten-state/stopped-services" || fail "stop record"
+expect_failure "a second stop before start is refused" 'still stopped by an earlier service stop' op stop
+deployments_before="$(find "${opt}/apps/schatten-state/deployments" -type f | wc -l)"
+expect_failure "deploy is refused while services are stopped" 'stopped by service stop' \
+  op deploy RELEASE="${release_one}" APPROVAL=qa-stopped
+expect_failure "rollback is refused while services are stopped" 'stopped by service stop' \
+  "${bin}/deploy-release" "${release_one}" --approval qa-stopped --rollback --confirm-schema-compatible
+[[ -z "$(running_services)" && "$(cat "${opt}/apps/schatten-releases/current")" == "${release_one}" ]] \
+  || fail "a refused deploy started services or moved the current pointer"
+[[ "$(find "${opt}/apps/schatten-state/deployments" -type f | wc -l)" == "${deployments_before}" ]] \
+  || fail "a refused deploy wrote a deployment record"
+status_output="$(op status 2>&1)" || { printf '%s\n' "${status_output}" >&2; fail "make status while stopped"; }
+printf '%s\n' "${status_output}" >>"${log_file}"
+grep -q '^stopped by service stop' <<<"${status_output}" \
+  && grep -qx '  SERVICES=database backend prediction-worker frontend' <<<"${status_output}" \
+  || fail "make status does not show the stopped services"
+run op start
+grep -q '^stopped by service stop' <<<"$(op status 2>&1)" && fail "make status still shows stopped services after start"
+[[ "$(running_services)" == "backend database frontend prediction-worker" ]] || fail "make start did not restore the services"
+for service in database backend prediction-worker frontend; do
+  wait_for_healthy "${dir_one}" "${service}" 5 || fail "${service} unhealthy after make start"
+done
+[[ "$(project_containers)" == "${containers_before}" && "$(docker volume ls --quiet | sort)" == "${volumes_before}" ]] \
+  || fail "make start replaced containers or volumes"
+[[ "$(docker inspect --format '{{.State.StartedAt}}' "$(compose_release "${dir_one}" ps --all --quiet migration)")" == "${migration_started}" ]] \
+  || fail "make start re-ran the migration job"
+[[ ! -e "${opt}/apps/schatten-state/stopped-services" ]] || fail "stop record left after start"
+expect_failure "start without a recorded stop is refused" 'No services were recorded' op start
+[[ "$(https https://app.example.test/health)" == OK ]] || fail "HTTPS after make start"
+pass "make ps/logs show the current release without environment; stop/start keep the same containers and volumes and never rerun the migration; deploy and rollback are refused and make status lists the stopped services while stopped"
 
 step "Explicit first initialization: migrations -> reference seed -> administrator bootstrap"
 # Count-only status; never prints names, emails or rows.
@@ -477,7 +575,7 @@ grep -q 'refused: the users table is not empty' <<<"${output}" || fail "repeated
 pass "status shows no startup seed; explicit idempotent seed; interactive empty-table bootstrap creates one admin, no identity/session/dev data; repeat refused unchanged"
 
 step "On-demand encrypted backup and isolated restore rehearsal"
-backup_id="$(capture BACKUP_ID "${bin}/backup-now" --reason manual)"
+backup_id="$(capture BACKUP_ID op backup)"
 facts="$(as_root "cd '${opt}/postgres-backups' && stat -c '%a %u' ${backup_id}.dump.gpg ${backup_id}.manifest && head -c 5 ${backup_id}.dump.gpg | od -An -c")"
 [[ "$(sed -n 1p <<<"${facts}")" == "600 10002" && "$(sed -n 2p <<<"${facts}")" == "600 10002" ]] || fail "backup file ownership/mode: ${facts}"
 grep -q 'P   G   D   M   P' <<<"${facts}" && fail "backup file is an unencrypted pg_dump archive"
@@ -487,8 +585,8 @@ expect_failure "restore with the wrong key passphrase fails" 'Restore rehearsal 
   --passphrase-file "${qa_root}/keys/wrong-passphrase"
 expect_failure "failed latest restore evidence blocks release" 'not successful' \
   "${bin}/deploy-release" "${release_one}" --approval qa-failed-restore-evidence
-evidence="$(capture RESTORE_EVIDENCE "${bin}/restore-rehearsal" "${backup_id}" --private-key "${qa_root}/keys/backup-private-key.asc" \
-  --passphrase-file "${qa_root}/keys/backup-key-passphrase")"
+evidence="$(capture RESTORE_EVIDENCE op restore BACKUP="${backup_id}" KEY="${qa_root}/keys/backup-private-key.asc" \
+  PASSPHRASE="${qa_root}/keys/backup-key-passphrase")"
 grep -qx 'STATUS=success' "${evidence}" || fail "restore evidence"
 grep -q 'check=schema-migrations result=pass' "${evidence}" || fail "restore schema check"
 grep -q 'rows table=schema_migrations count=' "${evidence}" || fail "restore data check"
@@ -498,7 +596,7 @@ for pair in users=1 metamodels=1 user_identities=0 auth_sessions=0 organisations
 done
 grep -Eq 'rows table=node_types count=[1-9]' "${evidence}" || fail "restored reference data"
 [[ -z "$(docker ps --all --quiet --filter label=eu.lupaus.schatten.disposable=restore)" ]] || fail "restore target not removed"
-status_output="$("${bin}/ops-status" 2>&1)" || fail "ops-status"
+status_output="$(op status 2>&1)" || fail "make status"
 printf '%s\n' "${status_output}" >>"${log_file}"
 grep -qx "${backup_id}" <<<"${status_output}" && grep -q 'STATUS=success' <<<"${status_output}" || fail "ops-status summary"
 pass "initialized-database backup ${backup_id} is encrypted 0600; failed evidence blocks release; passphrase-key restore verifies admin/reference rows in a removed disposable target"
@@ -604,6 +702,18 @@ grep -q decoy <<<"${ofelia_logs}" && fail "label job was discovered"
 as_root "ls '${opt}/postgres-backups'" | grep -q -- '-scheduled-[0-9a-f]\{6\}\.manifest$' || fail "no scheduled backup manifest"
 output="$("${bin}/verify-runtime-hardening" 2>&1)" || { printf '%s\n' "${output}"; fail "runtime hardening"; }
 printf '%s\n' "${output}" >>"${log_file}"
+# stop/start with the scheduler: stop refuses while a scheduled backup runs.
+for attempt in $(seq 1 10); do
+  output="$(op stop 2>&1)" && break
+  grep -q 'A backup is running' <<<"${output}" || { printf '%s\n' "${output}" >&2; fail "make stop with the scheduler"; }
+  [[ "${attempt}" == 10 ]] && fail "make stop found a backup running 10 times"
+  sleep 3
+done
+printf '%s\n' "${output}" >>"${log_file}"
+grep -qx 'SERVICES=database backend prediction-worker frontend ofelia' "${opt}/apps/schatten-state/stopped-services" || fail "stop record with ofelia"
+[[ -z "$(compose_release "${dir_one}" --profile scheduler ps --status running --quiet)" ]] || fail "make stop left the scheduler running"
+run op start
+[[ -n "$(compose_release "${dir_one}" --profile scheduler ps --status running --quiet ofelia)" ]] || fail "make start did not restart the scheduler"
 docker run --rm --volume "${dir_one}/source/deploy/ofelia/config.ini:/etc/ofelia/config.ini:ro" "${ofelia_image}" \
   validate --config=/etc/ofelia/config.ini >>"${log_file}" 2>&1 || fail "production Ofelia job file is invalid"
 docker run --detach --name qa-ofelia-nosocket --user 65534:65534 --read-only --cap-drop ALL \
@@ -638,6 +748,7 @@ volumes_before="$(docker volume ls --quiet | sort)"
 backups_before="$(as_root "ls -1 '${opt}/postgres-backups' | sort")"
 future=$(( $(date -u +%s) + 8 * 86400 ))
 cleanup_run() { compose_release "${dir_one}" --profile ops run --rm --no-deps -T --env "SCHATTEN_CLEANUP_NOW_EPOCH=${future}" "$@"; }
+run op cleanup-dry-run >/dev/null || fail "make cleanup-dry-run"
 dry="$(cleanup_run cleanup-runner --dry-run 2>&1)"
 printf '%s\n' "${dry}" >>"${log_file}"
 grep -q 'candidate container=/qa-exited ' <<<"${dry}" && grep -q "candidate image=${unprotected_id}" <<<"${dry}" || fail "dry-run candidates"
@@ -700,7 +811,7 @@ expect_failure "missing restore evidence blocks release" 'Missing restore-rehear
   "${bin}/deploy-release" "${release_two}" --approval qa-release-two
 rmdir "${opt}/apps/schatten-state/restore-evidence"
 mv "${opt}/apps/schatten-state/restore-evidence.hidden" "${opt}/apps/schatten-state/restore-evidence"
-run "${bin}/deploy-release" "${release_two}" --approval qa-release-two
+run op deploy RELEASE="${release_two}" APPROVAL=qa-release-two
 [[ "$(cat "${opt}/apps/schatten-releases/current")" == "${release_two}" && "$(cat "${opt}/apps/schatten-releases/previous")" == "${release_one}" ]] || fail "release pointers"
 expect_failure "current release cannot be retired" 'Refusing to retire' "${bin}/retire-release" "${release_two}"
 
@@ -748,5 +859,5 @@ for kind in BACKEND FRONTEND; do
 done
 pass "synthetic secrets absent from QA, container logs and image history"
 
-printf '\nTASK-059G/E/H1 production runtime, first-install runbook and Git-free source QA passed. Tools: %s; Compose %s.\n' \
+printf '\nTASK-059G/E/H1/H3 production runtime, first-install runbook, Git-free source and server Makefile QA passed. Tools: %s; Compose %s.\n' \
   "$(docker version --format 'Engine {{.Server.Version}}')" "$(docker compose version --short)"

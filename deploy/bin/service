@@ -1,0 +1,119 @@
+#!/usr/bin/env bash
+# Inspect, stop or start the current release's services (TASK-059H3) through
+# its frozen Compose file. Never creates, removes or recreates containers,
+# volumes or networks, and never prints `docker compose config`, environments
+# or `docker inspect` output.
+#
+#   ps               containers of the release, including stopped ones
+#   logs [service]   the last 200 log lines of every service, or of one
+#   stop             stop the running services (scheduler included) and
+#                    record which ones were running
+#   start            start exactly the recorded services again, in dependency
+#                    order, and wait until they are healthy; the one-shot
+#                    migration and the runners are never started
+#
+# While stop's record exists, deploy-release (including rollback) refuses and
+# ops-status lists the record; the services stay stopped across reboots.
+#
+# Usage: deploy/bin/service ps|logs [service]|stop|start
+
+source "$(dirname "$(readlink -f "$0")")/../lib/common.sh"
+
+usage() { die "Usage: service ps|logs [service]|stop|start"; }
+# Start order; stop is the reverse. The migration job and the runners are
+# one-shot containers and are not part of it.
+readonly long_running=(database backend prediction-worker frontend ofelia)
+readonly all_services=(database migration backend prediction-worker frontend ofelia backup-runner cleanup-runner)
+
+command_name="${1:-}"
+# Arguments are checked before any state is read.
+case "${command_name}" in
+  ps|stop|start) (( $# == 1 )) || usage ;;
+  logs)
+    (( $# <= 2 )) || usage
+    if [[ -n "${2:-}" && " ${all_services[*]} " != *" $2 "* ]]; then
+      die "Unknown service $2; one of: ${all_services[*]}"
+    fi
+    ;;
+  *) usage ;;
+esac
+load_config
+release_id="$(pointer_value current)"
+[[ -n "${release_id}" ]] || die "No current release; deploy one first"
+directory="$(release_dir "${release_id}")"
+[[ -f "${directory}/release.env" ]] || die "Release record ${directory} is missing"
+marker="${SCHATTEN_STATE_DIR}/stopped-services"
+compose() { compose_release "${directory}" --profile scheduler --profile ops "$@"; }
+container_of() { compose ps --all --quiet "$1"; }
+
+case "${command_name}" in
+  ps)
+    printf 'release %s\n' "${release_id}"
+    compose ps --all --format 'table {{.Service}}\t{{.Name}}\t{{.State}}\t{{.Status}}\t{{.Ports}}'
+    ;;
+  logs)
+    services=()
+    [[ -n "${2:-}" ]] && services=("$2")
+    compose logs --no-color --timestamps --tail 200 "${services[@]}"
+    ;;
+  stop)
+    hold_release_lock
+    hold_maintenance_lock
+    # A backup in progress would lose its database connection.
+    exec 6<"${SCHATTEN_LOCK_DIR}/backup.lock"
+    flock --exclusive --nonblock 6 || die "A backup is running; retry when it has finished"
+    running="$(compose ps --status running --services)"
+    if [[ -f "${marker}" ]]; then
+      # A marker whose services all run again (for example after a manual
+      # docker start) is obsolete; one with a stopped service belongs to an
+      # unfinished stop. deploy-release refuses while the marker exists.
+      read -r -a recorded <<<"$(sed -n 's/^SERVICES=//p' "${marker}")"
+      for service in "${recorded[@]}"; do
+        if ! grep -qx "${service}" <<<"${running}"; then
+          die "${service} is still stopped by an earlier service stop (${marker}); run service start first"
+        fi
+      done
+    fi
+    stopped=()
+    for service in "${long_running[@]}"; do
+      if grep -qx "${service}" <<<"${running}"; then stopped+=("${service}"); fi
+    done
+    (( ${#stopped[@]} > 0 )) || die "No service of release ${release_id} is running"
+    printf 'RELEASE_ID=%s\nSERVICES=%s\n' "${release_id}" "${stopped[*]}" >"${marker}"
+    reverse=()
+    for (( index=${#stopped[@]} - 1; index >= 0; index-- )); do
+      reverse+=("${stopped[index]}")
+    done
+    # compose stop keeps containers, volumes and networks and honours each
+    # service's stop_grace_period.
+    compose stop "${reverse[@]}"
+    log "Stopped ${stopped[*]} of release ${release_id}; containers and volumes are kept. Start again with: service start"
+    ;;
+  start)
+    hold_release_lock
+    hold_maintenance_lock
+    [[ -f "${marker}" ]] || die "No services were recorded by service stop; nothing to start"
+    recorded_release="$(sed -n 's/^RELEASE_ID=//p' "${marker}")"
+    [[ "${recorded_release}" == "${release_id}" ]] \
+      || die "${marker} records release ${recorded_release}, not the current ${release_id}; review it before starting"
+    read -r -a recorded <<<"$(sed -n 's/^SERVICES=//p' "${marker}")"
+    for service in "${long_running[@]}"; do
+      [[ " ${recorded[*]} " == *" ${service} "* ]] || continue
+      container="$(container_of "${service}")"
+      [[ -n "${container}" ]] || die "Service ${service} has no container; redeploy the current release instead"
+      if [[ "$(docker inspect --format '{{.State.Running}}' "${container}")" == true ]]; then
+        log "${service} is already running"
+        continue
+      fi
+      # docker start on the exact container: Compose would also start the
+      # dependencies, including the completed migration job.
+      docker start "${container}" >/dev/null
+      if [[ "${service}" != ofelia ]]; then
+        wait_for_healthy "${directory}" "${service}" 90 || die "${service} did not become healthy; inspect with: service logs ${service}"
+      fi
+      log "Started ${service}"
+    done
+    rm -f "${marker}"
+    log "Started ${recorded[*]} of release ${release_id}"
+    ;;
+esac

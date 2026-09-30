@@ -12,6 +12,7 @@
 # schema-compatible rollback), healthy API/worker/frontend, exactly one worker
 # and verified runtime hardening. Never runs down migrations, deletes volumes,
 # resets or restores the database. Failure leaves the pointers unchanged.
+# Refused while services are stopped by deploy/bin/service stop.
 
 source "$(dirname "$(readlink -f "$0")")/../lib/common.sh"
 bin_dir="$(dirname "$(readlink -f "$0")")"
@@ -44,6 +45,11 @@ done
 load_config
 hold_release_lock
 hold_maintenance_lock
+# service stop writes this record under the release lock. Deploying over it
+# would leave the stopped scheduler off and the record naming a stale release.
+stopped_record="${SCHATTEN_STATE_DIR}/stopped-services"
+[[ ! -e "${stopped_record}" ]] \
+  || die "Services are stopped by service stop (${stopped_record}); run service start (make start) first"
 directory="$(release_dir "${release_id}")"
 verify_release_images "${directory}"
 previous_current="$(pointer_value current)"
