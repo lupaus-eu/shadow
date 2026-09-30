@@ -103,6 +103,9 @@ assert worker["command"] == ["python", "-m", "app.api.v1.predictions.worker"]
 assert worker["environment"] == {"DATABASE_URL": "postgresql://schatten:password@database:5432/schatten"}
 assert worker["networks"] == {"data": None}
 assert worker["healthcheck"]["test"] == ["CMD", "python", "-m", "app.api.v1.predictions.worker", "health-check"]
+assert {key: worker["healthcheck"][key] for key in ("interval", "timeout", "retries", "start_period")} == {
+    "interval": "10s", "timeout": "10s", "retries": 5, "start_period": "30s",
+}, worker["healthcheck"]
 assert worker["restart"] == "unless-stopped"
 assert worker["init"] is True
 assert worker["stop_grace_period"] == "10s"

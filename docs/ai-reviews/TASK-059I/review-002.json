@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-059I/review-002",
+  "task": {
+    "id": "TASK-059I",
+    "path": "tasks/TASK-059I-worker-health-gate-flake.md"
+  },
+  "round": 2,
+  "reviewed_at": "2026-09-30T09:54:37Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "66a51a862ee63b3de3616fafe0b94bebc28ca987",
+    "head_sha": "8d1b7a9dcde6211aeac288b07834c7093a36df33",
+    "comparison": "66a51a862ee63b3de3616fafe0b94bebc28ca987...8d1b7a9dcde6211aeac288b07834c7093a36df33",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "clean",
+    "summary": "wait_for_healthy now fails on unhealthy only after 15 consecutive samples. Each sample includes a 2 s sleep, so the window is at least 30 s. That is longer than Docker's worst-case recovery for the worker (a 10 s interval plus a 10 s probe timeout), and the comment now explains this basis. Exited containers still fail at once, and any other state still resets the count. All callers still fail on a service that stays unhealthy, including the 5-attempt make start check and the forced-unhealthy frontend check in CI production-runtime; the frontend check now takes about 30 s. The new .github/scripts/verify-wait-for-healthy.sh stubs docker, compose_release and sleep, and checks six cases: recovery passes; persistent unhealthy fails; exited fails at once; a non-unhealthy sample resets the count; a never-healthy service fails when the attempts run out; and a missing container fails without a probe log. The failure log must contain exactly the probe exit and time lines, and the stub refuses to return probe output. Mutation checks show the test fails if the gate fails on the first unhealthy sample or the reset is removed. CI checks that the script is executable, shellchecks it and runs it in production-runtime. verify-production-compose.sh now pins the worker healthcheck interval, timeout, retries and start period. Checks run: bash -n; verify-production-compose.sh; verify-wait-for-healthy.sh; shellcheck --severity=warning on the changed scripts; a YAML parse of ci.yml. The task spec matches the change. No application code or other documentation changed.",
+    "findings": [],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-059I/review-001",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "The unhealthy threshold is now 15 samples of at least 2 s each, so 30 s or more. That is longer than Docker's worst-case recovery for the worker (interval + timeout, 20 s). The code comment and the task requirement state this basis, and verify-wait-for-healthy.sh asserts the 15-sample boundary.",
+        "validated_by": {
+          "review_id": "TASK-059I/review-002",
+          "commit": "8d1b7a9dcde6211aeac288b07834c7093a36df33"
+        }
+      },
+      {
+        "record_id": "TASK-059I/review-001",
+        "finding_id": "F-002",
+        "disposition": "fixed",
+        "rationale": "The committed .github/scripts/verify-wait-for-healthy.sh runs in CI production-runtime. It covers the cases the finding named (recovery, persistent unhealthy, exited, counter reset and the probe exit-code log), plus a never-healthy service and a missing container. Mutation checks confirmed it catches the regressions the finding described.",
+        "validated_by": {
+          "review_id": "TASK-059I/review-002",
+          "commit": "8d1b7a9dcde6211aeac288b07834c7093a36df33"
+        }
+      }
+    ]
+  }
+}

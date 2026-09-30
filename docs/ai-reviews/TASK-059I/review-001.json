@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-059I/review-001",
+  "task": {
+    "id": "TASK-059I",
+    "path": "tasks/TASK-059I-worker-health-gate-flake.md"
+  },
+  "round": 1,
+  "reviewed_at": "2026-09-30T09:47:05Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "66a51a862ee63b3de3616fafe0b94bebc28ca987",
+    "head_sha": "2c18631ceff1ebe23fe14a0a125cb9111a21303f",
+    "comparison": "66a51a862ee63b3de3616fafe0b94bebc28ca987...2c18631ceff1ebe23fe14a0a125cb9111a21303f",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "The change stays within the task scope: only the production worker healthcheck timeout and start period change, while the probe command, interval and retries stay the same. wait_for_healthy still fails at once on an exited container, fails on unhealthy after 10 consecutive samples, and resets on any other state. On failure it logs only the probe exit codes and times. With stubbed docker and compose, the reviewer confirmed four cases: a transient unhealthy status that recovers passes; a persistent unhealthy status fails and logs a -1 timeout exit; an exited container fails at once; and the counter resets. bash -n and verify-production-compose.sh pass. All callers, including the 5-attempt make start check and the forced-unhealthy frontend CI check, still fail when they should. The frontend check now takes about 20 s longer. No documentation describes the old timings. Two low findings: the tolerance window is only as long as Docker's worst-case recovery time for a slow but passing probe, and the recovery path has no committed regression test.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "bug",
+        "severity": "low",
+        "summary": "The unhealthy tolerance is a count of samples (10 x 2 s sleep, about 20 s), but after a failed probe Docker can take up to one interval plus one probe timeout (10 s + 10 s = 20 s) to record the next passing result. A container that is recovering, but whose next probe is slow, can still fail the gate.",
+        "rationale": "Docker starts the next probe one interval after the previous probe finishes, and one passing probe clears unhealthy. The new 10 s timeout makes each probe take longer, so the recovery time is now about as long as the tolerance window. The only safety margin is the time each loop iteration spends in compose ps and docker inspect. The code comment says the window is about two probe intervals, but it does not include the probe timeout. The chance of a failure is small, because unhealthy now needs five consecutive failures of up to 10 s each. This comes from code analysis of the timing; it was not reproduced on a loaded host.",
+        "recommendation": "Measure the tolerance in elapsed time instead of samples, for example with SECONDS, set to more than interval + timeout (for example 30 s), or raise the sample threshold to match. Update the comment to state the interval + timeout basis.",
+        "locations": [
+          {
+            "path": "deploy/lib/common.sh",
+            "line": 136
+          },
+          {
+            "path": "docker-compose.production.yml",
+            "line": 126
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "missing_test",
+        "severity": "low",
+        "summary": "The main behavior this task adds, a transient unhealthy status that recovers and passes, has no committed regression test. Neither does the counter reset or the log of probe exit codes. They were only checked ad hoc with stubbed docker and compose.",
+        "rationale": "CI production-runtime covers only a frontend that stays unhealthy, and it asserts the 'may be partly running' message, not the probe log lines. If someone later restores the fail-on-first-unhealthy check or breaks the reset, CI would still be green until the original timing-dependent failure comes back.",
+        "recommendation": "Add a small shell check, for example called from verify-production-compose.sh, that sources deploy/lib/common.sh with stubbed docker, compose_release and sleep. It should assert the four cases: recovery passes, persistent unhealthy fails, exited fails at once, and a non-unhealthy sample resets the counter. It should also assert that the failure log contains probe exit lines and no probe output.",
+        "locations": [
+          {
+            "path": "deploy/lib/common.sh",
+            "line": 128
+          },
+          {
+            "path": ".github/scripts/verify-production-compose.sh"
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": []
+  }
+}

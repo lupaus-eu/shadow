@@ -126,16 +126,34 @@ hold_release_lock() {
 }
 
 wait_for_healthy() {
-  local directory="$1" service="$2" attempts="${3:-60}" container state
+  local directory="$1" service="$2" attempts="${3:-60}" container="" state="" unhealthy=0
   for _ in $(seq 1 "${attempts}"); do
     container="$(compose_release "${directory}" ps --quiet "${service}")"
     if [[ -n "${container}" ]]; then
       state="$(docker inspect --format '{{.State.Status}}/{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "${container}")"
       [[ "${state}" == "running/healthy" ]] && return 0
-      [[ "${state}" == */unhealthy || "${state}" == exited/* ]] && break
+      [[ "${state}" == exited/* ]] && break
+      # An unchanged container is not recreated by a deploy and may carry an
+      # unhealthy status from a transient probe failure; the next passing
+      # probe clears it. Docker starts that probe one interval after the
+      # failed one ends, so recovery can take interval + timeout (20 s for the
+      # worker); fail only after 15 samples of at least 2 s (30 s or more).
+      if [[ "${state}" == */unhealthy ]]; then
+        unhealthy=$((unhealthy + 1))
+        (( unhealthy >= 15 )) && break
+      else
+        unhealthy=0
+      fi
     fi
     sleep 2
   done
   log "Service ${service} did not become healthy (state ${state:-missing})"
+  # Exit codes and times only: probe output could echo configuration.
+  # Docker records a probe timeout as exit code -1.
+  if [[ -n "${container}" ]]; then
+    docker inspect \
+      --format '{{if .State.Health}}{{range .State.Health.Log}}probe exit={{.ExitCode}} start={{.Start}} end={{.End}}{{println}}{{end}}{{end}}' \
+      "${container}" 2>/dev/null | sed '/^$/d' | while read -r probe; do log "${service} ${probe}"; done || true
+  fi
   return 1
 }

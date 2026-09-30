@@ -118,12 +118,14 @@ services:
       migration:
         condition: service_completed_successfully
         required: true
+    # The probe is a cold Python start plus a database connection; a short
+    # timeout marks a healthy worker unhealthy while a build loads the host.
     healthcheck:
       test: ["CMD", "python", "-m", "app.api.v1.predictions.worker", "health-check"]
       interval: 10s
-      timeout: 3s
+      timeout: 10s
       retries: 5
-      start_period: 10s
+      start_period: 30s
     init: true
     labels: *retain
     restart: unless-stopped

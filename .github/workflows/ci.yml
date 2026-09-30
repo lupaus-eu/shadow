@@ -61,6 +61,7 @@ jobs:
           test -x .github/scripts/create-source-manifest.sh
           test -x .github/scripts/prepare-production-upload.sh
           test -x .github/scripts/verify-upload-gate.sh
+          test -x .github/scripts/verify-wait-for-healthy.sh
           test -f .github/workflows/deploy-production.yml
           test -f .github/scripts/verify-production-worker.sh
           test -f .github/scripts/verify-production-runtime.sh
@@ -268,7 +269,8 @@ jobs:
             deploy/ops/backup.sh deploy/ops/restore-check.sh deploy/ops/docker-cleanup.sh \
             .github/scripts/verify-production-runtime.sh .github/scripts/create-source-manifest.sh \
             deploy/bin/upload-gate .github/scripts/prepare-production-upload.sh \
-            .github/scripts/verify-upload-gate.sh deploy/bin/service
+            .github/scripts/verify-upload-gate.sh deploy/bin/service \
+            .github/scripts/verify-wait-for-healthy.sh
           make -s -C deploy help >/dev/null
 
       - name: Lint the Deploy to production workflow
@@ -276,6 +278,9 @@ jobs:
           docker run --rm --volume "${PWD}:/repo:ro" --workdir /repo
           rhysd/actionlint:1.7.9@sha256:a0383f60d92601e2694e24b24d37df7b6a40bed7cedbc447611c50009bf02d94
           .github/workflows/deploy-production.yml
+
+      - name: Verify release health gate tolerance
+        run: bash .github/scripts/verify-wait-for-healthy.sh
 
       - name: Verify production runtime on an isolated Docker daemon
         run: bash .github/scripts/verify-production-runtime.sh
