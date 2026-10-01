@@ -22,9 +22,10 @@ Source reaches the host only through the manually started "Deploy to
 production" GitHub Action and a manifest-verified receive
 ([ADR-013 source-delivery amendment](decisions/ADR-013-shared-entra-local-https-deployment.md#source-delivery-without-git-on-the-server)).
 There is **no Git, deploy key or checkout on the server**. UFW keeps TCP 22
-open for GitHub-hosted runners; SSH is limited by
-`AllowUsers deploy@<operator-cidr> schatten-upload` and public-key-only
-settings. The order is: tool bootstrap (2.2) -> Action -> run check -> digest
+open for GitHub-hosted runners and operators on changing networks; SSH is
+limited by `AllowUsers deploy root schatten-upload`, key-only root login and
+public-key-only settings
+([ADR-013 TASK-059J](decisions/ADR-013-shared-entra-local-https-deployment.md#operator-ssh-access-from-any-address)). The order is: tool bootstrap (2.2) -> Action -> run check -> digest
 -> receive -> build -> deploy (sections 3-5).
 
 ## 0. Ground Rules
@@ -103,7 +104,9 @@ Never:
 
 `deploy` is a **privileged operator**: passwordless sudo plus membership of the
 `docker` group, which is itself host-administrator-equivalent. It is not an
-application identity; no application container runs as it.
+application identity; no application container runs as it. Every command in
+this runbook runs as `deploy`. Key-only root SSH exists only for the product
+owner's direct login; it is not used for runbook commands.
 
 ## 1. Verify The Existing Host Baseline (Read-Only)
 
@@ -124,8 +127,10 @@ ssh -o PubkeyAuthentication=no -o PreferredAuthentications=password,keyboard-int
 ssh-keygen -F <host> -l
 ```
 
-Repeat the refusal check for `root` and the image's default user. Record only
-"accepted/refused" per account, not key material.
+Repeat the refusal check for `root` and the image's default user. A root key
+login is optional and only possible for the root key holder (the product
+owner); it is not required evidence. Record only "accepted/refused" per
+account, not key material.
 
 ### 1.2 Sanitized host audit
 
@@ -149,8 +154,8 @@ F, not script failures. It covers:
 | --- | --- |
 | OS/tools | Ubuntu 26.04, kernel, uutils coreutils and sudo-rs versions, `python3`, `curl`, `gpg`, `openssl`, `flock`, `ss`, `make`; Git presence is only a fact |
 | cloud-init | `cloud-init status --format json`: status, error and recoverable-error **counts** only |
-| Accounts | Human accounts and root: password status (`L` locked), authorized-key **counts**, `sudo`/`docker`/`adm` membership; `docker` group members; passwordless sudo for `deploy` |
-| SSH | `sshd -T` effective `permitrootlogin`, password/keyboard-interactive/pubkey settings, `authenticationmethods`, `allowusers`/`allowgroups`, ports; `AllowUsers` must restrict `deploy` to `deploy@<cidr>` patterns, admit `schatten-upload` and nothing else; `Match` blocks; `ssh.socket`/`ssh.service` state |
+| Accounts | Human accounts and root: password status (`L` locked), authorized-key **counts**, root keys with cloud-init's `disable_root` prefix (count), `sudo`/`docker`/`adm` membership; `docker` group members; passwordless sudo for `deploy` |
+| SSH | `sshd -T` effective `permitrootlogin` (must be `prohibit-password`; `no` is stricter) and a different value in the main `sshd_config`, password/keyboard-interactive/pubkey settings, `authenticationmethods`, `allowusers`/`allowgroups`, ports; `AllowUsers` must admit `deploy`, `root` and `schatten-upload` and nothing else (`@<cidr>` patterns are a stricter fact); `Match` blocks; `ssh.socket`/`ssh.service` state |
 | Firewall | `ufw status verbose` rules; SSH allowed from `Anywhere` is a fact when root, password and keyboard-interactive login are off, otherwise attention |
 | Listeners | Non-loopback TCP listeners other than 22/80/443; any 2375/2376 Docker API listener |
 | Docker | Engine/containerd/Compose/Buildx versions, storage/cgroup/security options, socket mode/group, `daemon.json` keys, containers publishing ports other than 80/443 |
@@ -167,9 +172,9 @@ needs:
 
 | Audit finding | Why | F action (approval required) |
 | --- | --- | --- |
-| `permitrootlogin` is not `no` | cloud-init `disable_root: false` keeps root key login | Disable root SSH (2.1); required before SSH may stay open to anywhere |
-| `AllowUsers is not set` or `deploy is not source-restricted` | The baseline has no `AllowUsers` | Set `AllowUsers deploy@<operator-cidr> schatten-upload` (2.1) |
-| SSH allowed from `Anywhere` while root, password or keyboard-interactive login is enabled | The OpenSSH UFW rule has no source, which ADR-013 accepts only for public-key-only SSH | Harden SSH first (2.1). Afterwards SSH from Anywhere is reported as an accepted fact, not attention |
+| `root SSH is not key-only` (`permitrootlogin=yes`) | The host's main `sshd_config` sets `PermitRootLogin yes`; cloud-init `disable_root: false` keeps root's key usable | Set `PermitRootLogin prohibit-password` (2.1); required before SSH may stay open to anywhere |
+| `AllowUsers is not set` | The baseline has no `AllowUsers` | Set `AllowUsers deploy root schatten-upload` (2.1) |
+| SSH allowed from `Anywhere` while password or keyboard-interactive login is enabled or root login is not key-only | The OpenSSH UFW rule has no source, which ADR-013 accepts only for public-key-only SSH | Harden SSH first (2.1). Afterwards SSH from Anywhere is reported as an accepted fact, not attention |
 | `tool make is not installed` | Not in the supplied package list | Install `make` (2.2) |
 | `/opt/apps` not owned by `deploy` | cloud-init creates directories as root by default; `check-host` and the setup steps need `deploy` to write there | Set ownership non-recursively (2.2) |
 | `/opt/postgres-backups` not `10002:10002` `0700` | cloud-init creates directories as root by default | Set ownership/mode non-recursively (2.5) |
@@ -196,44 +201,55 @@ result. Nothing here reprovisions the host.
 
 ### 2.1 Public-key-only SSH, `AllowUsers` and port 22
 
-GitHub-hosted runners have no fixed addresses, so TCP 22 stays reachable from
-anywhere and SSH itself is restricted: only `deploy` from operator networks
+GitHub-hosted runners have no fixed addresses and operators connect from
+changing networks, so TCP 22 stays reachable from anywhere and SSH itself is
+restricted: only `deploy`, key-only root (the product owner's direct login)
 and the upload-only `schatten-upload` may log in, with keys only. Keep the
 existing session open throughout:
 
 ```bash
 # Drop-in files are read in lexical order and the first value of each option
-# wins, so use a low number. One deploy@<cidr> pattern per operator network
-# (IPv4 and, if used, IPv6), for example deploy@198.51.100.0/24.
+# wins, so use a low number. Ubuntu's sshd_config includes the drop-ins before
+# its own settings, so this file also overrides a main-file PermitRootLogin yes.
 sudo tee /etc/ssh/sshd_config.d/10-schatten-hardening.conf >/dev/null <<'EOF'
 PasswordAuthentication no
 KbdInteractiveAuthentication no
-PermitRootLogin no
-AllowUsers deploy@<operator-cidr> schatten-upload
+PermitRootLogin prohibit-password
+AllowUsers deploy root schatten-upload
 EOF
 sudo sshd -t
 sudo sshd -T | grep -Ei '^(permitrootlogin|passwordauthentication|kbdinteractiveauthentication|allowusers) '
+sudo sshd -T -C user=root,host=workstation,addr=203.0.113.9 | grep -Ei '^(permitrootlogin|passwordauthentication|kbdinteractiveauthentication) '
 ```
 
-`sshd -t` must print nothing, and `sshd -T` must show `permitrootlogin no`,
-`passwordauthentication no`, `kbdinteractiveauthentication no` and one
-`allowusers` line per pattern: each `deploy@<operator-cidr>` and
-`schatten-upload`. Only then reload and verify in a **new** session from the
+`sshd -t` must print nothing, and both `sshd -T` calls must show
+`permitrootlogin prohibit-password` (older sshd prints its alias
+`without-password`), `passwordauthentication no` and
+`kbdinteractiveauthentication no`; the first must also show the three
+`allowusers` lines `deploy`, `root` and `schatten-upload`. A
+`deploy@<cidr>`/`root@<cidr>` pattern or `PermitRootLogin no` is an allowed,
+stricter choice. Only then reload and verify in a **new** session from the
 workstation before closing the old one:
 
 ```bash
 sudo systemctl reload ssh.service   # Ubuntu 26.04 starts ssh.service from ssh.socket
-# From the workstation: repeat 1.1. deploy must be accepted from the operator
-# network; root and password/keyboard-interactive logins must be refused.
+# From the workstation: repeat 1.1. deploy must be accepted with its key from
+# any network; password/keyboard-interactive logins as deploy and root and any
+# login as the image's default user must be refused.
 ```
 
-`AllowUsers` also shuts out root, the image's default user and every other
-account over SSH; the UpCloud console stays the recovery path. Record that in
-the F record. If the new session fails, fix the drop-in from the old session.
+Root is verified without its key: the `sshd -T -C user=root,...` output above,
+an unchanged root key count with no `disable_root` prefix in `audit-host`, and
+a refused root password login. A root key login by the product owner is
+optional and recorded only if it happens. If root SSH ever stops working, fix
+it as `deploy` with `sudo`; no downtime is needed.
+
+`AllowUsers` shuts out the image's default user and every other account over
+SSH. If the new session fails, fix the drop-in from the old session.
 
 Port 22: the reported baseline's UFW `OpenSSH` rule already allows 22 from
 `Anywhere`; keep it and add no source restriction. Confirm it only after the
-four settings are shown by `sshd -T` and the new session worked, because a
+settings are shown by `sshd -T` and the new session worked, because a
 missing setting blocks leaving 22 open:
 
 ```bash
@@ -243,9 +259,68 @@ sudo ufw allow OpenSSH             # only if a source-restricted rule replaced i
 
 In the UpCloud provider firewall, allow TCP 22 from anywhere for IPv4 (and
 IPv6 only if SSH over IPv6 is intended) and TCP 80/443 publicly, nothing else.
-Rerun `audit-host`: root, password and keyboard-interactive login `ok`,
-`deploy is source-restricted by AllowUsers`, `AllowUsers admits
-schatten-upload`, and SSH from `Anywhere` reported as an accepted fact.
+Rerun `audit-host`: `root SSH is key-only`, password and keyboard-interactive
+login `ok`, `AllowUsers admits deploy from any address`, `AllowUsers admits
+root from any address`, `AllowUsers admits schatten-upload`, the main file's
+`PermitRootLogin yes` reported as overridden, and SSH from `Anywhere` reported
+as an accepted fact.
+
+Operator keys: one key per person with a role comment, never a shared key, on
+`deploy` and on root; keep private keys passphrase-protected and use them
+through an agent. On a lost or suspected key, remove its line from the
+affected `authorized_keys` (`/home/deploy/.ssh/` or `/root/.ssh/`) at once
+from another working session. Record the key **counts** of both accounts and
+the role holding each root key in the F record.
+
+#### Recovery without SSH
+
+All passwords stay locked, so the UpCloud web console has no login until a
+password is set. Recovery access is held through the UpCloud account
+(initially the product owner). In order of preference:
+
+1. **Another working key** (`deploy` or root): fix the drop-in or
+   `authorized_keys` from that session. No downtime.
+2. **Locked out by `AllowUsers` or the drop-in:** during UpCloud's
+   [disk-move procedure](https://upcloud.com/docs/guides/reset-root-password-cloud-server/)
+   (below), while the disk is attached to the temporary server, correct the
+   line in `etc/ssh/sshd_config.d/10-schatten-hardening.conf` on the mounted
+   disk and validate it in a chroot on the temporary server:
+
+   ```bash
+   sudo mount --bind /dev <mount>/dev
+   sudo chroot <mount> sh -c 'mkdir -p /run/sshd && sshd -t && sshd -T' \
+     | grep -Ei '^(permitrootlogin|passwordauthentication|kbdinteractiveauthentication|allowusers) '
+   sudo umount <mount>/dev
+   ```
+
+   `sshd` needs `/dev/null` and the runtime directory `/run/sshd`, which are
+   missing on a mounted disk (`/run/sshd` is recreated at boot anyway). A
+   configuration error prints `Bad configuration option` and no settings. No
+   password is needed.
+   Alternative: set a password with the reset, log in on the UpCloud web
+   console and correct the line there (it is short enough to type, since the
+   console does not paste), validate with `sshd -t` and `sshd -T`, reload,
+   and lock the password again.
+3. **Lost the only working key:** during the disk-move procedure, while the
+   disk is attached to the temporary server, add the new public key to
+   `/home/deploy/.ssh/authorized_keys` or `/root/.ssh/authorized_keys` there,
+   where pasting and `scp` work. No password is needed for this.
+
+The disk-move reset: deploy a temporary server in the same zone, shut down the
+production server, detach its system disk, attach it to the temporary server,
+mount it and change it there (`chroot` for a password), reattach it and delete
+the temporary resources. **It causes downtime**: the site and scheduled
+backups stop. Take an UpCloud storage backup or snapshot of the disk first,
+because the application backups live on the same disk. Afterwards lock any
+password set during recovery (`sudo passwd -l <account>`), rerun `audit-host` and
+record the recovery in the F record or release record.
+
+**Never** follow the step of UpCloud's
+[regaining-access guide](https://upcloud.com/docs/guides/regaining-access-to-a-server-that-was-deployed-using-ssh-keys/)
+that comments out `Include /etc/ssh/sshd_config.d/*.conf` and sets
+`PasswordAuthentication yes`: it disables the cloud-init and Schatten
+drop-ins, re-enables the main file's `PermitRootLogin yes` and allows root
+password login from anywhere while port 22 is public.
 
 Optional, **a developer decision** (not the default): an idle limit for upload
 sessions. `upload-gate` already ends each `scp`/`tar` after 10 minutes, which
@@ -261,9 +336,10 @@ sudo sshd -t && sudo sshd -T -C user=schatten-upload,host=runner,addr=203.0.113.
 ```
 
 With it, `audit-host` reports the `Match` block as attention to evaluate; that
-is expected. The drop-in, `sshd -t`/`sshd -T`, `AllowUsers` CIDR matching and
+is expected. The drop-in, `sshd -t`/`sshd -T`, `AllowUsers` matching and
 the optional block were tested in a disposable Ubuntu 26.04 container
-([QA](qa/SOURCE-DELIVERY-QA.md#server-makefile-service-command-and-runbook-task-059h3));
+([H3 QA](qa/SOURCE-DELIVERY-QA.md#server-makefile-service-command-and-runbook-task-059h3),
+[J QA](qa/SOURCE-DELIVERY-QA.md#deploy-and-root-ssh-from-any-address-task-059j));
 `systemctl reload` and the real host were not, so validate each before
 continuing.
 
@@ -1023,7 +1099,7 @@ verification.
 | Section | Tested (E, H1-H3) | Not testable before F |
 | --- | --- | --- |
 | 1 Host audit | `audit-host` in a disposable Ubuntu 26.04 baseline container, directly, through `bash -s` and as `make audit` from a read-only verified copy, before and after the 2.1/2.2 setup and with negative variants (H3) | Real host results, fresh SSH sessions, provider firewall |
-| 2.1 SSH | Hardening drop-in, `sshd -t`/`sshd -T`, `AllowUsers deploy@<cidr>` accepting and refusing by source address, root and password refused, the optional `Match` block (H3) | `systemctl reload ssh`, lockout safety, the real UFW/provider rules |
+| 2.1 SSH | Hardening drop-in, `sshd -t`/`sshd -T`, the optional `Match` block (H3); `AllowUsers deploy root schatten-upload` with `PermitRootLogin prohibit-password` overriding a main-file `yes`, `deploy` and root accepted by key from an arbitrary address, password logins and other accounts refused (J) | `systemctl reload ssh`, lockout safety, the real UFW/provider rules, UpCloud recovery procedures |
 | 2.2 Directory, upload account, tools | `/opt/apps` ownership (E); the upload account, root-owned key file with `restrict,command=`, upload folder, `install` of both tools and the gate refusing shells and commands (H2, H3) | The workstation copy of the real approved commit, GitHub environment and secrets, real fingerprint |
 | 2.3 Configuration | Configuration contract and privacy checks (`check-host`) with synthetic values | Real secrets |
 | 2.4 Backup keys | Key generation/export commands with gpg 2.4.8 on Ubuntu 26.04; passphrase-protected key used for all harness restores | Vault storage and custodians |

@@ -9,7 +9,9 @@ provider was touched.** TASK-059H2 evidence for the upload gate and workflow
 is in [its own section](#upload-gate-and-deploy-to-production-task-059h2), and
 TASK-059H3 evidence for the server Makefile, the `service` command, the host
 audit and the runbook in
-[the last section](#server-makefile-service-command-and-runbook-task-059h3).
+[its section](#server-makefile-service-command-and-runbook-task-059h3), and
+TASK-059J evidence for operator SSH from any address in
+[the last section](#deploy-and-root-ssh-from-any-address-task-059j).
 
 ## Environment
 
@@ -269,3 +271,42 @@ records `UPCLOUD-RUNBOOK-QA.md` and `PRODUCTION-RUNTIME-QA.md` are unchanged.
 - `make check` and `make audit` against a real Ubuntu 26.04 host with Docker;
   `check-host` passing on Ubuntu 26.04 without Git is recorded in Run C above.
 
+## Deploy And Root SSH From Any Address (TASK-059J)
+
+Disposable run on 2026-10-01 for the
+[ADR-013 amendment](../decisions/ADR-013-shared-entra-local-https-deployment.md#operator-ssh-access-from-any-address).
+Only a throwaway container, a throwaway Docker network and synthetic keys were
+used; **no production host, GitHub setting, UpCloud resource, SSH/UFW rule or
+provider was touched.**
+
+Host: `ubuntu:26.04@sha256:da6fc2be…` (Ubuntu 26.04.1 LTS), OpenSSH 10.2p1,
+sudo-rs, set up like the observed host: locked `deploy` with one key and
+NOPASSWD sudo, the image's `ubuntu` user, locked root with one key without the
+cloud-init `disable_root` prefix, the cloud-init `PasswordAuthentication no`
+drop-in and `PermitRootLogin yes` appended to the main `sshd_config`. A stub
+`ufw` printed `22/tcp (OpenSSH) ALLOW IN Anywhere` and 80/443, because UFW
+cannot run in the container. `audit-host` ran as `deploy` through `bash -s`.
+Logins came from a second container on the network (an address in no former
+operator CIDR).
+
+| Stage | Result |
+| --- | --- |
+| Baseline audit | `permitrootlogin=yes` attention (`root SSH is not key-only`), `AllowUsers is not set` attention, password and keyboard-interactive `ok`; facts `account root ... password=L authorized_keys=1` and `0 of 1` `disable_root`-prefixed keys |
+| Amended 2.1 drop-in | `sshd -t` silent; `sshd -T` and `sshd -T -C user=root,host=workstation,addr=203.0.113.9` showed `permitrootlogin prohibit-password`, `passwordauthentication no`, `kbdinteractiveauthentication no`, `allowusers deploy`, `allowusers root`, `allowusers schatten-upload`: the `10-` drop-in overrides the main file's `yes` |
+| Audit after 2.1 | `ok`: `root SSH is key-only`, password and keyboard-interactive disabled, `AllowUsers admits deploy from any address`, `... root from any address`, `AllowUsers admits schatten-upload`; facts: main-file `PermitRootLogin yes` overridden, SSH from `Anywhere` accepted |
+| Logins | `deploy` and root with their keys accepted; password/keyboard-interactive as `deploy` and root refused with `Permission denied (publickey)`; `ubuntu` with the `deploy` key refused |
+| Stricter variants | `deploy@198.51.100.0/24 root@198.51.100.0/24` reported as `admits ... only from 1 address pattern(s)` facts; `PermitRootLogin no` with no `root` entry reported as facts (root disabled, shut out); SSH from `Anywhere` stayed accepted |
+| Negative variants | `AllowUsers root schatten-upload ubuntu`: attention for the extra account and for no `deploy` entry; no `PermitRootLogin` in the drop-in (main-file `yes` effective): attention for root and for SSH from `Anywhere`; `PasswordAuthentication yes` in the drop-in: attention for password authentication and SSH from `Anywhere` |
+| Sanitization | No key material, key comment or fingerprint appeared in any audit output |
+
+`shellcheck --severity=warning` (koalaman/shellcheck:stable) passed on
+`audit-host`. The relative links and anchors of the changed documents resolve.
+
+### Not Covered (TASK-059J)
+
+- `systemctl reload ssh.service`, the real host's drop-in order, the real UFW
+  and UpCloud firewall rules and fresh sessions from the operators' networks
+  (F).
+- UpCloud's disk-move password reset, web console and storage snapshot; they
+  need the UpCloud account and are documented, not exercised.
+- A root key login by the real root key holder (optional in F).

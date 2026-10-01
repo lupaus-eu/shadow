@@ -376,21 +376,28 @@ users with authorized keys, NOPASSWD sudo, `sshd` with the cloud-init drop-in,
 UFW with the OpenSSH/80/443 rules, a fail2ban `sshd` jail, the `/opt`
 directories and no `make`). Run it as `deploy` both directly and through
 `bash -s` on stdin, and confirm the expected baseline attention items: `make`
-missing, root SSH not disabled, `AllowUsers` not set, SSH open to `Anywhere`
-while root login is enabled, a root-owned `/opt/apps` and backup directory
-ownership; the upload account, upload folder and both tools are reported as
-absent facts. Then apply runbook 2.1 and 2.2 (hardening drop-in with
-`AllowUsers deploy@<cidr> schatten-upload`, `make`, the upload account with its
-root-owned `restrict,command=` key, the upload folder and both tools) and run
-`make audit` from a read-only copy named after a commit: the SSH, `AllowUsers`,
-upload and tool lines must be `ok`, and SSH from `Anywhere` a fact. Negative
-variants must be attention: bare `deploy` or another account in `AllowUsers`,
-an upload account in an extra group, a key without the forced command, a
-group-writable gate, a `0770` upload folder, and SSH from `Anywhere` once
-password login is re-enabled. Check that `ssh` as `deploy` is accepted only
-from an address inside the `AllowUsers` CIDR, that root and password logins
-are refused, that the upload key reaches only `upload-gate`, and that no key
-material appears in the output. Run shellcheck on it, and do not run it with
+missing, root SSH not key-only (add `PermitRootLogin yes` to the main
+`sshd_config`, as observed on the real host), `AllowUsers` not set, SSH open to
+`Anywhere` while root login is not key-only, a root-owned `/opt/apps` and
+backup directory ownership; the upload account, upload folder and both tools
+are reported as absent facts, root's key count with `0` `disable_root`-prefixed
+keys as a fact. Then apply runbook 2.1 and 2.2 (hardening drop-in with
+`PermitRootLogin prohibit-password` and `AllowUsers deploy root schatten-upload`,
+`make`, the upload account with its root-owned `restrict,command=` key, the
+upload folder and both tools) and run `make audit` from a read-only copy named
+after a commit: the SSH (`root SSH is key-only`), `AllowUsers` (`deploy` and
+`root` from any address, `schatten-upload`), upload and tool lines must be
+`ok`, the overridden main-file `PermitRootLogin yes` and SSH from `Anywhere`
+facts. `deploy@<cidr>`/`root@<cidr>` patterns and `PermitRootLogin no` must be
+stricter facts. Negative variants must be attention: another account in
+`AllowUsers`, no `deploy` entry, an effective `PermitRootLogin yes` (also making
+SSH from `Anywhere` attention), an upload account in an extra group, a key
+without the forced command, a group-writable gate, a `0770` upload folder, and
+SSH from `Anywhere` once password login is re-enabled. Check that `ssh` as
+`deploy` and as root is accepted with a key from an arbitrary address, that
+password logins for both and logins as other accounts are refused, that the
+upload key reaches only `upload-gate`, and that no key material appears in the
+output. Run shellcheck on it, and do not run it with
 elevated privileges on shared machines beyond its read-only `sudo -n` probes.
 `docs/PRODUCTION-RUNBOOK.md` commands that cannot be exercised without the real
 host or provider (for example `systemctl reload ssh`, DNS, Entra, UpCloud

@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-059J/review-001",
+  "task": {
+    "id": "TASK-059J",
+    "path": "tasks/TASK-059J-deploy-ssh-from-any-address.md"
+  },
+  "round": 1,
+  "reviewed_at": "2026-10-01T10:09:48Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "90c7db38b96d4ce578603a923723bb5274bcca61",
+    "head_sha": "ed5afd2ad75af3b89ff7184c39b3297f2ebf6781",
+    "comparison": "90c7db38b96d4ce578603a923723bb5274bcca61...ed5afd2ad75af3b89ff7184c39b3297f2ebf6781",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "The change stays within the task scope. ADR-013 gains a dated amendment for AllowUsers deploy root schatten-upload and PermitRootLogin prohibit-password, with the accepted risk, key rules, UpCloud recovery path and the warning against disabling the Include line. audit-host reports prohibit-password, bare deploy and bare root as ok, CIDR patterns and PermitRootLogin no as stricter facts, and an effective yes, extra accounts, a missing deploy entry and re-enabled password login as attention. It counts root keys with the disable_root prefix without printing key material. A disposable Ubuntu 26.04 container with OpenSSH 10.2p1 confirmed that the 10- drop-in overrides a main-file PermitRootLogin yes, that deploy and root keys work from an arbitrary address, and that password logins and other accounts are refused. shellcheck at warning severity passes. Links and anchors resolve. No host, GitHub or provider change, no new dependency and no deleted test. Runbook, DEPLOYMENT, ARCHITECTURE, AGENTS, TESTING and TASK-059F agree. One medium finding: the F rollout record template, which lives only on the unmerged F branch, still expects the superseded settings. Two low findings: audit-host may report a Match-scoped main-file value, and the recovery steps set a console password where a direct edit of the attached disk would do.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "documentation",
+        "severity": "medium",
+        "summary": "The task requires updating the F rollout record template (docs/qa/FIRST-PRODUCTION-ROLLOUT.md), but the file is not on main and was not changed. Its unmerged version on the F branch still expects permitrootlogin no, deploy restricted to operator networks, root refused in a new session, and an audit line saying deploy is source-restricted.",
+        "rationale": "Once J merges, an operator who follows that template during F would see the amended, correct host state as failed rows. They might even revert the amendment to match the template. Nothing in TASK-059F on this branch tells the F branch to realign the template, so the acceptance criterion that the F record template agrees is not met.",
+        "recommendation": "Add a requirement to TASK-059F that, after rebasing onto J, docs/qa/FIRST-PRODUCTION-ROLLOUT.md section 2.1 adopts the J expectations: prohibit-password, root admitted and checked with sshd -T -C user=root, root password refused, an optional root key login row, key counts, the root key holder role and the UpCloud recovery access row. Or note in TASK-059J that this criterion is carried over to F.",
+        "locations": [
+          {
+            "path": "tasks/TASK-059F-first-production-rollout.md",
+            "line": 53
+          },
+          {
+            "path": "tasks/TASK-059J-deploy-ssh-from-any-address.md",
+            "line": 161
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "bug",
+        "severity": "low",
+        "summary": "The main-file PermitRootLogin check takes the first matching line in /etc/ssh/sshd_config, including one inside a Match block. It can then report that the main file sets a value which actually applies only to some users or addresses.",
+        "rationale": "The fact line is informational and does not change any ok or attention result, and the effective value still comes from sshd -T. The observed host and the default Ubuntu file set the option globally or only in comments. A misleading line would appear only if an operator later adds a Match-scoped PermitRootLogin to the main file. The Match-block attention line would also flag that case.",
+        "recommendation": "Stop reading at the first Match line, for example by having awk exit when $1 is Match, case-insensitively. Or label the line as the first occurrence in the main file.",
+        "locations": [
+          {
+            "path": "deploy/bin/audit-host",
+            "line": 128
+          }
+        ]
+      },
+      {
+        "id": "F-003",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "Recovery step 2 in the runbook first sets a password with the disk-move reset and then fixes the drop-in on the web console. The disk-move procedure already gives write access to the disk, so the drop-in can be corrected there directly, without setting and later relocking a password.",
+        "rationale": "Setting a password adds a console credential that must be locked again, and it means typing on the console, which does not paste. Editing the drop-in while the disk is attached to the temporary server has the same downtime, needs no password and matches step 3, which already edits authorized_keys there. The current steps are safe but longer and leave room for a forgotten relock.",
+        "recommendation": "In step 2, say that the drop-in can be corrected directly while the disk is attached to the temporary server, and keep the password plus console path as an alternative. Mirror the wording in the ADR-013 recovery bullet.",
+        "locations": [
+          {
+            "path": "docs/PRODUCTION-RUNBOOK.md",
+            "line": 283
+          },
+          {
+            "path": "docs/decisions/ADR-013-shared-entra-local-https-deployment.md"
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": []
+  }
+}

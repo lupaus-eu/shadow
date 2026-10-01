@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Read-only audit of the existing, operator-reported cloud-init host baseline
 # (TASK-059E) and the source-delivery setup (TASK-059H1/H3: upload account,
-# upload-gate, AllowUsers, public-key-only SSH, upload and source folders).
+# upload-gate, AllowUsers, public-key-only SSH, upload and source folders), with
+# SSH access as amended by TASK-059J (deploy and key-only root from any address).
 # Separates effective state from the supplied configuration so F
 # can record it. Uses `sudo -n` only for read-only inspection; never installs,
 # reruns cloud-init, touches swap, reloads services or changes files.
@@ -87,6 +88,12 @@ while IFS=: read -r name _ uid _ _ home shell; do
   fi
   groups="$(id -nG "${name}" 2>/dev/null | tr ' ' '\n' | grep -Ex 'sudo|docker|adm' | tr '\n' ',' || true)"
   fact "account ${name} uid=${uid} password=${password:-unknown} authorized_keys=${keys:-unknown} groups=${groups%,}"
+  if [[ "${uid}" == 0 && "${keys}" =~ ^[0-9]+$ ]]; then
+    # cloud-init disable_root: true prefixes root keys with a command that only
+    # prints "Please login as the user ..." and disconnects.
+    prefixed="$(grep -F 'Please login as the user' <<<"${key_lines}" | count_lines)" || true
+    fact "account ${name} keys with cloud-init's disable_root prefix: ${prefixed} of ${keys} (such keys open no shell)"
+  fi
   if [[ "${password}" == P || "${password}" == NP ]]; then
     attn "account ${name} has a usable or empty password (status ${password})"
   fi
@@ -96,10 +103,12 @@ if [[ "$(id -un)" == deploy ]]; then
 fi
 manual "from an operator workstation, open a fresh session: ssh -o PasswordAuthentication=no -o KbdInteractiveAuthentication=no deploy@<host> true"
 manual "confirm password login is refused: ssh -o PubkeyAuthentication=no -o PreferredAuthentications=password,keyboard-interactive deploy@<host> (expect Permission denied)"
+manual "repeat the password refusal for root@<host>; a root key login by the root key holder is optional (TASK-059J)"
 
 section ssh
-# true only when root, password and keyboard-interactive login are all off;
-# it decides whether SSH from Anywhere is the accepted ADR-013 exposure.
+# true only when password and keyboard-interactive login are off and root login
+# is key-only or off; it decides whether SSH from Anywhere is the accepted
+# ADR-013 exposure.
 ssh_pubkey_only=unknown
 if sshd_config="$(priv sshd -T 2>/dev/null)"; then
   for key in port listenaddress permitrootlogin passwordauthentication kbdinteractiveauthentication \
@@ -108,36 +117,58 @@ if sshd_config="$(priv sshd -T 2>/dev/null)"; then
     fact "sshd ${key}=${value:-unset}"
   done
   root_login="$(awk '$1 == "permitrootlogin" { print $2 }' <<<"${sshd_config}")"
-  [[ "${root_login}" == no ]] && ok "root SSH login disabled" \
-    || attn "sshd permitrootlogin=${root_login}: root SSH is not disabled (cloud-init disable_root: false); record or change under F"
+  # ADR-013 (TASK-059J): PermitRootLogin prohibit-password; sshd may print its
+  # older alias without-password.
+  case "${root_login}" in
+    prohibit-password | without-password) ok "root SSH is key-only (permitrootlogin ${root_login}, ADR-013 TASK-059J)" ;;
+    no) fact "root SSH login disabled (permitrootlogin no, stricter than ADR-013 TASK-059J requires)" ;;
+    *) attn "sshd permitrootlogin=${root_login:-unset}: root SSH is not key-only (set PermitRootLogin prohibit-password, runbook 2.1)" ;;
+  esac
+  # shellcheck disable=SC2016 # awk program, not a shell expansion
+  # Global settings only: everything after the first Match line is scoped.
+  main_root_login="$(priv awk 'tolower($1) == "match" { exit } tolower($1) == "permitrootlogin" { print tolower($2); exit }' /etc/ssh/sshd_config 2>/dev/null)" || true
+  [[ "${main_root_login}" == without-password ]] && main_root_login=prohibit-password
+  if [[ -n "${main_root_login}" && "${main_root_login}" != "${root_login/without-password/prohibit-password}" ]]; then
+    fact "/etc/ssh/sshd_config sets PermitRootLogin ${main_root_login} globally; the effective ${root_login:-unset} comes from an earlier drop-in"
+  fi
   [[ "$(awk '$1 == "passwordauthentication" { print $2 }' <<<"${sshd_config}")" == no ]] && ok "SSH password authentication disabled" \
     || attn "SSH password authentication is enabled"
   [[ "$(awk '$1 == "kbdinteractiveauthentication" { print $2 }' <<<"${sshd_config}")" == no ]] && ok "SSH keyboard-interactive authentication disabled" \
     || attn "SSH keyboard-interactive authentication is enabled"
-  if [[ "${root_login}" == no \
+  if [[ "${root_login}" =~ ^(no|prohibit-password|without-password)$ \
     && "$(awk '$1 == "passwordauthentication" { print $2 }' <<<"${sshd_config}")" == no \
     && "$(awk '$1 == "kbdinteractiveauthentication" { print $2 }' <<<"${sshd_config}")" == no ]]; then
     ssh_pubkey_only=true
   else
     ssh_pubkey_only=false
   fi
-  # ADR-013: AllowUsers deploy@<operator-cidr> schatten-upload.
+  # ADR-013 (TASK-059J): AllowUsers deploy root schatten-upload; @<cidr>
+  # patterns for deploy or root are an allowed, stricter choice.
   read -r -a allowed <<<"$(awk '$1 == "allowusers" { $1 = ""; print }' <<<"${sshd_config}" | tr '\n' ' ')"
   if (( ${#allowed[@]} == 0 )); then
-    attn "AllowUsers is not set: deploy is not source-restricted (set AllowUsers deploy@<operator-cidr> schatten-upload, runbook 2.1)"
+    attn "AllowUsers is not set: every account with a key may log in (set AllowUsers deploy root schatten-upload, runbook 2.1)"
   else
-    deploy_patterns=0
+    declare -A any_address=() restricted=()
     for pattern in "${allowed[@]}"; do
       case "${pattern}" in
-        deploy) attn "AllowUsers admits deploy from any address: deploy is not source-restricted" ;;
-        deploy@\*|deploy@\*.\*|deploy@0.0.0.0/0|deploy@::/0) attn "AllowUsers pattern ${pattern} does not source-restrict deploy" ;;
-        deploy@*) deploy_patterns=$((deploy_patterns + 1)) ;;
+        deploy | root | deploy@\* | root@\* | deploy@0.0.0.0/0 | root@0.0.0.0/0 | deploy@::/0 | root@::/0)
+          any_address[${pattern%%@*}]=1 ;;
+        deploy@* | root@*) restricted[${pattern%%@*}]=$(( ${restricted[${pattern%%@*}]:-0} + 1 )) ;;
         schatten-upload) ;;
-        *) attn "AllowUsers also admits ${pattern}; only deploy@<operator-cidr> and schatten-upload are expected (record or remove under F)" ;;
+        *) attn "AllowUsers also admits ${pattern}; only deploy, root and schatten-upload are expected (record or remove under F)" ;;
       esac
     done
-    (( deploy_patterns > 0 )) && ok "deploy is source-restricted by AllowUsers (${deploy_patterns} pattern(s))" \
-      || attn "AllowUsers does not admit deploy from an operator network"
+    for account in deploy root; do
+      if [[ -n "${any_address[${account}]:-}" ]]; then
+        ok "AllowUsers admits ${account} from any address, public-key only (ADR-013 TASK-059J)"
+      elif [[ -n "${restricted[${account}]:-}" ]]; then
+        fact "AllowUsers admits ${account} only from ${restricted[${account}]} address pattern(s) (stricter than ADR-013 TASK-059J requires)"
+      elif [[ "${account}" == deploy ]]; then
+        attn "AllowUsers does not admit deploy; operators cannot log in"
+      else
+        fact "AllowUsers does not admit root: root SSH is shut out"
+      fi
+    done
     [[ " ${allowed[*]} " == *" schatten-upload "* ]] && ok "AllowUsers admits schatten-upload" \
       || attn "AllowUsers does not admit schatten-upload; the Deploy to production Action cannot upload"
   fi
@@ -160,15 +191,15 @@ if ufw_status="$(priv ufw status verbose 2>/dev/null)"; then
   if grep -Eq '^(22(/tcp)?|OpenSSH)([[:space:]]|$).*ALLOW IN[[:space:]]+Anywhere' <<<"${ufw_status}"; then
     # Accepted by ADR-013 for GitHub-hosted runners once SSH is public-key only.
     if [[ "${ssh_pubkey_only}" == true ]]; then
-      fact "SSH is allowed from Anywhere (accepted: public-key only, root login disabled; AllowUsers is checked under [ssh])"
+      fact "SSH is allowed from Anywhere (accepted: public-key only, root login key-only or disabled; AllowUsers is checked under [ssh])"
     else
-      attn "SSH is allowed from Anywhere while root, password or keyboard-interactive login is enabled or unverified; harden SSH first (runbook 2.1)"
+      attn "SSH is allowed from Anywhere while password or keyboard-interactive login is enabled, root login is not key-only, or either is unverified; harden SSH first (runbook 2.1)"
     fi
   fi
 else
   miss "ufw status (needs sudo -n ufw status verbose)"
 fi
-manual "check the UpCloud provider firewall for IPv4 and IPv6: SSH limited to operator networks, TCP 80/443 public, nothing else"
+manual "check the UpCloud provider firewall for IPv4 and IPv6: TCP 22 from anywhere (IPv6 only if intended), TCP 80/443 public, nothing else"
 fact "Docker publishes container ports through its own iptables chains; UFW rules alone do not make a published port private"
 
 section listeners

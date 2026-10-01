@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-059J/review-003",
+  "task": {
+    "id": "TASK-059J",
+    "path": "tasks/TASK-059J-deploy-ssh-from-any-address.md"
+  },
+  "round": 3,
+  "reviewed_at": "2026-10-01T10:17:42Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "90c7db38b96d4ce578603a923723bb5274bcca61",
+    "head_sha": "f4845eff1cc19ca1923d01300adfe9b9005c2bc6",
+    "comparison": "90c7db38b96d4ce578603a923723bb5274bcca61...f4845eff1cc19ca1923d01300adfe9b9005c2bc6",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "clean",
+    "summary": "The round-2 fix changes only recovery step 2 in the production runbook. The chroot validation now bind-mounts /dev, creates /run/sshd inside the chroot, runs sshd -t and sshd -T, filters the relevant settings and unmounts /dev afterwards. The text explains why both are missing on a mounted disk and what a configuration error looks like. In a privileged disposable container holding a copied Ubuntu 26.04 system with OpenSSH 10.2p1, sshd -t in the chroot without /run/sshd failed with the missing privilege separation directory error. The documented command exited 0 and showed permitrootlogin prohibit-password and the three allowusers entries. A drop-in with an invalid option was still rejected with 'Bad configuration option' and exit 255. Links and anchors resolve, and the rest of the change was rechecked against the base with no new issues. The UpCloud disk-move procedure itself is still documented, not exercised, as the QA record states. No open findings remain.",
+    "findings": [],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-059J/review-002",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "Recovery step 2 bind-mounts /dev and creates /run/sshd inside the chroot before running sshd -t and sshd -T. A disposable container run confirmed that the documented command validates a correct drop-in and rejects an invalid one.",
+        "validated_by": {
+          "review_id": "TASK-059J/review-003",
+          "commit": "f4845eff1cc19ca1923d01300adfe9b9005c2bc6"
+        }
+      }
+    ]
+  }
+}

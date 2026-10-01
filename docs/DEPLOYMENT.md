@@ -54,8 +54,9 @@ Ofelia scheduler ---------------------------> backup and Docker maintenance jobs
 
 Caddy owns public TLS for `https://schatten.lupaus.eu` and HTTP :80 for the
 required certificate/redirect flow. SSH port 22 stays open for the
-source-delivery Action; `AllowUsers` limits `deploy` to operator networks and
-SSH accepts public keys only (ADR-013 amendment).
+source-delivery Action; `AllowUsers deploy root schatten-upload` admits
+`deploy` and key-only root from any address, and SSH accepts public keys only
+(ADR-013 TASK-059J amendment).
 Only Caddy publishes application ports. API, migration job, worker and database
 have no public ports or domains. No Authentik, Traefik, Coolify, forward-auth,
 `auth.lupaus.eu` or new staging environment is required.
@@ -252,8 +253,10 @@ The remaining checks must distinguish configuration intent from effective state:
 
 - Verify key login for `deploy` in a fresh session, effective SSH password and
   keyboard-interactive settings, and default-user/root access. The supplied
-  `disable_root: false` does not establish disabled root SSH access; record its
-  actual policy rather than claiming it is disabled. `deploy` is a privileged
+  `disable_root: false` keeps root's key usable, and the host's main
+  `sshd_config` was observed to set `PermitRootLogin yes`; record the effective
+  policy. Under TASK-059J root SSH stays, key-only (`prohibit-password`, set by
+  the runbook 2.1 drop-in, which overrides the main file). `deploy` is a privileged
   operator account, not an application service identity. Validate any authorized
   SSH change before reload and keep a working session to avoid lockout.
 - The OpenSSH UFW allow rule has no source restriction in the supplied config.
@@ -488,7 +491,7 @@ Nothing is ever run from `/opt/apps/schatten-upload`.
 
 | Command | Purpose |
 | --- | --- |
-| `audit-host` | Read-only, sanitized audit of the existing cloud-init baseline for F: cloud-init status counts, accounts, effective SSH including `AllowUsers` (`deploy` only as `deploy@<cidr>`, `schatten-upload`, nothing else), UFW (SSH from `Anywhere` is attention only while root, password or keyboard-interactive login is enabled), listeners, Docker, swap/sysctl, timezone, fail2ban, updates, `/opt` storage, the upload account (locked, own group only, no sudo rules, root-owned key file, key **counts** with `restrict` and the gate as forced command, `deploy` in its group), the upload folder, `upload-gate` and `schatten-receive` ownership and hash, and the newest received sources with their manifest digest (or attention if a manifest is missing or staging was left behind); Git presence is only a fact. Before the first receive it runs from a workstation (`git show <commit>:deploy/bin/audit-host \| ssh deploy@<host> bash -s`), afterwards as `make audit` |
+| `audit-host` | Read-only, sanitized audit of the existing cloud-init baseline for F: cloud-init status counts, accounts, effective SSH including `AllowUsers` (`deploy`, `root` and `schatten-upload`, nothing else; `@<cidr>` patterns are a stricter fact), key-only root login (`prohibit-password`; a main-file override is a fact) and root key counts with the cloud-init `disable_root` prefix, UFW (SSH from `Anywhere` is attention only while password or keyboard-interactive login is enabled or root login is not key-only), listeners, Docker, swap/sysctl, timezone, fail2ban, updates, `/opt` storage, the upload account (locked, own group only, no sudo rules, root-owned key file, key **counts** with `restrict` and the gate as forced command, `deploy` in its group), the upload folder, `upload-gate` and `schatten-receive` ownership and hash, and the newest received sources with their manifest digest (or attention if a manifest is missing or staging was left behind); Git presence is only a fact. Before the first receive it runs from a workstation (`git show <commit>:deploy/bin/audit-host \| ssh deploy@<host> bash -s`), afterwards as `make audit` |
 | `check-host [--allow-os-mismatch]` | Read-only check of Ubuntu 26.04, Docker Engine ≥ 25, Compose ≥ 2.24, Buildx, `python3`/`flock`/`sha256sum`/`tar`/`make` (not Git), env file privacy/keys, socket group/mode `660`, no Docker TCP listener, state/release/source directories and lock files, backup directory owner/mode and key placement; reports whether `/usr/local/bin/schatten-receive` is installed root-owned and not group/other writable (missing is a warning until F installs it); reports disk, memory and swap |
 | `init-state` | Creates missing state, release and `/opt/apps/schatten-sources` directories and lock files only |
 | `schatten-receive <manifest-sha256> [--upload <folder>]` | Installed root-owned receiver, run as `deploy`. Stages and checks only `SOURCE_MANIFEST` first (digest from the run summary, format, count, relative unique sorted paths, `SOURCE_REF=refs/heads/main`, `SOURCE_COMMIT` equal to the upload folder name), then copies only listed regular files without following symlinks, verifies the staged copy, applies manifest modes read-only and renames it to `/opt/apps/schatten-sources/<commit>`; never replaces an existing commit folder and removes staging on failure. Without `--upload` it uses the upload whose manifest has that digest. Prints `SOURCE_DIR=`, `SOURCE_COMMIT=`, `SOURCE_MANIFEST_SHA256=`. `--verify <folder>` re-verifies an accepted folder in place |

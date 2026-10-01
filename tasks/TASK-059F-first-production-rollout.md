@@ -40,13 +40,29 @@ deployment, DNS/TLS, Entra setup and database initialization remain pending.
 - Verify fresh `deploy` key access and effective password/keyboard-interactive,
   root and default-user SSH policy. The supplied `disable_root: false` is not
   evidence that root SSH is disabled. Check UFW and any provider firewall for
-  IPv4/IPv6 exposure. Under the source-delivery amendment TCP 22 stays open for
-  GitHub-hosted runners and `AllowUsers deploy@<operator-cidr> schatten-upload`
-  restricts `deploy` to operator networks. Before opening TCP 22 to anywhere,
-  confirm with `sshd -T` that `PasswordAuthentication no`,
-  `KbdInteractiveAuthentication no`, `PermitRootLogin no` and the `AllowUsers`
-  line are effective and that password/keyboard-interactive logins are refused
-  in a fresh session; any missing setting blocks opening the port. Apply only
+  IPv4/IPv6 exposure. Under the source-delivery and
+  [TASK-059J](TASK-059J-deploy-ssh-from-any-address.md) amendments TCP 22 stays
+  open from anywhere and `AllowUsers deploy root schatten-upload` admits
+  `deploy` and key-only root from any address. Before opening TCP 22 to
+  anywhere, confirm with `sshd -T` (and `sshd -T -C user=root,...`) that
+  `PasswordAuthentication no`, `KbdInteractiveAuthentication no`,
+  `PermitRootLogin prohibit-password` and the `AllowUsers` line are effective
+  and that password/keyboard-interactive logins as `deploy` and root are
+  refused in a fresh session; any missing setting blocks opening the port. A
+  root key login is optional, not required evidence: the root key holder (the
+  product owner) does not take part. Record the `deploy` and root key counts,
+  the role holding each root key and the recovery access holder (UpCloud
+  account, initially the product owner) by role. After rebasing onto J, align
+  section 2.1 of the rollout record `docs/qa/FIRST-PRODUCTION-ROLLOUT.md` with
+  the amended runbook 2.1 before recording any result: `sshd -T` expecting
+  `permitrootlogin prohibit-password` and `allowusers` `deploy`, `root` and
+  `schatten-upload`; root checked with `sshd -T -C user=root,...` and a
+  refused root password login; an optional root key login row that may stay
+  "not performed"; the `audit-host` lines `root SSH is key-only` and
+  `AllowUsers admits deploy/root from any address`; the key counts and root
+  key holder role; and a recovery row for the UpCloud account access holder
+  (role, authentication set up, acknowledged by role/date) replacing the old
+  console-only recovery note. Apply only
   necessary authorized
   access/firewall changes, validating SSH config with `sshd -t` and keeping a
   working session. Preserve public TCP 80/443 and check Docker
@@ -60,8 +76,8 @@ deployment, DNS/TLS, Entra setup and database initialization remain pending.
   `/opt/apps/schatten-upload` (group: the upload account's primary group, with
   `deploy` as supplementary member) and `/opt/apps/schatten-sources`. Before the
   first upload, install the root-owned `upload-gate` and `schatten-receive` from
-  the approved `main` commit on an operator workstation, as `deploy` from an
-  operator network; after the first receive, confirm their hashes equal the
+  the approved `main` commit on an operator workstation, as `deploy`; after
+  the first receive, confirm their hashes equal the
   manifest entries. Verify `main` protection and create the GitHub `production`
   environment limited to `main` with secrets `SSH_HOST`, `SSH_USER`, `SSH_KEY`,
   `SSH_PORT` and `SSH_FINGERPRINT`. No GitHub deploy key, host checkout or Git

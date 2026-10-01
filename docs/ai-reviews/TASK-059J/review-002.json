@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-059J/review-002",
+  "task": {
+    "id": "TASK-059J",
+    "path": "tasks/TASK-059J-deploy-ssh-from-any-address.md"
+  },
+  "round": 2,
+  "reviewed_at": "2026-10-01T10:14:04Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "90c7db38b96d4ce578603a923723bb5274bcca61",
+    "head_sha": "70008d151d44d36cad586c5adc11cc18fabeb42e",
+    "comparison": "90c7db38b96d4ce578603a923723bb5274bcca61...70008d151d44d36cad586c5adc11cc18fabeb42e",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "The round-1 fixes stay within scope and close all three findings. TASK-059F now requires aligning section 2.1 of the F rollout record with the J expectations after rebasing, and TASK-059J records that carry-over. audit-host stops reading the main sshd_config at the first Match line and labels the value as global. In a disposable Ubuntu 26.04 container, a global PermitRootLogin yes was still reported as overridden, and a Match-scoped yes was no longer reported as a main-file value, while the Match-block attention line still appeared. The runbook and ADR-013 now fix a lockout directly on the attached disk, with the password and console path as the alternative. shellcheck at warning severity passes and the links and anchors resolve. The rest of the change was rechecked against the base with no new issues. One new low finding comes from the F-003 fix: the suggested chroot sshd -t validation fails on a mounted disk.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "Recovery step 2 tells the operator to validate the corrected drop-in on the mounted disk with chroot <mount> sshd -t. On a mounted disk that command fails, because sshd -t requires the privilege separation directory /run/sshd, and /run is an empty runtime directory there.",
+        "rationale": "In a disposable Ubuntu 26.04 container with OpenSSH 10.2p1, sshd -t without /run/sshd printed 'Missing privilege separation directory: /run/sshd' and exited 255; with the directory it exited 0. An operator in a recovery could read the failure as a broken configuration. The fix itself still works, but the validation step as written misleads.",
+        "recommendation": "Create the directory inside the chroot before validating, for example by running mkdir -p /run/sshd and then sshd -t in the chroot, or state that the error about /run/sshd is expected there and that the configuration is validated with sshd -t after the server boots.",
+        "locations": [
+          {
+            "path": "docs/PRODUCTION-RUNBOOK.md",
+            "line": 287
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-059J/review-001",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "TASK-059F now requires that, after rebasing onto J, section 2.1 of docs/qa/FIRST-PRODUCTION-ROLLOUT.md is aligned with the amended runbook before any result is recorded, listing the expected sshd -T values, the root checks, the optional root key login row, the audit-host lines, key counts and the recovery row. TASK-059J records the carry-over.",
+        "validated_by": {
+          "review_id": "TASK-059J/review-002",
+          "commit": "70008d151d44d36cad586c5adc11cc18fabeb42e"
+        }
+      },
+      {
+        "record_id": "TASK-059J/review-001",
+        "finding_id": "F-002",
+        "disposition": "fixed",
+        "rationale": "The awk program exits at the first Match line, and the fact now says the value is set globally. A container run confirmed that a global yes is still reported and a Match-scoped yes is not.",
+        "validated_by": {
+          "review_id": "TASK-059J/review-002",
+          "commit": "70008d151d44d36cad586c5adc11cc18fabeb42e"
+        }
+      },
+      {
+        "record_id": "TASK-059J/review-001",
+        "finding_id": "F-003",
+        "disposition": "fixed",
+        "rationale": "Runbook recovery step 2 and the ADR-013 recovery bullet now correct the drop-in on the disk attached to the temporary server without setting a password; the password and console path remains as an alternative, followed by locking the password again.",
+        "validated_by": {
+          "review_id": "TASK-059J/review-002",
+          "commit": "70008d151d44d36cad586c5adc11cc18fabeb42e"
+        }
+      }
+    ]
+  }
+}

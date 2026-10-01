@@ -1,7 +1,7 @@
 # ADR-013: Shared Entra Registration And Local HTTPS Deployment
 
-Status: Accepted; B/C/D/G/E/H1/H2 implemented; source delivery amendment pending
-TASK-059H3; authorized setup and rollout pending TASK-059F
+Status: Accepted; B/C/D/G/E/H1/H2/H3/J implemented; authorized setup and
+rollout pending TASK-059F
 
 Date: 2026-09-11
 
@@ -19,6 +19,10 @@ Amended: 2026-09-29 to replace the host Git checkout and GitHub deploy key with
 manual GitHub Action source delivery, a manifest-verified receive step and no
 Git on the server (TASK-059H); see
 [Source Delivery Without Git On The Server](#source-delivery-without-git-on-the-server).
+
+Amended: 2026-10-01 to admit `deploy` over SSH from any address and keep
+key-only root SSH (TASK-059J); see
+[Operator SSH Access From Any Address](#operator-ssh-access-from-any-address).
 
 # Context And Supersession
 
@@ -119,10 +123,10 @@ Bind development ingress and any exposed development ports to loopback. Reuse
 valid local CA material where possible and separate application TLS tooling
 from Authentik; do not delete old volumes or reset existing application data.
 
-Production exposes Caddy HTTP/HTTPS (80/443). SSH port 22 is reachable for
-GitHub-hosted runners, but only the upload-only account may log in from outside
-operator networks (see
-[SSH exposure](#source-delivery-without-git-on-the-server)). API, migration
+Production exposes Caddy HTTP/HTTPS (80/443). SSH port 22 is reachable from
+anywhere for GitHub-hosted runners and operators; only `deploy`, root and the
+upload-only account may log in, with public keys only (see
+[Operator SSH Access From Any Address](#operator-ssh-access-from-any-address)). API, migration
 job, single worker and PostgreSQL have no public ports or domains. Fix and sanitize forwarded headers at Caddy; FastAPI trusts
 only its actual Caddy peers, with no broad private-network trust. No upstream
 Traefik trust is needed. Preserve migration-success gates for API/worker and
@@ -271,7 +275,7 @@ run from the verified copy, never from the upload folder.
 **Tool bootstrap and upgrade.** The upload gate must exist before the first
 upload, so F installs `upload-gate` and `schatten-receive` root-owned in
 `/usr/local/bin` from the approved `main` commit on an operator workstation
-(Git there is permitted), as `deploy` from an operator network. After the first
+(Git there is permitted), as `deploy`. After the first
 receive, their hashes must equal the manifest entries for the same paths. The
 installed receiver is always run directly, never through a newly delivered
 Makefile. When a later manifest changes either file, the operator reinstalls
@@ -302,14 +306,15 @@ reads the upload folder only as data and never executes, sources or runs tools
 inside it.
 
 **SSH exposure.** UFW allows TCP 22 from anywhere, because GitHub-hosted
-runners have no fixed addresses. `AllowUsers deploy@<operator-cidr>
-schatten-upload` keeps `deploy` restricted to operator networks; the only
-internet-reachable login can upload files and nothing else. SSH is
-public-key only: the effective `sshd -T` configuration must show
-`PasswordAuthentication no`, `KbdInteractiveAuthentication no` and
-`PermitRootLogin no`, and both allowed accounts keep locked passwords. F
-verifies this, in addition to `AllowUsers`, before TCP 22 is opened to
-anywhere; a missing setting blocks opening the port.
+runners have no fixed addresses. SSH is public-key only: the effective
+`sshd -T` configuration must show `PasswordAuthentication no` and
+`KbdInteractiveAuthentication no`, and every allowed account keeps a locked
+password. F verifies this, in addition to `AllowUsers` and the root login
+setting, before TCP 22 is opened to anywhere; a missing setting blocks opening
+the port. The 2026-09-29 source restriction of `deploy`
+(`AllowUsers deploy@<operator-cidr> schatten-upload`) and
+`PermitRootLogin no` are superseded by
+[Operator SSH Access From Any Address](#operator-ssh-access-from-any-address).
 
 **GitHub-side controls.** `main` is protected against direct and force pushes
 and deletion, so changes reach it only through pull requests; F records
@@ -330,6 +335,65 @@ H1 implements the manifest, receiver and Git-free build; H2 the upload gate and
 workflow; H3 the server Makefile and runbook. Creating the GitHub environment
 and secrets, the upload account, SSH/UFW changes and the first real run are
 authorized F setup.
+
+## Operator SSH Access From Any Address
+
+Amendment 2026-10-01 (TASK-059J). The operators who use `deploy` connect from
+dynamic addresses and changing networks, and not every operator's addresses
+are known, so a source restriction would lock them out whenever an address
+changes. The product owner also keeps their existing direct root login.
+
+**Settings.** The SSH hardening drop-in sets:
+
+- `PasswordAuthentication no` and `KbdInteractiveAuthentication no`;
+- `PermitRootLogin prohibit-password` (key-only root; never `yes`);
+- `AllowUsers deploy root schatten-upload`.
+
+`deploy` and root are reachable from any address with public keys only;
+`schatten-upload` keeps its upload-only forced command. A `deploy@<cidr>` or
+`root@<cidr>` pattern, or `PermitRootLogin no`, remains an allowed, stricter
+operator choice. All three accounts keep locked passwords. Root SSH exists for
+the product owner's direct login, not for tooling: the runbook, `deploy/bin`
+and the Makefile run as `deploy`.
+
+**Accepted risk.** A stolen `deploy` or root private key can be used from
+anywhere and grants full control of the host; the amendment relies on
+operators keeping their private keys safe. The exposure of sshd itself is
+unchanged, because TCP 22 is already open to anywhere for `schatten-upload`.
+Direct root sessions are less accountable than `deploy` with `sudo`, which
+logs each command; this is accepted. Hardware-backed (FIDO2) keys or a VPN
+overlay remain possible later hardening.
+
+**Operator keys.** One key per person with a role comment, never a shared key,
+on `deploy` and on root. Private keys are passphrase-protected and used through
+an agent. On a lost or suspected key, remove it from the affected
+`authorized_keys` (`/home/deploy/.ssh/` or `/root/.ssh/`) immediately, from
+another session or through recovery. F records the key **counts** of `deploy`
+and root and the role holding each root key. A root key login is not required
+F evidence; the root key holder need not take part in the rollout.
+
+**Recovery.** Recovery access is held through the UpCloud account, initially
+by the product owner, who has set up its authentication; F records the role.
+No console password is pre-set and the locked passwords stay. Recovery uses
+UpCloud's procedures, as detailed in the
+[runbook](../PRODUCTION-RUNBOOK.md#21-public-key-only-ssh-allowusers-and-port-22):
+
+- Regain any login without a password with the
+  [disk-move password reset](https://upcloud.com/docs/guides/reset-root-password-cloud-server/),
+  after an UpCloud storage backup or snapshot of the disk, because the
+  application backups live on the same disk. It causes downtime.
+- When locked out by `AllowUsers`, correct the line on the disk while it is
+  attached to the temporary server, without setting a password; setting a
+  password and correcting it on the UpCloud web console is the alternative. A
+  lost key is replaced on the temporary server in the same way, or from
+  another working key's session without downtime. Any password set during
+  recovery is locked again afterwards.
+- Never comment out `Include /etc/ssh/sshd_config.d/*.conf` or set
+  `PasswordAuthentication yes`, as UpCloud's
+  [regaining-access guide](https://upcloud.com/docs/guides/regaining-access-to-a-server-that-was-deployed-using-ssh-keys/)
+  suggests: it disables the cloud-init and Schatten drop-ins, re-enables a
+  main-file `PermitRootLogin yes` and allows root password login from anywhere
+  while port 22 is public.
 
 ## Explicit Initial Data
 
@@ -384,7 +448,8 @@ controls was needed.
 | [H1](../../tasks/TASK-059H1-source-manifest-git-free-build.md) | Source manifest, verified receive, Git-free build | H |
 | [H2](../../tasks/TASK-059H2-upload-account-deploy-action.md) | Upload gate and "Deploy to production" workflow | H1 |
 | [H3](../../tasks/TASK-059H3-server-makefile-runbook.md) | Server Makefile, `service` command, runbook | H1, H2 |
-| [F](../../tasks/TASK-059F-first-production-rollout.md) | Authorized setup and first rollout | H3 and explicit operational approval |
+| [J](../../tasks/TASK-059J-deploy-ssh-from-any-address.md) | Operator SSH from any address, key-only root SSH | H3 |
+| [F](../../tasks/TASK-059F-first-production-rollout.md) | Authorized setup and first rollout | H3, J and explicit operational approval |
 
 TASK-059H is the source-delivery amendment; production Authentik remains
 excluded. Until H1-H3 are implemented, the TASK-059G/E tooling and runbook still
@@ -412,7 +477,9 @@ off-server builds.
 Delivering source by a manual Action removes the deploy key, Git and GitHub
 network access from the host, but the host now trusts GitHub and the
 operator-entered digest instead of verifying a commit itself, and SSH port 22
-is internet-reachable for the upload-only account. A self-hosted runner or
+is internet-reachable for the upload-only account. Admitting `deploy` and
+key-only root from any address (TASK-059J) removes operator lockouts on
+address changes but makes those keys usable from anywhere if stolen. A self-hosted runner or
 fixed runner addresses would allow a source-restricted port but add
 infrastructure; building on GitHub would move trust further to GitHub and GHCR
 and remains a later option.

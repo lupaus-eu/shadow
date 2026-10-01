@@ -671,7 +671,8 @@ by TASK-059G (`docker-compose.production.yml`, `deploy/`); integrated runbook an
 disposable QA by TASK-059E (`docs/PRODUCTION-RUNBOOK.md`); source delivery
 without Git on the server amended by TASK-059H; manifest, receiver and Git-free
 build (H1), upload gate and "Deploy to production" workflow (H2), and server
-`deploy/Makefile`, `service` command and runbook (H3) implemented; rollout
+`deploy/Makefile`, `service` command and runbook (H3) implemented; operator
+SSH from any address with key-only root (J) amended and implemented; rollout
 pending F
 
 Use Docker Engine/Compose on an **UpCloud Ubuntu 26.04 LTS** server. Caddy
@@ -679,9 +680,10 @@ serves built React and terminates public TLS directly at
 `https://schatten.lupaus.eu`; it proxies `/api` to private FastAPI. Certificate
 storage persists across replacements. PostgreSQL 18 initially runs privately
 in Docker with persistent storage. Only Caddy exposes public application ports.
-SSH port 22 is reachable for GitHub-hosted runners, but `AllowUsers` limits
-`deploy` to operator networks, the only other account can upload files only,
-and SSH accepts public keys only (no password, keyboard-interactive or root login).
+SSH port 22 is reachable from anywhere for GitHub-hosted runners and
+operators on changing networks. `AllowUsers` admits only `deploy`, key-only
+root (the product owner's direct login) and an upload-only account, and SSH
+accepts public keys only (no password or keyboard-interactive login).
 FastAPI trusts only actual Caddy peers and no upstream edge.
 
 Source reaches the host through a manually started "Deploy to production"

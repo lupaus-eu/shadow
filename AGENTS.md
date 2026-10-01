@@ -103,6 +103,9 @@ operator runbook `docs/PRODUCTION-RUNBOOK.md` and disposable QA. TASK-059H
 records the Git-free source delivery in ADR-013; TASK-059H1-H3 implement the
 manifest/receiver/build, the upload gate and workflow, and the server
 `deploy/Makefile`, `deploy/bin/service` and runbook update (all implemented).
+TASK-059J amends ADR-013 to admit `deploy` and key-only root over SSH from any
+address (`AllowUsers deploy root schatten-upload`, `PermitRootLogin
+prohibit-password`) with UpCloud disk-move recovery, and updates `audit-host`.
 Authorized setup and rollout remain pending F.
 The non-user metamodel seed is approved production reference data; development
 Users and example business data remain forbidden in production. First setup is
