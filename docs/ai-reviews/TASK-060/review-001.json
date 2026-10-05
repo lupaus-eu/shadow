@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-060/review-001",
+  "task": {
+    "id": "TASK-060",
+    "path": "tasks/TASK-060-node24-setup-actions.md"
+  },
+  "round": 1,
+  "reviewed_at": "2026-10-05T08:37:14Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "0db6612891651b9d7e378885efaf084fa2c7c65a",
+    "head_sha": "f980dfbc2c1b3eb91cb506380b87d25eb0da1269",
+    "comparison": "0db6612891651b9d7e378885efaf084fa2c7c65a...f980dfbc2c1b3eb91cb506380b87d25eb0da1269",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "clean",
+    "summary": "The change stays within the task scope. In backend-checks, ci.yml moves from actions/setup-python v5 to v6 and from astral-sh/setup-uv v6 to v7. The existing inputs are unchanged: python-version-file, enable-cache and cache-dependency-glob. No other reference to the old majors remains under .github/. Both new majors run on node24 and still support these inputs. The workflow parses as valid YAML. No job, permission, cache scope, Python or uv version, or application code changed, and no dependency was added or test removed. The developer reports that PR CI passed and that the Node.js 20 deprecation warning for these actions no longer appears. The punycode DEP0040 line in the frontend-checks post-job cleanup comes from actions/setup-node v5, which the task lists as out of scope. It is informational only. ci.yml keeps its existing convention of major-version tags, while deploy-production.yml pins commit SHAs. The task did not ask to change that, so it is not a finding. No documentation describes these action versions, so no documentation change is needed.",
+    "findings": [],
+    "prior_finding_dispositions": []
+  }
+}
