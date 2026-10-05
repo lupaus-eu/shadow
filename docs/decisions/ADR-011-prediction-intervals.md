@@ -13,6 +13,15 @@ interval decision here, including the result-kind scope, methods, complete-bound
 invariant and existing work limits; durable requests do not alter interval
 semantics.
 
+Amended by ADR-014: `prophet` is a third directly fitted result kind with
+prediction intervals, using Prophet's native interval with
+`interval_width = confidence_level / 100`. It follows this ADR's interval
+states, complete ordered-bounds invariant and point-only rule for
+formula-derived results. This ADR's "five result kinds" context, its
+exclusion of new result kinds and its statement that ADR-007's limits are
+unchanged are historical for those parts; ADR-014 raises the persisted-point
+limit to 110,000.
+
 ---
 
 # Context
@@ -54,6 +63,8 @@ directly fitted normal-metric results:
   generated forecast horizon.
 - `sarima` uses the fitted Statsmodels forecast result's native interval with
   `alpha = 1 - confidence_level / 100`.
+- `prophet` (added by ADR-014) uses Prophet's native interval with
+  `interval_width = confidence_level / 100`.
 
 The `naive`, `seasonal_naive` and `average` baselines remain point forecasts.
 Live manually entered Reality data is observed comparison data and has no
@@ -174,6 +185,7 @@ Costs and constraints:
 - `docs/decisions/ADR-009-scenario-owned-prediction-inputs.md`
 - `docs/decisions/ADR-010-derived-metrics.md`
 - `docs/decisions/ADR-012-background-prediction-requests.md`
+- `docs/decisions/ADR-014-prophet-and-model-selection.md`
 - `docs/domains/FORECASTING.md`
 - `tasks/TASK-054A-prediction-intervals-architecture.md`
 - `tasks/TASK-054B-prediction-intervals-backend.md`

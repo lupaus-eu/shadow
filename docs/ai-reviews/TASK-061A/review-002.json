@@ -1,0 +1,184 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-061A/review-002",
+  "task": {
+    "id": "TASK-061A",
+    "path": "tasks/TASK-061A-prophet-model-selection-architecture.md"
+  },
+  "round": 2,
+  "reviewed_at": "2026-10-05T13:06:43Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "53fe16a7986e0e2d00ca3d89323d7b03b0423b01",
+    "head_sha": "e356869ded3534947755f848f81696cab4b9e187",
+    "comparison": "53fe16a7986e0e2d00ca3d89323d7b03b0423b01...e356869ded3534947755f848f81696cab4b9e187",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "All ten round-1 findings are fixed. The fix commit changes only ADRs, architecture and domain documentation and the TASK-061B/C specs; there is no code, migration, schema, frontend or Compose change. The limit arithmetic, including derived targets, seeding, temporary-file routing through TMPDIR, tini and graceful-shutdown interaction, and cross-document consistency were checked and are correct. The new calculation-child stop procedure introduces one medium and two lower issues: the process-group signalling has a startup race before the spawned child creates its group and does not say how a missing group is handled, the way the per-child temporary directory reaches the spawned child is unspecified, and the forecasting diagrams do not mention the process group. Apart from these, TASK-061B and TASK-061C can be implemented without a new architecture or method choice.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "bug",
+        "severity": "medium",
+        "summary": "The process-group stop procedure has a startup race and does not specify handling of a missing process group.",
+        "rationale": "A spawn child stays in the supervisor's process group until it creates its own group, and it first imports the worker and service modules, which can take noticeable time. A stop in that window makes group signalling by the child PID fail with a missing-group error so the child receives no signal and the reap can hang past the five-second bound, while resolving the group from the child PID would signal the supervisor's own group. The same error occurs when the child has already exited and with injected test children that never create a group.",
+        "recommendation": "Specify in ADR-014 and TASK-061B that the group is addressed only by the child PID, never by looking up the child's current group, that a missing-group error is ignored, and that the child process is always also signalled directly so a child that has not yet created its group is still stopped.",
+        "locations": [
+          {
+            "path": "docs/decisions/ADR-014-prophet-and-model-selection.md",
+            "line": 267
+          },
+          {
+            "path": "tasks/TASK-061B-prophet-model-selection-backend.md",
+            "line": 92
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "How the per-child temporary directory reaches the spawned child is unspecified.",
+        "rationale": "The multiprocessing process API has no environment parameter, so the implementer must choose between mutating the supervisor environment around start and passing the path to the child, which changes the child-target signature. The child must set the variables before the temporary-directory location is cached and before CmdStan's library creates its import-time temporary directory.",
+        "recommendation": "Choose one approach; recommended is passing the path as a child argument and having the child set TMPDIR and MPLCONFIGDIR and reset the cached temporary directory right after creating its process group, before any model import.",
+        "locations": [
+          {
+            "path": "docs/decisions/ADR-014-prophet-and-model-selection.md",
+            "line": 273
+          },
+          {
+            "path": "tasks/TASK-061B-prophet-model-selection-backend.md",
+            "line": 97
+          }
+        ]
+      },
+      {
+        "id": "F-003",
+        "category": "documentation",
+        "severity": "info",
+        "summary": "The forecasting workflow diagrams do not mention the new process-group stop detail.",
+        "rationale": "The diagram notes still describe terminate, force-kill and reap, which stays true at diagram level, but AGENTS.md asks for workflow diagrams to follow workflow changes.",
+        "recommendation": "Optionally mention the process group in the diagram notes, or add these diagrams to TASK-061B's documentation list.",
+        "locations": [
+          {
+            "path": "docs/diagrams/component-forecasting-prediction-requests.puml",
+            "line": 32
+          },
+          {
+            "path": "docs/diagrams/state-forecasting-prediction-request.puml",
+            "line": 27
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-061A/review-001",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "ADR-014 drops the claim and keeps target-level eligibility, FORECASTING.md now matches the current code, TASK-061B states the behavior, and per-kind eligibility is recorded as a rejected option.",
+        "validated_by": {
+          "review_id": "TASK-061A/review-002",
+          "commit": "e356869ded3534947755f848f81696cab4b9e187"
+        }
+      },
+      {
+        "record_id": "TASK-061A/review-001",
+        "finding_id": "F-002",
+        "disposition": "fixed",
+        "rationale": "MAX_POINTS is raised to 110,000 in ADR-014 and mirrored in ADR-007, ADR-011, FORECASTING.md and TASK-061B; the worst case of 50 pairs, 366 periods and six kinds is 109,800 points, and derived targets count toward the same 50-pair bound.",
+        "validated_by": {
+          "review_id": "TASK-061A/review-002",
+          "commit": "e356869ded3534947755f848f81696cab4b9e187"
+        }
+      },
+      {
+        "record_id": "TASK-061A/review-001",
+        "finding_id": "F-003",
+        "disposition": "fixed",
+        "rationale": "ADR-014 and TASK-061C keep a passed preflight valid on selection change, which holds because no valid selection can exceed the raised limit, and require create-time validation errors to be shown, with an acceptance criterion.",
+        "validated_by": {
+          "review_id": "TASK-061A/review-002",
+          "commit": "e356869ded3534947755f848f81696cab4b9e187"
+        }
+      },
+      {
+        "record_id": "TASK-061A/review-001",
+        "finding_id": "F-004",
+        "disposition": "fixed",
+        "rationale": "ADR-014 now decides process-group signalling and a per-child temporary directory removed on every outcome, with an ADR-012 amendment and TASK-061B requirements and acceptance criteria; remaining edge cases are tracked as new findings in this record.",
+        "validated_by": {
+          "review_id": "TASK-061A/review-002",
+          "commit": "e356869ded3534947755f848f81696cab4b9e187"
+        }
+      },
+      {
+        "record_id": "TASK-061A/review-001",
+        "finding_id": "F-005",
+        "disposition": "fixed",
+        "rationale": "ADR-014, FORECASTING.md and TASK-061B specify the fit seed plus a NumPy global-state reset before every predict call, including cross-validation windows, which makes bounds order-independent.",
+        "validated_by": {
+          "review_id": "TASK-061A/review-002",
+          "commit": "e356869ded3534947755f848f81696cab4b9e187"
+        }
+      },
+      {
+        "record_id": "TASK-061A/review-001",
+        "finding_id": "F-006",
+        "disposition": "fixed",
+        "rationale": "ADR-014 adds a Recorded Configuration table defining every key, and TASK-061B requires exactly those keys.",
+        "validated_by": {
+          "review_id": "TASK-061A/review-002",
+          "commit": "e356869ded3534947755f848f81696cab4b9e187"
+        }
+      },
+      {
+        "record_id": "TASK-061A/review-001",
+        "finding_id": "F-007",
+        "disposition": "fixed",
+        "rationale": "Prophet reasons are fixed strings, exception text is never interpolated, the expected exception classes are named, and TASK-061B warns against copying the MLForecast reason pattern.",
+        "validated_by": {
+          "review_id": "TASK-061A/review-002",
+          "commit": "e356869ded3534947755f848f81696cab4b9e187"
+        }
+      },
+      {
+        "record_id": "TASK-061A/review-001",
+        "finding_id": "F-008",
+        "disposition": "fixed",
+        "rationale": "TASK-061B now refers only to the production read-only tmpfs and says to leave the local Compose worker unchanged.",
+        "validated_by": {
+          "review_id": "TASK-061A/review-002",
+          "commit": "e356869ded3534947755f848f81696cab4b9e187"
+        }
+      },
+      {
+        "record_id": "TASK-061A/review-001",
+        "finding_id": "F-009",
+        "disposition": "fixed",
+        "rationale": "ADR-012 has an Amendment section and an ADR-014 reference.",
+        "validated_by": {
+          "review_id": "TASK-061A/review-002",
+          "commit": "e356869ded3534947755f848f81696cab4b9e187"
+        }
+      },
+      {
+        "record_id": "TASK-061A/review-001",
+        "finding_id": "F-010",
+        "disposition": "fixed",
+        "rationale": "ADR-014 and TASK-061B name the snapshot attribute, its stored camel-case key and the missing-key legacy rule.",
+        "validated_by": {
+          "review_id": "TASK-061A/review-002",
+          "commit": "e356869ded3534947755f848f81696cab4b9e187"
+        }
+      }
+    ]
+  }
+}

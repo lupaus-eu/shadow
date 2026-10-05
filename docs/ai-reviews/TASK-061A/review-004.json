@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-061A/review-004",
+  "task": {
+    "id": "TASK-061A",
+    "path": "tasks/TASK-061A-prophet-model-selection-architecture.md"
+  },
+  "round": 4,
+  "reviewed_at": "2026-10-05T13:32:06Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "53fe16a7986e0e2d00ca3d89323d7b03b0423b01",
+    "head_sha": "71afc530c7d7e1a8102578457761c2b28ecb1191",
+    "comparison": "53fe16a7986e0e2d00ca3d89323d7b03b0423b01...71afc530c7d7e1a8102578457761c2b28ecb1191",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "clean",
+    "summary": "The round-3 finding is fixed and no new issues were found. The fix changes only ADR-014 and the TASK-061B spec: after reaping a child on every outcome, including a child that exited or crashed on its own, the supervisor sends SIGKILL to the process group addressed by the child PID while ignoring a missing group, and only then removes the per-child temporary directory while tolerating errors; TASK-061B adds a crashed-child test and acceptance criterion. The PID-reuse reasoning holds whenever a CmdStan process survives; the theoretical reuse window for an already empty group is negligible because Linux allocates PIDs cyclically and the container runs no other group-creating processes, so no change is needed. The deliberate-stop path gains only a harmless extra group signal and the five-second cancellation bound holds. ADR-012, ARCHITECTURE.md and FORECASTING.md remain consistent. There is no code, migration, schema, frontend or Compose change. TASK-061B and TASK-061C no longer require any architecture or statistical-method choice.",
+    "findings": [],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-061A/review-003",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "ADR-014 and TASK-061B now send SIGKILL to the child's process group after reaping on every outcome, including self-exited and crashed children, ignore a missing group, then remove the temporary directory while tolerating errors, with a matching TASK-061B test and acceptance criterion.",
+        "validated_by": {
+          "review_id": "TASK-061A/review-004",
+          "commit": "71afc530c7d7e1a8102578457761c2b28ecb1191"
+        }
+      }
+    ]
+  }
+}

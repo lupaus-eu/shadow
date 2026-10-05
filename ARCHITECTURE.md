@@ -39,10 +39,16 @@ Päätetty tekninen perusrakenne:
 - derived metrics: Organisation States owns equations and materialized values;
   Forecasting derives prediction result points from normal-metric results
   according to ADR-010
+- forecasting models: ADR-014 accepts six result kinds (`naive`,
+  `seasonal_naive`, `average`, `mlforecast`, `sarima` and Prophet's `prophet`);
+  each prediction version calculates and persists only its user-selected,
+  non-empty subset, frozen into the request snapshot and recorded in the
+  version, with all six selected by default (implementation pending
+  TASK-061B/TASK-061C)
 - prediction intervals: Forecasting owns one immutable version-level nominal
-  coverage selection and model-specific bounds for directly fitted MLForecast
-  and SARIMA results according to ADR-011; baselines, live Reality and
-  formula-derived results remain point-only
+  coverage selection and model-specific bounds for directly fitted MLForecast,
+  SARIMA and (per ADR-014) Prophet results according to ADR-011; baselines,
+  live Reality and formula-derived results remain point-only
 - background prediction requests: ADR-012's PostgreSQL-backed single-worker
   architecture, detached snapshot preparation, durable request persistence,
   request APIs, supervised worker calculation, atomic publication, current-tab
@@ -613,7 +619,10 @@ TASK-057D owns the request UI. TASK-057E runs the worker in local and release
 Compose as a distinct internal service with a dedicated database-lock health
 check, automatic restart, Docker init process, and a ten-second shutdown grace.
 No generic background-job platform, broker, scheduler, retries or parallel
-processing is accepted.
+processing is accepted. ADR-014's Prophet model runs inside the same worker's
+calculation child process; it adds no service, queue or worker. ADR-014 runs
+each child in its own process group, stopped as a whole, with a private
+temporary directory removed after the child is reaped.
 
 ![Forecasting request architecture](docs/diagrams/generated/component-forecasting-prediction-requests.svg)
 

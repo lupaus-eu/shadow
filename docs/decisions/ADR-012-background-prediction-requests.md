@@ -6,6 +6,18 @@ Date: 2026-09-08
 
 ---
 
+# Amendment
+
+Amended by ADR-014: Forecasting adds a sixth result kind, `prophet`, with
+per-version model selection, and raises the persisted-point limit to 110,000.
+ADR-014 also amends the child stop procedure: each calculation child runs in
+its own process group that the supervisor signals as a whole, and each child
+gets a private temporary directory that the supervisor removes after reaping
+it. The five-second cancellation bound and every other decision here are
+unchanged.
+
+---
+
 # Context
 
 Forecasting currently calculates a complete prediction version synchronously in
@@ -234,5 +246,6 @@ Costs and constraints:
 - `docs/decisions/ADR-009-scenario-owned-prediction-inputs.md`
 - `docs/decisions/ADR-010-derived-metrics.md`
 - `docs/decisions/ADR-011-prediction-intervals.md`
+- `docs/decisions/ADR-014-prophet-and-model-selection.md`
 - `docs/domains/FORECASTING.md`
 - `tasks/TASK-057A-background-predictions-architecture.md`

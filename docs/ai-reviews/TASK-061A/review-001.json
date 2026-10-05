@@ -1,0 +1,197 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-061A/review-001",
+  "task": {
+    "id": "TASK-061A",
+    "path": "tasks/TASK-061A-prophet-model-selection-architecture.md"
+  },
+  "round": 1,
+  "reviewed_at": "2026-10-05T12:22:56Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "53fe16a7986e0e2d00ca3d89323d7b03b0423b01",
+    "head_sha": "f1e7a01805d65efccede7844d7e31a13d77a3738",
+    "comparison": "53fe16a7986e0e2d00ca3d89323d7b03b0423b01...f1e7a01805d65efccede7844d7e31a13d77a3738",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "The change is documentation-only and within scope: it adds ADR-014, amends ADR-007, ADR-011, ARCHITECTURE.md and FORECASTING.md, and adds the TASK-061A/B/C specs. No code, migration, ORM, API schema, frontend or Compose file changed. The Prophet parameter semantics, dependency list, interval-ordering handling, legacy snapshot and version handling, derived-metric behaviour and the claims about current code were checked and are accurate. However, one high and three medium findings leave decisions open, so the acceptance criterion that TASK-061B and TASK-061C need no new architecture or method choice is not yet met: the seasonal-period claim contradicts the current target-level eligibility, the six-kind default makes the point limit reachable for existing requests, the preflight/selection UX rule conflicts with the limit, and the CmdStan cancellation and temp-file cleanup mechanism is undecided. The low findings cover seeding precision, the undefined prophet configuration keys, exception-text leakage, a tmpfs fact in TASK-061B and a missing ADR-012 cross-reference.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "bug",
+        "severity": "high",
+        "summary": "ADR-014 says an inconclusive seasonal period does not make Prophet ineligible, but target-level eligibility makes every result kind ineligible in that case.",
+        "rationale": "Target preparation in the predictions service gives a target without a seasonal period the requires_manual_seasonal_period status and skips building its known features; the normal result calculation then marks every kind ineligible for any non-eligible target, and the UI blocks creation until a manual period is entered. Making Prophet independent of the period needs per-kind eligibility and snapshot changes that no task specifies. FORECASTING.md already says a manual period is needed only for seasonal-naive and SARIMA, which the code does not match either.",
+        "recommendation": "Either drop the claim so Prophet follows target-level eligibility, or decide and specify per-kind eligibility in ADR-014 and TASK-061B, including preflight and UI handling for selections without seasonal kinds.",
+        "locations": [
+          {
+            "path": "docs/decisions/ADR-014-prophet-and-model-selection.md",
+            "line": 84
+          },
+          {
+            "path": "docs/domains/FORECASTING.md",
+            "line": 103
+          },
+          {
+            "path": "backend/app/api/v1/predictions/service.py",
+            "line": 776
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "regression",
+        "severity": "medium",
+        "summary": "Defaulting to six kinds makes the 100,000-point limit reachable, so large requests that succeed today would be rejected.",
+        "rationale": "The maximum request is 50 pairs times 366 periods, which gives 91,500 points with five kinds and 109,800 with six. Clients that omit modelKinds, and the default all-models UI, could therefore receive a new limit rejection, which contradicts the statement that existing clients keep working.",
+        "recommendation": "Record this as an accepted consequence, or decide to raise or reshape the limit, and correct the keep-working statements.",
+        "locations": [
+          {
+            "path": "docs/decisions/ADR-014-prophet-and-model-selection.md",
+            "line": 158
+          },
+          {
+            "path": "docs/decisions/ADR-014-prophet-and-model-selection.md",
+            "line": 264
+          }
+        ]
+      },
+      {
+        "id": "F-003",
+        "category": "documentation",
+        "severity": "medium",
+        "summary": "TASK-061C keeps a passed preflight when the model selection changes, but the preflight point limit depends on the selection count.",
+        "rationale": "A preflight that passes with few kinds can be followed by a create with more kinds that fails the limit. Creation stays authoritative, so this is not unsafe, but the expected UI behaviour is undefined.",
+        "recommendation": "Have TASK-061C either invalidate or re-run preflight when the selection changes, or explicitly require that a create-time limit rejection is shown to the user.",
+        "locations": [
+          {
+            "path": "tasks/TASK-061C-prophet-model-selection-ui.md",
+            "line": 32
+          },
+          {
+            "path": "docs/decisions/ADR-014-prophet-and-model-selection.md",
+            "line": 203
+          }
+        ]
+      },
+      {
+        "id": "F-004",
+        "category": "bug",
+        "severity": "medium",
+        "summary": "The CmdStan cancellation and temp-file cleanup mechanism is left to TASK-061B verification without a decided approach.",
+        "rationale": "The worker's child-stop routine terminates and kills only the Python calculation child. A CmdStan grandchild would be orphaned to the init process and could keep running while the next calculation starts, weakening the single-calculation assumption. A signal-killed child also skips exit cleanup, so CmdStan and plotting-library temporary directories could accumulate in the worker's 64 MB tmpfs.",
+        "recommendation": "Decide the mechanism in ADR-014, for example a per-child process group that is killed as a whole, plus per-child temporary-directory cleanup, so TASK-061B implements rather than chooses it.",
+        "locations": [
+          {
+            "path": "docs/decisions/ADR-014-prophet-and-model-selection.md",
+            "line": 280
+          },
+          {
+            "path": "backend/app/api/v1/predictions/worker.py",
+            "line": 346
+          }
+        ]
+      },
+      {
+        "id": "F-005",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "The seeding rule does not say when the global NumPy state is seeded, so bounds may depend on earlier fits in the same child.",
+        "rationale": "Prophet's uncertainty sampling uses the global NumPy random state and has no seed parameter; the fit seed only reaches the Stan optimiser. Seeding once per child would make a target's bounds depend on which targets and validation windows ran before it.",
+        "recommendation": "Specify seeding the NumPy state with the version seed immediately before each Prophet prediction, and passing the seed to the fit.",
+        "locations": [
+          {
+            "path": "docs/decisions/ADR-014-prophet-and-model-selection.md",
+            "line": 90
+          }
+        ]
+      },
+      {
+        "id": "F-006",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "The keys of the recorded prophet configuration section are not defined.",
+        "rationale": "Without a defined structure, saved versions may record Prophet settings inconsistently, which weakens auditability.",
+        "recommendation": "List the section's keys in ADR-014 or TASK-061B, for example MCMC samples, uncertainty samples, growth, seasonality by time unit, minimum observations and cross-validation windows and horizon.",
+        "locations": [
+          {
+            "path": "docs/decisions/ADR-014-prophet-and-model-selection.md",
+            "line": 178
+          },
+          {
+            "path": "tasks/TASK-061B-prophet-model-selection-backend.md",
+            "line": 60
+          }
+        ]
+      },
+      {
+        "id": "F-007",
+        "category": "security",
+        "severity": "low",
+        "summary": "TASK-061B points to the MLForecast pattern, which puts raw exception text into the user-visible reason.",
+        "rationale": "The MLForecast fit-failure reason interpolates the exception message. CmdStan error messages can include console output and temporary file paths, which ADR-014 forbids storing or showing. The existing handler also catches only value errors, so a CmdStan runtime error would fail the whole request instead of making Prophet ineligible.",
+        "recommendation": "State that Prophet failure reasons are fixed strings and name the expected exception classes, including CmdStan runtime errors.",
+        "locations": [
+          {
+            "path": "tasks/TASK-061B-prophet-model-selection-backend.md",
+            "line": 130
+          },
+          {
+            "path": "docs/decisions/ADR-014-prophet-and-model-selection.md",
+            "line": 102
+          }
+        ]
+      },
+      {
+        "id": "F-008",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "TASK-061B says both Compose files give the worker a 64 MB /tmp tmpfs, but only the production file does.",
+        "rationale": "In the local Compose file the worker has no tmpfs and is not read-only, so the task's measurement instruction is partly wrong.",
+        "recommendation": "Correct the text and state whether the local worker should mirror the production tmpfs.",
+        "locations": [
+          {
+            "path": "tasks/TASK-061B-prophet-model-selection-backend.md",
+            "line": 80
+          }
+        ]
+      },
+      {
+        "id": "F-009",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "ADR-012 still states that it does not change the five result kinds and has no ADR-014 cross-reference.",
+        "rationale": "ADR-007 and ADR-011 were amended with cross-references, but ADR-012 was not, although ADR-014 names it as excluding new kinds.",
+        "recommendation": "Add a short Amended by ADR-014 note and reference to ADR-012.",
+        "locations": [
+          {
+            "path": "docs/decisions/ADR-012-background-prediction-requests.md",
+            "line": 29
+          }
+        ]
+      },
+      {
+        "id": "F-010",
+        "category": "documentation",
+        "severity": "info",
+        "summary": "ADR-014 names the snapshot field model_kinds, but snapshots are stored by alias, so the stored key will be the camel-case alias.",
+        "rationale": "The legacy missing-field rule depends on which key is checked in stored snapshot JSON.",
+        "recommendation": "State the stored key name, or describe the field by its model attribute and alias.",
+        "locations": [
+          {
+            "path": "docs/decisions/ADR-014-prophet-and-model-selection.md",
+            "line": 169
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": []
+  }
+}

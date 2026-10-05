@@ -1,7 +1,9 @@
 # Forecasting Domain
 
 Status: durable request persistence, API, standalone worker, current-tab UI and
-supported-runtime wiring implemented by TASK-057C/TASK-057D/TASK-057E
+supported-runtime wiring implemented by TASK-057C/TASK-057D/TASK-057E;
+ADR-014 Prophet result kind and per-version model selection accepted,
+implementation pending TASK-061B/TASK-061C
 
 ## Purpose
 
@@ -85,7 +87,8 @@ Each version records one selected observation cutoff mode:
 
 ### Result Kinds
 
-Every otherwise eligible target metric attempts these five result kinds:
+ADR-014 defines six result kinds. Every otherwise eligible target metric
+attempts the result kinds selected for its version (see Model Selection):
 
 | Kind | Meaning |
 | --- | --- |
@@ -94,16 +97,55 @@ Every otherwise eligible target metric attempts these five result kinds:
 | Seasonal naive | Repeats the effective observation one selected seasonal cycle ago. |
 | Average | Uses the mean of effective observations available under the selected cutoff mode. |
 | SARIMA | Statsmodels SARIMAX with the selected seasonal period and known target-scenario inputs. |
+| Prophet | Meta's Prophet fitted with MAP and a fixed seed, with the known target-scenario inputs as regressors. |
 
 Seasonality is automatically detected per metric using autocorrelation and
 rolling-origin validation. If detection is inconclusive, a manual per-metric
-seasonal period is required before seasonal-naive and SARIMA results can be
-generated.
+seasonal period is required. Until one is supplied the target is not eligible,
+so every selected result kind for it is ineligible. Seasonal-naive and SARIMA
+use the period; the other kinds do not.
 
 MLForecast cross-validation uses rolling origins when enough history supports
 three validation windows. The result records MAE or an explicit unavailable
-state. Forecasting persists all result kinds rather than silently selecting one
-winner.
+state. Forecasting persists every selected result kind rather than silently
+selecting one winner.
+
+Prophet (`prophet`, ADR-014):
+
+- uses the target scenario's own history as `ds`/`y` and adds every known
+  target-scenario feature as a regressor; features with zero variance in the
+  training history are dropped, and future regressor values come from the
+  prediction periods;
+- sets seasonality by time unit: weekly only for `day`, yearly for `day`,
+  `week` and `month`, and daily never; it does not use the seasonal period as
+  a model parameter, but follows target-level eligibility like every kind;
+- fits with MAP (`mcmc_samples=0`), `uncertainty_samples=1000` and the version
+  seed, and resets NumPy's global random state to that seed before every
+  prediction, so identical inputs give identical results;
+- needs at least 12 contiguous observations, like MLForecast;
+- records cross-validation MAE from three expanding one-step windows
+  (`n_windows=3`, `h=1`), comparable with MLForecast; and
+- records an `ineligible` result with a fixed safe reason on short history or
+  an expected fit failure, never exception text, without affecting other kinds
+  or metrics in the version.
+
+### Model Selection
+
+Each prediction request selects which result kinds its version calculates
+(`modelKinds`):
+
+- The selection is a non-empty list of supported result kinds without
+  duplicates; invalid selections are rejected with a validation response.
+- Omitting it selects all six kinds.
+- One selection applies to every normal and derived target in the version.
+- The selection is frozen into the request snapshot and recorded as
+  `modelKinds` in the immutable version's model configuration.
+- Only selected kinds are fitted and persisted; unselected kinds have no
+  result rows and no "not selected" status.
+- Derived targets evaluate their formulas for the selected kinds only.
+- A queued snapshot from before ADR-014 that has no selection calculates the
+  five legacy kinds, without Prophet. A saved version without `modelKinds`
+  ran the kinds present in its results.
 
 ### Prediction Intervals
 
@@ -122,14 +164,16 @@ normal-metric results:
   interval width across the forecast horizon.
 - SARIMA uses the fitted Statsmodels forecast result's native interval with
   `alpha = 1 - confidence_level / 100`.
+- Prophet uses its native sampled interval (`yhat_lower`/`yhat_upper`) with
+  `interval_width = confidence_level / 100`.
 
 Naive, seasonal-naive and average baselines have point values only. Live Reality
 is observed comparison data and has no prediction interval. Formula-derived
-results also remain point-only, including their `mlforecast` and `sarima`
-result kinds; the domain does not propagate source bounds through equations.
+results also remain point-only, including their `mlforecast`, `sarima` and
+`prophet` result kinds; the domain does not propagate source bounds through equations.
 
 An interval state is `available`, `unavailable` or `not_applicable`. Directly
-fitted MLForecast and SARIMA results are unavailable when their point result is
+fitted MLForecast, SARIMA and Prophet results are unavailable when their point result is
 ineligible or no complete bounds can be calculated. Baseline and formula-derived
 results are not applicable. An available interval is complete: every result
 point has finite bounds satisfying
@@ -178,7 +222,8 @@ saves the complete immutable version in one transaction.
 The snapshot contains stable scenario and metric identities and display
 metadata, effective observations and provenance, historical/future feature
 grids, eligibility, cutoff and seasonality selections, interval level,
-deterministic model configuration, creator attribution, and derived formulas
+selected result kinds, deterministic model configuration, creator attribution,
+and derived formulas
 with referenced metric keys and captured short names. Normal targets are
 calculated before derived targets, whose formulas resolve only against the
 detached normal results. Source edits, soft deletion and formula or short-name
@@ -189,12 +234,16 @@ The API commits that snapshot in a queued request before returning
 `202 Accepted`. A standalone lock-owning worker processes snapshots in global
 submission order without changing model behavior or these bounds. It uses one
 child process per request and keeps queue access and publication in the
-supervisor.
+supervisor. Under ADR-014 each child runs in its own process group, which the
+supervisor stops as a whole so CmdStan processes stop with it, and uses a
+private temporary directory that the supervisor removes after reaping it.
 
 One request permits at most 50 numeric target scenario/metric candidates, 366
 generated periods per pair, 10,000 contiguous
-effective observations per pair, and 100,000 persisted prediction points across
-the version. Detailed eligibility is evaluated only within the candidate bound.
+effective observations per pair, and 110,000 persisted prediction points across
+the version (ADR-014). The point estimate counts only the selected result kinds;
+the 110,000 limit admits every request within the candidate and period limits
+with all six kinds selected. Detailed eligibility is evaluated only within the candidate bound.
 A request that exceeds a limit is rejected rather than truncated.
 
 ## Database Ownership
@@ -294,8 +343,9 @@ still refreshes and selects the saved version, including after notice dismissal.
    active target scenarios, resolve metrics and history, construct scenario-
    isolated features, and freeze all model and audit inputs.
 2. Serialize and validate the detached snapshot shape.
-3. Calculate normal result kinds from only the snapshot, then calculate derived
-   results from the captured formulas, references and normal outputs.
+3. Calculate the selected normal result kinds from only the snapshot, then
+   calculate derived results for the same kinds from the captured formulas,
+   references and normal outputs.
 4. Persist the immutable named version, result and interval metadata, points,
    available bounds and captured audit snapshots in one transaction.
 5. Persist expected model and interval limitations as result state; roll back
@@ -313,6 +363,7 @@ docs/decisions/ADR-009-scenario-owned-prediction-inputs.md
 docs/decisions/ADR-010-derived-metrics.md
 docs/decisions/ADR-011-prediction-intervals.md
 docs/decisions/ADR-012-background-prediction-requests.md
+docs/decisions/ADR-014-prophet-and-model-selection.md
 docs/domains/FORECASTING.md
 docs/domains/ORG_STATES.md
 docs/domains/ORG_TWIN_STRUCTURE.md

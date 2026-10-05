@@ -21,6 +21,13 @@ not amended by later ADRs. ADR-012 supersedes this ADR's synchronous execution
 restriction with durable background prediction requests while preserving those
 model and saved-version rules.
 
+Amended by ADR-014: Forecasting adds a sixth result kind, `prophet`, and each
+prediction version calculates and persists only its user-selected subset of
+result kinds (all supported kinds by default). ADR-014 also raises the
+persisted-point limit from 100,000 to 110,000. The result-kind table, the
+"attempts and persists all five output kinds" rule and the 100,000-point limit
+below are historical for those parts; ADR-014 is the current decision.
+
 ---
 
 # Context
@@ -94,6 +101,8 @@ Users select a prediction range and one of two cutoff modes:
 
 Each otherwise eligible target metric attempts and persists all five output
 kinds; Forecasting does not select and discard all but a winning model.
+(Amended by ADR-014: a sixth `prophet` kind exists, and only the version's
+user-selected kinds are attempted and persisted.)
 
 | Result kind | Decision |
 | --- | --- |
@@ -140,7 +149,8 @@ request:
   metadata; detailed eligibility is evaluated only within this protective bound;
 - at most 366 generated periods per pair;
 - at most 10,000 contiguous permitted observations per pair; and
-- at most 100,000 persisted prediction points across the version.
+- at most 100,000 persisted prediction points across the version (raised to
+  110,000 by ADR-014).
 
 A request exceeding a limit is rejected with a validation response that names
 the exceeded limit. These limits bound database output and synchronous model
@@ -224,6 +234,7 @@ Costs and constraints:
 - `docs/decisions/ADR-009-scenario-owned-prediction-inputs.md`
 - `docs/decisions/ADR-011-prediction-intervals.md`
 - `docs/decisions/ADR-012-background-prediction-requests.md`
+- `docs/decisions/ADR-014-prophet-and-model-selection.md`
 - `docs/domains/FORECASTING.md`
 - `docs/domains/ORG_STATES.md`
 - `docs/domains/ORG_TWIN_STRUCTURE.md`

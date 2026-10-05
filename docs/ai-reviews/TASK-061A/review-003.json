@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-061A/review-003",
+  "task": {
+    "id": "TASK-061A",
+    "path": "tasks/TASK-061A-prophet-model-selection-architecture.md"
+  },
+  "round": 3,
+  "reviewed_at": "2026-10-05T13:23:00Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "53fe16a7986e0e2d00ca3d89323d7b03b0423b01",
+    "head_sha": "758522f4b54d137f9b004214a5317cb75bba711a",
+    "comparison": "53fe16a7986e0e2d00ca3d89323d7b03b0423b01...758522f4b54d137f9b004214a5317cb75bba711a",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "All three round-2 findings are fixed. The fix commit changes only ADR-014 and the TASK-061B spec, with no code, migration, schema, frontend or Compose change. Signalling in every unreaped child state, the child-target signature change, temporary-directory routing after the spawn bootstrap, matplotlib configuration directory existence and cross-document consistency were checked and are correct. One new low-severity gap remains: the process group is signalled only when the supervisor deliberately stops a child, so a CmdStan process can outlive a child that crashes on its own, and the directory removal can race with it. Apart from this, TASK-061B and TASK-061C need no further architecture or method choice.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "bug",
+        "severity": "low",
+        "summary": "The child's process group is signalled only on a deliberate stop, so CmdStan can outlive a child that crashes on its own.",
+        "rationale": "When the calculation child dies by itself, for example from an out-of-memory kill or a crash, the worker reaps it directly without calling its stop routine. A running CmdStan grandchild is then orphaned to the init process and can overlap the next calculation, weakening the single-calculation guarantee, and removing the per-child directory can race with its writes.",
+        "recommendation": "Specify in ADR-014 and TASK-061B that after reaping the child on every outcome the supervisor sends SIGKILL to the process group addressed by the child PID, ignoring a missing group, and only then removes the directory while tolerating removal errors.",
+        "locations": [
+          {
+            "path": "docs/decisions/ADR-014-prophet-and-model-selection.md",
+            "line": 270
+          },
+          {
+            "path": "tasks/TASK-061B-prophet-model-selection-backend.md",
+            "line": 99
+          },
+          {
+            "path": "backend/app/api/v1/predictions/worker.py",
+            "line": 235
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-061A/review-002",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "ADR-014 and TASK-061B now signal the child directly and the process group addressed by the child PID with SIGTERM then SIGKILL, forbid looking up the child's current group, ignore a missing group, and require a test for a stop before the child creates its group.",
+        "validated_by": {
+          "review_id": "TASK-061A/review-003",
+          "commit": "758522f4b54d137f9b004214a5317cb75bba711a"
+        }
+      },
+      {
+        "record_id": "TASK-061A/review-002",
+        "finding_id": "F-002",
+        "disposition": "fixed",
+        "rationale": "ADR-014 and TASK-061B pass the temporary-directory path as a child start argument without changing the supervisor environment, and the child sets TMPDIR and MPLCONFIGDIR and resets the cached temporary directory right after creating its process group, before any model import.",
+        "validated_by": {
+          "review_id": "TASK-061A/review-003",
+          "commit": "758522f4b54d137f9b004214a5317cb75bba711a"
+        }
+      },
+      {
+        "record_id": "TASK-061A/review-002",
+        "finding_id": "F-003",
+        "disposition": "fixed",
+        "rationale": "By the developer's choice, TASK-061B's documentation list now requires updating both forecasting workflow diagrams and their generated SVGs together with the implementation; the current diagrams still describe implemented behavior correctly.",
+        "validated_by": {
+          "review_id": "TASK-061A/review-003",
+          "commit": "758522f4b54d137f9b004214a5317cb75bba711a"
+        }
+      }
+    ]
+  }
+}
