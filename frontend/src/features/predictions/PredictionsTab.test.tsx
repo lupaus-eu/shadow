@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { PredictionVersionDetailDto } from "../../api/predictions";
+import { PredictionsApiError, type PredictionVersionDetailDto } from "../../api/predictions";
 import PredictionsTab from "./PredictionsTab";
 
 const api = vi.hoisted(() => ({
@@ -18,7 +18,8 @@ const api = vi.hoisted(() => ({
 
 vi.mock("../../api/scenarios", () => ({ fetchScenarios: api.fetchScenarios }));
 vi.mock("../../api/events", () => ({ fetchEvents: api.fetchEvents }));
-vi.mock("../../api/predictions", () => ({
+vi.mock("../../api/predictions", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../../api/predictions")>(),
   fetchPredictions: api.fetchPredictions,
   fetchPrediction: api.fetchPrediction,
   fetchPredictionRequests: api.fetchPredictionRequests,
@@ -51,6 +52,17 @@ const version: PredictionVersionDetailDto = {
     }]
   }]
 };
+
+const allModelKinds = ["naive", "seasonal_naive", "average", "mlforecast", "sarima", "prophet"];
+
+async function runPreflight() {
+  fireEvent.change(screen.getByLabelText("Version name"), { target: { value: "Created plan" } });
+  fireEvent.change(screen.getAllByLabelText("Start date")[0], { target: { value: "2026-01-10" } });
+  fireEvent.change(screen.getAllByLabelText("End date")[0], { target: { value: "2026-02-10" } });
+  fireEvent.click(screen.getByRole("button", { name: "Run preflight" }));
+  await screen.findByText("Preflight eligibility");
+  fireEvent.change(screen.getByLabelText("Manual seasonal period for revenue"), { target: { value: "12" } });
+}
 
 describe("PredictionsTab", () => {
   beforeEach(() => {
@@ -360,8 +372,159 @@ describe("PredictionsTab", () => {
   it("formats unavailable selected models and reports them in the chart", async () => {
     render(<PredictionsTab orgId="acme" />);
 
-    expect(await screen.findByLabelText("seasonal naive")).toBeChecked();
-    expect(screen.getByText("No results to show for: seasonal naive.")).toBeVisible();
+    const comparisonModels = await screen.findByRole("group", { name: "Models and baselines" });
+    expect(within(comparisonModels).getByLabelText("Seasonal naive")).toBeChecked();
+    expect(screen.getByText("No results to show for: Seasonal naive.")).toBeVisible();
+  });
+
+  it("selects all six models by default and sends them with preflight and creation", async () => {
+    render(<PredictionsTab orgId="acme" />);
+    await screen.findByText(/selected scenario's own data/i);
+
+    const models = screen.getByRole("group", { name: "Models" });
+    expect(within(models).getByText("All models", { selector: "summary" })).toBeInTheDocument();
+    expect(within(models).getByLabelText("All models")).toBeChecked();
+    for (const label of ["Naive", "Seasonal naive", "Average", "MLForecast", "SARIMA", "Prophet"]) {
+      expect(within(models).getByLabelText(label)).toBeChecked();
+    }
+    await runPreflight();
+    fireEvent.click(screen.getByRole("button", { name: "Queue prediction" }));
+
+    await waitFor(() => expect(api.createPrediction).toHaveBeenCalledWith(
+      "acme", expect.objectContaining({ modelKinds: allModelKinds })
+    ));
+    expect(api.preflightPredictions).toHaveBeenCalledWith(
+      "acme", expect.objectContaining({ modelKinds: allModelKinds })
+    );
+  });
+
+  it("sends only the remaining models in canonical order without invalidating preflight", async () => {
+    render(<PredictionsTab orgId="acme" />);
+    await screen.findByText(/selected scenario's own data/i);
+    await runPreflight();
+
+    const models = screen.getByRole("group", { name: "Models" });
+    fireEvent.click(within(models).getByLabelText("All models"));
+    fireEvent.click(within(models).getByLabelText("Prophet"));
+    fireEvent.click(within(models).getByLabelText("Naive"));
+    expect(within(models).getByText("2 selected", { selector: "summary" })).toBeInTheDocument();
+    expect(screen.getByText("Preflight eligibility")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Queue prediction" }));
+
+    await waitFor(() => expect(api.createPrediction).toHaveBeenCalledWith(
+      "acme", expect.objectContaining({ modelKinds: ["naive", "prophet"] })
+    ));
+    expect(api.preflightPredictions).toHaveBeenCalledTimes(1);
+  });
+
+  it("blocks preflight and creation when no model is selected", async () => {
+    render(<PredictionsTab orgId="acme" />);
+    await screen.findByText(/selected scenario's own data/i);
+    await runPreflight();
+
+    const models = screen.getByRole("group", { name: "Models" });
+    fireEvent.click(within(models).getByLabelText("All models"));
+    expect(within(models).getByText("No models selected", { selector: "summary" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Queue prediction" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Select at least one model.");
+    fireEvent.click(screen.getByRole("button", { name: "Run preflight" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("Select at least one model.");
+
+    expect(api.createPrediction).not.toHaveBeenCalled();
+    expect(api.preflightPredictions).toHaveBeenCalledTimes(1);
+    fireEvent.click(within(models).getByLabelText("Average"));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("shows a create-time validation error in the form", async () => {
+    api.createPrediction.mockRejectedValueOnce(
+      new PredictionsApiError(422, "Prediction request exceeds the 110000 prediction point limit.")
+    );
+    render(<PredictionsTab orgId="acme" />);
+    await screen.findByText(/selected scenario's own data/i);
+    await runPreflight();
+    fireEvent.click(screen.getByRole("button", { name: "Queue prediction" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Could not queue prediction. Prediction request exceeds the 110000 prediction point limit."
+    );
+    expect(screen.getByLabelText("Version name")).toHaveValue("Created plan");
+    expect(screen.getByRole("button", { name: "Queue prediction" })).toBeEnabled();
+  });
+
+  it("compares Prophet with its own interval band and shows each version's models", async () => {
+    const prophetVersion: PredictionVersionDetailDto = {
+      ...version,
+      id: "version-2", name: "Prophet plan",
+      modelConfiguration: { modelKinds: ["naive", "prophet"] },
+      targets: [{
+        ...version.targets[0],
+        results: [version.targets[0].results[0], {
+          ...version.targets[0].results[0],
+          kind: "prophet",
+          predictionIntervalStatus: "available",
+          points: [
+            { date: "2026-01-10", value: 31, lowerBound: 21, upperBound: 41 },
+            { date: "2026-02-10", value: 35, lowerBound: 25, upperBound: 45 }
+          ]
+        }]
+      }]
+    };
+    api.fetchPredictions.mockResolvedValueOnce([prophetVersion, version]);
+    api.fetchPrediction.mockImplementation((_orgId: string, id: string) =>
+      Promise.resolve(id === prophetVersion.id ? prophetVersion : version)
+    );
+    const { container } = render(<PredictionsTab orgId="acme" />);
+    await screen.findByText(/selected scenario's own data/i);
+
+    const comparisonModels = screen.getByRole("group", { name: "Models and baselines" });
+    expect(within(comparisonModels).getByLabelText("Prophet")).toBeChecked();
+    const svg = screen.getByRole("img", { name: /Revenue prediction comparison chart/ });
+    const prophetLine = svg.querySelector('[data-series-id="version-2:future:revenue:prophet"] path');
+    expect(prophetLine).toHaveAttribute("stroke-dasharray", "10 3 2 3");
+    expect(container.querySelectorAll(".prediction-chart__interval-band")).toHaveLength(1);
+    expect(within(svg).getByText("Prophet plan · Future plan · Prophet: saved 80% prediction interval.")).toBeInTheDocument();
+    expect(screen.queryByText(/No results to show for/)).not.toBeInTheDocument();
+
+    const versions = screen.getByRole("group", { name: "Versions" });
+    expect(within(versions).getByLabelText("Prophet plan (80% prediction interval)")).toHaveAccessibleDescription("Models: Naive, Prophet");
+    expect(within(versions).getByLabelText("January plan (80% prediction interval)")).toHaveAccessibleDescription("Models: Naive, Seasonal naive");
+
+    fireEvent.click(within(comparisonModels).getByLabelText("All models and baselines"));
+    fireEvent.click(within(comparisonModels).getByLabelText("Seasonal naive"));
+    expect(screen.getByText("Not run by the selected versions: Seasonal naive.")).toBeVisible();
+    expect(screen.queryByText(/No results to show for/)).not.toBeInTheDocument();
+
+    fireEvent.click(within(versions).getByLabelText("January plan (80% prediction interval)"));
+    expect(screen.getByText("No results to show for: Seasonal naive.")).toBeVisible();
+    expect(screen.queryByText(/Not run by the selected versions/)).not.toBeInTheDocument();
+  });
+
+  it.each(["unavailable", "not_applicable"] as const)("draws no Prophet band when its interval is %s", async (intervalStatus) => {
+    const prophetVersion: PredictionVersionDetailDto = {
+      ...version,
+      modelConfiguration: { modelKinds: ["prophet"] },
+      targets: [{
+        ...version.targets[0],
+        results: [{
+          ...version.targets[0].results[0],
+          kind: "prophet",
+          predictionIntervalStatus: intervalStatus,
+          predictionIntervalReason: intervalStatus === "unavailable" ? "Prophet prediction interval is unavailable." : null,
+          points: [
+            { date: "2026-01-10", value: 31, lowerBound: 21, upperBound: 41 },
+            { date: "2026-02-10", value: 35, lowerBound: 25, upperBound: 45 }
+          ]
+        }]
+      }]
+    };
+    api.fetchPredictions.mockResolvedValueOnce([prophetVersion]);
+    api.fetchPrediction.mockResolvedValueOnce(prophetVersion);
+    const { container } = render(<PredictionsTab orgId="acme" />);
+
+    const svg = await screen.findByRole("img", { name: /Revenue prediction comparison chart/ });
+    expect(svg.querySelector('[data-series-id="version-1:future:revenue:prophet"]')).toBeInTheDocument();
+    expect(container.querySelector(".prediction-chart__interval-band")).not.toBeInTheDocument();
   });
 
   it("keeps deleted target scenarios available for saved-version comparison", async () => {

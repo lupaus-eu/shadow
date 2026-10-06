@@ -1,0 +1,125 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-061C/review-002",
+  "task": {
+    "id": "TASK-061C",
+    "path": "tasks/TASK-061C-prophet-model-selection-ui.md"
+  },
+  "round": 2,
+  "reviewed_at": "2026-10-06T12:26:35Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": {
+    "number": 96,
+    "url": "https://github.com/reflector-oy/schatten/pull/96"
+  },
+  "source": {
+    "base_sha": "68e9b55f44ef6c7662ef53730b617a46f48ed036",
+    "head_sha": "85c9d175c2a8846c18470bb1495121346e8bbfeb",
+    "comparison": "68e9b55f44ef6c7662ef53730b617a46f48ed036...85c9d175c2a8846c18470bb1495121346e8bbfeb",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Round 2 reviewed the full branch including the round-1 fix commit. Charts now separately name selected models that no plotted version ran, the predictions client reads the application error envelope, a two-case test proves that Prophet draws no band without an available interval, and the validation fixture uses the backend's actual message. The form-level model validation and canonical ordering are accepted. No new bugs, regressions, security issues, missing tests, documentation errors or out-of-scope changes were found; the documentation and status lines are accurate. Lint, build and 275 frontend tests passed and 60 review records validated. Two info observations remain for human review. The manual app.localhost verification is not covered by this review.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "regression",
+        "severity": "info",
+        "summary": "The new not-run note can appear on every chart in the default view.",
+        "rationale": "By default only the newest saved version is selected while the comparison model filter starts with every kind found in any saved version. If the newest version ran a subset, each chart shows an accurate not-run status note when the tab opens.",
+        "recommendation": "Accept as-is, or in a later task limit the default comparison model selection to kinds the selected versions ran.",
+        "locations": [
+          {
+            "path": "frontend/src/features/predictions/predictionChart.ts",
+            "line": 275
+          },
+          {
+            "path": "frontend/src/features/predictions/PredictionsTab.tsx",
+            "line": 252
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "bug",
+        "severity": "info",
+        "summary": "A validation list without any message entries would produce an error alert with an empty server message.",
+        "rationale": "Unlike sibling clients, the predictions parser does not fall back to the raw body for a detail list, which avoids echoing validation input. FastAPI always supplies a message, so this case is not expected in practice.",
+        "recommendation": "Keep the current behaviour; the generic status fallback is safer than showing raw validation input.",
+        "locations": [
+          {
+            "path": "frontend/src/api/predictions.ts",
+            "line": 139
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-061C/review-001",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "Charts compute and render a separate note for selected models that no plotted version ran, covered by helper and component tests.",
+        "validated_by": {
+          "review_id": "TASK-061C/review-002",
+          "commit": "85c9d175c2a8846c18470bb1495121346e8bbfeb"
+        }
+      },
+      {
+        "record_id": "TASK-061C/review-001",
+        "finding_id": "F-002",
+        "disposition": "fixed",
+        "rationale": "The predictions error parser now reads the application error envelope message, covered by a 403 client test.",
+        "validated_by": {
+          "review_id": "TASK-061C/review-002",
+          "commit": "85c9d175c2a8846c18470bb1495121346e8bbfeb"
+        }
+      },
+      {
+        "record_id": "TASK-061C/review-001",
+        "finding_id": "F-003",
+        "disposition": "fixed",
+        "rationale": "A two-case component test shows Prophet lines without a band when the interval is unavailable or not applicable.",
+        "validated_by": {
+          "review_id": "TASK-061C/review-002",
+          "commit": "85c9d175c2a8846c18470bb1495121346e8bbfeb"
+        }
+      },
+      {
+        "record_id": "TASK-061C/review-001",
+        "finding_id": "F-004",
+        "disposition": "fixed",
+        "rationale": "The client test fixture uses the backend's actual duplicate-selection validation message.",
+        "validated_by": {
+          "review_id": "TASK-061C/review-002",
+          "commit": "85c9d175c2a8846c18470bb1495121346e8bbfeb"
+        }
+      },
+      {
+        "record_id": "TASK-061C/review-001",
+        "finding_id": "F-005",
+        "disposition": "accepted_risk",
+        "rationale": "Model validation intentionally follows the existing form-level target-scenario pattern; field-level association for all dropdowns is better handled in a separate task.",
+        "validated_by": {
+          "review_id": "TASK-061C/review-002",
+          "commit": "85c9d175c2a8846c18470bb1495121346e8bbfeb"
+        }
+      },
+      {
+        "record_id": "TASK-061C/review-001",
+        "finding_id": "F-006",
+        "disposition": "accepted_risk",
+        "rationale": "Canonical model ordering is deliberate, matches the task's display-order requirement and is tested; it is mentioned in the PR description.",
+        "validated_by": {
+          "review_id": "TASK-061C/review-002",
+          "commit": "85c9d175c2a8846c18470bb1495121346e8bbfeb"
+        }
+      }
+    ]
+  }
+}

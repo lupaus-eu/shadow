@@ -44,7 +44,7 @@ Päätetty tekninen perusrakenne:
   each prediction version calculates and persists only its user-selected,
   non-empty subset, frozen into the request snapshot and recorded in the
   version, with all six selected by default (backend implemented by
-  TASK-061B; UI pending TASK-061C)
+  TASK-061B; UI implemented by TASK-061C)
 - prediction intervals: Forecasting owns one immutable version-level nominal
   coverage selection and model-specific bounds for directly fitted MLForecast,
   SARIMA and (per ADR-014) Prophet results according to ADR-011; baselines,

@@ -685,6 +685,17 @@
   margin-top: 3px;
 }
 
+.predictions-check-option {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.predictions-check-option__description {
+  /* Aligns with the option label after its checkbox. */
+  padding-left: calc(13px + var(--space-2));
+  font-size: var(--text-meta-size);
+}
+
 .predictions-date-grid {
   display: grid;
   min-width: 0;

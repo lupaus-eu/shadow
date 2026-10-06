@@ -9,6 +9,7 @@ import {
   fetchPredictionRequest,
   fetchPredictionRequests,
   fetchPredictions,
+  MODEL_KINDS,
   preflightPredictions,
   type PredictionCutoffMode,
   type PredictionPreflightDto,
@@ -25,6 +26,8 @@ import {
   formatModelKind,
   predictionChartAxisTicks,
   predictionIntervalBandPath,
+  predictionVersionModelKinds,
+  sortModelKinds,
   type PredictionChartLine
 } from "./predictionChart";
 import { formatRequestTimestamp, isTerminalRequest, requestDurations, requestNoticeMessage } from "./predictionRequestPresentation";
@@ -98,6 +101,7 @@ function PredictionsWorkspace(props: { orgId: string }) {
   const [confidenceLevelError, setConfidenceLevelError] = useState("");
   const [preflight, setPreflight] = useState<PredictionPreflightDto | null>(null);
   const [manualPeriods, setManualPeriods] = useState<Record<string, number>>({});
+  const [requestModelKinds, setRequestModelKinds] = useState<Set<string>>(() => new Set(MODEL_KINDS));
   const [formError, setFormError] = useState("");
   const [submissionNotices, setSubmissionNotices] = useState<PredictionRequestSummaryDto[]>([]);
   const [requestNow, setRequestNow] = useState(() => Date.now());
@@ -456,7 +460,7 @@ function PredictionsWorkspace(props: { orgId: string }) {
   }, [props.orgId, updateTrackedRequests]);
 
   const allModelKinds = useMemo(
-    () => [...new Set(versions.flatMap((version) => version.targets.flatMap((target) => target.results.map((result) => result.kind))))].sort(),
+    () => sortModelKinds(versions.flatMap((version) => version.targets.flatMap((target) => target.results.map((result) => result.kind)))),
     [versions]
   );
   const allMetrics = useMemo(() => {
@@ -483,6 +487,14 @@ function PredictionsWorkspace(props: { orgId: string }) {
   function invalidatePreflight() {
     setPreflight(null);
     setFormError("");
+  }
+
+  function selectedRequestModelKinds(): string[] | null {
+    if (!requestModelKinds.size) {
+      setFormError("Select at least one model.");
+      return null;
+    }
+    return MODEL_KINDS.filter((kind) => requestModelKinds.has(kind));
   }
 
   function selectedConfidenceLevel(): number | null {
@@ -541,13 +553,16 @@ function PredictionsWorkspace(props: { orgId: string }) {
     if (!targetScenarioIds.size) return setFormError("Select at least one prediction target scenario.");
     if (!startDate || !endDate) return setFormError("Choose both a start and an end date.");
     if (invalidDates) return setFormError("The start date must be earlier than the end date.");
+    const modelKinds = selectedRequestModelKinds();
+    if (modelKinds === null) return;
     try {
       setSubmitting(true);
       setFormError("");
       const response = await preflightPredictions(props.orgId, {
         targetScenarioIds: [...targetScenarioIds], startDate, endDate, cutoffMode,
         confidenceLevel: selectedLevel,
-        manualSeasonalPeriods: manualPeriods
+        manualSeasonalPeriods: manualPeriods,
+        modelKinds
       });
       setPreflight(response);
       setManualPeriods((current) => Object.fromEntries(
@@ -572,12 +587,15 @@ function PredictionsWorkspace(props: { orgId: string }) {
     if (!preflight.metrics.length) return setFormError("Preflight found no forecastable metrics to create.");
     if (!name.trim()) return setFormError("Enter a unique prediction-version name.");
     if (missingManualPeriod) return setFormError("Enter every required manual seasonal period before creating.");
+    const modelKinds = selectedRequestModelKinds();
+    if (modelKinds === null) return;
     try {
       setSubmitting(true);
       setFormError("");
       const created = await createPrediction(props.orgId, {
         name: name.trim(), targetScenarioIds: [...targetScenarioIds], startDate, endDate,
-        cutoffMode, confidenceLevel: selectedLevel, manualSeasonalPeriods: manualPeriods
+        cutoffMode, confidenceLevel: selectedLevel, manualSeasonalPeriods: manualPeriods,
+        modelKinds
       });
       if (currentOrgIdRef.current !== props.orgId) return;
       requestMutationEpochRef.current += 1;
@@ -649,6 +667,8 @@ function PredictionsWorkspace(props: { orgId: string }) {
         <fieldset className="predictions-fieldset"><legend className="form-label form-label--required">Observation cutoff</legend><label className="predictions-check"><input type="radio" name="cutoff" checked={cutoffMode === "asOfStart"} onChange={() => { setCutoffMode("asOfStart"); invalidatePreflight(); }} /> As of start — excludes observations on and after the first predicted period.</label><label className="predictions-check"><input type="radio" name="cutoff" checked={cutoffMode === "allCurrentScenario"} onChange={() => { setCutoffMode("allCurrentScenario"); invalidatePreflight(); }} /> All current scenario — retrospective predictions can use later values from the selected scenario.</label></fieldset>
         <label className="form-row"><span className="form-label form-label--required">Prediction interval level</span><input aria-label="Prediction interval level" aria-describedby={confidenceLevelError ? "prediction-interval-help prediction-interval-error" : "prediction-interval-help"} aria-invalid={confidenceLevelError ? "true" : undefined} className="input" type="number" min="50" max="99" step="1" required value={confidenceLevel} onChange={(event) => updateConfidenceLevel(event.target.value)} /><span id="prediction-interval-help" className="muted">50–99%. This is a nominal prediction interval for future observed values; higher percentages generally produce wider bands.</span></label>
         {confidenceLevelError ? <p id="prediction-interval-error" className="alert alert--danger" role="alert">{confidenceLevelError}</p> : null}
+        {/* Eligibility and the point limit do not depend on models (ADR-014), so preflight stays valid. */}
+        <MultiSelectDropdown title="Models" borderless required items={MODEL_KINDS.map((kind) => [kind, formatModelKind(kind)])} selected={requestModelKinds} onChange={(selected) => { setRequestModelKinds(selected); setFormError(""); }} allLabel="All models" allSelectedSummary="All models" emptySummary="No models selected" />
         <div className="form-actions"><button className="btn btn--secondary" type="button" disabled={submitting || invalidDates} onClick={() => void handlePreflight()}>Run preflight</button><button className="btn btn--primary" type="button" disabled={submitting || invalidDates || !preflight || !preflight.metrics.length} onClick={() => void handleCreate()}>Queue prediction</button></div>
         {formError ? <p className="alert alert--danger" role="alert">{formError}</p> : null}
         {submissionNotices.map((notice) => <div
@@ -674,7 +694,7 @@ function PredictionsWorkspace(props: { orgId: string }) {
         onCancel={(request) => void handleCancelPredictionRequest(request)}
       />
     </div>
-    <section className="detail-card detail-card--spacious predictions-panel predictions-plots" aria-labelledby="plots-heading"><h2 id="plots-heading">Compare saved results</h2><div className="predictions-filters"><div className="predictions-filter-groups"><MultiSelectDropdown title="Versions" searchable borderless items={versions.map((version) => [version.id, `${version.name} (${version.confidenceLevel}% prediction interval)`])} selected={selectedVersionIds} onChange={setSelectedVersionIds} allLabel="All saved versions" allSelectedSummary="All saved versions" emptySummary="No saved versions selected" /><ScenarioMultiSelect borderless items={comparisonScenarios} selected={selectedScenarioFilter} onChange={setSelectedScenarioFilter} /><MultiSelectDropdown title="Models and baselines" borderless items={allModelKinds.map((kind) => [kind, formatModelKind(kind)])} selected={selectedModelKinds} onChange={setSelectedModelKinds} allLabel="All models and baselines" /><MultiSelectDropdown title="Numeric metrics" searchable borderless items={allMetrics.map(([id, metric]) => [id, `${metric.name} (${metric.unit ?? "no unit"})`])} selected={selectedMetricIds} onChange={setSelectedMetricIds} allLabel="All numeric metrics" allSelectedSummary="All numeric metrics" /></div><div className="predictions-plot-controls"><span className="form-label">Plot date range</span><div className="predictions-plot-dates"><label className="predictions-date-field">Start date<input aria-label="Plot start date" className="input date-input" type="date" value={plotStartDate} onChange={(event) => setPlotStartDate(event.target.value)} /></label><label className="predictions-date-field">End date<input aria-label="Plot end date" className="input date-input" type="date" value={plotEndDate} onChange={(event) => setPlotEndDate(event.target.value)} /></label></div><label className="predictions-check"><input type="checkbox" checked={includeReality} onChange={(event) => { setIncludeReality(event.target.checked); setRealityResult(null); }} /> Include current Reality (manually entered realized data)</label></div></div>{currentReality?.error ? <p className="alert alert--danger" role="alert">{currentReality.error}</p> : null}{includeReality && realityScenario && !currentReality ? <p role="status">Loading current Reality data…</p> : null}{charts.length ? <div className="predictions-chart-grid">{charts.map((chart) => <MetricChart key={chart.metricId} metricName={chart.metricName} unit={chart.unit} lines={chart.lines} missingModelKinds={chart.missingModelKinds} realityMessage={chart.realityMessage} />)}</div> : <div className="empty-state" role="status"><p>Select saved versions, scenarios, models and metrics with available numeric points to plot them.</p></div>}</section>
+    <section className="detail-card detail-card--spacious predictions-panel predictions-plots" aria-labelledby="plots-heading"><h2 id="plots-heading">Compare saved results</h2><div className="predictions-filters"><div className="predictions-filter-groups"><MultiSelectDropdown title="Versions" searchable borderless items={versions.map((version) => [version.id, `${version.name} (${version.confidenceLevel}% prediction interval)`, `Models: ${predictionVersionModelKinds(version).map(formatModelKind).join(", ") || "none"}`])} selected={selectedVersionIds} onChange={setSelectedVersionIds} allLabel="All saved versions" allSelectedSummary="All saved versions" emptySummary="No saved versions selected" /><ScenarioMultiSelect borderless items={comparisonScenarios} selected={selectedScenarioFilter} onChange={setSelectedScenarioFilter} /><MultiSelectDropdown title="Models and baselines" borderless items={allModelKinds.map((kind) => [kind, formatModelKind(kind)])} selected={selectedModelKinds} onChange={setSelectedModelKinds} allLabel="All models and baselines" /><MultiSelectDropdown title="Numeric metrics" searchable borderless items={allMetrics.map(([id, metric]) => [id, `${metric.name} (${metric.unit ?? "no unit"})`])} selected={selectedMetricIds} onChange={setSelectedMetricIds} allLabel="All numeric metrics" allSelectedSummary="All numeric metrics" /></div><div className="predictions-plot-controls"><span className="form-label">Plot date range</span><div className="predictions-plot-dates"><label className="predictions-date-field">Start date<input aria-label="Plot start date" className="input date-input" type="date" value={plotStartDate} onChange={(event) => setPlotStartDate(event.target.value)} /></label><label className="predictions-date-field">End date<input aria-label="Plot end date" className="input date-input" type="date" value={plotEndDate} onChange={(event) => setPlotEndDate(event.target.value)} /></label></div><label className="predictions-check"><input type="checkbox" checked={includeReality} onChange={(event) => { setIncludeReality(event.target.checked); setRealityResult(null); }} /> Include current Reality (manually entered realized data)</label></div></div>{currentReality?.error ? <p className="alert alert--danger" role="alert">{currentReality.error}</p> : null}{includeReality && realityScenario && !currentReality ? <p role="status">Loading current Reality data…</p> : null}{charts.length ? <div className="predictions-chart-grid">{charts.map((chart) => <MetricChart key={chart.metricId} metricName={chart.metricName} unit={chart.unit} lines={chart.lines} missingModelKinds={chart.missingModelKinds} notRunModelKinds={chart.notRunModelKinds} realityMessage={chart.realityMessage} />)}</div> : <div className="empty-state" role="status"><p>Select saved versions, scenarios, models and metrics with available numeric points to plot them.</p></div>}</section>
   </section>;
 }
 
@@ -798,7 +818,8 @@ function useDropdownDismissal(dropdownRef: RefObject<HTMLDetailsElement | null>)
 
 function MultiSelectDropdown(props: {
   title: string;
-  items: Array<[string, string]>;
+  // An optional description is shown below its option, outside the accessible name.
+  items: Array<[id: string, label: string, description?: string]>;
   selected: Set<string>;
   onChange: (selected: Set<string>) => void;
   searchable?: boolean;
@@ -810,6 +831,7 @@ function MultiSelectDropdown(props: {
   hideLegend?: boolean;
 }) {
   const dropdownRef = useRef<HTMLDetailsElement>(null);
+  const descriptionId = useId();
   const [query, setQuery] = useState("");
   useDropdownDismissal(dropdownRef);
   const allSelected = props.items.length > 0 && props.selected.size === props.items.length;
@@ -832,7 +854,10 @@ function MultiSelectDropdown(props: {
           <input type="checkbox" checked={allSelected} onChange={(event) => props.onChange(new Set(event.target.checked ? props.items.map(([id]) => id) : []))} />
           {props.allLabel ?? `All ${props.title.toLowerCase()}`}
         </label>
-        {filteredItems.map(([id, label]) => <label className="predictions-check" key={id}><input type="checkbox" checked={props.selected.has(id)} onChange={() => props.onChange(toggleSet(props.selected, id))} /> {label}</label>)}
+        {filteredItems.map(([id, label, description], index) => <div className="predictions-check-option" key={id}>
+          <label className="predictions-check"><input type="checkbox" aria-describedby={description ? `${descriptionId}-${index}` : undefined} checked={props.selected.has(id)} onChange={() => props.onChange(toggleSet(props.selected, id))} /> {label}</label>
+          {description ? <small id={`${descriptionId}-${index}`} className="muted predictions-check-option__description">{description}</small> : null}
+        </div>)}
         {filteredItems.length === 0 ? <p className="muted">No matching options.</p> : null}
       </div>
     </details>
@@ -879,7 +904,7 @@ function formatSeriesList(items: string[]): string {
   return `${items.slice(0, -1).join(", ")}, and ${items.at(-1)}`;
 }
 
-function MetricChart(props: { metricName: string; unit: string; lines: PredictionChartLine[]; missingModelKinds: string[]; realityMessage: string | null }) {
+function MetricChart(props: { metricName: string; unit: string; lines: PredictionChartLine[]; missingModelKinds: string[]; notRunModelKinds: string[]; realityMessage: string | null }) {
   const points = props.lines.flatMap((line) => line.points.map((point) => ({ ...point, line })));
   const dates = [...new Set(points.map((point) => point.date))].sort();
   const values = points.flatMap((point) => [
@@ -916,8 +941,7 @@ function MetricChart(props: { metricName: string; unit: string; lines: Predictio
       {axisTicks.filter((tick) => tick.showYearLabel).map((tick) =>
         <text className="prediction-chart__year" key={`year:${tick.date}`} x={x(tick.date)} y={height - 4} textAnchor="middle">{tick.year}</text>)}
       {props.lines.map((line, index) => {
-        const bandPath = line.predictionIntervalStatus === "available" &&
-          (line.modelKind === "mlforecast" || line.modelKind === "sarima")
+        const bandPath = line.predictionIntervalStatus === "available"
           ? predictionIntervalBandPath(line.points, x, y)
           : null;
         return bandPath ? <path className="prediction-chart__interval-band" key={`band:${line.id}`} fill={lineColor(line, index)} d={bandPath}>
@@ -941,6 +965,7 @@ function MetricChart(props: { metricName: string; unit: string; lines: Predictio
     </svg>
     {props.realityMessage ? <p className="prediction-chart__no-results" role="status">{props.realityMessage}</p> : null}
     {props.missingModelKinds.length ? <p className="prediction-chart__no-results" role="status">No results to show for: {formatSeriesList(props.missingModelKinds.map(formatModelKind))}.</p> : null}
+    {props.notRunModelKinds.length ? <p className="prediction-chart__no-results" role="status">Not run by the selected versions: {formatSeriesList(props.notRunModelKinds.map(formatModelKind))}.</p> : null}
     <ul className="prediction-chart__legend">{props.lines.map((line, index) => <li key={line.id}>
       <span className={line.kind === "reality" ? "prediction-chart__swatch prediction-chart__swatch--reality" : "prediction-chart__swatch"} style={line.kind === "reality" ? undefined : { backgroundColor: lineColor(line, index) }} />
       <strong>{line.label}</strong><small>{line.provenance}</small>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildPredictionMetricCharts, formatModelKind, predictionChartAxisTicks, predictionIntervalBandPath, predictionVersionStatus } from "./predictionChart";
+import { buildPredictionMetricCharts, formatModelKind, predictionChartAxisTicks, predictionIntervalBandPath, predictionVersionModelKinds, predictionVersionStatus } from "./predictionChart";
 import type { PredictionVersionDetailDto } from "../../api/predictions";
 
 const version = (
@@ -33,8 +33,8 @@ describe("buildPredictionMetricCharts", () => {
     expect(charts).toHaveLength(1);
     expect(charts[0].lines.map((line) => line.label)).toEqual([
       "Current Reality · manually entered realized data · Revenue",
-      "First version · Future plan · naive",
-      "Second version · Future plan · naive"
+      "First version · Future plan · Naive",
+      "Second version · Future plan · Naive"
     ]);
     expect(charts[0].lines[0].provenance).toMatch(/manually entered realized data/i);
   });
@@ -51,15 +51,16 @@ describe("buildPredictionMetricCharts", () => {
 
     expect(charts[0].lines.map((line) => [line.id, line.label])).toEqual([
       ["reality:revenue", "Current Reality · manually entered realized data · Revenue"],
-      ["reality-version:reality:revenue:naive", "Reality forecast · Reality · naive"]
+      ["reality-version:reality:revenue:naive", "Reality forecast · Reality · Naive"]
     ]);
     expect(charts[0].lines[0].provenance).toMatch(/not part of the saved prediction/i);
     expect(charts[0].lines[1].provenance).toMatch(/saved prediction/i);
   });
 
   it("identifies selected models without points in the chosen date range", () => {
+    const ranBoth = { ...version("one", "First version", 10), modelConfiguration: { modelKinds: ["naive", "seasonal_naive"] } };
     const charts = buildPredictionMetricCharts({
-      versions: [version("one", "First version", 10)],
+      versions: [ranBoth],
       selectedVersionIds: new Set(["one"]), selectedScenarioIds: new Set(["future"]),
       selectedModelKinds: new Set(["naive", "seasonal_naive"]), selectedMetricIds: new Set(["revenue"]),
       scenarioNames: new Map([["future", "Future plan"]]), startDate: "2026-03-01", endDate: "2026-03-31",
@@ -68,7 +69,62 @@ describe("buildPredictionMetricCharts", () => {
 
     expect(charts[0].lines).toEqual([]);
     expect(charts[0].missingModelKinds).toEqual(["naive", "seasonal_naive"]);
-    expect(formatModelKind("seasonal_naive")).toBe("seasonal naive");
+  });
+
+  it("labels known model kinds and falls back to spaced unknown kinds", () => {
+    expect(["naive", "seasonal_naive", "average", "mlforecast", "sarima", "prophet", "custom_kind"].map(formatModelKind))
+      .toEqual(["Naive", "Seasonal naive", "Average", "MLForecast", "SARIMA", "Prophet", "custom kind"]);
+  });
+
+  it("reads recorded version models and falls back to saved result kinds", () => {
+    const legacy = version("legacy", "Legacy", 10);
+    legacy.targets[0].results.push({ ...legacy.targets[0].results[0], kind: "average", status: "ineligible", points: [] });
+    expect(predictionVersionModelKinds(legacy)).toEqual(["naive", "average"]);
+    expect(predictionVersionModelKinds({ ...legacy, modelConfiguration: { modelKinds: ["prophet", "naive"] } }))
+      .toEqual(["naive", "prophet"]);
+  });
+
+  it("reports missing results only for models that a plotted version ran", () => {
+    const allKinds = ["naive", "seasonal_naive", "average", "mlforecast", "sarima", "prophet"];
+    const subset = { ...version("subset", "Subset", 10), modelConfiguration: { modelKinds: ["naive", "prophet"] } };
+    subset.targets[0].results.push({
+      ...subset.targets[0].results[0], kind: "prophet", status: "ineligible",
+      reason: "Prophet needs at least 12 contiguous observations.", points: []
+    });
+    const full = { ...version("full", "Full", 20), modelConfiguration: { modelKinds: allKinds } };
+    const chartArgs = {
+      versions: [subset, full], selectedVersionIds: new Set(["subset"]), selectedScenarioIds: new Set(["future"]),
+      selectedModelKinds: new Set(allKinds), selectedMetricIds: new Set(["revenue"]),
+      scenarioNames: new Map([["future", "Future plan"]]), startDate: "", endDate: "",
+      includeReality: false, realityTimeseries: []
+    };
+
+    const [subsetChart] = buildPredictionMetricCharts(chartArgs);
+    expect(subsetChart.lines.map((line) => line.modelKind)).toEqual(["naive"]);
+    expect(subsetChart.missingModelKinds).toEqual(["prophet"]);
+    expect(subsetChart.notRunModelKinds).toEqual(["seasonal_naive", "average", "mlforecast", "sarima"]);
+
+    chartArgs.selectedVersionIds.add("full");
+    const [combinedChart] = buildPredictionMetricCharts(chartArgs);
+    expect(combinedChart.missingModelKinds)
+      .toEqual(["seasonal_naive", "average", "mlforecast", "sarima", "prophet"]);
+    expect(combinedChart.notRunModelKinds).toEqual([]);
+  });
+
+  it("gives Prophet its own line style", () => {
+    const prophet = version("one", "First version", 10);
+    prophet.targets[0].results[0] = { ...prophet.targets[0].results[0], kind: "prophet" };
+    const [chart] = buildPredictionMetricCharts({
+      versions: [prophet, version("two", "Second version", 20)], selectedVersionIds: new Set(["one", "two"]),
+      selectedScenarioIds: new Set(["future"]), selectedModelKinds: new Set(["naive", "prophet"]),
+      selectedMetricIds: new Set(["revenue"]), scenarioNames: new Map([["future", "Future plan"]]),
+      startDate: "", endDate: "", includeReality: false, realityTimeseries: []
+    });
+
+    expect(chart.lines.map((line) => [line.label, line.strokeDasharray])).toEqual([
+      ["First version · Future plan · Prophet", "10 3 2 3"],
+      ["Second version · Future plan · Naive", "7 4"]
+    ]);
   });
 
   it("formats dates as MM-dd and marks later year boundaries", () => {

@@ -3,7 +3,7 @@
 Status: durable request persistence, API, standalone worker, current-tab UI and
 supported-runtime wiring implemented by TASK-057C/TASK-057D/TASK-057E;
 ADR-014 Prophet result kind and per-version model selection backend
-implemented by TASK-061B; Predictions UI pending TASK-061C
+implemented by TASK-061B; Predictions UI implemented by TASK-061C
 
 ## Purpose
 
@@ -150,6 +150,13 @@ Each prediction request selects which result kinds its version calculates
 - A queued snapshot from before ADR-014 that has no selection calculates the
   five legacy kinds, without Prophet. A saved version without `modelKinds`
   ran the kinds present in its results.
+
+In the Predictions tab, the queue form's required Models selection starts with
+all six kinds and sends the selection in canonical order with preflight and
+creation. Changing it keeps a successful preflight, because eligibility and the
+point limit do not depend on it. Each saved version lists the models it ran.
+A chart reports missing results only for models that a plotted version ran, and
+separately names selected models that no plotted version ran.
 
 ### Prediction Intervals
 

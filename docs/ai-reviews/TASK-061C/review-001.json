@@ -1,0 +1,135 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-061C/review-001",
+  "task": {
+    "id": "TASK-061C",
+    "path": "tasks/TASK-061C-prophet-model-selection-ui.md"
+  },
+  "round": 1,
+  "reviewed_at": "2026-10-06T12:21:04Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": {
+    "number": 96,
+    "url": "https://github.com/reflector-oy/schatten/pull/96"
+  },
+  "source": {
+    "base_sha": "68e9b55f44ef6c7662ef53730b617a46f48ed036",
+    "head_sha": "0a8e2e2e8f24eb3e7a2dd8ad7183bb93a84a9126",
+    "comparison": "68e9b55f44ef6c7662ef53730b617a46f48ed036...0a8e2e2e8f24eb3e7a2dd8ad7183bb93a84a9126",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "The change implements TASK-061C and ADR-014's UI rules. MODEL_KINDS is in canonical order and modelKinds is on the request type. The queue form selects all six models by default and sends the selection in canonical order with preflight and creation. An empty selection blocks both actions, and changing models keeps a successful preflight, which matches ADR-014's limit arithmetic. A create-time 422 shows the server's detail text in the form error, and only msg is taken from validation lists. Interval bands depend only on an available interval status, Prophet has its own dash style, labels use the label map with a fallback, and saved versions show their recorded or fallback models through aria-describedby without changing accessible names. The option wrapper does not break the other dropdowns. There are no backend, migration or dependency changes, and the documentation is accurate. Lint, build and 273 frontend tests passed. The findings are low or info: an unexplained empty chart, a narrower error parser than sibling clients, two test gaps, an existing field-level accessibility pattern, and a deliberate ordering change.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "bug",
+        "severity": "low",
+        "summary": "A chart can render with no lines and no note when no selected comparison model was run by the plotted versions.",
+        "rationale": "The missing-results note now lists only kinds a plotted version ran, as the task intends. When every selected comparison model is one those versions did not run, the chart has no lines and no explanation, whereas before the note named the missing models.",
+        "recommendation": "Show a separate note naming the selected models that the plotted versions did not run, and test it.",
+        "locations": [
+          {
+            "path": "frontend/src/features/predictions/predictionChart.ts",
+            "line": 266
+          },
+          {
+            "path": "frontend/src/features/predictions/PredictionsTab.tsx",
+            "line": 967
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "regression",
+        "severity": "low",
+        "summary": "The new predictions error parser ignores the backend's error.message payload shape, so authentication and CSRF errors still show the raw JSON body.",
+        "rationale": "The backend's authentication error handler returns an error object with a message. The customers, organisations and users clients already extract it, but the new predictions parser handles only detail strings and lists and otherwise returns the raw text.",
+        "recommendation": "Also extract error.message, matching the sibling clients, and fall back to the raw text only when nothing is extracted. Cover it with a client test.",
+        "locations": [
+          {
+            "path": "frontend/src/api/predictions.ts",
+            "line": 129
+          },
+          {
+            "path": "backend/app/main.py",
+            "line": 44
+          }
+        ]
+      },
+      {
+        "id": "F-003",
+        "category": "missing_test",
+        "severity": "low",
+        "summary": "No test checks that a Prophet result without an available interval draws no band.",
+        "rationale": "The hard-coded kind check was removed, so the interval status is now the only guard against drawing a band for unavailable or not-applicable intervals.",
+        "recommendation": "Add a negative case with a Prophet result whose interval is unavailable and assert that no band is rendered.",
+        "locations": [
+          {
+            "path": "frontend/src/features/predictions/PredictionsTab.tsx",
+            "line": 944
+          },
+          {
+            "path": "frontend/src/features/predictions/PredictionsTab.test.tsx"
+          }
+        ]
+      },
+      {
+        "id": "F-004",
+        "category": "missing_test",
+        "severity": "low",
+        "summary": "The client validation-error fixture uses a message that the backend does not produce.",
+        "rationale": "The test still proves that msg is extracted and echoed input is not, but the duplicate-selection message differs from the backend's actual validator text, so the fixture does not reflect the real contract.",
+        "recommendation": "Use the backend's actual duplicate-selection message in the fixture.",
+        "locations": [
+          {
+            "path": "frontend/src/api/predictions.test.ts",
+            "line": 84
+          },
+          {
+            "path": "backend/app/api/v1/predictions/snapshots.py",
+            "line": 36
+          }
+        ]
+      },
+      {
+        "id": "F-005",
+        "category": "bug",
+        "severity": "low",
+        "summary": "The Models selection's validation message is form-level and is not associated with the field.",
+        "rationale": "The required marker only styles the legend, and the empty-selection message appears in the shared form alert without aria-invalid or aria-describedby on the control. This follows the existing target-scenario pattern, so it is not a regression.",
+        "recommendation": "Keep the existing pattern for consistency, or handle field-level association for all dropdown validations in a separate task.",
+        "locations": [
+          {
+            "path": "frontend/src/features/predictions/PredictionsTab.tsx",
+            "line": 671
+          }
+        ]
+      },
+      {
+        "id": "F-006",
+        "category": "scope",
+        "severity": "info",
+        "summary": "The comparison filter and missing-results list now use canonical model order instead of alphabetical or insertion order.",
+        "rationale": "This small presentation change is not explicitly requested, but it is consistent with MODEL_KINDS being the display order and is covered by tests.",
+        "recommendation": "Keep it and mention it in the PR description.",
+        "locations": [
+          {
+            "path": "frontend/src/features/predictions/PredictionsTab.tsx",
+            "line": 462
+          },
+          {
+            "path": "frontend/src/features/predictions/predictionChart.ts",
+            "line": 54
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": []
+  }
+}

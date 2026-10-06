@@ -10,7 +10,9 @@ const api = vi.hoisted(() => ({
 }));
 vi.mock("../../api/scenarios", () => ({ fetchScenarios: api.fetchScenarios }));
 vi.mock("../../api/events", () => ({ fetchEvents: api.fetchEvents }));
-vi.mock("../../api/predictions", () => api);
+vi.mock("../../api/predictions", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../../api/predictions")>(), ...api
+}));
 
 const now = "2026-09-10T12:00:59Z";
 function request(id: string, overrides: Partial<PredictionRequestSummaryDto> = {}): PredictionRequestSummaryDto {

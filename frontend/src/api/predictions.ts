@@ -2,6 +2,16 @@ import { authenticatedFetch } from "./client";
 
 export type PredictionCutoffMode = "asOfStart" | "allCurrentScenario";
 
+// ADR-014's supported result kinds in their canonical display order.
+export const MODEL_KINDS = [
+  "naive",
+  "seasonal_naive",
+  "average",
+  "mlforecast",
+  "sarima",
+  "prophet"
+] as const;
+
 export type PredictionRequest = {
   targetScenarioIds: string[];
   startDate: string;
@@ -9,6 +19,7 @@ export type PredictionRequest = {
   cutoffMode: PredictionCutoffMode;
   confidenceLevel: number;
   manualSeasonalPeriods: Record<string, number>;
+  modelKinds: string[];
 };
 
 export type PredictionCreateRequest = PredictionRequest & { name: string };
@@ -114,6 +125,27 @@ function predictionRequestsPath(orgId: string) {
   return `/api/v1/organisations/${encodeURIComponent(orgId)}/prediction-requests`;
 }
 
+// Shows only FastAPI's safe detail text, never echoed validation input.
+function errorDetail(text: string): string {
+  let payload: unknown;
+  try {
+    payload = JSON.parse(text);
+  } catch {
+    return text;
+  }
+  const detail = (payload as { detail?: unknown } | null)?.detail;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item) => (item as { msg?: unknown } | null)?.msg)
+      .filter((message): message is string => typeof message === "string")
+      .join(" ");
+  }
+  // Authentication and CSRF errors use the application's error envelope.
+  const message = (payload as { error?: { message?: unknown } | null } | null)?.error?.message;
+  return typeof message === "string" ? message : text;
+}
+
 async function requestJson<T>(
   path: string,
   init: RequestInit,
@@ -130,7 +162,7 @@ async function requestJson<T>(
   if (!response.ok) {
     throw new PredictionsApiError(
       response.status,
-      await response.text().catch(() => "")
+      errorDetail(await response.text().catch(() => ""))
     );
   }
   return (await response.json()) as T;

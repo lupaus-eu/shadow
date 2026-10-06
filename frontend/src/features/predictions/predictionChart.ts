@@ -1,6 +1,7 @@
-import type {
-  PredictionTargetDto,
-  PredictionVersionDetailDto
+import {
+  MODEL_KINDS,
+  type PredictionTargetDto,
+  type PredictionVersionDetailDto
 } from "../../api/predictions";
 import type { TimeserieDto } from "../../api/timeseries";
 
@@ -27,11 +28,46 @@ export type PredictionMetricChart = {
   unit: string;
   lines: PredictionChartLine[];
   missingModelKinds: string[];
+  notRunModelKinds: string[];
   realityMessage: string | null;
 };
 
+const modelKindLabels: Record<string, string> = {
+  naive: "Naive",
+  seasonal_naive: "Seasonal naive",
+  average: "Average",
+  mlforecast: "MLForecast",
+  sarima: "SARIMA",
+  prophet: "Prophet"
+};
+
+const modelKindDashes: Record<string, string> = {
+  naive: "7 4",
+  average: "2 4",
+  prophet: "10 3 2 3"
+};
+
 export function formatModelKind(kind: string): string {
-  return kind.replaceAll("_", " ");
+  return modelKindLabels[kind] ?? kind.replaceAll("_", " ");
+}
+
+// Canonical kinds first, then any unknown kinds alphabetically.
+export function sortModelKinds(kinds: Iterable<string>): string[] {
+  const order = (kind: string) => {
+    const index = (MODEL_KINDS as readonly string[]).indexOf(kind);
+    return index === -1 ? MODEL_KINDS.length : index;
+  };
+  return [...new Set(kinds)].sort((left, right) => order(left) - order(right) || left.localeCompare(right));
+}
+
+// Versions saved before ADR-014 have no recorded selection; their result rows
+// then show which kinds ran.
+export function predictionVersionModelKinds(version: PredictionVersionDetailDto): string[] {
+  const recorded = version.modelConfiguration.modelKinds;
+  if (Array.isArray(recorded) && recorded.every((kind) => typeof kind === "string")) {
+    return sortModelKinds(recorded as string[]);
+  }
+  return sortModelKinds(version.targets.flatMap((target) => target.results.map((result) => result.kind)));
 }
 
 export function predictionChartAxisTicks(dates: string[], plotWidth = 646): Array<{
@@ -124,7 +160,7 @@ function targetLine(
     modelKind: result.kind,
     confidenceLevel: version.confidenceLevel,
     predictionIntervalStatus: result.predictionIntervalStatus,
-    strokeDasharray: result.kind === "naive" ? "7 4" : result.kind === "average" ? "2 4" : undefined,
+    strokeDasharray: modelKindDashes[result.kind],
     points: result.points.filter((point) => includesDate(point.date, start, end))
   };
 }
@@ -157,8 +193,10 @@ export function buildPredictionMetricCharts(args: {
     date, args.startDate || ranges.get(metricId)!.start, args.endDate || ranges.get(metricId)!.end
   );
   const charts = new Map<string, PredictionMetricChart>();
+  const ranModelKinds = new Map<string, Set<string>>();
   for (const version of args.versions) {
     if (!args.selectedVersionIds.has(version.id)) continue;
+    const versionModelKinds = predictionVersionModelKinds(version);
     for (const target of version.targets) {
       if (
         !args.selectedScenarioIds.has(target.scenarioId) ||
@@ -172,9 +210,13 @@ export function buildPredictionMetricCharts(args: {
         unit: target.unit ?? "no unit",
         lines: [],
         missingModelKinds: [],
+        notRunModelKinds: [],
         realityMessage: null
       };
       charts.set(target.metricId, chart);
+      const ran = ranModelKinds.get(target.metricId) ?? new Set<string>();
+      versionModelKinds.forEach((kind) => ran.add(kind));
+      ranModelKinds.set(target.metricId, ran);
       for (const result of target.results) {
         if (!args.selectedModelKinds.has(result.kind) || !result.points.length) continue;
         const line = targetLine(
@@ -220,11 +262,17 @@ export function buildPredictionMetricCharts(args: {
   }
 
   return [...charts.values()]
-    .map((chart) => ({
-      ...chart,
-      missingModelKinds: [...args.selectedModelKinds].filter(
-        (kind) => !chart.lines.some((line) => line.modelKind === kind)
-      )
-    }))
+    .map((chart) => {
+      const ran = ranModelKinds.get(chart.metricId) ?? new Set<string>();
+      const selected = sortModelKinds(args.selectedModelKinds);
+      return {
+        ...chart,
+        // Only kinds that a plotted version ran can be missing results.
+        missingModelKinds: selected.filter((kind) =>
+          ran.has(kind) && !chart.lines.some((line) => line.modelKind === kind)
+        ),
+        notRunModelKinds: selected.filter((kind) => !ran.has(kind))
+      };
+    })
     .sort((left, right) => left.metricName.localeCompare(right.metricName));
 }

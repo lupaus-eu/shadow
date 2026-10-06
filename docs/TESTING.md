@@ -489,6 +489,15 @@ process or temporary directory left within five seconds. The PostgreSQL suites
 above add six-kind and subset publication, a legacy queued snapshot, migration
 016 up/down and per-child directory removal in the worker cycle.
 
+TASK-061C's frontend tests cover the six-kind default request, a canonical-order
+subset that keeps preflight, blocked submission with no model, a create-time
+validation message, the predictions client's safe error text for `detail` and
+error-envelope payloads, a Prophet line style and interval band (none without
+an available interval), label mapping, recorded and legacy-fallback version
+models, and the chart's missing-results and not-run notes for versions that ran
+a subset. Run `pnpm lint`, `pnpm test` and
+`pnpm build` from `frontend/`.
+
 Run assembled local browser and container QA separately with
 `docs/qa/PREDICTION-WORKER-RUNTIME-QA.md`. Record unavailable Docker, browser,
 Coolify-provider or production checks as unavailable, never as passing.
