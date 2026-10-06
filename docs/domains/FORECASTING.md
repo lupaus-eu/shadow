@@ -2,8 +2,8 @@
 
 Status: durable request persistence, API, standalone worker, current-tab UI and
 supported-runtime wiring implemented by TASK-057C/TASK-057D/TASK-057E;
-ADR-014 Prophet result kind and per-version model selection accepted,
-implementation pending TASK-061B/TASK-061C
+ADR-014 Prophet result kind and per-version model selection backend
+implemented by TASK-061B; Predictions UI pending TASK-061C
 
 ## Purpose
 
@@ -124,10 +124,14 @@ Prophet (`prophet`, ADR-014):
   prediction, so identical inputs give identical results;
 - needs at least 12 contiguous observations, like MLForecast;
 - records cross-validation MAE from three expanding one-step windows
-  (`n_windows=3`, `h=1`), comparable with MLForecast; and
+  (`n_windows=3`, `h=1`), comparable with MLForecast; a window that cannot be
+  fitted makes cross-validation `unavailable` and keeps the point result;
 - records an `ineligible` result with a fixed safe reason on short history or
-  an expected fit failure, never exception text, without affecting other kinds
-  or metrics in the version.
+  an expected fit failure (a `ValueError`, or a `RuntimeError` raised by
+  `cmdstanpy`), never exception text, without affecting other kinds or metrics
+  in the version; and
+- treats any other exception, including a missing dependency, as an
+  unexpected calculation failure that fails the request (ADR-012).
 
 ### Model Selection
 

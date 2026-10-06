@@ -43,8 +43,8 @@ Päätetty tekninen perusrakenne:
   `seasonal_naive`, `average`, `mlforecast`, `sarima` and Prophet's `prophet`);
   each prediction version calculates and persists only its user-selected,
   non-empty subset, frozen into the request snapshot and recorded in the
-  version, with all six selected by default (implementation pending
-  TASK-061B/TASK-061C)
+  version, with all six selected by default (backend implemented by
+  TASK-061B; UI pending TASK-061C)
 - prediction intervals: Forecasting owns one immutable version-level nominal
   coverage selection and model-specific bounds for directly fitted MLForecast,
   SARIMA and (per ADR-014) Prophet results according to ADR-011; baselines,

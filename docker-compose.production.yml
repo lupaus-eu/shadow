@@ -108,8 +108,11 @@ services:
     command: ["python", "-m", "app.api.v1.predictions.worker"]
     environment:
       DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL for the private database}
+    # Each calculation child keeps CmdStan output (about 1 MB per Prophet
+    # target at the 10,000-observation limit) in a private /tmp directory until
+    # it is reaped (ADR-014, TASK-061B).
     tmpfs:
-      - /tmp:size=64m
+      - /tmp:size=256m
     networks: [data]
     depends_on:
       database:

@@ -121,33 +121,63 @@ Implement ADR-014's child stop procedure in `worker.py`:
   import time.
 - Record the measured image size difference in this task.
 
+### Runtime Measurements
+
+Measured 2026-10-05 on the local x86_64 Docker Engine, with
+`docker build -f backend/Dockerfile --target production` for the branch base
+commit and for this change:
+
+- Production backend image: 572,464,175 bytes before, 692,760,329 bytes after,
+  an increase of 120,296,154 bytes (about 115 MiB, +21%). `uv sync --frozen
+  --no-dev` installed the prebuilt `prophet-1.5.0` manylinux wheel with bundled
+  CmdStan; `cmdstanpy` is 1.3.0. No compiler was needed.
+- Under `read_only`, `cap_drop: [ALL]`, `no-new-privileges` and uid 10001,
+  the image imports `prophet` (about 2.7 s) and the real calculation child
+  completes Prophet with available points, intervals and CV MAE for a daily
+  target (730 observations, 366 periods) and a monthly target.
+- `/tmp`: input JSON is deleted after each fit, but `cmdstanpy` keeps each fit's
+  output directory until the child exits. The child's private directory grows
+  by about 0.96 MB per Prophet target (four fits) at the 10,000-observation
+  limit, so 50 such targets need about 48 MB, which is too close to 64 MB. The
+  worker tmpfs is raised to 256 MB in `docker-compose.production.yml`.
+- Stopping the real calculation child during a 10,000-observation Prophet fit
+  in the image leaves no process in its group and removes its private
+  directory (0.01 s after the stop).
+- Worker health check: `python -m app.api.v1.predictions.worker health-check`
+  does not import Prophet or pandas; the worker module import takes 1.6-1.8 s
+  in both images. Health-check timing is unchanged.
+- Prophet fit time depends on data. A 10,000-observation daily target takes
+  about 57 s (four fits). Short monthly histories with ADR-014's fixed yearly
+  seasonality can take 3-13 s per fit (for example 24 or 36 monthly
+  observations).
+
 ## Acceptance Criteria
 
-- [ ] A request without `modelKinds` produces all six kinds, Prophet included.
-- [ ] A request with a subset persists only those kinds. That includes subsets
+- [x] A request without `modelKinds` produces all six kinds, Prophet included.
+- [x] A request with a subset persists only those kinds. That includes subsets
       without baselines and subsets with only baselines.
-- [ ] An empty `modelKinds`, duplicates or an unknown kind is rejected with 422.
-- [ ] On a sufficiently long series, Prophet returns available points, complete
+- [x] An empty `modelKinds`, duplicates or an unknown kind is rejected with 422.
+- [x] On a sufficiently long series, Prophet returns available points, complete
       ordered intervals at the selected level and a CV MAE.
-- [ ] Prophet is `ineligible` on short history or on a handled fit failure, and
+- [x] Prophet is `ineligible` on short history or on a handled fit failure, and
       the other kinds in the version are unaffected.
-- [ ] Derived metrics work with a subset of kinds.
-- [ ] A legacy snapshot without `model_kinds` is calculated and persisted with
+- [x] Derived metrics work with a subset of kinds.
+- [x] A legacy snapshot without `model_kinds` is calculated and persisted with
       the five legacy kinds.
-- [ ] `model_configuration` records `modelKinds` and the Prophet settings with
+- [x] `model_configuration` records `modelKinds` and the Prophet settings with
       the keys defined in ADR-014.
-- [ ] The point limit is 110,000 and counts only selected kinds; a request at
+- [x] The point limit is 110,000 and counts only selected kinds; a request at
       50 pairs × 366 periods with all six kinds passes.
-- [ ] Prophet fit failures produce the fixed reason and never contain
+- [x] Prophet fit failures produce the fixed reason and never contain
       exception text; a `cmdstanpy` `RuntimeError` makes only Prophet
       ineligible.
-- [ ] Two identical requests produce identical Prophet points and bounds.
-- [ ] Cancelling or stopping during a Prophet fit leaves no running CmdStan
+- [x] Two identical requests produce identical Prophet points and bounds.
+- [x] Cancelling or stopping during a Prophet fit leaves no running CmdStan
       process and no per-child temporary directory, within five seconds.
-- [ ] A calculation child that crashes on its own leaves no running process
+- [x] A calculation child that crashes on its own leaves no running process
       from its group and no per-child temporary directory.
-- [ ] Migration 016 runs up and down in a disposable PostgreSQL environment.
-- [ ] The production image builds, imports `prophet` and completes a Prophet
+- [x] Migration 016 runs up and down in a disposable PostgreSQL environment.
+- [x] The production image builds, imports `prophet` and completes a Prophet
       fit under `read_only: true` with the configured `/tmp` tmpfs.
 
 ## Out Of Scope
@@ -189,12 +219,12 @@ docs/TESTING.md
 
 Required:
 
-- [ ] Backend tests (`backend/tests/test_predictions_api.py`)
-- [ ] Integration tests (`test_predictions_postgresql_integration.py` and the
+- [x] Backend tests (`backend/tests/test_predictions_api.py`)
+- [x] Integration tests (`test_predictions_postgresql_integration.py` and the
       migration tests)
-- [ ] Manual verification (production image import and fit)
-- [ ] Lint
-- [ ] Typecheck
+- [x] Manual verification (production image import and fit)
+- [x] Lint
+- [x] Typecheck
 
 ```bash
 cd backend

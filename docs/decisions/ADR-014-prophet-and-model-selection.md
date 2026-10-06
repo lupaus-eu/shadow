@@ -1,6 +1,6 @@
 # ADR-014: Prophet Result Kind And Per-Version Model Selection
 
-Status: Accepted; implementation pending TASK-061B and TASK-061C
+Status: Accepted; TASK-061B implemented; TASK-061C pending
 
 Date: 2026-10-05
 

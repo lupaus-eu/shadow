@@ -6,6 +6,7 @@ import time
 import uuid
 from collections.abc import Generator
 from datetime import UTC, date, datetime
+from pathlib import Path
 from urllib.parse import quote
 
 import psycopg
@@ -24,6 +25,11 @@ from app.api.v1.predictions.models import (
     PredictionVersion,
 )
 from app.api.v1.predictions.schemas import PredictionCreateRequest
+from app.api.v1.predictions.snapshots import (
+    LEGACY_RESULT_KINDS,
+    RESULT_KINDS,
+    ResultKind,
+)
 from app.api.v1.users.models import User
 from app.core.config import Settings, get_sqlalchemy_database_url
 from app.core.migrations import UpCommand, execute_command
@@ -31,14 +37,22 @@ from app.core.migrations import UpCommand, execute_command
 TEST_DATABASE_ENV = "MIGRATION_TEST_DATABASE_URL"
 
 
-def _blocked_calculation(_: str, sender: object) -> None:
+def _blocked_calculation(_: str, sender: object, temporary_directory: str) -> None:
     del sender
+    os.setsid()
+    Path(temporary_directory, "cmdstan-output.csv").write_text("partial")
     time.sleep(60)
 
 
-def _crashed_calculation(_: str, sender: object) -> None:
+def _crashed_calculation(_: str, sender: object, temporary_directory: str) -> None:
     del sender
+    os.setsid()
+    Path(temporary_directory, "cmdstan-output.csv").write_text("partial")
     raise RuntimeError("deliberate child crash")
+
+
+def _child_temporary_directories() -> set[Path]:
+    return set(Path("/tmp").glob("schatten-prediction-*"))
 
 
 @pytest.fixture
@@ -172,7 +186,10 @@ def test_preparation_uses_one_repeatable_read_snapshot_during_source_edit(
 
 
 def _seed_worker_request(
-    factory: sessionmaker[Session], *, name: str
+    factory: sessionmaker[Session],
+    *,
+    name: str,
+    model_kinds: list[ResultKind] | None = None,
 ) -> tuple[str, int]:
     from app.api.v1.predictions import service
 
@@ -224,6 +241,7 @@ def _seed_worker_request(
         endDate=date(2025, 6, 30),
         cutoffMode="asOfStart",
         manualSeasonalPeriods={"revenue": 2},
+        modelKinds=list(RESULT_KINDS) if model_kinds is None else model_kinds,
         name=name,
     )
     with factory() as request_session:
@@ -369,7 +387,9 @@ def test_worker_child_crash_and_publication_failure_leave_no_partial_version(
     crashed_key, _ = _seed_worker_request(factory, name="Crash")
     engine = factory.kw["bind"]
     assert engine is not None
+    existing_directories = _child_temporary_directories()
     assert PredictionWorker(engine, child_target=_crashed_calculation).run(once=True)
+    assert _child_temporary_directories() == existing_directories
     with factory() as session:
         crashed = session.scalar(
             select(PredictionRequest).where(
@@ -410,6 +430,7 @@ def test_worker_promptly_cancels_and_reaps_a_blocked_child(
     request_key, actor_id = _seed_worker_request(factory, name="Blocked")
     engine = factory.kw["bind"]
     assert engine is not None
+    existing_directories = _child_temporary_directories()
     worker = PredictionWorker(engine, child_target=_blocked_calculation)
     thread = threading.Thread(target=lambda: worker.run(once=True))
     started = time.monotonic()
@@ -436,6 +457,7 @@ def test_worker_promptly_cancels_and_reaps_a_blocked_child(
     thread.join(timeout=5)
     assert not thread.is_alive()
     assert time.monotonic() - started < 5
+    assert _child_temporary_directories() == existing_directories
     with factory() as session:
         request = session.scalar(
             select(PredictionRequest).where(
@@ -456,6 +478,7 @@ def test_worker_shutdown_stops_and_reaps_a_blocked_child(
     request_key, _ = _seed_worker_request(factory, name="Shutdown")
     engine = factory.kw["bind"]
     assert engine is not None
+    existing_directories = _child_temporary_directories()
     worker = PredictionWorker(engine, child_target=_blocked_calculation)
     thread = threading.Thread(target=lambda: worker.run(once=True))
     thread.start()
@@ -478,6 +501,7 @@ def test_worker_shutdown_stops_and_reaps_a_blocked_child(
     thread.join(timeout=5)
     assert not thread.is_alive()
     assert time.monotonic() - stopped < 5
+    assert _child_temporary_directories() == existing_directories
     with factory() as session:
         request = session.scalar(
             select(PredictionRequest).where(
@@ -707,3 +731,87 @@ def test_worker_recovers_abandoned_requests_without_retry(
         assert running.failure_code == "WORKER_INTERRUPTED"
         assert cancelling is not None and cancelling.state == "cancelled"
         assert session.scalar(select(PredictionVersion)) is None
+
+
+def _version_result_kinds(session: Session, version_id: int) -> list[str]:
+    return list(
+        session.scalars(
+            text(
+                "SELECT result.result_kind FROM prediction_model_results result "
+                "JOIN prediction_targets target "
+                "ON target.prediction_target_id = result.prediction_target_id "
+                "WHERE target.prediction_version_id = :version_id "
+                "ORDER BY result.prediction_model_result_id"
+            ),
+            {"version_id": version_id},
+        )
+    )
+
+
+def _completed_version_id(session: Session, request_key: str) -> int:
+    request = session.scalar(
+        select(PredictionRequest).where(
+            PredictionRequest.prediction_request_key == request_key
+        )
+    )
+    assert request is not None and request.state == "completed", (
+        request and (request.state, request.failure_code)
+    )
+    assert request.completed_prediction_version_id is not None
+    return request.completed_prediction_version_id
+
+
+def test_worker_publishes_selected_kinds_including_prophet(
+    prediction_postgresql_session_factory: sessionmaker[Session],
+) -> None:
+    from app.api.v1.predictions.worker import PredictionWorker
+
+    factory = prediction_postgresql_session_factory
+    all_key, _ = _seed_worker_request(factory, name="All kinds")
+    subset_key, _ = _seed_worker_request(
+        factory, name="Subset", model_kinds=["prophet", "naive"]
+    )
+    engine = factory.kw["bind"]
+    assert engine is not None
+
+    assert PredictionWorker(engine).run(once=True)
+    assert PredictionWorker(engine).run(once=True)
+
+    with factory() as session:
+        all_version = _completed_version_id(session, all_key)
+        subset_version = _completed_version_id(session, subset_key)
+        assert _version_result_kinds(session, all_version) == list(RESULT_KINDS)
+        assert _version_result_kinds(session, subset_version) == ["naive", "prophet"]
+        version = session.get(PredictionVersion, subset_version)
+        assert version is not None
+        assert version.model_configuration["modelKinds"] == ["naive", "prophet"]
+
+
+def test_worker_calculates_legacy_queued_snapshot_with_five_kinds(
+    prediction_postgresql_session_factory: sessionmaker[Session],
+) -> None:
+    from app.api.v1.predictions.worker import PredictionWorker
+
+    factory = prediction_postgresql_session_factory
+    request_key, _ = _seed_worker_request(factory, name="Legacy")
+    with factory() as session:
+        request = session.scalar(
+            select(PredictionRequest).where(
+                PredictionRequest.prediction_request_key == request_key
+            )
+        )
+        assert request is not None
+        legacy = dict(request.input_snapshot)
+        del legacy["modelKinds"]
+        request.input_snapshot = legacy
+        session.commit()
+    engine = factory.kw["bind"]
+    assert engine is not None
+
+    assert PredictionWorker(engine).run(once=True)
+
+    with factory() as session:
+        version_id = _completed_version_id(session, request_key)
+        assert _version_result_kinds(session, version_id) == list(
+            LEGACY_RESULT_KINDS
+        )

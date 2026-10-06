@@ -3,18 +3,38 @@
 from datetime import date as dt_date
 from typing import Literal
 
-from pydantic import ConfigDict, Field, model_validator
+from pydantic import ConfigDict, Field, field_validator, model_validator
 
 from app.core.schemas import StrictBaseModel
 
 SNAPSHOT_FORMAT = "schatten.prediction-input.v1"
 CALCULATION_FORMAT = "schatten.prediction-calculation.v1"
-ResultKind = Literal["naive", "seasonal_naive", "average", "mlforecast", "sarima"]
+ResultKind = Literal[
+    "naive", "seasonal_naive", "average", "mlforecast", "sarima", "prophet"
+]
+# Canonical result-kind order (ADR-014). Snapshots stored before ADR-014 have no
+# modelKinds key and calculate exactly the legacy five kinds.
+RESULT_KINDS: tuple[ResultKind, ...] = (
+    "naive",
+    "seasonal_naive",
+    "average",
+    "mlforecast",
+    "sarima",
+    "prophet",
+)
+LEGACY_RESULT_KINDS: tuple[ResultKind, ...] = RESULT_KINDS[:5]
 TimeUnit = Literal["day", "week", "month", "year"]
 EligibilityStatus = Literal["eligible", "ineligible", "requires_manual_seasonal_period"]
 ResultStatus = Literal["available", "ineligible"]
 CrossValidationStatus = Literal["available", "unavailable", "not_applicable"]
 PredictionIntervalStatus = Literal["available", "unavailable", "not_applicable"]
+
+
+def canonical_result_kinds(values: list[ResultKind]) -> list[ResultKind]:
+    """Reject duplicate kinds and return the selection in canonical order."""
+    if len(set(values)) != len(values):
+        raise ValueError("Model kinds must not contain duplicates.")
+    return [kind for kind in RESULT_KINDS if kind in values]
 
 
 class _FrozenModel(StrictBaseModel):
@@ -149,7 +169,17 @@ class PredictionInputSnapshot(_FrozenModel):
     start_date: dt_date = Field(alias="startDate")
     end_date: dt_date = Field(alias="endDate")
     model_configuration: dict[str, object] = Field(alias="modelConfiguration")
+    model_kinds: list[ResultKind] = Field(
+        default_factory=lambda: list(LEGACY_RESULT_KINDS),
+        min_length=1,
+        alias="modelKinds",
+    )
     targets: list[PredictionTargetSnapshot]
+
+    @field_validator("model_kinds")
+    @classmethod
+    def model_kinds_are_canonical(cls, values: list[ResultKind]) -> list[ResultKind]:
+        return canonical_result_kinds(values)
 
     @model_validator(mode="after")
     def validate_snapshot_shape(self) -> "PredictionInputSnapshot":

@@ -9,7 +9,9 @@ component "Predictions tab\n(TASK-057D)" as ui
 component "FastAPI prediction API" as api
 database "PostgreSQL\nrequests + saved versions" as database
 component "Prediction worker supervisor\n(local + release Compose runtime)" as worker
-component "One supervised\ncalculation child" as child
+component "One supervised\ncalculation child\n(own process group)" as child
+component "CmdStan processes\n(Prophet fit)" as cmdstan
+folder "Private per-child\n/tmp directory" as childtmp
 component "Organisation States +\nTwin Structure source services" as sources
 
 User --> ui : submit, inspect, cancel
@@ -18,6 +20,10 @@ api --> database : freeze snapshot; enqueue;\nrequest/list/cancel state
 database --> worker : FIFO claim guarded by\nadvisory lock
 worker --> child : detached snapshot
 child --> worker : detached complete results
+child --> cmdstan : starts in its group
+child --> childtmp : TMPDIR / MPLCONFIGDIR
+cmdstan --> childtmp : model and output files
+worker --> childtmp : creates; removes after reaping
 worker --> database : atomic version publication\nand completed state
 api --> sources : submission-time read only
 
@@ -28,8 +34,12 @@ end note
 
 note bottom of child
   No source reads, queue access or publication.
-  Supervisor checks cancellation/ownership each second,
-  terminates, force-kills after two seconds, and reaps.
+  First action: os.setsid(), then private TMPDIR.
+  Supervisor checks cancellation/ownership each second;
+  stop sends SIGTERM to the child and process group
+  child PID, SIGKILL both after two seconds, and reaps.
+  After every outcome: SIGKILL to group child PID
+  (missing group ignored), then remove the directory.
 end note
 
 note bottom of database

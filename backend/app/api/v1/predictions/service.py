@@ -1,10 +1,11 @@
 """Forecasting preparation, detached calculation, and publication boundaries."""
 # pyright: reportAttributeAccessIssue=false, reportMissingTypeStubs=false, reportUnknownArgumentType=false, reportUnknownMemberType=false, reportUnknownVariableType=false
 
+import logging
 import math
 import warnings
 from collections import Counter
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -77,19 +78,48 @@ from app.api.v1.predictions.snapshots import (
     TimeUnit,
 )
 
-RESULT_KINDS = ("naive", "seasonal_naive", "average", "mlforecast", "sarima")
+INTERVAL_RESULT_KINDS: frozenset[ResultKind] = frozenset(
+    {"mlforecast", "sarima", "prophet"}
+)
+RESULT_KIND_DISPLAY_NAMES: dict[str, str] = {
+    "mlforecast": "MLForecast",
+    "sarima": "SARIMA",
+    "prophet": "Prophet",
+}
 type Observation = tuple[dt_date, float, Literal["targetScenario"]]
 MAX_PAIRS = 50
 MAX_PERIODS = 366
 MAX_HISTORY = 10_000
-MAX_POINTS = 100_000
+MAX_POINTS = 110_000
+SEED = 41
+PROPHET_MIN_OBSERVATIONS = 12
+PROPHET_UNCERTAINTY_SAMPLES = 1000
+PROPHET_CV_WINDOWS = 3
+PROPHET_SEASONALITY: dict[str, dict[str, bool]] = {
+    "day": {"yearly": True, "weekly": True, "daily": False},
+    "week": {"yearly": True, "weekly": False, "daily": False},
+    "month": {"yearly": True, "weekly": False, "daily": False},
+    "year": {"yearly": False, "weekly": False, "daily": False},
+}
+PROPHET_SHORT_HISTORY_REASON = "Prophet needs at least 12 contiguous observations."
+PROPHET_FIT_FAILURE_REASON = "Prophet cannot fit this metric."
 BASE_MODEL_CONFIGURATION: dict[str, object] = {
-    "seed": 41,
+    "seed": SEED,
     "mlforecast": {"lags": [1, 2, 3, 7], "randomForestEstimators": 50, "maxDepth": 8},
     "sarima": {
         "order": [1, 0, 0],
         "seasonalOrder": [1, 0, 0],
         "maxiter": 50,
+    },
+    "prophet": {
+        "mcmcSamples": 0,
+        "uncertaintySamples": PROPHET_UNCERTAINTY_SAMPLES,
+        "growth": "linear",
+        "seasonality": PROPHET_SEASONALITY,
+        "regressors": "knownFeatures",
+        "dropZeroVarianceRegressors": True,
+        "minObservations": PROPHET_MIN_OBSERVATIONS,
+        "crossValidation": {"nWindows": PROPHET_CV_WINDOWS, "h": 1},
     },
 }
 
@@ -106,9 +136,12 @@ class _GeneratedResult:
     bounds: list[tuple[float, float]] | None = None
 
 
-def _model_configuration(confidence_level: int) -> dict[str, object]:
+def _model_configuration(
+    confidence_level: int, model_kinds: list[ResultKind]
+) -> dict[str, object]:
     return {
         **BASE_MODEL_CONFIGURATION,
+        "modelKinds": list(model_kinds),
         "predictionIntervals": {
             "confidenceLevel": confidence_level,
             "mlforecast": {
@@ -119,6 +152,11 @@ def _model_configuration(confidence_level: int) -> dict[str, object]:
             "sarima": {
                 "method": "native_forecast_result",
                 "alpha": round(1 - confidence_level / 100, 10),
+            },
+            "prophet": {
+                "method": "native_forecast_result",
+                "intervalWidth": round(confidence_level / 100, 10),
+                "uncertaintySamples": PROPHET_UNCERTAINTY_SAMPLES,
             },
         },
     }
@@ -133,7 +171,7 @@ def preflight_predictions(
         )
         del organisation
         rows = _prepare_targets(read_session, targets, payload)
-    _enforce_limits(rows)
+    _enforce_limits(rows, payload.model_kinds)
     return PredictionPreflightResponse(
         metrics=[_preflight_response(row) for row in rows]
     )
@@ -203,7 +241,7 @@ def prepare_prediction_snapshot(
             read_session, organisation_key, payload
         )
         rows = _prepare_targets(read_session, targets, payload)
-        _enforce_limits(rows)
+        _enforce_limits(rows, payload.model_kinds)
         if (
             read_session.scalar(
                 select(PredictionVersion.prediction_version_id).where(
@@ -224,7 +262,10 @@ def prepare_prediction_snapshot(
             confidenceLevel=payload.confidence_level,
             startDate=payload.start_date,
             endDate=payload.end_date,
-            modelConfiguration=_model_configuration(payload.confidence_level),
+            modelConfiguration=_model_configuration(
+                payload.confidence_level, payload.model_kinds
+            ),
+            modelKinds=payload.model_kinds,
             targets=rows,
         )
 
@@ -262,7 +303,7 @@ def persist_prediction(
         or len(calculation.targets) != len(snapshot.targets)
     ):
         raise ValueError("Calculation output does not match its prediction snapshot.")
-    expected_kinds = set(RESULT_KINDS)
+    expected_kinds = set(snapshot.model_kinds)
     for row, calculated_target in zip(
         snapshot.targets, calculation.targets, strict=True
     ):
@@ -915,7 +956,9 @@ def calculate_prediction(snapshot: PredictionInputSnapshot) -> PredictionCalcula
     for row in snapshot.targets:
         if row.derived_formula is not None:
             continue
-        results = _calculate_normal_result_set(row, snapshot.confidence_level)
+        results = _calculate_normal_result_set(
+            row, snapshot.confidence_level, snapshot.model_kinds
+        )
         results_by_target[(row.scenario_key, row.metric_key)] = results
         for result in results:
             normal_results[(row.scenario_key, row.metric_key, result.kind)] = result
@@ -923,7 +966,7 @@ def calculate_prediction(snapshot: PredictionInputSnapshot) -> PredictionCalcula
         if row.derived_formula is None:
             continue
         results_by_target[(row.scenario_key, row.metric_key)] = (
-            _calculate_derived_result_set(row, normal_results)
+            _calculate_derived_result_set(row, normal_results, snapshot.model_kinds)
         )
     return PredictionCalculation(
         snapshotFormat=snapshot.snapshot_format,
@@ -940,7 +983,7 @@ def calculate_prediction(snapshot: PredictionInputSnapshot) -> PredictionCalcula
 
 
 def _calculate_normal_result_set(
-    row: _PreparedTarget, confidence_level: int
+    row: _PreparedTarget, confidence_level: int, model_kinds: list[ResultKind]
 ) -> list[CalculatedResult]:
     if row.status != "eligible":
         return [
@@ -954,48 +997,46 @@ def _calculate_normal_result_set(
                     None,
                     (
                         "unavailable"
-                        if kind in ("mlforecast", "sarima")
+                        if kind in INTERVAL_RESULT_KINDS
                         else "not_applicable"
                     ),
-                    row.reason if kind in ("mlforecast", "sarima") else None,
+                    row.reason if kind in INTERVAL_RESULT_KINDS else None,
                 ),
             )
-            for kind in RESULT_KINDS
+            for kind in model_kinds
         ]
     values = [item.value for item in row.observations]
     amount = len(row.prediction_periods)
-    baseline_values = {
-        "naive": [values[-1]] * amount,
-        "average": [mean(values)] * amount,
-        "seasonal_naive": _seasonal_naive(values, amount, row.seasonal_period or 1),
+
+    def baseline(generated_values: list[float]) -> _GeneratedResult:
+        return _GeneratedResult(
+            generated_values,
+            "available",
+            None,
+            "not_applicable",
+            None,
+            "not_applicable",
+            None,
+        )
+
+    # Only selected kinds are generated; an unselected model is never fitted.
+    generators: dict[ResultKind, Callable[[], _GeneratedResult]] = {
+        "naive": lambda: baseline([values[-1]] * amount),
+        "seasonal_naive": lambda: baseline(
+            _seasonal_naive(values, amount, row.seasonal_period or 1)
+        ),
+        "average": lambda: baseline([mean(values)] * amount),
+        "mlforecast": lambda: _mlforecast_result(row, confidence_level),
+        "sarima": lambda: _sarima_result(row, confidence_level),
+        "prophet": lambda: _prophet_result(row, confidence_level),
     }
-    results = [
-        _calculated_result(
-            cast(ResultKind, kind),
-            _GeneratedResult(
-                baseline_values[kind],
-                "available",
-                None,
-                "not_applicable",
-                None,
-                "not_applicable",
-                None,
-            ),
-        )
-        for kind in ("naive", "seasonal_naive", "average")
-    ]
-    results.extend(
-        (
-            _calculated_result("mlforecast", _mlforecast_result(row, confidence_level)),
-            _calculated_result("sarima", _sarima_result(row, confidence_level)),
-        )
-    )
-    return results
+    return [_calculated_result(kind, generators[kind]()) for kind in model_kinds]
 
 
 def _calculate_derived_result_set(
     row: _PreparedTarget,
     normal_results: dict[tuple[str, str, str], CalculatedResult],
+    model_kinds: list[ResultKind],
 ) -> list[CalculatedResult]:
     assert row.derived_formula is not None
     try:
@@ -1014,10 +1055,10 @@ def _calculate_derived_result_set(
                     None,
                 ),
             )
-            for kind in RESULT_KINDS
+            for kind in model_kinds
         ]
     output: list[CalculatedResult] = []
-    for kind_value in RESULT_KINDS:
+    for kind_value in model_kinds:
         values_by_name: dict[str, list[float]] = {}
         failure: str | None = None
         for reference in row.referenced_metrics:
@@ -1392,6 +1433,171 @@ def _sarima_result(row: _PreparedTarget, confidence_level: int) -> _GeneratedRes
         )
 
 
+def _prophet_result(row: _PreparedTarget, confidence_level: int) -> _GeneratedResult:
+    if len(row.observations) < PROPHET_MIN_OBSERVATIONS:
+        return _GeneratedResult(
+            [],
+            "ineligible",
+            PROPHET_SHORT_HISTORY_REASON,
+            "unavailable",
+            None,
+            "unavailable",
+            PROPHET_SHORT_HISTORY_REASON,
+        )
+    # A missing dependency is a deployment defect, so imports stay outside the
+    # handled-failure boundary (ADR-014).
+    _silence_prophet_loggers()
+    import numpy as np
+    import pandas as pd
+    from prophet import Prophet
+
+    seasonality = PROPHET_SEASONALITY[row.time_unit]
+    history_dates = [item.date for item in row.observations]
+    history_values = [item.value for item in row.observations]
+    history_features = [item.features for item in row.history_periods]
+    normalised = _normalised_features(
+        history_features, [item.features for item in row.prediction_periods]
+    )
+    history_rows = normalised[: len(history_features)]
+    future_rows = normalised[len(history_features) :]
+    feature_names = sorted(normalised[0]) if normalised else []
+
+    def forecast(
+        training_size: int,
+        dates: list[dt_date],
+        feature_rows: list[dict[str, float]],
+    ) -> object:
+        training_rows = history_rows[:training_size]
+        # Positional column names keep scenario-defined type keys away from
+        # Prophet's reserved names. Constant features have zero variance.
+        regressors = {
+            f"regressor_{index}": name
+            for index, name in enumerate(
+                name
+                for name in feature_names
+                if len({features[name] for features in training_rows}) > 1
+            )
+        }
+        model = Prophet(
+            growth="linear",
+            yearly_seasonality=seasonality["yearly"],
+            weekly_seasonality=seasonality["weekly"],
+            daily_seasonality=seasonality["daily"],
+            mcmc_samples=0,
+            uncertainty_samples=PROPHET_UNCERTAINTY_SAMPLES,
+            interval_width=confidence_level / 100,
+        )
+        for column in regressors:
+            model.add_regressor(column)
+        training = pd.DataFrame(
+            {
+                "ds": pd.to_datetime(history_dates[:training_size]),
+                "y": history_values[:training_size],
+                **{
+                    column: [features[name] for features in training_rows]
+                    for column, name in regressors.items()
+                },
+            }
+        )
+        future = pd.DataFrame(
+            {
+                "ds": pd.to_datetime(dates),
+                **{
+                    column: [features[name] for features in feature_rows]
+                    for column, name in regressors.items()
+                },
+            }
+        )
+        model.fit(training, seed=SEED)
+        # Uncertainty sampling uses NumPy's global state and has no seed input.
+        np.random.seed(SEED)
+        return model.predict(future)
+
+    try:
+        prediction = forecast(
+            len(history_values),
+            [item.date for item in row.prediction_periods],
+            future_rows,
+        )
+        values = _named_prediction_values(prediction, "yhat")
+    except Exception as error:
+        if not _is_expected_prophet_failure(error):
+            raise
+        return _GeneratedResult(
+            [],
+            "ineligible",
+            PROPHET_FIT_FAILURE_REASON,
+            "unavailable",
+            None,
+            "unavailable",
+            PROPHET_FIT_FAILURE_REASON,
+        )
+    mae: float | None = None
+    try:
+        errors: list[float] = []
+        # Expanding one-step windows over the last observations (ADR-014).
+        first_window = len(history_values) - PROPHET_CV_WINDOWS
+        for index in range(first_window, len(history_values)):
+            window = forecast(index, [history_dates[index]], [history_rows[index]])
+            errors.append(
+                abs(history_values[index] - _named_prediction_values(window, "yhat")[0])
+            )
+        mae = float(mean(errors))
+    except Exception as error:
+        if not _is_expected_prophet_failure(error):
+            raise
+    point_result = _GeneratedResult(
+        values,
+        "available",
+        None,
+        "available" if mae is not None else "unavailable",
+        mae,
+        "unavailable",
+        "Prophet prediction interval is unavailable.",
+    )
+    try:
+        bounds = _validated_bounds(
+            values,
+            _named_prediction_values(prediction, "yhat_lower"),
+            _named_prediction_values(prediction, "yhat_upper"),
+        )
+    except ValueError:
+        return point_result
+    return _GeneratedResult(
+        values,
+        point_result.status,
+        point_result.reason,
+        point_result.cross_validation_status,
+        point_result.cross_validation_mae,
+        "available",
+        None,
+        bounds,
+    )
+
+
+def _silence_prophet_loggers() -> None:
+    """Keep model output, data values and temporary paths out of worker logs."""
+    for name in ("cmdstanpy", "prophet"):
+        logger = logging.getLogger(name)
+        logger.handlers = [logging.NullHandler()]
+        logger.propagate = False
+        logger.setLevel(logging.CRITICAL + 1)
+
+
+def _is_expected_prophet_failure(error: Exception) -> bool:
+    """Accept data-related ValueErrors and RuntimeErrors raised by cmdstanpy."""
+    if isinstance(error, ValueError):
+        return True
+    if not isinstance(error, RuntimeError):
+        return False
+    traceback = error.__traceback__
+    module: object = None
+    while traceback is not None:
+        module = traceback.tb_frame.f_globals.get("__name__")
+        traceback = traceback.tb_next
+    return isinstance(module, str) and module.split(".")[0] == "cmdstanpy"
+
+
 def _named_prediction_values(prediction: object, column: str) -> list[float]:
     try:
         values = prediction[column].tolist()  # type: ignore[index,union-attr]
@@ -1529,16 +1735,18 @@ def _mlforecast_frequency(time_unit: str) -> str:
     return {"day": "D", "week": "W-MON", "month": "MS", "year": "YS"}[time_unit]
 
 
-def _enforce_limits(rows: list[_PreparedTarget]) -> None:
+def _enforce_limits(
+    rows: list[_PreparedTarget], model_kinds: list[ResultKind]
+) -> None:
     eligible = [row for row in rows if row.status == "eligible"]
     if len(eligible) > MAX_PAIRS:
         raise _pair_limit_exception()
     if (
-        sum(len(row.prediction_periods) * len(RESULT_KINDS) for row in eligible)
+        sum(len(row.prediction_periods) for row in eligible) * len(model_kinds)
         > MAX_POINTS
     ):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=(
                 f"Prediction request exceeds the {MAX_POINTS} prediction point limit."
             ),
@@ -1656,7 +1864,7 @@ def _is_duplicate_prediction_name_error(error: IntegrityError) -> bool:
 def _non_finite_result_reason(
     kind: str, values: list[float], cv_mae: float | None
 ) -> str | None:
-    name = {"mlforecast": "MLForecast", "sarima": "SARIMA"}.get(kind, kind)
+    name = RESULT_KIND_DISPLAY_NAMES.get(kind, kind)
     if not all(math.isfinite(value) for value in values):
         return f"{name} generated non-finite forecast values."
     if cv_mae is not None and not math.isfinite(cv_mae):

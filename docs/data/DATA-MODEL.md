@@ -147,7 +147,11 @@ Lue nämä yhdessä datamallin kanssa:
   through 99, defaulting to 80. Its configuration snapshot records the selected
   level and supported model interval methods.
 - A Prediction Version owns Prediction Targets; each target owns exactly one result
-  for every requested output kind, and a result owns dated Prediction Points.
+  for every result kind selected for the version, and a result owns dated
+  Prediction Points. The non-empty selection is frozen into the request snapshot
+  and recorded as `modelKinds` in the version's configuration snapshot (ADR-014);
+  an unselected kind has no result. A version without `modelKinds` predates
+  ADR-014, and its kinds are the kinds of its saved results.
 - Prediction Targets retain stable target keys and source and input JSON
   snapshots rather than source-table foreign keys. The source snapshot records
   target-scenario-only effective observations, so source soft deletion cannot

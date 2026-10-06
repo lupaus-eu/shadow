@@ -93,6 +93,7 @@ The current ordered migration chain is:
 013_create_derived_metrics.sql
 014_add_prediction_intervals.sql
 015_create_prediction_requests.sql
+016_add_prophet_result_kind.sql
 ```
 
 Jokaisella yllä olevalla tiedostolla on vastaava `.down.sql`-tiedosto.
@@ -154,6 +155,13 @@ Migration 015 preserves all existing prediction versions and does not create
 request history for them. Its down migration deletes only prediction request
 history and must be run with every prediction worker stopped; it does not delete
 completed prediction versions or their owned rows.
+
+Migration 016 recreates the `prediction_model_results.result_kind` CHECK with
+the `prophet` result kind (ADR-014) and changes no rows. Its down migration
+deletes every `prophet` result and its prediction points, then restores the
+five-kind CHECK; other results and their versions are kept. Run it only with
+the prediction worker stopped and no queued or running requests that select
+Prophet, because a release before ADR-014 cannot calculate them.
 
 ## Deployment Compatibility
 

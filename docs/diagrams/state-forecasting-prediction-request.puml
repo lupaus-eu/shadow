@@ -7,7 +7,7 @@ hide empty description
 queued --> running : lock-owning worker claims oldest request
 queued --> cancelled : cancel accepted immediately
 running --> cancelling : cancel accepted
-cancelling --> cancelled : child stopped, reaped; output discarded
+cancelling --> cancelled : child group stopped, reaped,\ntemporary directory removed; output discarded
 running --> failed : unexpected error, crash or lost ownership
 running --> completed : atomic complete-version publication commits first
 
@@ -23,9 +23,12 @@ note right of running
 end note
 
 note right of cancelling
-  Supervisor checks each second,
-  terminates, then force-kills after
-  two seconds if necessary.
+  Supervisor checks each second and signals
+  the child and its process group (CmdStan):
+  SIGTERM, then SIGKILL after two seconds.
+  Every finished child: group SIGKILL after
+  reaping, then its private /tmp directory
+  is removed.
 end note
 
 note bottom of completed

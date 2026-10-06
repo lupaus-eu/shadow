@@ -468,6 +468,27 @@ blocked-child cancellation, crash/publication rollback and abandoned-request
 recovery. An absent `MIGRATION_TEST_DATABASE_URL` skips this evidence and does
 not satisfy TASK-057C integration acceptance.
 
+## Prophet And Model Selection
+
+TASK-061B's SQLite API tests cover the default six-kind selection, subsets
+(including baseline-only and no-baseline subsets, with unselected fitted models
+patched to fail if called), `422` for empty, duplicate and unknown `modelKinds`,
+derived metrics with a subset, legacy snapshots without `modelKinds`, the
+110,000-point limit, recorded Prophet configuration, deterministic Prophet
+points and bounds, zero-variance regressor dropping, and fixed Prophet failure
+reasons. The CmdStan failure test makes `cmdstanpy` raise its own optimisation
+`RuntimeError` by skipping the CmdStan run; any other `RuntimeError` must fail
+the calculation.
+
+`tests/test_prediction_worker.py` needs no database. It starts real spawned
+children through the supervisor and uses Linux `/proc` to verify the child's
+own process group, its private `/tmp` directory, stopping before `os.setsid()`,
+stopping a child with a running grandchild, a crashed child whose grandchild is
+still running, and stopping during a real Prophet MCMC fit with no CmdStan
+process or temporary directory left within five seconds. The PostgreSQL suites
+above add six-kind and subset publication, a legacy queued snapshot, migration
+016 up/down and per-child directory removal in the worker cycle.
+
 Run assembled local browser and container QA separately with
 `docs/qa/PREDICTION-WORKER-RUNTIME-QA.md`. Record unavailable Docker, browser,
 Coolify-provider or production checks as unavailable, never as passing.

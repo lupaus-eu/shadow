@@ -65,6 +65,7 @@ db/migrations/012_add_timeserie_short_name.sql
 db/migrations/013_create_derived_metrics.sql
 db/migrations/014_add_prediction_intervals.sql
 db/migrations/015_create_prediction_requests.sql
+db/migrations/016_add_prophet_result_kind.sql
 ```
 
 | Table | Purpose | Notes |
@@ -90,7 +91,7 @@ db/migrations/015_create_prediction_requests.sql
 | `prediction_versions` | Immutable named Forecasting executions | Organisation-local case-insensitive name and stable `prediction_key`; persists range, cutoff, selected 50--99 prediction-interval level and deterministic configuration. |
 | `prediction_requests` | Durable mutable Forecasting request history | Stores an immutable submission snapshot, lifecycle/audit state, transient worker ownership, safe failure fields and an optional same-organisation completed-version link. |
 | `prediction_targets` | Saved scenario/metric Forecasting targets | Stores stable target key, eligibility, seasonality and immutable target-source JSON snapshots; source scenario/metric IDs are snapshots, not FKs. |
-| `prediction_model_results` | One result per target/model kind | Persists availability, safe ineligibility reason, cross-validation state, prediction-interval state/reason and configuration. |
+| `prediction_model_results` | One result per target and selected model kind | `result_kind` is `naive`, `seasonal_naive`, `average`, `mlforecast`, `sarima` or `prophet` (migration 016); only the version's selected kinds have rows (ADR-014). Persists availability, safe ineligibility reason, cross-validation state, prediction-interval state/reason and configuration. |
 | `prediction_points` | Dated numeric derived values | Owned by a Forecasting model result; nullable bounds are a complete finite interval pair enclosing the point value; never written to `timeserie_values`. |
 | `customers` | Application-wide customer profiles | Status is `active`, `archived` or `deleted`; status and `deleted_time` must agree. |
 | `contacts` | Customer-owned contacts | Name is required; email, phone and job title are optional. |

@@ -8,8 +8,11 @@ does not import or start FastAPI and needs only DATABASE_URL.
 import argparse
 import logging
 import multiprocessing
+import os
+import shutil
 import signal
 import sys
+import tempfile
 from collections.abc import Callable, Generator, Sequence
 from contextlib import contextmanager
 from datetime import UTC, datetime
@@ -40,9 +43,11 @@ LOGGER = logging.getLogger("schatten.prediction_worker")
 WORKER_ADVISORY_LOCK = 7_303_589_321_057
 POLL_SECONDS = 1.0
 TERMINATION_GRACE_SECONDS = 2.0
+CHILD_TEMPORARY_ROOT = "/tmp"
 Failure = tuple[str, str]
 ChildMessage = tuple[Literal["completed", "failed"], str]
-ChildTarget = Callable[[str, ProcessConnection], None]
+# (snapshot JSON, result sender, private temporary directory)
+ChildTarget = Callable[[str, ProcessConnection, str], None]
 
 CALCULATION_FAILURE: Failure = (
     "CALCULATION_FAILED",
@@ -62,7 +67,20 @@ INTERRUPTED_FAILURE: Failure = (
 )
 
 
-def _child_calculate(snapshot_json: str, sender: ProcessConnection) -> None:
+def use_private_temporary_directory(temporary_directory: str) -> None:
+    """Direct CmdStan, matplotlib and tempfile to the child's own directory."""
+    os.environ["TMPDIR"] = temporary_directory
+    os.environ["MPLCONFIGDIR"] = temporary_directory
+    tempfile.tempdir = None
+
+
+def _child_calculate(
+    snapshot_json: str, sender: ProcessConnection, temporary_directory: str
+) -> None:
+    # A private process group lets the supervisor stop CmdStan with the child
+    # (ADR-014). Both steps precede any model import or temporary-file use.
+    os.setsid()
+    use_private_temporary_directory(temporary_directory)
     try:
         snapshot = PredictionInputSnapshot.model_validate_json(snapshot_json)
         calculation = service.calculate_prediction(snapshot)
@@ -86,6 +104,7 @@ class PredictionWorker:
         self._lock_connection: Connection | None = None
         self._stopping = False
         self._child: BaseProcess | None = None
+        self._child_temporary_directory: str | None = None
         self._child_target = child_target
 
     def request_stop(self, *_: object) -> None:
@@ -198,16 +217,10 @@ class PredictionWorker:
         if loaded is None:
             return
         request_key, snapshot = loaded
-        context = multiprocessing.get_context("spawn")
-        receiver, sender = context.Pipe(duplex=False)
-        child = context.Process(
-            target=self._child_target,
-            args=(snapshot.model_dump_json(by_alias=True), sender),
-            name=f"prediction-calculation-{request_id}",
+        child, receiver = self._start_child(
+            snapshot.model_dump_json(by_alias=True),
+            f"prediction-calculation-{request_id}",
         )
-        self._child = child
-        child.start()
-        sender.close()
         message: ChildMessage | None = None
         try:
             while True:
@@ -235,8 +248,7 @@ class PredictionWorker:
         if message is None and child.is_alive():
             self._stop_child()
         else:
-            child.join()
-            self._child = None
+            self._reap_child()
 
         if message is None or message[0] != "completed" or child.exitcode != 0:
             self._mark_failed(
@@ -253,6 +265,32 @@ class PredictionWorker:
             LOGGER.error("Prediction publication failed request_id=%s", request_key)
             return
         LOGGER.info("Prediction request %s request_id=%s", outcome, request_key)
+
+    def _start_child(
+        self, snapshot_json: str, name: str
+    ) -> tuple[BaseProcess, ProcessConnection]:
+        """Start one calculation child with its own private temporary directory."""
+        temporary_directory = tempfile.mkdtemp(
+            prefix="schatten-prediction-", dir=CHILD_TEMPORARY_ROOT
+        )
+        self._child_temporary_directory = temporary_directory
+        context = multiprocessing.get_context("spawn")
+        receiver, sender = context.Pipe(duplex=False)
+        child = context.Process(
+            target=self._child_target,
+            args=(snapshot_json, sender, temporary_directory),
+            name=name,
+        )
+        self._child = child
+        try:
+            child.start()
+        except BaseException:
+            receiver.close()
+            self._release_child()
+            raise
+        finally:
+            sender.close()
+        return child, receiver
 
     def _load_owned_snapshot(
         self, request_id: int
@@ -348,13 +386,41 @@ class PredictionWorker:
         child = self._child
         if child is None:
             return
-        if child.is_alive():
-            child.terminate()
-            child.join(TERMINATION_GRACE_SECONDS)
-        if child.is_alive():
-            child.kill()
-        child.join()
+        if child.pid is not None:
+            if child.is_alive():
+                child.terminate()
+                _signal_process_group(child.pid, signal.SIGTERM)
+                child.join(TERMINATION_GRACE_SECONDS)
+            if child.is_alive():
+                child.kill()
+                _signal_process_group(child.pid, signal.SIGKILL)
+            child.join()
+        self._release_child()
+
+    def _reap_child(self) -> None:
+        child = self._child
+        if child is not None and child.pid is not None:
+            child.join()
+        self._release_child()
+
+    def _release_child(self) -> None:
+        """Kill leftovers of a reaped child's group, then remove its files."""
+        child = self._child
+        if child is not None and child.pid is not None:
+            _signal_process_group(child.pid, signal.SIGKILL)
+        if self._child_temporary_directory is not None:
+            shutil.rmtree(self._child_temporary_directory, ignore_errors=True)
         self._child = None
+        self._child_temporary_directory = None
+
+
+def _signal_process_group(process_group_id: int, signum: signal.Signals) -> None:
+    # Address the group only by the child's PID: a child that has not called
+    # os.setsid() yet is still in the supervisor's own group (ADR-014).
+    try:
+        os.killpg(process_group_id, signum)
+    except ProcessLookupError:
+        pass
 
 
 def worker_is_healthy(engine: Engine) -> bool:

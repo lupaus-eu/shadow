@@ -1719,7 +1719,7 @@ def _normalise_stable_key(value: str, blank_message: str) -> str:
     stripped = value.strip()
     if not stripped:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=blank_message,
         )
     return stripped

@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-061B/review-002",
+  "task": {
+    "id": "TASK-061B",
+    "path": "tasks/TASK-061B-prophet-model-selection-backend.md"
+  },
+  "round": 2,
+  "reviewed_at": "2026-10-06T08:44:20Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": {
+    "number": 95,
+    "url": "https://github.com/reflector-oy/schatten/pull/95"
+  },
+  "source": {
+    "base_sha": "77ecd42beb6dc41af0a0d3d38a852e65d929d6f7",
+    "head_sha": "2d7d279799bd2324f3ccb755af5afa2c86697f0f",
+    "comparison": "77ecd42beb6dc41af0a0d3d38a852e65d929d6f7...2d7d279799bd2324f3ccb755af5afa2c86697f0f",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "clean",
+    "summary": "Since round 1, the only change outside the review records is two new Prophet unit tests; the implementation, migration, configuration and documentation are unchanged and the round 1 assessment still holds. One test fails every cross-validation fit after the point fit and checks that points and interval match a normal run while cross-validation is unavailable with no MAE. The other is parametrised over swapped and non-finite native bounds and checks that points and CV MAE match a normal run while the interval is unavailable with the fixed reason and no bounds. Ruff, pyright and the backend suite passed (447 passed; the PostgreSQL suites were not re-run because only SQLite-level tests changed). No new findings.",
+    "findings": [],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-061B/review-001",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "Tests now cover both Prophet fallback paths: a failed cross-validation window keeps the points and interval with cross-validation unavailable, and unordered or non-finite native bounds keep the points and CV MAE with the interval unavailable and the fixed reason.",
+        "validated_by": {
+          "review_id": "TASK-061B/review-002",
+          "commit": "2d7d279799bd2324f3ccb755af5afa2c86697f0f"
+        }
+      },
+      {
+        "record_id": "TASK-061B/review-001",
+        "finding_id": "F-002",
+        "disposition": "accepted_risk",
+        "rationale": "The developer requested both out-of-scope changes during implementation. The Starlette constant rename has no behaviour change, and the pytest filter is scoped to one warning from Prophet's forecaster and is documented for removal after the move to pandas 3. Both are listed in the PR description for human review.",
+        "validated_by": {
+          "review_id": "TASK-061B/review-002",
+          "commit": "2d7d279799bd2324f3ccb755af5afa2c86697f0f"
+        }
+      }
+    ]
+  }
+}

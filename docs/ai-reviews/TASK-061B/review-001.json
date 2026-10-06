@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-061B/review-001",
+  "task": {
+    "id": "TASK-061B",
+    "path": "tasks/TASK-061B-prophet-model-selection-backend.md"
+  },
+  "round": 1,
+  "reviewed_at": "2026-10-06T08:30:25Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": {
+    "number": 95,
+    "url": "https://github.com/reflector-oy/schatten/pull/95"
+  },
+  "source": {
+    "base_sha": "77ecd42beb6dc41af0a0d3d38a852e65d929d6f7",
+    "head_sha": "d06aa12ec5965503f14bc09444c0fda26b89ba07",
+    "comparison": "77ecd42beb6dc41af0a0d3d38a852e65d929d6f7...d06aa12ec5965503f14bc09444c0fda26b89ba07",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "The implementation matches TASK-061B and ADR-014. Prophet is the sixth result kind with a shared interval-kind constant and display name. modelKinds is validated (non-empty, no duplicates, known kinds), stored in canonical order, frozen into the snapshot with a legacy five-kind default, and recorded with the ADR-014 configuration keys. Only selected kinds are fitted, derived and persisted. The point limit is 110,000 per selected kind. Prophet uses explicit seasonality, zero-variance regressor dropping per training window, a fit seed plus a NumPy reseed before every predict, native intervals with ADR-011 validation, three one-step CV windows and fixed failure reasons; only ValueError and cmdstanpy RuntimeError are handled. The worker child calls setsid first, uses a private temporary directory, and the supervisor signals the child and its group, kills leftovers after every reap and removes the directory. Migration 016 and its down migration are correct, and the docs and diagrams are updated. Ruff, pyright and the full suite against disposable PostgreSQL 18.6 passed (489 tests). Remaining findings: two untested Prophet fallback paths, and two small changes outside the task scope.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "missing_test",
+        "severity": "low",
+        "summary": "The Prophet fallback paths for a failed cross-validation window and for invalid native bounds have no tests.",
+        "rationale": "ADR-014 requires that a validation window which cannot be fitted makes cross-validation unavailable while keeping the point result, and that incomplete, non-finite or unordered bounds keep the points with the interval unavailable and a safe reason. Both branches in the Prophet result function are correct on reading, but no test exercises them, so a regression would go unnoticed.",
+        "recommendation": "Add two unit tests on the Prophet result function: one where fits after the first raise an expected failure (points available, cross-validation unavailable, no MAE), and one where the predicted lower or upper bound is patched to break ordering (points available, interval unavailable with the fixed reason).",
+        "locations": [
+          {
+            "path": "backend/app/api/v1/predictions/service.py",
+            "line": 1538
+          },
+          {
+            "path": "backend/app/api/v1/predictions/service.py",
+            "line": 1556
+          },
+          {
+            "path": "backend/tests/test_predictions_api.py",
+            "line": 1789
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "scope",
+        "severity": "info",
+        "summary": "Two small changes are outside the TASK-061B scope: an organisation-state status constant rename and a pytest warning filter.",
+        "rationale": "The organisation-state service replaces the deprecated Starlette 422 constant with its renamed equivalent, with no behaviour change. The pytest configuration ignores a NumPy timedelta deprecation warning raised in Prophet's forecaster by pandas 2.3 under NumPy 2.5; pandas 3 fixes it, but the current mlforecast release requires pandas below 3. Both were requested by the developer during implementation and are harmless, but they are not in the task.",
+        "recommendation": "Keep both and mention them in the PR description for human review. Remove the warning filter once the dependency set moves to pandas 3.",
+        "locations": [
+          {
+            "path": "backend/app/api/v1/org_states/org_states_service.py",
+            "line": 1722
+          },
+          {
+            "path": "backend/pyproject.toml",
+            "line": 30
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": []
+  }
+}

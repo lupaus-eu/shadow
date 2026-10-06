@@ -3,6 +3,11 @@ from typing import Literal
 
 from pydantic import Field, StrictInt, field_validator, model_validator
 
+from app.api.v1.predictions.snapshots import (
+    RESULT_KINDS,
+    ResultKind,
+    canonical_result_kinds,
+)
 from app.core.schemas import StrictBaseModel
 
 CutoffMode = Literal["asOfStart", "allCurrentScenario"]
@@ -24,6 +29,11 @@ class PredictionRequestBase(StrictBaseModel):
     manual_seasonal_periods: dict[str, int] = Field(
         default_factory=dict, alias="manualSeasonalPeriods"
     )
+    model_kinds: list[ResultKind] = Field(
+        default_factory=lambda: list(RESULT_KINDS),
+        min_length=1,
+        alias="modelKinds",
+    )
 
     @field_validator("target_scenario_ids")
     @classmethod
@@ -42,6 +52,11 @@ class PredictionRequestBase(StrictBaseModel):
                 "periods of at least 2."
             )
         return values
+
+    @field_validator("model_kinds")
+    @classmethod
+    def model_kinds_are_distinct(cls, values: list[ResultKind]) -> list[ResultKind]:
+        return canonical_result_kinds(values)
 
     @model_validator(mode="after")
     def date_range_is_ordered(self) -> "PredictionRequestBase":

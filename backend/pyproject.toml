@@ -13,6 +13,7 @@ dependencies = [
     "mlforecast>=1.0.2,<2.0.0",
     "scikit-learn>=1.6.0,<2.0.0",
     "statsmodels>=0.14.0,<1.0.0",
+    "prophet>=1.1.6,<2",
 ]
 
 [dependency-groups]
@@ -26,6 +27,10 @@ dev = [
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+filterwarnings = [
+    # pandas 2.3 Timedelta under NumPy >= 2.5; fixed in pandas 3, which is blocked by mlforecast 1.1.0 (pandas<3).
+    "ignore:The 'generic' unit for NumPy timedelta is deprecated:DeprecationWarning:prophet\\.forecaster",
+]
 
 [tool.pyright]
 pythonVersion = "3.12"

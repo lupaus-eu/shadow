@@ -160,6 +160,10 @@ def test_rejects_non_latest_and_unapplied_down_migrations(
         )
 
     execute_command(
+        DownCommand("016_add_prophet_result_kind.down.sql"),
+        database_url=migration_database_url,
+    )
+    execute_command(
         DownCommand("015_create_prediction_requests.down.sql"),
         database_url=migration_database_url,
     )
@@ -618,6 +622,10 @@ def test_prediction_interval_migration_resets_development_rows_and_constraints(
                 )
 
     execute_command(
+        DownCommand("016_add_prophet_result_kind.down.sql"),
+        database_url=migration_database_url,
+    )
+    execute_command(
         DownCommand("015_create_prediction_requests.down.sql"),
         database_url=migration_database_url,
     )
@@ -638,6 +646,107 @@ def test_prediction_interval_migration_resets_development_rows_and_constraints(
         "WHERE table_schema = current_schema() AND table_name = 'prediction_points' "
         "AND column_name = 'lower_bound')",
     )
+
+
+def test_prophet_result_kind_migration_up_and_down(
+    migration_database_url: str,
+) -> None:
+    execute_command(UpCommand(), database_url=migration_database_url)
+
+    with psycopg.connect(migration_database_url) as connection:
+        user = connection.execute(
+            "INSERT INTO users (name, email, role) "
+            "VALUES ('Prophet Tester', 'prophet@example.local', 'admin') "
+            "RETURNING user_id"
+        ).fetchone()
+        assert user is not None
+        organisation = connection.execute(
+            "INSERT INTO organisations (organisation_key, name, created_by) "
+            "VALUES ('prophet-org', 'Prophet Org', %s) RETURNING organisation_id",
+            (user[0],),
+        ).fetchone()
+        assert organisation is not None
+        version = connection.execute(
+            "INSERT INTO prediction_versions ("
+            "organisation_id, prediction_key, name, cutoff_mode, start_date, "
+            "end_date, created_by"
+            ") VALUES (%s, 'prophet-version', 'Prophet version', 'asOfStart', "
+            "DATE '2025-01-01', DATE '2025-02-01', %s) "
+            "RETURNING prediction_version_id",
+            (organisation[0], user[0]),
+        ).fetchone()
+        assert version is not None
+        target = connection.execute(
+            "INSERT INTO prediction_targets ("
+            "prediction_version_id, target_scenario_id, target_scenario_key, "
+            "metric_key, metric_name, time_unit, eligibility_status, created_by"
+            ") VALUES (%s, 1, 'target', 'revenue', 'Revenue', 'month', "
+            "'eligible', %s) RETURNING prediction_target_id",
+            (version[0], user[0]),
+        ).fetchone()
+        assert target is not None
+        for kind in ("naive", "prophet"):
+            result = connection.execute(
+                "INSERT INTO prediction_model_results ("
+                "prediction_target_id, result_kind, status, "
+                "prediction_interval_status, cross_validation_status, created_by"
+                ") VALUES (%s, %s, 'available', 'not_applicable', "
+                "'not_applicable', %s) RETURNING prediction_model_result_id",
+                (target[0], kind, user[0]),
+            ).fetchone()
+            assert result is not None
+            connection.execute(
+                "INSERT INTO prediction_points ("
+                "prediction_model_result_id, date, value, created_by"
+                ") VALUES (%s, DATE '2025-01-01', 10, %s)",
+                (result[0], user[0]),
+            )
+        connection.commit()
+
+    execute_command(
+        DownCommand("016_add_prophet_result_kind.down.sql"),
+        database_url=migration_database_url,
+    )
+    assert _scalar(
+        migration_database_url,
+        "SELECT string_agg(result_kind, ',') FROM prediction_model_results",
+    ) == "naive"
+    assert (
+        _scalar(migration_database_url, "SELECT count(*) FROM prediction_points") == 1
+    )
+    assert (
+        _scalar(migration_database_url, "SELECT count(*) FROM prediction_versions")
+        == 1
+    )
+    with psycopg.connect(migration_database_url) as connection:
+        with pytest.raises(psycopg.errors.CheckViolation):
+            connection.execute(
+                "INSERT INTO prediction_model_results ("
+                "prediction_target_id, result_kind, status, "
+                "prediction_interval_status, cross_validation_status"
+                ") VALUES (%s, 'prophet', 'ineligible', 'unavailable', "
+                "'unavailable')",
+                (target[0],),
+            )
+
+    execute_command(UpCommand(), database_url=migration_database_url)
+    with psycopg.connect(migration_database_url) as connection:
+        connection.execute(
+            "INSERT INTO prediction_model_results ("
+            "prediction_target_id, result_kind, status, "
+            "prediction_interval_status, cross_validation_status"
+            ") VALUES (%s, 'prophet', 'ineligible', 'unavailable', 'unavailable')",
+            (target[0],),
+        )
+        with pytest.raises(psycopg.errors.CheckViolation):
+            connection.execute(
+                "INSERT INTO prediction_model_results ("
+                "prediction_target_id, result_kind, status, "
+                "prediction_interval_status, cross_validation_status"
+                ") VALUES (%s, 'arima', 'ineligible', 'unavailable', "
+                "'unavailable')",
+                (target[0],),
+            )
 
 
 def test_prediction_observation_source_migration_replaces_schema(
@@ -669,6 +778,10 @@ def test_prediction_observation_source_migration_replaces_schema(
                 """
             )
 
+    execute_command(
+        DownCommand("016_add_prophet_result_kind.down.sql"),
+        database_url=migration_database_url,
+    )
     execute_command(
         DownCommand("015_create_prediction_requests.down.sql"),
         database_url=migration_database_url,
@@ -793,6 +906,10 @@ def test_prediction_request_migration_preserves_versions_and_enforces_lifecycle(
                 (other[0], user[0], version[0]),
             )
 
+    execute_command(
+        DownCommand("016_add_prophet_result_kind.down.sql"),
+        database_url=migration_database_url,
+    )
     execute_command(
         DownCommand("015_create_prediction_requests.down.sql"),
         database_url=migration_database_url,
@@ -962,6 +1079,10 @@ def test_timeserie_name_and_short_name_indexes_enforce_active_scope(
         )
         connection.commit()
 
+    execute_command(
+        DownCommand("016_add_prophet_result_kind.down.sql"),
+        database_url=migration_database_url,
+    )
     execute_command(
         DownCommand("015_create_prediction_requests.down.sql"),
         database_url=migration_database_url,
