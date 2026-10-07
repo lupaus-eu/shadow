@@ -3,7 +3,9 @@
 Status: durable request persistence, API, standalone worker, current-tab UI and
 supported-runtime wiring implemented by TASK-057C/TASK-057D/TASK-057E;
 ADR-014 Prophet result kind and per-version model selection backend
-implemented by TASK-061B; Predictions UI implemented by TASK-061C
+implemented by TASK-061B; Predictions UI implemented by TASK-061C; ADR-014
+seasonal-period amendment accepted in TASK-063A, backend pending TASK-063B and
+UI pending TASK-063C
 
 ## Purpose
 
@@ -99,25 +101,52 @@ attempts the result kinds selected for its version (see Model Selection):
 | SARIMA | Statsmodels SARIMAX with the selected seasonal period and known target-scenario inputs. |
 | Prophet | Meta's Prophet fitted with MAP and a fixed seed, with the known target-scenario inputs as regressors. |
 
-Seasonality is automatically detected per metric using autocorrelation and
-rolling-origin validation. If detection is inconclusive, a manual per-metric
-seasonal period is required. Until one is supplied the target is not eligible,
-so every selected result kind for it is ineligible. Seasonal-naive and SARIMA
-use the period; the other kinds do not.
+Only seasonal-naive and SARIMA use the seasonal period; naive, average,
+MLForecast and Prophet do not. Under the ADR-014 seasonal-period amendment
+(TASK-063A; implementation pending TASK-063B), whether a target needs a period
+depends on the version's model selection. Eligibility stays one status per
+target:
 
-A sent manual period overrides automatic detection for that metric.
+- When the selection contains seasonal-naive or SARIMA, seasonality is
+  automatically detected per metric using autocorrelation and rolling-origin
+  validation. A sent manual period overrides automatic detection for that
+  metric. If detection is inconclusive and no manual period is sent, the target
+  is not eligible (`requires_manual_seasonal_period`), so every selected result
+  kind for it is ineligible.
+- When the selection contains neither, seasonality is not evaluated. The
+  target is eligible unless another rule makes it ineligible, records no
+  seasonal period or source, and any sent manual period for it is ignored.
+  Sent manual periods are still validated for every selection: blank metric
+  keys and periods below 2 are rejected.
 
-In the Predictions tab, a manual period entered in the queue form is kept and
-sent with every later preflight and creation request from the open tab until
-the user changes or clears it. Preflight shows the editable manual period both
-for a metric that requires one and for a metric whose period source is already
-manual, and creation is blocked while any shown manual period is missing or
-below 2. Clearing the input and running preflight again returns the metric to
-automatic detection. A period is dropped when a later preflight does not list
-the metric as requiring or using a manual period; if the metric later requires
-one again, the input starts from 2. Manual periods are keyed by metric, so one
-value applies to every selected scenario, and they are not remembered across
-page reloads.
+The other eligibility rules and reasons apply to every selection, for example
+"Target scenario has no observations available under the selected cutoff."
+
+In the Predictions tab, manual periods are entered in the queue form. When the
+Models selection contains seasonal-naive or SARIMA:
+
+- A manual period entered in the queue form is kept and sent with every later
+  preflight and creation request from the open tab until the user changes or
+  clears it.
+- Preflight shows the editable manual period both for a metric that requires
+  one and for a metric whose period source is already manual. Otherwise it
+  shows the automatic period.
+- Creation is blocked while any shown manual period is missing or below 2.
+- Clearing the input and running preflight again returns the metric to
+  automatic detection.
+- A period is dropped when a later preflight does not list the metric as
+  requiring or using a manual period; if the metric later requires one again,
+  the input starts from 2.
+
+When the selection contains neither seasonal-naive nor SARIMA (UI pending
+TASK-063C), preflight shows no manual period input and no automatic period
+text, but still shows every target's status and reason. Entered periods are
+kept in the open tab without being sent, and creation is not blocked by a
+missing period. They are sent again after seasonal-naive or SARIMA is selected
+and preflight is run.
+
+Manual periods are keyed by metric, so one value applies to every selected
+scenario, and they are not remembered across page reloads.
 
 MLForecast cross-validation uses rolling origins when enough history supports
 three validation windows. The result records MAE or an explicit unavailable
@@ -132,7 +161,8 @@ Prophet (`prophet`, ADR-014):
   prediction periods;
 - sets seasonality by time unit: weekly only for `day`, yearly for `day`,
   `week` and `month`, and daily never; it does not use the seasonal period as
-  a model parameter, but follows target-level eligibility like every kind;
+  a model parameter and follows target-level eligibility like every kind, so
+  it needs a period only when selected together with seasonal-naive or SARIMA;
 - fits with MAP (`mcmc_samples=0`), `uncertainty_samples=1000` and the version
   seed, and resets NumPy's global random state to that seed before every
   prediction, so identical inputs give identical results;
@@ -167,8 +197,11 @@ Each prediction request selects which result kinds its version calculates
 
 In the Predictions tab, the queue form's required Models selection starts with
 all six kinds and sends the selection in canonical order with preflight and
-creation. Changing it keeps a successful preflight, because eligibility and the
-point limit do not depend on it. Each saved version lists the models it ran.
+creation. Eligibility depends on the selection only through whether it
+contains seasonal-naive or SARIMA, and the point limit admits every valid
+selection. A change that keeps that class keeps a successful preflight; a
+change between the classes clears it, so preflight must be run again (UI
+pending TASK-063C). Each saved version lists the models it ran.
 A chart reports missing results only for models that a plotted version ran, and
 separately names selected models that no plotted version ran. Chart hover text
 shows prediction point estimates and bounds rounded to at most two decimals

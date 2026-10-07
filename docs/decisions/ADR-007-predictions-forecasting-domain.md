@@ -28,6 +28,11 @@ persisted-point limit from 100,000 to 110,000. The result-kind table, the
 "attempts and persists all five output kinds" rule and the 100,000-point limit
 below are historical for those parts; ADR-014 is the current decision.
 
+Amended by ADR-014 (TASK-063A): the seasonal-period requirement applies only
+when a version's selection contains `seasonal_naive` or `sarima`. The
+seasonality paragraph below is historical for that part; ADR-014's "Seasonal
+Period And Model Selection" is the current decision.
+
 ---
 
 # Context
@@ -117,6 +122,11 @@ candidate autocorrelation periods and selecting a credible candidate with
 rolling-origin seasonal-naive validation. If detection is inconclusive, the
 caller must provide a manual period for that metric; seasonal-naive and SARIMA
 then remain stored as ineligible until a valid override is supplied.
+(Amended by ADR-014: eligibility is target-level, so without a period every
+selected kind of the target is ineligible, not only seasonal-naive and SARIMA.
+Seasonality is detected and a manual period is required only when the version's
+selection contains `seasonal_naive` or `sarima`; otherwise the target is not
+checked for seasonality and records no seasonal period.)
 
 MLForecast uses rolling-origin cross-validation when its contiguous history
 supports three validation windows. Its saved metadata records MAE when cross

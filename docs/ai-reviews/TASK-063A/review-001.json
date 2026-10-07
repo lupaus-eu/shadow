@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-063A/review-001",
+  "task": {
+    "id": "TASK-063A",
+    "path": "tasks/TASK-063A-seasonal-period-model-selection-architecture.md"
+  },
+  "round": 1,
+  "reviewed_at": "2026-10-07T10:41:45Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": {
+    "number": 98,
+    "url": "https://github.com/reflector-oy/schatten/pull/98"
+  },
+  "source": {
+    "base_sha": "6cffa5476d5bebcdc560f7d19abd49a5d3132bec",
+    "head_sha": "5f627b102d5635d08546c8122b2c4fb2ba460c93",
+    "comparison": "6cffa5476d5bebcdc560f7d19abd49a5d3132bec...5f627b102d5635d08546c8122b2c4fb2ba460c93",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "The branch is documentation-only and stays within TASK-063A scope: it amends ADR-014 with a selection-dependent seasonal-period rule, aligns ADR-007 and the Forecasting domain doc, and adds the TASK-063A/B/C task files. The amendment covers both selection classes, other eligibility reasons, preflight validity on selection changes, the work limit, the kept rejection of per-kind eligibility, legacy snapshots and the UI consequence. Its claims match the code and schema: the target period columns and snapshot fields are nullable, no constraint ties eligibility to a period, and the point-limit arithmetic already assumes every candidate pair is eligible. Pending implementation is marked in the status lines. ARCHITECTURE.md, AGENTS.md and the diagrams have no conflicting statement. No code, migration, API schema or frontend source changed. The record validator passed. Two minor documentation findings remain.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "The amendment says a manual period sent with a non-seasonal selection is ignored and not validated against the history, without stating that request validation of manual periods still applies.",
+        "rationale": "The request schema rejects blank metric keys and periods below 2 for every selection, so an invalid period still causes a validation error even when it would otherwise be ignored. Manual periods are also never validated against the history for any selection, so that phrase implies a check that does not exist. TASK-063B could read the text as permission to skip or relax request validation.",
+        "recommendation": "State that request-level validation of manual periods is unchanged for every selection, and drop the phrase about validation against the history.",
+        "locations": [
+          {
+            "path": "docs/decisions/ADR-014-prophet-and-model-selection.md",
+            "line": 263
+          },
+          {
+            "path": "docs/domains/FORECASTING.md",
+            "line": 118
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "documentation",
+        "severity": "info",
+        "summary": "A rewritten Work Limit line in ADR-014 is not wrapped to the file's line width.",
+        "rationale": "The edit joined the last sentence of the rewritten paragraph to the following unchanged sentence on one line, unlike the surrounding text.",
+        "recommendation": "Re-wrap the paragraph to the file's width of about 80 characters.",
+        "locations": [
+          {
+            "path": "docs/decisions/ADR-014-prophet-and-model-selection.md",
+            "line": 317
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": []
+  }
+}

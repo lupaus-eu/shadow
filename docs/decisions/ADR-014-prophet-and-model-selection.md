@@ -1,8 +1,11 @@
 # ADR-014: Prophet Result Kind And Per-Version Model Selection
 
-Status: Accepted; TASK-061B and TASK-061C implemented
+Status: Accepted; TASK-061B and TASK-061C implemented; seasonal-period
+amendment (TASK-063A) accepted, implementation pending TASK-063B and TASK-063C
 
 Date: 2026-10-05
+
+Amended: 2026-10-07 (TASK-063A, Seasonal Period And Model Selection)
 
 ---
 
@@ -39,8 +42,11 @@ Predictions" records the developer's choices:
 This ADR amends ADR-007's result-kind table, its "attempt and persist all
 result kinds" rule and its persisted-point limit, ADR-011's list of
 interval-supporting results, and ADR-012's five-result-kind statement and
-child-process stop procedure. It does not change scenario-owned observation
-sources (ADR-009), target-level eligibility, the derived-metric policy
+child-process stop procedure. The TASK-063A amendment also amends ADR-007's
+seasonality rule: the seasonal-period requirement applies only when the
+selection contains a kind that uses the period (see Seasonal Period And Model
+Selection). It does not change scenario-owned observation sources (ADR-009),
+the other target-level eligibility rules, the derived-metric policy
 (ADR-010), interval states and the complete-bound invariant (ADR-011), the
 durable request queue, worker, lifecycle and cancellation bound (ADR-012),
 immutable saved versions, the candidate, period and history limits, or the
@@ -83,10 +89,14 @@ automatic seasonality detection is not used.
 | `year` | off | off | off |
 
 Prophet does not use the detected or manual seasonal period from ADR-007 as a
-model parameter. Target-level eligibility is unchanged: a target whose
-automatic seasonality is inconclusive and that has no manual period is not
-eligible, so every selected result kind for it, Prophet included, is
-`ineligible` until a manual period is supplied.
+model parameter, and it is not a seasonal-period kind. When Prophet is selected
+without `seasonal_naive` or `sarima`, seasonality is not evaluated and an
+inconclusive seasonality does not affect the target's eligibility. When it is
+selected together with a seasonal-period kind, Prophet follows the shared
+target-level eligibility: a target whose automatic seasonality is inconclusive
+and that has no manual period is not eligible, so every selected result kind
+for it, Prophet included, is `ineligible` until a manual period is supplied.
+See Seasonal Period And Model Selection.
 
 ### Fitting And Determinism
 
@@ -229,6 +239,64 @@ ran.
   using the matching normal results. All normal targets in a version share the
   same selection, so every derived result kind has its matching normal inputs.
 
+### Seasonal Period And Model Selection
+
+Amended by TASK-063A.
+
+The seasonal-period result kinds are `seasonal_naive` and `sarima`. They are
+the only kinds that use the detected or manual seasonal period. `naive`,
+`average`, `mlforecast` and `prophet` do not use it.
+
+Target eligibility stays target-level: one eligibility status applies to every
+selected kind of a target. Whether the seasonal period is part of that status
+depends on the version's selection:
+
+- **The selection contains at least one seasonal-period kind.** ADR-007's rules
+  apply unchanged. Automatic detection runs, and a sent manual period for the
+  metric overrides detection. Inconclusive detection without a manual period
+  makes the target `requires_manual_seasonal_period`, so every selected kind
+  for it is `ineligible` with the existing reason.
+- **The selection contains no seasonal-period kind.** Seasonality is not
+  evaluated. Unless the target is ineligible for another reason, it is
+  `eligible` with null `seasonalPeriod` and `seasonalPeriodSource`, and
+  preflight reports `requiresManualSeasonalPeriod: false`. A manual period sent
+  for the metric is ignored: it is not recorded as the target's period and not
+  stored elsewhere in the snapshot.
+
+Request validation of `manualSeasonalPeriods` is unchanged for every
+selection: blank metric keys and periods below 2 are rejected with the
+standard `422` validation response, even when the period would be ignored.
+
+The other eligibility checks and their reasons are unchanged for every
+selection: numeric metrics only, no observations under the selected cutoff,
+the history limit, contiguity on the time-unit grid, and the derived-metric
+rules (ADR-010). Derived targets never use a seasonal period.
+
+Preflight and creation apply the same rule from the request's `modelKinds`, so
+the frozen snapshot matches a preflight run with the same selection class.
+Creation remains authoritative.
+
+No data-model change is needed. `prediction_targets.seasonal_period` and
+`seasonal_period_source` are nullable, and the snapshot's `seasonalPeriod` and
+`seasonalPeriodSource` are nullable and not required for an eligible target.
+The snapshot format, eligibility statuses and result statuses are unchanged.
+
+A queued snapshot without `modelKinds` calculates the legacy five kinds, which
+include `seasonal_naive` and `sarima`. Its eligibility was frozen at
+preparation, so legacy behaviour does not change.
+
+The Predictions UI follows the selection:
+
+- The manual seasonal period input and the "Automatic seasonal period" text are
+  shown in the preflight results only when the selection contains a
+  seasonal-period kind. The status and reason of every target are always shown.
+- Manual periods entered in the open tab are kept while hidden, but they are
+  not sent with a selection that has no seasonal-period kind. When a
+  seasonal-period kind is selected again, they are sent with the next
+  preflight, and TASK-062's keep, block and drop rules apply.
+- A selection change between the two classes, with and without a
+  seasonal-period kind, invalidates a passed preflight (see Work Limit).
+
 ### Work Limit
 
 The persisted-point estimate counts selected kinds only:
@@ -242,12 +310,17 @@ limit, every request that passes the candidate and period limits today still
 passes with all six kinds selected. The candidate, period and history limits
 are unchanged.
 
-Preflight validates `modelKinds` and applies this estimate. Eligibility does
-not depend on the selection, and because no valid selection can exceed the
-raised limit, a passed preflight stays valid when only the selection changes.
-Creation still recomputes the estimate from the frozen snapshot and remains
-authoritative. If creation rejects a request for any validation reason,
-including a limit, the Predictions UI shows the safe error message to the user.
+Preflight validates `modelKinds` and applies this estimate. Eligibility
+depends on the selection only through its class: whether it contains a
+seasonal-period kind (see Seasonal Period And Model Selection). A passed
+preflight therefore stays valid when the selection changes within the same
+class, and a change between the classes requires a new preflight. A selection
+without a seasonal-period kind can make more targets eligible, but the limit
+arithmetic above already assumes every candidate pair is eligible, so no valid
+selection can exceed the raised limit. Creation still recomputes the estimate
+from the frozen snapshot and remains authoritative. If creation rejects a
+request for any validation reason, including a limit, the Predictions UI shows
+the safe error message to the user.
 
 ## Dependency And Runtime
 
@@ -324,6 +397,19 @@ making it eligible when other kinds are not would split target-level
 eligibility into per-kind eligibility and change preflight, the snapshot and
 the UI. Prophet follows the existing target-level eligibility instead.
 
+The TASK-063A amendment keeps this rejection. It makes the seasonal-period
+requirement depend on the selection instead. Eligibility remains one status per
+target, so the snapshot shape, the eligibility and result statuses and the
+schema stay unchanged. Only a version whose selection contains no
+seasonal-period kind no longer waits for a period it would not use.
+
+## Seasonal Period Required For Every Selection
+
+Rejected by the developer in TASK-063A. This was the original rule of this ADR.
+A Prophet-only or baseline-only version made every result for a metric with
+inconclusive seasonality `ineligible`, although none of the selected kinds uses
+the period, and the UI asked for a period that affected no result.
+
 ## Keep The 100,000-Point Limit
 
 Rejected by the developer. With six kinds selected by default, requests that
@@ -396,6 +482,10 @@ Costs and constraints:
   ADR-012's release contract already requires.
 - Each result kind now appears in a version only when it was selected, so
   readers must not assume all kinds are present.
+- Under the TASK-063A amendment, a target's eligibility and seasonal period can
+  differ between versions with the same inputs but different selection
+  classes. A version without a seasonal-period kind records no seasonal period
+  for its targets.
 
 # Implementation Rules
 
@@ -408,6 +498,12 @@ Costs and constraints:
 - TASK-061C adds the model selection to the Predictions queue form, Prophet's
   labels, line style and interval band, the saved-version model display, and
   shows create-time validation errors.
+- TASK-063B applies the selection-dependent seasonal-period rule in backend
+  preflight and creation. It must not change seasonality detection, the
+  seasonal-period kinds' algorithms, the snapshot format or the schema.
+- TASK-063C shows, sends and requires manual periods in the Predictions queue
+  form only for a selection with a seasonal-period kind, and invalidates
+  preflight on a selection-class change.
 - Do not add Prophet holidays, MCMC sampling, changepoint tuning, per-request
   hyperparameters or saved per-user or per-organisation default selections.
 - Do not add a new worker, service, queue or retry.
@@ -424,3 +520,7 @@ Costs and constraints:
 - `tasks/TASK-061A-prophet-model-selection-architecture.md`
 - `tasks/TASK-061B-prophet-model-selection-backend.md`
 - `tasks/TASK-061C-prophet-model-selection-ui.md`
+- `tasks/TASK-062-preflight-manual-period-and-point-rounding.md`
+- `tasks/TASK-063A-seasonal-period-model-selection-architecture.md`
+- `tasks/TASK-063B-seasonal-period-model-selection-backend.md`
+- `tasks/TASK-063C-seasonal-period-model-selection-ui.md`
