@@ -13,6 +13,7 @@ import {
   preflightPredictions,
   type PredictionCutoffMode,
   type PredictionPreflightDto,
+  type PredictionPreflightMetricDto,
   type PredictionRequestSummaryDto,
   type PredictionTargetDto,
   type PredictionVersionDetailDto
@@ -24,6 +25,7 @@ import type { TimeserieDto } from "../../api/timeseries";
 import {
   buildPredictionMetricCharts,
   formatModelKind,
+  formatPredictionPointValue,
   predictionChartAxisTicks,
   predictionIntervalBandPath,
   predictionVersionModelKinds,
@@ -65,6 +67,12 @@ function isNumericPredictionTarget(target: PredictionTargetDto): boolean {
   // Other ineligible numeric metrics remain selectable so their missing results
   // can be communicated in the chart.
   return target.reason !== NON_NUMERIC_METRIC_REASON;
+}
+
+// A metric keeps its manual period after preflight reports it as the source,
+// so later requests from this tab still send it.
+function usesManualSeasonalPeriod(metric: PredictionPreflightMetricDto): boolean {
+  return metric.requiresManualSeasonalPeriod || metric.seasonalPeriodSource === "manual";
 }
 
 function toggleSet(set: Set<string>, value: string): Set<string> {
@@ -567,8 +575,8 @@ function PredictionsWorkspace(props: { orgId: string }) {
       setPreflight(response);
       setManualPeriods((current) => Object.fromEntries(
         response.metrics
-          .filter((metric) => metric.requiresManualSeasonalPeriod)
-          .map((metric) => [metric.metricId, current[metric.metricId] ?? 2])
+          .filter(usesManualSeasonalPeriod)
+          .map((metric) => [metric.metricId, current[metric.metricId] ?? metric.seasonalPeriod ?? 2])
       ));
     } catch (requestError) {
       setFormError(`Preflight failed. ${errorMessage(requestError)}`);
@@ -581,12 +589,12 @@ function PredictionsWorkspace(props: { orgId: string }) {
     const selectedLevel = selectedConfidenceLevel();
     if (selectedLevel === null) return;
     const missingManualPeriod = preflight?.metrics.some(
-      (metric) => metric.requiresManualSeasonalPeriod && (manualPeriods[metric.metricId] ?? 0) < 2
+      (metric) => usesManualSeasonalPeriod(metric) && (manualPeriods[metric.metricId] ?? 0) < 2
     );
     if (!preflight) return setFormError("Run preflight before creating a prediction version.");
     if (!preflight.metrics.length) return setFormError("Preflight found no forecastable metrics to create.");
     if (!name.trim()) return setFormError("Enter a unique prediction-version name.");
-    if (missingManualPeriod) return setFormError("Enter every required manual seasonal period before creating.");
+    if (missingManualPeriod) return setFormError("Enter every manual seasonal period as 2 or more, or clear it and run preflight again to try automatic detection.");
     const modelKinds = selectedRequestModelKinds();
     if (modelKinds === null) return;
     try {
@@ -682,7 +690,11 @@ function PredictionsWorkspace(props: { orgId: string }) {
           ><span aria-hidden="true">×</span></button>
           <p className="alert__text">{requestNoticeMessage(notice)}</p>
         </div>)}
-        {preflight ? <PreflightResults preflight={preflight} manualPeriods={manualPeriods} onManualPeriodChange={(metricId, value) => setManualPeriods((current) => ({ ...current, [metricId]: value }))} /> : null}
+        {preflight ? <PreflightResults preflight={preflight} manualPeriods={manualPeriods} onManualPeriodChange={(metricId, value) => setManualPeriods((current) => {
+          // A cleared period is not sent, so the next preflight detects it automatically.
+          if (value !== null) return { ...current, [metricId]: value };
+          return Object.fromEntries(Object.entries(current).filter(([id]) => id !== metricId));
+        })} /> : null}
       </section>
       <PredictionRequests
         requests={predictionRequests}
@@ -789,8 +801,8 @@ function PredictionRequestRow(props: {
   </article>;
 }
 
-function PreflightResults(props: { preflight: PredictionPreflightDto; manualPeriods: Record<string, number>; onManualPeriodChange: (metricId: string, value: number) => void }) {
-  return <section className="predictions-preflight" aria-live="polite"><h3>Preflight eligibility</h3>{props.preflight.metrics.length ? props.preflight.metrics.map((metric) => <div className="predictions-preflight__row" key={`${metric.scenarioId}:${metric.metricId}`}><strong>{metric.scenarioId} · {metric.metricId}</strong><span>{metric.status}{metric.reason ? ` — ${metric.reason}` : ""}</span>{metric.seasonalPeriod ? <span>Automatic seasonal period: {metric.seasonalPeriod} ({metric.seasonalPeriodSource})</span> : null}{metric.requiresManualSeasonalPeriod ? <label>Manual seasonal period <input aria-label={`Manual seasonal period for ${metric.metricId}`} className="input" type="number" min="2" value={props.manualPeriods[metric.metricId] ?? ""} onChange={(event) => props.onManualPeriodChange(metric.metricId, Number(event.target.value))} /></label> : null}</div>) : <p className="alert alert--info" role="status">No forecastable metrics were found for the selected scenarios and date range.</p>}</section>;
+function PreflightResults(props: { preflight: PredictionPreflightDto; manualPeriods: Record<string, number>; onManualPeriodChange: (metricId: string, value: number | null) => void }) {
+  return <section className="predictions-preflight" aria-live="polite"><h3>Preflight eligibility</h3>{props.preflight.metrics.length ? props.preflight.metrics.map((metric) => <div className="predictions-preflight__row" key={`${metric.scenarioId}:${metric.metricId}`}><strong>{metric.scenarioId} · {metric.metricId}</strong><span>{metric.status}{metric.reason ? ` — ${metric.reason}` : ""}</span>{usesManualSeasonalPeriod(metric) ? <label>Manual seasonal period <input aria-label={`Manual seasonal period for ${metric.metricId}`} className="input" type="number" min="2" value={props.manualPeriods[metric.metricId] ?? ""} onChange={(event) => props.onManualPeriodChange(metric.metricId, event.target.value === "" ? null : Number(event.target.value))} /></label> : metric.seasonalPeriod ? <span>Automatic seasonal period: {metric.seasonalPeriod} ({metric.seasonalPeriodSource})</span> : null}</div>) : <p className="alert alert--info" role="status">No forecastable metrics were found for the selected scenarios and date range.</p>}</section>;
 }
 
 function useDropdownDismissal(dropdownRef: RefObject<HTMLDetailsElement | null>) {
@@ -921,11 +933,13 @@ function MetricChart(props: { metricName: string; unit: string; lines: Predictio
   const lineColor = (line: PredictionChartLine, index: number) =>
     line.kind === "reality" ? "#166534" : lineColors[index % lineColors.length];
   const pointTitle = (line: PredictionChartLine, point: PredictionChartLine["points"][number]) => {
-    const estimate = `${line.label}: ${point.date}, point estimate ${point.value} ${props.unit}`;
+    // Reality values stay as entered; only prediction values are rounded.
+    const format = (value: number) => line.kind === "prediction" ? formatPredictionPointValue(value) : String(value);
+    const estimate = `${line.label}: ${point.date}, point estimate ${format(point.value)} ${props.unit}`;
     if (line.predictionIntervalStatus !== "available" || point.lowerBound === null || point.upperBound === null) {
       return estimate;
     }
-    return `${estimate}, lower bound ${point.lowerBound} ${props.unit}, upper bound ${point.upperBound} ${props.unit}, saved ${line.confidenceLevel}% prediction interval`;
+    return `${estimate}, lower bound ${format(point.lowerBound)} ${props.unit}, upper bound ${format(point.upperBound)} ${props.unit}, saved ${line.confidenceLevel}% prediction interval`;
   };
 
   return <article className="prediction-chart">

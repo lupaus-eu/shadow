@@ -1,0 +1,98 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-062/review-002",
+  "task": {
+    "id": "TASK-062",
+    "path": "tasks/TASK-062-preflight-manual-period-and-point-rounding.md"
+  },
+  "round": 2,
+  "reviewed_at": "2026-10-07T07:32:00Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "49f5cb3c1792d9566d5da44a70e8eabe35df0abb",
+    "head_sha": "4361a6233f7834c4d0da700110d388286d17e027",
+    "comparison": "49f5cb3c1792d9566d5da44a70e8eabe35df0abb...4361a6233f7834c4d0da700110d388286d17e027",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "All four round-1 findings are fixed. An empty manual period input now removes the metric's period, so creation stays blocked until preflight is run again, and that preflight omits the period and returns the metric to automatic detection. The formatter keeps exponent notation intact. The domain doc states the override, clearing, drop and default rules, and a new test covers omitted and cleared periods. State updates are immutable, the workspace is keyed by organisation, and there are no backend, API, migration or dependency changes. Lint, build and 295 frontend tests passed. Two new info findings: the creation-blocked message does not say how to return to automatic detection, and one line in the testing doc is not wrapped.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "bug",
+        "severity": "info",
+        "summary": "After clearing a manual-source period, the creation-blocked message does not say that running preflight again returns the metric to automatic detection.",
+        "rationale": "The block is correct because the shown preflight still reports a manual source, but the way back to automatic detection is documented only in the domain doc, not in the UI.",
+        "recommendation": "Mention in the message that the user can run preflight again to use automatic detection.",
+        "locations": [
+          {
+            "path": "frontend/src/features/predictions/PredictionsTab.tsx",
+            "line": 597
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "documentation",
+        "severity": "info",
+        "summary": "One line of the TASK-062 testing paragraph is not wrapped like the rest of the file.",
+        "rationale": "This is formatting only; the content matches the tests.",
+        "recommendation": "Re-wrap the line.",
+        "locations": [
+          {
+            "path": "docs/TESTING.md",
+            "line": 506
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-062/review-001",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "An empty input now removes the metric's period, the next preflight omits it, and a new test asserts that preflight and creation then send no manual period.",
+        "validated_by": {
+          "review_id": "TASK-062/review-002",
+          "commit": "4361a6233f7834c4d0da700110d388286d17e027"
+        }
+      },
+      {
+        "record_id": "TASK-062/review-001",
+        "finding_id": "F-002",
+        "disposition": "fixed",
+        "rationale": "Trailing zeros are trimmed only from fixed-point text, and exponent cases were added to the formatter tests.",
+        "validated_by": {
+          "review_id": "TASK-062/review-002",
+          "commit": "4361a6233f7834c4d0da700110d388286d17e027"
+        }
+      },
+      {
+        "record_id": "TASK-062/review-001",
+        "finding_id": "F-003",
+        "disposition": "fixed",
+        "rationale": "The domain doc now states the override of automatic detection, clearing, the drop condition, the default of 2 and per-metric keying.",
+        "validated_by": {
+          "review_id": "TASK-062/review-002",
+          "commit": "4361a6233f7834c4d0da700110d388286d17e027"
+        }
+      },
+      {
+        "record_id": "TASK-062/review-001",
+        "finding_id": "F-004",
+        "disposition": "fixed",
+        "rationale": "A new component test asserts that a period is no longer sent after preflight stops listing the metric or after the user clears it.",
+        "validated_by": {
+          "review_id": "TASK-062/review-002",
+          "commit": "4361a6233f7834c4d0da700110d388286d17e027"
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-062/review-001",
+  "task": {
+    "id": "TASK-062",
+    "path": "tasks/TASK-062-preflight-manual-period-and-point-rounding.md"
+  },
+  "round": 1,
+  "reviewed_at": "2026-10-07T07:12:00Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "49f5cb3c1792d9566d5da44a70e8eabe35df0abb",
+    "head_sha": "7dcfefd860194eab3eb647b53354387e56aae0f1",
+    "comparison": "49f5cb3c1792d9566d5da44a70e8eabe35df0abb...7dcfefd860194eab3eb647b53354387e56aae0f1",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "The change implements TASK-062 within scope. After preflight the form keeps the period for metrics that require one or already use a manual period, and the creation check and preflight rendering use the same rule. The backend always returns a sent manual period with source manual, so the fix stops every second request from losing the period. Hover rounding applies only to prediction lines, and Reality values, plot geometry and the y-axis labels are unchanged. The new tests fail without the fix. There are no backend, API, migration or dependency changes. Lint, build and 292 frontend tests passed. One medium finding: a manual period cannot be removed in the open tab. The other findings are low or info: the formatter mishandles values from 1e21, the domain doc does not state when a period is dropped, and no test checks that a period is dropped.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "bug",
+        "severity": "medium",
+        "summary": "Once entered, a manual seasonal period cannot be removed in the open tab, so automatic detection for that metric never comes back without a page reload.",
+        "rationale": "The backend always prefers a sent manual period, so after a period is entered every later preflight reports the metric as manual and the drop-when-automatic branch never runs. Clearing the input stores zero, which blocks creation, and a re-run preflight then sends zero, which the backend rejects with a validation error. A metric that is manual in one scenario and automatic in another still gets one shared period, but per-scenario periods are out of scope.",
+        "recommendation": "Let an empty input remove the metric's period so that a re-run preflight returns to automatic detection, and document the override and how to undo it.",
+        "locations": [
+          {
+            "path": "frontend/src/features/predictions/PredictionsTab.tsx",
+            "line": 576
+          },
+          {
+            "path": "frontend/src/features/predictions/PredictionsTab.tsx",
+            "line": 801
+          },
+          {
+            "path": "backend/app/api/v1/predictions/service.py",
+            "line": 1636
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "bug",
+        "severity": "low",
+        "summary": "The point value formatter corrupts values of magnitude 1e21 or more whose exponent ends in zero.",
+        "rationale": "From 1e21, toFixed returns exponent notation, and the trailing-zero trim then removes a digit of the exponent, so the hover text shows the wrong number. Business values this large are unlikely.",
+        "recommendation": "Trim trailing zeros only from fixed-point text, and add exponent cases to the formatter tests.",
+        "locations": [
+          {
+            "path": "frontend/src/features/predictions/predictionChart.ts",
+            "line": 56
+          }
+        ]
+      },
+      {
+        "id": "F-003",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "The forecasting domain doc says an entered manual period is kept until the user changes it, but does not say when a period is dropped or that it overrides automatic detection.",
+        "rationale": "The code drops a period when a later preflight does not list the metric as requiring or using a manual period, and returning to the metric then starts from the default of 2.",
+        "recommendation": "State the drop condition, the default, the override of automatic detection and how to return to automatic detection.",
+        "locations": [
+          {
+            "path": "docs/domains/FORECASTING.md",
+            "line": 108
+          }
+        ]
+      },
+      {
+        "id": "F-004",
+        "category": "missing_test",
+        "severity": "info",
+        "summary": "No test checks that a later request no longer sends a manual period after preflight stops listing the metric or reports it as automatic.",
+        "rationale": "The task says these periods are still dropped, but no component test asserts that a period disappears from a later request.",
+        "recommendation": "Add a regression test in which later preflights omit the metric or report it as automatic, and assert that the create request has no manual period for it.",
+        "locations": [
+          {
+            "path": "frontend/src/features/predictions/PredictionsTab.test.tsx",
+            "line": 187
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": []
+  }
+}

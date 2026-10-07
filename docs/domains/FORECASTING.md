@@ -105,6 +105,20 @@ seasonal period is required. Until one is supplied the target is not eligible,
 so every selected result kind for it is ineligible. Seasonal-naive and SARIMA
 use the period; the other kinds do not.
 
+A sent manual period overrides automatic detection for that metric.
+
+In the Predictions tab, a manual period entered in the queue form is kept and
+sent with every later preflight and creation request from the open tab until
+the user changes or clears it. Preflight shows the editable manual period both
+for a metric that requires one and for a metric whose period source is already
+manual, and creation is blocked while any shown manual period is missing or
+below 2. Clearing the input and running preflight again returns the metric to
+automatic detection. A period is dropped when a later preflight does not list
+the metric as requiring or using a manual period; if the metric later requires
+one again, the input starts from 2. Manual periods are keyed by metric, so one
+value applies to every selected scenario, and they are not remembered across
+page reloads.
+
 MLForecast cross-validation uses rolling origins when enough history supports
 three validation windows. The result records MAE or an explicit unavailable
 state. Forecasting persists every selected result kind rather than silently
@@ -156,7 +170,10 @@ all six kinds and sends the selection in canonical order with preflight and
 creation. Changing it keeps a successful preflight, because eligibility and the
 point limit do not depend on it. Each saved version lists the models it ran.
 A chart reports missing results only for models that a plotted version ran, and
-separately names selected models that no plotted version ran.
+separately names selected models that no plotted version ran. Chart hover text
+shows prediction point estimates and bounds rounded to at most two decimals
+without trailing zeros; plotted positions, stored values and live Reality
+values are unchanged.
 
 ### Prediction Intervals
 

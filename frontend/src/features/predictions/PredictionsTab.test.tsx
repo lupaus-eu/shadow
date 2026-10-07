@@ -184,6 +184,127 @@ describe("PredictionsTab", () => {
     expect(api.fetchTimeseries).toHaveBeenCalledWith("acme", "reality", expect.any(AbortSignal));
   });
 
+  it("keeps an entered manual seasonal period for consecutive queue cycles", async () => {
+    api.preflightPredictions
+      .mockResolvedValueOnce({ metrics: [{
+        scenarioId: "future", metricId: "revenue", status: "eligible", reason: null,
+        seasonalPeriod: null, seasonalPeriodSource: null, requiresManualSeasonalPeriod: true
+      }] })
+      .mockResolvedValueOnce({ metrics: [{
+        scenarioId: "future", metricId: "revenue", status: "eligible", reason: null,
+        seasonalPeriod: 3, seasonalPeriodSource: "manual", requiresManualSeasonalPeriod: false
+      }] });
+    api.createPrediction.mockImplementation((_orgId: string, payload: { name: string }) => Promise.resolve({
+      id: `request-${payload.name}`, name: payload.name, state: "queued",
+      submittedTime: "2026-01-01T12:00:00Z", startTime: null, finishTime: null,
+      failureCode: null, failureReason: null, completedPredictionId: null
+    }));
+    render(<PredictionsTab orgId="acme" />);
+    await screen.findByText(/selected scenario's own data/i);
+
+    await runPreflight();
+    fireEvent.change(screen.getByLabelText("Manual seasonal period for revenue"), { target: { value: "3" } });
+    fireEvent.click(screen.getByRole("button", { name: "Queue prediction" }));
+    await waitFor(() => expect(api.createPrediction).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.queryByText("Preflight eligibility")).not.toBeInTheDocument());
+
+    fireEvent.change(screen.getByLabelText("Version name"), { target: { value: "Second plan" } });
+    fireEvent.click(screen.getByRole("button", { name: "Run preflight" }));
+    await screen.findByText("Preflight eligibility");
+    expect(api.preflightPredictions).toHaveBeenLastCalledWith(
+      "acme", expect.objectContaining({ manualSeasonalPeriods: { revenue: 3 } })
+    );
+    expect(screen.getByLabelText("Manual seasonal period for revenue")).toHaveValue(3);
+    expect(screen.queryByText(/Automatic seasonal period/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Queue prediction" }));
+
+    await waitFor(() => expect(api.createPrediction).toHaveBeenCalledTimes(2));
+    for (const [, payload] of api.createPrediction.mock.calls) {
+      expect(payload).toEqual(expect.objectContaining({ manualSeasonalPeriods: { revenue: 3 } }));
+    }
+  });
+
+  it("drops a manual period that preflight no longer lists or that the user clears", async () => {
+    const requiresManual = { metrics: [{
+      scenarioId: "future", metricId: "revenue", status: "eligible", reason: null,
+      seasonalPeriod: null, seasonalPeriodSource: null, requiresManualSeasonalPeriod: true
+    }] };
+    api.preflightPredictions
+      .mockResolvedValueOnce(requiresManual)
+      .mockResolvedValueOnce({ metrics: [{
+        scenarioId: "future", metricId: "cost", status: "eligible", reason: null,
+        seasonalPeriod: 12, seasonalPeriodSource: "automatic", requiresManualSeasonalPeriod: false
+      }] })
+      .mockResolvedValueOnce(requiresManual)
+      .mockResolvedValueOnce({ metrics: [{
+        scenarioId: "future", metricId: "revenue", status: "eligible", reason: null,
+        seasonalPeriod: 12, seasonalPeriodSource: "automatic", requiresManualSeasonalPeriod: false
+      }] });
+    render(<PredictionsTab orgId="acme" />);
+    await screen.findByText(/selected scenario's own data/i);
+
+    await runPreflight();
+    fireEvent.click(screen.getByRole("button", { name: "Run preflight" }));
+    await waitFor(() => expect(screen.queryByLabelText("Manual seasonal period for revenue")).not.toBeInTheDocument());
+    expect(api.preflightPredictions).toHaveBeenLastCalledWith(
+      "acme", expect.objectContaining({ manualSeasonalPeriods: { revenue: 12 } })
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Run preflight" }));
+    const manualInput = await screen.findByLabelText("Manual seasonal period for revenue");
+    expect(api.preflightPredictions).toHaveBeenLastCalledWith(
+      "acme", expect.objectContaining({ manualSeasonalPeriods: {} })
+    );
+    expect(manualInput).toHaveValue(2);
+
+    fireEvent.change(manualInput, { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "Run preflight" }));
+    expect(await screen.findByText("Automatic seasonal period: 12 (automatic)")).toBeInTheDocument();
+    expect(api.preflightPredictions).toHaveBeenLastCalledWith(
+      "acme", expect.objectContaining({ manualSeasonalPeriods: {} })
+    );
+    expect(screen.queryByLabelText("Manual seasonal period for revenue")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Queue prediction" }));
+    await waitFor(() => expect(api.createPrediction).toHaveBeenCalledWith(
+      "acme", expect.objectContaining({ manualSeasonalPeriods: {} })
+    ));
+  });
+
+  it("shows the manual input for a manual-source metric and blocks a missing or invalid period", async () => {
+    api.preflightPredictions.mockResolvedValue({ metrics: [{
+      scenarioId: "future", metricId: "revenue", status: "eligible", reason: null,
+      seasonalPeriod: 4, seasonalPeriodSource: "manual", requiresManualSeasonalPeriod: false
+    }, {
+      scenarioId: "future", metricId: "cost", status: "eligible", reason: null,
+      seasonalPeriod: 12, seasonalPeriodSource: "automatic", requiresManualSeasonalPeriod: false
+    }] });
+    render(<PredictionsTab orgId="acme" />);
+    await screen.findByText(/selected scenario's own data/i);
+    fireEvent.change(screen.getByLabelText("Version name"), { target: { value: "Created plan" } });
+    fireEvent.change(screen.getAllByLabelText("Start date")[0], { target: { value: "2026-01-10" } });
+    fireEvent.change(screen.getAllByLabelText("End date")[0], { target: { value: "2026-02-10" } });
+    fireEvent.click(screen.getByRole("button", { name: "Run preflight" }));
+    await screen.findByText("Preflight eligibility");
+
+    const manualInput = screen.getByLabelText("Manual seasonal period for revenue");
+    expect(manualInput).toHaveValue(4);
+    expect(screen.queryByText("Automatic seasonal period: 4 (manual)")).not.toBeInTheDocument();
+    expect(screen.getByText("Automatic seasonal period: 12 (automatic)")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Manual seasonal period for cost")).not.toBeInTheDocument();
+
+    for (const invalidPeriod of ["", "1"]) {
+      fireEvent.change(manualInput, { target: { value: invalidPeriod } });
+      fireEvent.click(screen.getByRole("button", { name: "Queue prediction" }));
+      expect(await screen.findByRole("alert")).toHaveTextContent("Enter every manual seasonal period as 2 or more, or clear it and run preflight again to try automatic detection.");
+    }
+    expect(api.createPrediction).not.toHaveBeenCalled();
+
+    fireEvent.change(manualInput, { target: { value: "5" } });
+    fireEvent.click(screen.getByRole("button", { name: "Queue prediction" }));
+    await waitFor(() => expect(api.createPrediction).toHaveBeenCalledWith(
+      "acme", expect.objectContaining({ manualSeasonalPeriods: { revenue: 5 } })
+    ));
+  });
+
   it("shows active and recent request states, and keeps the server cancellation result", async () => {
     const queued = {
       id: "queued-request", name: "Queued plan", state: "queued" as const,
@@ -350,6 +471,45 @@ describe("PredictionsTab", () => {
     expect(container.querySelector(".prediction-chart__interval-band")).toBeInTheDocument();
     expect(container.querySelector("svg")?.textContent).toContain("44.000");
     expect(screen.getByText(/point estimate 30 EUR, lower bound 20 EUR, upper bound 40 EUR, saved 90% prediction interval/i)).toBeInTheDocument();
+  });
+
+  it("rounds prediction hover values without changing plot geometry or Reality values", async () => {
+    const preciseVersion: PredictionVersionDetailDto = {
+      ...version,
+      targets: [{
+        ...version.targets[0],
+        results: [{
+          ...version.targets[0].results[0],
+          kind: "mlforecast",
+          predictionIntervalStatus: "available",
+          points: [
+            { date: "2026-01-10", value: 30.25, lowerBound: 20.125, upperBound: 40.375 },
+            { date: "2026-02-10", value: 34.5678, lowerBound: 24.1, upperBound: 40 }
+          ]
+        }]
+      }]
+    };
+    api.fetchPredictions.mockResolvedValueOnce([preciseVersion]);
+    api.fetchPrediction.mockResolvedValueOnce(preciseVersion);
+    api.fetchTimeseries.mockResolvedValueOnce([{ id: "revenue", name: "Revenue", description: "", unit: "EUR",
+      timeUnit: "month", valueUnit: "number", values: [{ date: "2026-01-10", value: 28.125 }] }]);
+    render(<PredictionsTab orgId="acme" />);
+
+    const svg = await screen.findByRole("img", { name: /Revenue prediction comparison chart/ });
+    const series = svg.querySelector('[data-series-id="version-1:future:revenue:mlforecast"]')!;
+    const titles = [...series.querySelectorAll("circle title")].map((title) => title.textContent);
+    expect(titles[0]).toMatch(/point estimate 30\.25 EUR, lower bound 20\.13 EUR, upper bound 40\.38 EUR,/);
+    expect(titles[1]).toMatch(/point estimate 34\.57 EUR, lower bound 24\.1 EUR, upper bound 40 EUR,/);
+    // Raw values: the first point lies exactly halfway between 20.125 and 40.375.
+    expect(series.querySelector("circle")).toHaveAttribute("cy", "132");
+    expect(series.querySelector("path")?.getAttribute("d")).toMatch(/^M56 132 L702 /);
+    const band = svg.querySelector(".prediction-chart__interval-band")!.getAttribute("d")!;
+    expect(band).toMatch(/^M56 38 L702 /);
+    expect(band).toMatch(/L56 226 Z$/);
+
+    fireEvent.click(screen.getByLabelText(/Include current Reality/));
+    await waitFor(() => expect(svg.querySelector('[data-series-id="reality:revenue"]')).toBeInTheDocument());
+    expect(svg.querySelector('[data-series-id="reality:revenue"] circle title')).toHaveTextContent(/point estimate 28\.125 EUR$/);
   });
 
   it("selects and deselects all numeric metrics for comparison", async () => {

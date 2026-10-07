@@ -498,6 +498,17 @@ models, and the chart's missing-results and not-run notes for versions that ran
 a subset. Run `pnpm lint`, `pnpm test` and
 `pnpm build` from `frontend/`.
 
+TASK-062's frontend tests cover two consecutive preflight-and-queue cycles that
+send the same manual seasonal period when the second preflight reports a
+manual source, a period dropped when preflight no longer lists the metric or
+returned to automatic detection after the input is cleared, the editable
+manual input (not the automatic label) for a manual-source metric, blocked
+creation for a missing or below-2 manual period, and rounded prediction hover
+values with unchanged point, line and band geometry and unrounded Reality hover
+values. `predictionChart.test.ts` covers
+the display formatter for integers, one and two decimals, rounding, grouping,
+negatives, integers ending in zero, exponent notation and `-0`.
+
 Run assembled local browser and container QA separately with
 `docs/qa/PREDICTION-WORKER-RUNTIME-QA.md`. Record unavailable Docker, browser,
 Coolify-provider or production checks as unavailable, never as passing.

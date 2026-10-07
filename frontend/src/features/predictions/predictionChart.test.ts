@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildPredictionMetricCharts, formatModelKind, predictionChartAxisTicks, predictionIntervalBandPath, predictionVersionModelKinds, predictionVersionStatus } from "./predictionChart";
+import { buildPredictionMetricCharts, formatModelKind, formatPredictionPointValue, predictionChartAxisTicks, predictionIntervalBandPath, predictionVersionModelKinds, predictionVersionStatus } from "./predictionChart";
 import type { PredictionVersionDetailDto } from "../../api/predictions";
 
 const version = (
@@ -261,5 +261,28 @@ describe("prediction chart readability", () => {
     const chart = buildPredictionMetricCharts(input)[0];
     expect(chart.realityMessage).toBeNull();
     expect(chart.lines.every((line) => line.kind === "prediction")).toBe(true);
+  });
+});
+
+describe("formatPredictionPointValue", () => {
+  it.each([
+    [30, "30"],
+    [30.0, "30"],
+    [0, "0"],
+    [100, "100"],
+    [-100.004, "-100"],
+    [12.3, "12.3"],
+    [12.3456, "12.35"],
+    [12.344, "12.34"],
+    [2.999, "3"],
+    [1234567.891, "1234567.89"],
+    [2e30, "2e+30"],
+    [-1.5e30, "-1.5e+30"],
+    [-12.3456, "-12.35"],
+    [-12.3, "-12.3"],
+    [-0.001, "0"],
+    [-0, "0"]
+  ])("formats %d as %s", (value, expected) => {
+    expect(formatPredictionPointValue(value)).toBe(expected);
   });
 });

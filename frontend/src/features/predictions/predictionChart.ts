@@ -51,6 +51,15 @@ export function formatModelKind(kind: string): string {
   return modelKindLabels[kind] ?? kind.replaceAll("_", " ");
 }
 
+// Display only: at most two decimals without trailing zeros, "." as the
+// separator, no grouping and never "-0".
+export function formatPredictionPointValue(value: number): string {
+  const fixed = value.toFixed(2);
+  // From 1e21, toFixed returns exponent notation, which has no decimals to trim.
+  const text = fixed.includes("e") ? fixed : fixed.replace(/\.?0+$/, "");
+  return text === "-0" ? "0" : text;
+}
+
 // Canonical kinds first, then any unknown kinds alphabetically.
 export function sortModelKinds(kinds: Iterable<string>): string[] {
   const order = (kind: string) => {
