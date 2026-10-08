@@ -543,6 +543,18 @@ queueing runs and enabled again after either succeeds or fails. A same-class
 subset test sends Naive and SARIMA with their manual period. `predictions.test.ts` covers
 `selectionUsesSeasonalPeriod`.
 
+TASK-064's frontend tests in `PredictionsTab.test.tsx` cover legend line
+samples that carry each series' colour and dash pattern (dashed and solid) and
+the thicker Current Reality style; y-axis range labels rounded like prediction
+hover values when interval bounds or Current Reality set the range; hover text
+rows for a point with an interval, without one, for Current Reality and for a
+dense line sharing its first point with a sparse line; and a point listing an
+identical series without an interval and a series closer than the dot radius
+with its own value, but not a series on the same date far enough away to hover
+separately. `predictionChart.test.ts` covers `predictionPointTitles`: line
+order, differing value and interval notes, unrounded Reality values, and a dot
+exactly the radius away or on another date being excluded.
+
 Run assembled local browser and container QA separately with
 `docs/qa/PREDICTION-WORKER-RUNTIME-QA.md`. Record unavailable Docker, browser,
 Coolify-provider or production checks as unavailable, never as passing.

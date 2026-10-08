@@ -29,6 +29,7 @@ import {
   formatPredictionPointValue,
   predictionChartAxisTicks,
   predictionIntervalBandPath,
+  predictionPointTitles,
   predictionVersionModelKinds,
   sortModelKinds,
   type PredictionChartLine
@@ -956,15 +957,9 @@ function MetricChart(props: { metricName: string; unit: string; lines: Predictio
   const y = (value: number) => height - padding.bottom - ((value - min) / span) * (height - padding.top - padding.bottom);
   const lineColor = (line: PredictionChartLine, index: number) =>
     line.kind === "reality" ? "#166534" : lineColors[index % lineColors.length];
-  const pointTitle = (line: PredictionChartLine, point: PredictionChartLine["points"][number]) => {
-    // Reality values stay as entered; only prediction values are rounded.
-    const format = (value: number) => line.kind === "prediction" ? formatPredictionPointValue(value) : String(value);
-    const estimate = `${line.label}: ${point.date}, point estimate ${format(point.value)} ${props.unit}`;
-    if (line.predictionIntervalStatus !== "available" || point.lowerBound === null || point.upperBound === null) {
-      return estimate;
-    }
-    return `${estimate}, lower bound ${format(point.lowerBound)} ${props.unit}, upper bound ${format(point.upperBound)} ${props.unit}, saved ${line.confidenceLevel}% prediction interval`;
-  };
+  // Dots closer than their radius cannot be hovered separately, so they share hover text.
+  const pointRadius = 3;
+  const pointTitle = predictionPointTitles(props.lines, props.unit, y, pointRadius);
 
   return <article className="prediction-chart">
     <header><h3>{props.metricName}</h3></header>
@@ -972,8 +967,8 @@ function MetricChart(props: { metricName: string; unit: string; lines: Predictio
       <text className="prediction-chart__unit" x="8" y="18">{props.unit}</text>
       <line className="prediction-chart__axis" x1={padding.left} x2={padding.left} y1={padding.top} y2={height - padding.bottom} />
       <line className="prediction-chart__axis" x1={padding.left} x2={width - padding.right} y1={height - padding.bottom} y2={height - padding.bottom} />
-      <text x="4" y={padding.top + 4}>{max.toPrecision(5)}</text>
-      <text x="4" y={height - padding.bottom}>{min.toPrecision(5)}</text>
+      <text className="prediction-chart__range" x="4" y={padding.top + 4}>{formatPredictionPointValue(max)}</text>
+      <text className="prediction-chart__range" x="4" y={height - padding.bottom}>{formatPredictionPointValue(min)}</text>
       {axisTicks.filter((tick) => tick.isYearBoundary).map((tick) =>
         <line className="prediction-chart__year-boundary" key={`year-boundary:${tick.date}`} x1={x(tick.date)} x2={x(tick.date)} y1={padding.top} y2={height - padding.bottom} />)}
       {axisTicks.filter((tick) => tick.showYearLabel).map((tick) =>
@@ -993,7 +988,7 @@ function MetricChart(props: { metricName: string; unit: string; lines: Predictio
           <path className={line.kind === "reality" ? "prediction-chart__line prediction-chart__line--reality" : "prediction-chart__line"} stroke={lineColor(line, index)} strokeDasharray={line.strokeDasharray} d={path}>
             <title>{line.provenance}</title>
           </path>
-          {line.points.map((point) => <circle key={`${line.id}:${point.date}`} cx={x(point.date)} cy={y(point.value)} r="3" className={showDots ? "prediction-chart__point" : "prediction-chart__point-hit-target"} fill={showDots ? lineColor(line, index) : "transparent"}>
+          {line.points.map((point) => <circle key={`${line.id}:${point.date}`} cx={x(point.date)} cy={y(point.value)} r={pointRadius} className={showDots ? "prediction-chart__point" : "prediction-chart__point-hit-target"} fill={showDots ? lineColor(line, index) : "transparent"}>
             <title>{pointTitle(line, point)}</title>
           </circle>)}
         </g>;
@@ -1005,7 +1000,9 @@ function MetricChart(props: { metricName: string; unit: string; lines: Predictio
     {props.missingModelKinds.length ? <p className="prediction-chart__no-results" role="status">No results to show for: {formatSeriesList(props.missingModelKinds.map(formatModelKind))}.</p> : null}
     {props.notRunModelKinds.length ? <p className="prediction-chart__no-results" role="status">Not run by the selected versions: {formatSeriesList(props.notRunModelKinds.map(formatModelKind))}.</p> : null}
     <ul className="prediction-chart__legend">{props.lines.map((line, index) => <li key={line.id}>
-      <span className={line.kind === "reality" ? "prediction-chart__swatch prediction-chart__swatch--reality" : "prediction-chart__swatch"} style={line.kind === "reality" ? undefined : { backgroundColor: lineColor(line, index) }} />
+      <svg className="prediction-chart__swatch" viewBox="0 0 28 8" aria-hidden="true">
+        <line className={line.kind === "reality" ? "prediction-chart__line prediction-chart__line--reality" : "prediction-chart__line"} x1="0" x2="28" y1="4" y2="4" stroke={lineColor(line, index)} strokeDasharray={line.strokeDasharray} />
+      </svg>
       <strong>{line.label}</strong><small>{line.provenance}</small>
     </li>)}</ul>
   </article>;

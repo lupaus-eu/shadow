@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildPredictionMetricCharts, formatModelKind, formatPredictionPointValue, predictionChartAxisTicks, predictionIntervalBandPath, predictionVersionModelKinds, predictionVersionStatus } from "./predictionChart";
+import { buildPredictionMetricCharts, formatModelKind, formatPredictionPointValue, predictionChartAxisTicks, predictionIntervalBandPath, predictionPointTitles, predictionVersionModelKinds, predictionVersionStatus } from "./predictionChart";
+import type { PredictionChartLine } from "./predictionChart";
 import type { PredictionVersionDetailDto } from "../../api/predictions";
 
 const version = (
@@ -284,5 +285,36 @@ describe("formatPredictionPointValue", () => {
     [-0, "0"]
   ])("formats %d as %s", (value, expected) => {
     expect(formatPredictionPointValue(value)).toBe(expected);
+  });
+});
+
+describe("predictionPointTitles", () => {
+  const line = (id: string, value: number, extra: Partial<PredictionChartLine> = {}): PredictionChartLine => ({
+    id, label: id, provenance: id, kind: "prediction",
+    points: [{ date: "2026-01-01", value, lowerBound: null, upperBound: null }], ...extra
+  });
+  const banded = line("banded", 10, {
+    predictionIntervalStatus: "available", confidenceLevel: 90,
+    points: [{ date: "2026-01-01", value: 10, lowerBound: 8.123, upperBound: 12 }]
+  });
+  const titles = (lines: PredictionChartLine[]) => predictionPointTitles(lines, "EUR", (value) => value, 3);
+
+  it("lists series closer than the radius in line order and notes what differs", () => {
+    const reality = line("reality", 12.005, { kind: "reality" });
+    const lines = [reality, banded, line("same", 10), line("near", 11.5), line("edge", 13), line("far", 20)];
+    expect(titles(lines)(banded, banded.points[0]).split("\n")).toEqual([
+      "10 EUR, lower bound 8.12 EUR, upper bound 12 EUR (90% prediction interval)",
+      "reality (12.005 EUR, no prediction interval)",
+      "banded",
+      "same (no prediction interval)",
+      "near (11.5 EUR, no prediction interval)",
+      "2026-01-01"
+    ]);
+  });
+
+  it("excludes a dot exactly the radius away and other dates", () => {
+    const other = line("other", 10, { points: [{ date: "2026-02-01", value: 10, lowerBound: null, upperBound: null }] });
+    const plain = line("plain", 10);
+    expect(titles([plain, line("edge", 7), other])(plain, plain.points[0])).toBe("10 EUR\nplain\n2026-01-01");
   });
 });

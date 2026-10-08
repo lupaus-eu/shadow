@@ -498,8 +498,13 @@ describe("PredictionsTab", () => {
 
     await screen.findByText(/selected scenario's own data/i);
     expect(container.querySelector(".prediction-chart__interval-band")).toBeInTheDocument();
-    expect(container.querySelector("svg")?.textContent).toContain("44.000");
-    expect(screen.getByText(/point estimate 30 EUR, lower bound 20 EUR, upper bound 40 EUR, saved 90% prediction interval/i)).toBeInTheDocument();
+    // The interval bounds set the range.
+    expect([...container.querySelectorAll(".prediction-chart__range")].map((label) => label.textContent)).toEqual(["44", "20"]);
+    expect(container.querySelector('[data-series-id="version-1:future:revenue:mlforecast"] circle title')?.textContent).toBe([
+      "30 EUR, lower bound 20 EUR, upper bound 40 EUR (90% prediction interval)",
+      "January plan · Future plan · MLForecast",
+      "2026-01-10"
+    ].join("\n"));
   });
 
   it("rounds prediction hover values without changing plot geometry or Reality values", async () => {
@@ -527,8 +532,9 @@ describe("PredictionsTab", () => {
     const svg = await screen.findByRole("img", { name: /Revenue prediction comparison chart/ });
     const series = svg.querySelector('[data-series-id="version-1:future:revenue:mlforecast"]')!;
     const titles = [...series.querySelectorAll("circle title")].map((title) => title.textContent);
-    expect(titles[0]).toMatch(/point estimate 30\.25 EUR, lower bound 20\.13 EUR, upper bound 40\.38 EUR,/);
-    expect(titles[1]).toMatch(/point estimate 34\.57 EUR, lower bound 24\.1 EUR, upper bound 40 EUR,/);
+    expect(titles[0]?.split("\n")[0]).toBe("30.25 EUR, lower bound 20.13 EUR, upper bound 40.38 EUR (80% prediction interval)");
+    expect(titles[1]?.split("\n")[0]).toBe("34.57 EUR, lower bound 24.1 EUR, upper bound 40 EUR (80% prediction interval)");
+    expect([...svg.querySelectorAll(".prediction-chart__range")].map((label) => label.textContent)).toEqual(["40.38", "20.13"]);
     // Raw values: the first point lies exactly halfway between 20.125 and 40.375.
     expect(series.querySelector("circle")).toHaveAttribute("cy", "132");
     expect(series.querySelector("path")?.getAttribute("d")).toMatch(/^M56 132 L702 /);
@@ -538,7 +544,78 @@ describe("PredictionsTab", () => {
 
     fireEvent.click(screen.getByLabelText(/Include current Reality/));
     await waitFor(() => expect(svg.querySelector('[data-series-id="reality:revenue"]')).toBeInTheDocument());
-    expect(svg.querySelector('[data-series-id="reality:revenue"] circle title')).toHaveTextContent(/point estimate 28\.125 EUR$/);
+    expect(svg.querySelector('[data-series-id="reality:revenue"] circle title')?.textContent).toBe(
+      "28.125 EUR\nCurrent Reality · manually entered realized data · Revenue\n2026-01-10"
+    );
+  });
+
+  it("lists every series whose dot cannot be hovered separately and formats a Reality-set range", async () => {
+    const result = (kind: string, values: [number, number]) => ({
+      ...version.targets[0].results[0],
+      kind,
+      points: [
+        { date: "2026-01-10", value: values[0], lowerBound: null, upperBound: null },
+        { date: "2026-02-10", value: values[1], lowerBound: null, upperBound: null }
+      ]
+    });
+    const overlappingVersion: PredictionVersionDetailDto = {
+      ...version,
+      targets: [{
+        ...version.targets[0],
+        results: [
+          {
+            ...version.targets[0].results[0],
+            kind: "mlforecast",
+            predictionIntervalStatus: "available",
+            points: [
+              { date: "2026-01-10", value: 30, lowerBound: 20, upperBound: 40 },
+              { date: "2026-02-10", value: 34, lowerBound: 24, upperBound: 44 }
+            ]
+          },
+          result("naive", [30, 34]),
+          // Over the 20-44 EUR range, 0.3 EUR is about 2.4 SVG units, closer than the dot radius.
+          result("seasonal_naive", [30.3, 34]),
+          // 1 EUR is about 7.8 SVG units, so this dot can be hovered separately.
+          result("sarima", [31, 34])
+        ]
+      }]
+    };
+    api.fetchPredictions.mockResolvedValueOnce([overlappingVersion]);
+    api.fetchPrediction.mockResolvedValueOnce(overlappingVersion);
+    api.fetchTimeseries.mockResolvedValueOnce([{ id: "revenue", name: "Revenue", description: "", unit: "EUR",
+      timeUnit: "month", valueUnit: "number", values: [{ date: "2026-02-10", value: 50.567 }] }]);
+    render(<PredictionsTab orgId="acme" />);
+
+    const svg = await screen.findByRole("img", { name: /Revenue prediction comparison chart/ });
+    const title = (kind: string) => svg.querySelector(`[data-series-id="version-1:future:revenue:${kind}"] circle title`)?.textContent;
+    expect(title("mlforecast")).toBe([
+      "30 EUR, lower bound 20 EUR, upper bound 40 EUR (80% prediction interval)",
+      "January plan · Future plan · MLForecast",
+      "January plan · Future plan · Naive (no prediction interval)",
+      "January plan · Future plan · Seasonal naive (30.3 EUR, no prediction interval)",
+      "2026-01-10"
+    ].join("\n"));
+    expect(title("naive")).toBe([
+      "30 EUR",
+      "January plan · Future plan · MLForecast (lower bound 20 EUR, upper bound 40 EUR (80% prediction interval))",
+      "January plan · Future plan · Naive",
+      "January plan · Future plan · Seasonal naive (30.3 EUR)",
+      "2026-01-10"
+    ].join("\n"));
+    expect(title("sarima")).toBe("31 EUR\nJanuary plan · Future plan · SARIMA\n2026-01-10");
+
+    // Legend samples use each line's colour and dash pattern.
+    const legend = svg.closest("article")!.querySelector(".prediction-chart__legend")!;
+    expect(legend.querySelectorAll("svg[aria-hidden='true']")).toHaveLength(4);
+    expect([...legend.querySelectorAll("line")].map((sample) => [sample.getAttribute("stroke"), sample.getAttribute("stroke-dasharray")]))
+      .toEqual([["#c94a11", null], ["#2563eb", "7 4"], ["#8b5cf6", null], ["#0f766e", null]]);
+
+    fireEvent.click(screen.getByLabelText(/Include current Reality/));
+    await waitFor(() => expect(svg.querySelector('[data-series-id="reality:revenue"]')).toBeInTheDocument());
+    const realitySample = legend.querySelector("line")!;
+    expect(realitySample).toHaveClass("prediction-chart__line--reality");
+    expect(realitySample).toHaveAttribute("stroke", "#166534");
+    expect([...svg.querySelectorAll(".prediction-chart__range")].map((label) => label.textContent)).toEqual(["50.57", "20"]);
   });
 
   it("selects and deselects all numeric metrics for comparison", async () => {
@@ -1027,7 +1104,13 @@ describe("PredictionsTab", () => {
     expect(fitted.querySelector('path')?.getAttribute('d')?.match(/[ML]/g)).toHaveLength(count);
     expect(fitted.querySelector('circle')).toHaveAttribute('cx', '56');
     expect(fitted.querySelector('circle')?.getAttribute('fill')).toBe(count >= 100 ? 'transparent' : '#c94a11');
-    expect(fitted.querySelector('circle title')).toHaveTextContent(/2025-12-31, point estimate 30 EUR, lower bound 20 EUR, upper bound 40 EUR, saved 80% prediction interval/);
+    // The sparse naive line has the same first point without an interval.
+    expect(fitted.querySelector('circle title')?.textContent).toBe([
+      '30 EUR, lower bound 20 EUR, upper bound 40 EUR (80% prediction interval)',
+      'January plan · Future plan · MLForecast',
+      'January plan · Future plan · Naive (no prediction interval)',
+      '2025-12-31'
+    ].join('\n'));
     const band = svg.querySelector('.prediction-chart__interval-band')!;
     expect(band.compareDocumentPosition(fitted) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(svg.querySelector('.prediction-chart__unit')).toHaveTextContent('EUR');
@@ -1066,8 +1149,8 @@ describe("PredictionsTab", () => {
     expect(dots).toHaveLength(2);
     expect(dots[0]).toHaveAttribute('cx', '56');
     expect(dots[1]).toHaveAttribute('cx', '702');
-    expect(svg.textContent).not.toContain('point estimate -100');
-    expect(svg.textContent).not.toContain('point estimate 1000');
+    expect(svg.textContent).not.toContain('-100 EUR');
+    expect(svg.textContent).not.toContain('1000 EUR');
     fireEvent.change(screen.getByLabelText('Plot start date'), { target: { value: '2025-01-01' } });
     expect(svg.querySelectorAll('[data-series-id="reality:revenue"] circle')).toHaveLength(3);
     fireEvent.click(toggle);

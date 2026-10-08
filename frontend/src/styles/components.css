@@ -1060,7 +1060,7 @@ fieldset:disabled .predictions-multi-dropdown summary {
 
 .prediction-chart__legend li {
   display: grid;
-  grid-template-columns: 12px minmax(0, 1fr);
+  grid-template-columns: 28px minmax(0, 1fr);
   gap: 0 var(--space-2);
   align-items: center;
 }
@@ -1071,15 +1071,12 @@ fieldset:disabled .predictions-multi-dropdown summary {
   font-size: var(--text-meta-size);
 }
 
-.prediction-chart__swatch {
-  width: 12px;
-  height: 3px;
-  border-radius: var(--radius-full);
-}
-
-.prediction-chart__swatch--reality {
-  height: 5px;
-  background: #166534;
+/* Overrides the plot area's `.prediction-chart svg` rule. */
+.prediction-chart .prediction-chart__swatch {
+  width: 28px;
+  height: 8px;
+  border-radius: 0;
+  background: none;
 }
 
 @media (max-width: 900px) {

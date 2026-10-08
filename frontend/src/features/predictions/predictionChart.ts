@@ -123,6 +123,52 @@ export function predictionVersionStatus(version: PredictionVersionDetailDto): st
     : "Completed with ineligible metrics";
 }
 
+type PredictionChartPoint = PredictionChartLine["points"][number];
+
+// Reality values stay as entered; only prediction values are rounded.
+function formatLineValue(line: PredictionChartLine, value: number): string {
+  return line.kind === "prediction" ? formatPredictionPointValue(value) : String(value);
+}
+
+function intervalText(line: PredictionChartLine, point: PredictionChartPoint, unit: string): string | null {
+  if (line.predictionIntervalStatus !== "available" || point.lowerBound === null || point.upperBound === null) {
+    return null;
+  }
+  return `lower bound ${formatLineValue(line, point.lowerBound)} ${unit}, upper bound ${formatLineValue(line, point.upperBound)} ${unit} (${line.confidenceLevel}% prediction interval)`;
+}
+
+// Hover text rows: the hovered value and interval, then every series whose dot
+// on that date is closer than `radius` to the hovered dot (so it cannot be
+// hovered separately), then the date. A listed series notes in parentheses
+// any value or interval that differs from the first row.
+export function predictionPointTitles(
+  lines: PredictionChartLine[],
+  unit: string,
+  y: (value: number) => number,
+  radius: number
+): (line: PredictionChartLine, point: PredictionChartPoint) => string {
+  const pointsByDate = lines.map((line) => ({
+    line,
+    points: new Map(line.points.map((point) => [point.date, point]))
+  }));
+  return (line, point) => {
+    const value = `${formatLineValue(line, point.value)} ${unit}`;
+    const interval = intervalText(line, point, unit);
+    const seriesRows = pointsByDate.flatMap(({ line: other, points }) => {
+      const otherPoint = points.get(point.date);
+      if (!otherPoint || Math.abs(y(otherPoint.value) - y(point.value)) >= radius) return [];
+      const otherValue = `${formatLineValue(other, otherPoint.value)} ${unit}`;
+      const otherInterval = intervalText(other, otherPoint, unit);
+      const differences = [
+        ...(otherValue === value ? [] : [otherValue]),
+        ...(otherInterval === interval ? [] : [otherInterval ?? "no prediction interval"])
+      ];
+      return [differences.length ? `${other.label} (${differences.join(", ")})` : other.label];
+    });
+    return [interval ? `${value}, ${interval}` : value, ...seriesRows, point.date].join("\n");
+  };
+}
+
 export function predictionIntervalBandPath(
   points: PredictionChartLine["points"],
   x: (date: string) => number,

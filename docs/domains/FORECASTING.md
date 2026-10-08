@@ -208,10 +208,15 @@ selection. A change that keeps that class keeps a successful preflight; a
 change between the classes clears it, so preflight must be run again. Each
 saved version lists the models it ran.
 A chart reports missing results only for models that a plotted version ran, and
-separately names selected models that no plotted version ran. Chart hover text
-shows prediction point estimates and bounds rounded to at most two decimals
-without trailing zeros; plotted positions, stored values and live Reality
-values are unchanged.
+separately names selected models that no plotted version ran. Prediction
+point estimates and bounds in chart hover text, and the y-axis maximum and
+minimum labels, are rounded to at most two decimals without trailing zeros;
+plotted positions, stored values and live Reality hover values are unchanged.
+A point's hover text shows the value and any available interval on its first
+row, then one row per series whose dot on that date is closer than the dot
+radius (so it cannot be hovered separately), noting a differing value or
+interval in parentheses, and the date last. Each legend entry shows a sample
+line in the series' colour, width and dash pattern.
 
 ### Prediction Intervals
 

@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-064/review-001",
+  "task": {
+    "id": "TASK-064",
+    "path": "tasks/TASK-064-prediction-chart-legend-axis-and-hover.md"
+  },
+  "round": 1,
+  "reviewed_at": "2026-10-08T12:28:36Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "2369a291894b277b7c1c56adc4ab5fe8820f8353",
+    "head_sha": "df57d7202fb3cfba934e9ba98c150a754bbd72d2",
+    "comparison": "2369a291894b277b7c1c56adc4ab5fe8820f8353...df57d7202fb3cfba934e9ba98c150a754bbd72d2",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "The change implements TASK-064 and meets every acceptance criterion. Legend entries draw a decorative sample line that reuses the chart's line colour, dash pattern and line classes, so Current Reality stays thicker and the legend cannot drift from the plot; a higher-specificity rule keeps the plot-area SVG styles off the sample. The y-axis range labels use the prediction point formatter while scaling is unchanged. Point hover text starts with the hovered value and any interval, lists every series whose dot on the same date is closer than the shared dot-radius constant in line order with differing values or intervals in parentheses, keeps Reality values unrounded, applies to hover targets of dense lines and ends with the date. Existing assertions were converted to the new formats without weakening, geometry assertions are kept, and new component and unit tests cover the radius rule in both directions, including the exact-radius boundary. FORECASTING.md and TESTING.md describe the new behaviour and coverage. There are no backend, API, schema or dependency changes. Lint, the frontend suite (311 tests), the build and record validation passed; manual verification at the local HTTPS app is still pending. Two info-level notes describe consequences of the required formatting.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "regression",
+        "severity": "info",
+        "summary": "For metrics whose values are all below 0.01, both y-axis range labels show 0.",
+        "rationale": "The task requires the range labels to use the two-decimal point formatter, which formats such values as 0; the previous five-significant-digit labels kept them distinguishable. Prediction hover values have used the same rounding since TASK-062, so this is consistent with the specified behaviour. Verified by reading the formatter.",
+        "recommendation": "No change in TASK-064. If very small metric values are expected, consider a follow-up task for magnitude-aware axis labels.",
+        "locations": [
+          {
+            "path": "frontend/src/features/predictions/PredictionsTab.tsx",
+            "line": 970
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "regression",
+        "severity": "info",
+        "summary": "Range labels for values in the millions or above can extend past the y-axis line.",
+        "rationale": "The required format shows such values in full, for example ten or more characters, while the label column left of the axis fits about eight or nine digits at the chart font size. The previous labels used exponent notation of a similar length, so the change is marginal. Estimated from the SVG geometry; not measurable in the test environment.",
+        "recommendation": "No change in TASK-064. Check a large-valued metric during manual verification and plan a follow-up only if the overlap is visible.",
+        "locations": [
+          {
+            "path": "frontend/src/features/predictions/PredictionsTab.tsx",
+            "line": 970
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": []
+  }
+}
