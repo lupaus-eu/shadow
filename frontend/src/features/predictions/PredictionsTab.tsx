@@ -11,6 +11,7 @@ import {
   fetchPredictions,
   MODEL_KINDS,
   preflightPredictions,
+  selectionUsesSeasonalPeriod,
   type PredictionCutoffMode,
   type PredictionPreflightDto,
   type PredictionPreflightMetricDto,
@@ -75,6 +76,11 @@ function usesManualSeasonalPeriod(metric: PredictionPreflightMetricDto): boolean
   return metric.requiresManualSeasonalPeriod || metric.seasonalPeriodSource === "manual";
 }
 
+// The backend rejects any other period, so a kept one would fail every later request.
+function isValidManualSeasonalPeriod(value: number): boolean {
+  return Number.isInteger(value) && value >= 2;
+}
+
 function toggleSet(set: Set<string>, value: string): Set<string> {
   const next = new Set(set);
   if (next.has(value)) next.delete(value);
@@ -113,6 +119,7 @@ function PredictionsWorkspace(props: { orgId: string }) {
   const [formError, setFormError] = useState("");
   const [submissionNotices, setSubmissionNotices] = useState<PredictionRequestSummaryDto[]>([]);
   const [requestNow, setRequestNow] = useState(() => Date.now());
+  // Also disables the queue form's fields, so a response always matches the form.
   const [submitting, setSubmitting] = useState(false);
   const [selectedVersionIds, setSelectedVersionIds] = useState<Set<string>>(new Set());
   const [selectedScenarioFilter, setSelectedScenarioFilter] = useState<Set<string>>(new Set());
@@ -208,6 +215,10 @@ function PredictionsWorkspace(props: { orgId: string }) {
     [events, startDate]
   );
   const invalidDates = Boolean(startDate && endDate && startDate >= endDate);
+  // A shown preflight always matches this, because a change of it invalidates preflight.
+  const seasonalPeriodSelected = selectionUsesSeasonalPeriod(requestModelKinds);
+  // Periods entered for other selections stay in the tab but are not sent.
+  const sentManualPeriods = seasonalPeriodSelected ? manualPeriods : {};
 
   useEffect(() => {
     const controller = new AbortController();
@@ -495,6 +506,10 @@ function PredictionsWorkspace(props: { orgId: string }) {
   function invalidatePreflight() {
     setPreflight(null);
     setFormError("");
+    // Without preflight no period input is shown, so an invalid period could not be corrected.
+    setManualPeriods((current) => Object.values(current).every(isValidManualSeasonalPeriod)
+      ? current
+      : Object.fromEntries(Object.entries(current).filter(([, period]) => isValidManualSeasonalPeriod(period))));
   }
 
   function selectedRequestModelKinds(): string[] | null {
@@ -569,11 +584,12 @@ function PredictionsWorkspace(props: { orgId: string }) {
       const response = await preflightPredictions(props.orgId, {
         targetScenarioIds: [...targetScenarioIds], startDate, endDate, cutoffMode,
         confidenceLevel: selectedLevel,
-        manualSeasonalPeriods: manualPeriods,
+        manualSeasonalPeriods: sentManualPeriods,
         modelKinds
       });
       setPreflight(response);
-      setManualPeriods((current) => Object.fromEntries(
+      // Without a seasonal-period kind, preflight reports no periods, so entered ones are kept.
+      if (seasonalPeriodSelected) setManualPeriods((current) => Object.fromEntries(
         response.metrics
           .filter(usesManualSeasonalPeriod)
           .map((metric) => [metric.metricId, current[metric.metricId] ?? metric.seasonalPeriod ?? 2])
@@ -588,13 +604,13 @@ function PredictionsWorkspace(props: { orgId: string }) {
   async function handleCreate() {
     const selectedLevel = selectedConfidenceLevel();
     if (selectedLevel === null) return;
-    const missingManualPeriod = preflight?.metrics.some(
-      (metric) => usesManualSeasonalPeriod(metric) && (manualPeriods[metric.metricId] ?? 0) < 2
+    const missingManualPeriod = seasonalPeriodSelected && preflight?.metrics.some(
+      (metric) => usesManualSeasonalPeriod(metric) && !isValidManualSeasonalPeriod(manualPeriods[metric.metricId] ?? 0)
     );
     if (!preflight) return setFormError("Run preflight before creating a prediction version.");
     if (!preflight.metrics.length) return setFormError("Preflight found no forecastable metrics to create.");
     if (!name.trim()) return setFormError("Enter a unique prediction-version name.");
-    if (missingManualPeriod) return setFormError("Enter every manual seasonal period as 2 or more, or clear it and run preflight again to try automatic detection.");
+    if (missingManualPeriod) return setFormError("Enter every manual seasonal period as a whole number of 2 or more, or clear it and run preflight again to try automatic detection.");
     const modelKinds = selectedRequestModelKinds();
     if (modelKinds === null) return;
     try {
@@ -602,7 +618,7 @@ function PredictionsWorkspace(props: { orgId: string }) {
       setFormError("");
       const created = await createPrediction(props.orgId, {
         name: name.trim(), targetScenarioIds: [...targetScenarioIds], startDate, endDate,
-        cutoffMode, confidenceLevel: selectedLevel, manualSeasonalPeriods: manualPeriods,
+        cutoffMode, confidenceLevel: selectedLevel, manualSeasonalPeriods: sentManualPeriods,
         modelKinds
       });
       if (currentOrgIdRef.current !== props.orgId) return;
@@ -662,21 +678,26 @@ function PredictionsWorkspace(props: { orgId: string }) {
     <div className="predictions-layout">
       <section className="detail-card detail-card--spacious predictions-panel" aria-labelledby="generation-heading">
         <h2 id="generation-heading">Queue a prediction</h2>
-        <label className="form-row"><span className="form-label form-label--required">Version name</span><input className="input" value={name} onChange={(event) => { setName(event.target.value); }} /></label>
-        <ScenarioMultiSelect borderless required items={targetScenarios.map((scenario) => [scenario.id, scenario.name])} selected={targetScenarioIds} onChange={(selected) => { setTargetScenarioIds(selected); invalidatePreflight(); }} />
+        <label className="form-row"><span className="form-label form-label--required">Version name</span><input className="input" disabled={submitting} value={name} onChange={(event) => { setName(event.target.value); }} /></label>
+        <ScenarioMultiSelect borderless required disabled={submitting} items={targetScenarios.map((scenario) => [scenario.id, scenario.name])} selected={targetScenarioIds} onChange={(selected) => { setTargetScenarioIds(selected); invalidatePreflight(); }} />
         {!targetScenarios.length ? <p className="alert alert--info" role="status">No active scenarios are available for prediction.</p> : null}
         <div className="predictions-date-grid">
-          <label className="form-row"><span className="form-label form-label--required">Start date</span><input className="input date-input" type="date" value={startDate} onChange={(event) => updateStartDate(event.target.value)} /></label>
-          <label className="form-row"><span className="form-label form-label--required">End date</span><input className="input date-input" type="date" value={endDate} onChange={(event) => updateEndDate(event.target.value)} /></label>
-          <SearchableEventSelect title="Start event" items={availableStartEvents} value={startEventId} onChange={selectStartEvent} />
-          <SearchableEventSelect title="End event" items={availableEndEvents} value={endEventId} onChange={selectEndEvent} />
+          <label className="form-row"><span className="form-label form-label--required">Start date</span><input className="input date-input" type="date" disabled={submitting} value={startDate} onChange={(event) => updateStartDate(event.target.value)} /></label>
+          <label className="form-row"><span className="form-label form-label--required">End date</span><input className="input date-input" type="date" disabled={submitting} value={endDate} onChange={(event) => updateEndDate(event.target.value)} /></label>
+          <SearchableEventSelect title="Start event" disabled={submitting} items={availableStartEvents} value={startEventId} onChange={selectStartEvent} />
+          <SearchableEventSelect title="End event" disabled={submitting} items={availableEndEvents} value={endEventId} onChange={selectEndEvent} />
         </div>
         {invalidDates ? <p className="alert alert--danger" role="alert">The start date must be earlier than the end date.</p> : null}
-        <fieldset className="predictions-fieldset"><legend className="form-label form-label--required">Observation cutoff</legend><label className="predictions-check"><input type="radio" name="cutoff" checked={cutoffMode === "asOfStart"} onChange={() => { setCutoffMode("asOfStart"); invalidatePreflight(); }} /> As of start — excludes observations on and after the first predicted period.</label><label className="predictions-check"><input type="radio" name="cutoff" checked={cutoffMode === "allCurrentScenario"} onChange={() => { setCutoffMode("allCurrentScenario"); invalidatePreflight(); }} /> All current scenario — retrospective predictions can use later values from the selected scenario.</label></fieldset>
-        <label className="form-row"><span className="form-label form-label--required">Prediction interval level</span><input aria-label="Prediction interval level" aria-describedby={confidenceLevelError ? "prediction-interval-help prediction-interval-error" : "prediction-interval-help"} aria-invalid={confidenceLevelError ? "true" : undefined} className="input" type="number" min="50" max="99" step="1" required value={confidenceLevel} onChange={(event) => updateConfidenceLevel(event.target.value)} /><span id="prediction-interval-help" className="muted">50–99%. This is a nominal prediction interval for future observed values; higher percentages generally produce wider bands.</span></label>
+        <fieldset className="predictions-fieldset" disabled={submitting}><legend className="form-label form-label--required">Observation cutoff</legend><label className="predictions-check"><input type="radio" name="cutoff" checked={cutoffMode === "asOfStart"} onChange={() => { setCutoffMode("asOfStart"); invalidatePreflight(); }} /> As of start — excludes observations on and after the first predicted period.</label><label className="predictions-check"><input type="radio" name="cutoff" checked={cutoffMode === "allCurrentScenario"} onChange={() => { setCutoffMode("allCurrentScenario"); invalidatePreflight(); }} /> All current scenario — retrospective predictions can use later values from the selected scenario.</label></fieldset>
+        <label className="form-row"><span className="form-label form-label--required">Prediction interval level</span><input aria-label="Prediction interval level" aria-describedby={confidenceLevelError ? "prediction-interval-help prediction-interval-error" : "prediction-interval-help"} aria-invalid={confidenceLevelError ? "true" : undefined} className="input" type="number" min="50" max="99" step="1" required disabled={submitting} value={confidenceLevel} onChange={(event) => updateConfidenceLevel(event.target.value)} /><span id="prediction-interval-help" className="muted">50–99%. This is a nominal prediction interval for future observed values; higher percentages generally produce wider bands.</span></label>
         {confidenceLevelError ? <p id="prediction-interval-error" className="alert alert--danger" role="alert">{confidenceLevelError}</p> : null}
-        {/* Eligibility and the point limit do not depend on models (ADR-014), so preflight stays valid. */}
-        <MultiSelectDropdown title="Models" borderless required items={MODEL_KINDS.map((kind) => [kind, formatModelKind(kind)])} selected={requestModelKinds} onChange={(selected) => { setRequestModelKinds(selected); setFormError(""); }} allLabel="All models" allSelectedSummary="All models" emptySummary="No models selected" />
+        {/* Eligibility depends on models only through whether seasonal-naive or SARIMA is selected
+            (ADR-014), and the point limit not at all, so only a change of that class invalidates preflight. */}
+        <MultiSelectDropdown title="Models" borderless required disabled={submitting} items={MODEL_KINDS.map((kind) => [kind, formatModelKind(kind)])} selected={requestModelKinds} onChange={(selected) => {
+          setRequestModelKinds(selected);
+          if (selectionUsesSeasonalPeriod(selected) !== seasonalPeriodSelected) invalidatePreflight();
+          else setFormError("");
+        }} allLabel="All models" allSelectedSummary="All models" emptySummary="No models selected" />
         <div className="form-actions"><button className="btn btn--secondary" type="button" disabled={submitting || invalidDates} onClick={() => void handlePreflight()}>Run preflight</button><button className="btn btn--primary" type="button" disabled={submitting || invalidDates || !preflight || !preflight.metrics.length} onClick={() => void handleCreate()}>Queue prediction</button></div>
         {formError ? <p className="alert alert--danger" role="alert">{formError}</p> : null}
         {submissionNotices.map((notice) => <div
@@ -690,7 +711,7 @@ function PredictionsWorkspace(props: { orgId: string }) {
           ><span aria-hidden="true">×</span></button>
           <p className="alert__text">{requestNoticeMessage(notice)}</p>
         </div>)}
-        {preflight ? <PreflightResults preflight={preflight} manualPeriods={manualPeriods} onManualPeriodChange={(metricId, value) => setManualPeriods((current) => {
+        {preflight ? <PreflightResults preflight={preflight} showSeasonalPeriods={seasonalPeriodSelected} disabled={submitting} manualPeriods={manualPeriods} onManualPeriodChange={(metricId, value) => setManualPeriods((current) => {
           // A cleared period is not sent, so the next preflight detects it automatically.
           if (value !== null) return { ...current, [metricId]: value };
           return Object.fromEntries(Object.entries(current).filter(([id]) => id !== metricId));
@@ -801,8 +822,8 @@ function PredictionRequestRow(props: {
   </article>;
 }
 
-function PreflightResults(props: { preflight: PredictionPreflightDto; manualPeriods: Record<string, number>; onManualPeriodChange: (metricId: string, value: number | null) => void }) {
-  return <section className="predictions-preflight" aria-live="polite"><h3>Preflight eligibility</h3>{props.preflight.metrics.length ? props.preflight.metrics.map((metric) => <div className="predictions-preflight__row" key={`${metric.scenarioId}:${metric.metricId}`}><strong>{metric.scenarioId} · {metric.metricId}</strong><span>{metric.status}{metric.reason ? ` — ${metric.reason}` : ""}</span>{usesManualSeasonalPeriod(metric) ? <label>Manual seasonal period <input aria-label={`Manual seasonal period for ${metric.metricId}`} className="input" type="number" min="2" value={props.manualPeriods[metric.metricId] ?? ""} onChange={(event) => props.onManualPeriodChange(metric.metricId, event.target.value === "" ? null : Number(event.target.value))} /></label> : metric.seasonalPeriod ? <span>Automatic seasonal period: {metric.seasonalPeriod} ({metric.seasonalPeriodSource})</span> : null}</div>) : <p className="alert alert--info" role="status">No forecastable metrics were found for the selected scenarios and date range.</p>}</section>;
+function PreflightResults(props: { preflight: PredictionPreflightDto; showSeasonalPeriods: boolean; disabled: boolean; manualPeriods: Record<string, number>; onManualPeriodChange: (metricId: string, value: number | null) => void }) {
+  return <section className="predictions-preflight" aria-live="polite"><h3>Preflight eligibility</h3>{props.preflight.metrics.length ? props.preflight.metrics.map((metric) => <div className="predictions-preflight__row" key={`${metric.scenarioId}:${metric.metricId}`}><strong>{metric.scenarioId} · {metric.metricId}</strong><span>{metric.status}{metric.reason ? ` — ${metric.reason}` : ""}</span>{!props.showSeasonalPeriods ? null : usesManualSeasonalPeriod(metric) ? <label>Manual seasonal period <input aria-label={`Manual seasonal period for ${metric.metricId}`} className="input" type="number" min="2" disabled={props.disabled} value={props.manualPeriods[metric.metricId] ?? ""} onChange={(event) => props.onManualPeriodChange(metric.metricId, event.target.value === "" ? null : Number(event.target.value))} /></label> : metric.seasonalPeriod ? <span>Automatic seasonal period: {metric.seasonalPeriod} ({metric.seasonalPeriodSource})</span> : null}</div>) : <p className="alert alert--info" role="status">No forecastable metrics were found for the selected scenarios and date range.</p>}</section>;
 }
 
 function useDropdownDismissal(dropdownRef: RefObject<HTMLDetailsElement | null>) {
@@ -837,6 +858,8 @@ function MultiSelectDropdown(props: {
   searchable?: boolean;
   borderless?: boolean;
   required?: boolean;
+  // Disables every option and search field in the dropdown.
+  disabled?: boolean;
   allLabel?: string;
   allSelectedSummary?: string;
   emptySummary?: string;
@@ -856,7 +879,7 @@ function MultiSelectDropdown(props: {
     ? props.items.filter(([, label]) => label.toLocaleLowerCase().includes(query.toLocaleLowerCase()))
     : props.items;
 
-  return <fieldset className={`predictions-fieldset${props.borderless ? " predictions-fieldset--borderless" : ""}`}>
+  return <fieldset className={`predictions-fieldset${props.borderless ? " predictions-fieldset--borderless" : ""}`} disabled={props.disabled}>
     {props.hideLegend ? null : <legend className={`form-label${props.required ? " form-label--required" : ""}`}>{props.title}</legend>}
     <details ref={dropdownRef} className="predictions-multi-dropdown">
       <summary>{summary}</summary>
@@ -876,8 +899,8 @@ function MultiSelectDropdown(props: {
   </fieldset>;
 }
 
-function ScenarioMultiSelect(props: { borderless?: boolean; required?: boolean; items: Array<[string, string]>; selected: Set<string>; onChange: (selected: Set<string>) => void }) {
-  return <MultiSelectDropdown title="Target scenarios" items={props.items} selected={props.selected} onChange={props.onChange} searchable borderless={props.borderless} required={props.required} allLabel="All active prediction scenarios" allSelectedSummary="All active scenarios" emptySummary="No scenarios selected" />;
+function ScenarioMultiSelect(props: { borderless?: boolean; required?: boolean; disabled?: boolean; items: Array<[string, string]>; selected: Set<string>; onChange: (selected: Set<string>) => void }) {
+  return <MultiSelectDropdown title="Target scenarios" items={props.items} selected={props.selected} onChange={props.onChange} searchable borderless={props.borderless} required={props.required} disabled={props.disabled} allLabel="All active prediction scenarios" allSelectedSummary="All active scenarios" emptySummary="No scenarios selected" />;
 }
 
 function SearchableEventSelect(props: {
@@ -885,6 +908,7 @@ function SearchableEventSelect(props: {
   items: EventOption[];
   value: string;
   onChange: (value: string) => void;
+  disabled?: boolean;
 }) {
   const dropdownRef = useRef<HTMLDetailsElement>(null);
   const [query, setQuery] = useState("");
@@ -896,7 +920,7 @@ function SearchableEventSelect(props: {
       .includes(query.toLocaleLowerCase())
   );
 
-  return <fieldset className="predictions-event-select">
+  return <fieldset className="predictions-event-select" disabled={props.disabled}>
     <legend className="form-label">{props.title}</legend>
     <details ref={dropdownRef} className="predictions-multi-dropdown">
       <summary>{selected ? `${selected.targetDate} · ${selected.scenarioName} · ${selected.name}` : "No event selected"}</summary>

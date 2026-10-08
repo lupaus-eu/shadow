@@ -12,6 +12,13 @@ export const MODEL_KINDS = [
   "prophet"
 ] as const;
 
+// ADR-014: only these result kinds use the seasonal period.
+export const SEASONAL_PERIOD_MODEL_KINDS: readonly string[] = ["seasonal_naive", "sarima"];
+
+export function selectionUsesSeasonalPeriod(modelKinds: Iterable<string>): boolean {
+  return [...modelKinds].some((kind) => SEASONAL_PERIOD_MODEL_KINDS.includes(kind));
+}
+
 export type PredictionRequest = {
   targetScenarioIds: string[];
   startDate: string;

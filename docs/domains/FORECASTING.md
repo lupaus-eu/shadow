@@ -5,7 +5,7 @@ supported-runtime wiring implemented by TASK-057C/TASK-057D/TASK-057E;
 ADR-014 Prophet result kind and per-version model selection backend
 implemented by TASK-061B; Predictions UI implemented by TASK-061C; ADR-014
 seasonal-period amendment accepted in TASK-063A, backend implemented by
-TASK-063B and UI pending TASK-063C
+TASK-063B and UI implemented by TASK-063C
 
 ## Purpose
 
@@ -131,22 +131,27 @@ Models selection contains seasonal-naive or SARIMA:
 - Preflight shows the editable manual period both for a metric that requires
   one and for a metric whose period source is already manual. Otherwise it
   shows the automatic period.
-- Creation is blocked while any shown manual period is missing or below 2.
+- Creation is blocked while any shown manual period is missing or not a whole
+  number of at least 2.
 - Clearing the input and running preflight again returns the metric to
   automatic detection.
 - A period is dropped when a later preflight does not list the metric as
   requiring or using a manual period; if the metric later requires one again,
   the input starts from 2.
+- A period that is not a whole number of at least 2 is dropped when preflight
+  is cleared, because no input is shown then to correct it; valid periods are
+  kept.
 
-When the selection contains neither seasonal-naive nor SARIMA (UI pending
-TASK-063C), preflight shows no manual period input and no automatic period
-text, but still shows every target's status and reason. Entered periods are
-kept in the open tab without being sent, and creation is not blocked by a
-missing period. They are sent again after seasonal-naive or SARIMA is selected
-and preflight is run.
+When the selection contains neither seasonal-naive nor SARIMA, preflight shows
+no manual period input and no automatic period text, but still shows every
+target's status and reason. Valid entered periods are kept in the open tab
+without being sent, and creation is not blocked by a missing period. They are sent
+again after seasonal-naive or SARIMA is selected and preflight is run.
 
 Manual periods are keyed by metric, so one value applies to every selected
-scenario, and they are not remembered across page reloads.
+scenario, and they are not remembered across page reloads. The queue form's
+fields are disabled while preflight or queueing runs, so a response always
+matches the form.
 
 MLForecast cross-validation uses rolling origins when enough history supports
 three validation windows. The result records MAE or an explicit unavailable
@@ -200,8 +205,8 @@ all six kinds and sends the selection in canonical order with preflight and
 creation. Eligibility depends on the selection only through whether it
 contains seasonal-naive or SARIMA, and the point limit admits every valid
 selection. A change that keeps that class keeps a successful preflight; a
-change between the classes clears it, so preflight must be run again (UI
-pending TASK-063C). Each saved version lists the models it ran.
+change between the classes clears it, so preflight must be run again. Each
+saved version lists the models it ran.
 A chart reports missing results only for models that a plotted version ran, and
 separately names selected models that no plotted version ran. Chart hover text
 shows prediction point estimates and bounds rounded to at most two decimals

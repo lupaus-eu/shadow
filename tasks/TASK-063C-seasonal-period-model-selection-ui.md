@@ -15,12 +15,31 @@ selected. The eligibility status and reason, e.g. "ineligible — Target scenari
 has no observations available under the selected cutoff.", must still be shown
 where they apply.
 
+During implementation, the developer also asked that the queue form's fields
+be disabled while preflight or queueing runs. Otherwise a change made while a
+request is in flight, such as a Models change between selection classes, could
+leave a shown preflight that no longer matches the form.
+
+The Step 13 review (`TASK-063C/review-001`, F-001) found a pre-existing defect
+that this task makes easier to reach. A manual period the backend rejects, i.e.
+not a whole number of at least 2, stays in the tab after preflight is cleared.
+Every later preflight then fails with a validation error, and no period input
+is shown to correct it, so only a page reload recovers. The developer asked
+for the fix in this task.
+
+The second review (`TASK-063C/review-002`, F-001) found that the creation
+check blocked only missing periods and periods below 2. A shown non-integer
+period such as 2.5 passed it, so the user saw the backend's validation message
+instead of the form's. The developer asked for this fix in this task too.
+
 This task depends on TASK-063B.
 
 ## Goal
 
 The Predictions queue form only asks for, shows and sends seasonal periods when
-the selected models use them. Entered periods are not lost while hidden.
+the selected models use them. Valid entered periods are not lost while hidden,
+and an invalid one can never block later requests. The form cannot change
+while its preflight or creation request is in flight.
 
 ## Requirements
 
@@ -45,13 +64,37 @@ the selected models use them. Entered periods are not lost while hidden.
 - Preflight and creation requests:
   - With a seasonal-period kind selected, send `manualSeasonalPeriods` and
     apply TASK-062's keep/drop rules after preflight, as today.
-  - With none selected, send `manualSeasonalPeriods: {}` and leave the entered
-    periods unchanged in the open tab. Selecting seasonal-naive or SARIMA
+  - With none selected, send `manualSeasonalPeriods: {}` and leave the valid
+    entered periods unchanged in the open tab. Selecting seasonal-naive or SARIMA
     again restores and sends them on the next preflight.
 - Creation check:
-  - The check that blocks a missing or invalid (`< 2`) manual period applies
-    only when a seasonal-period kind is selected.
+  - The check that blocks a missing or invalid manual period applies only when
+    a seasonal-period kind is selected. Invalid means not a whole number of at
+    least 2, the rule the backend enforces. This replaces TASK-062's `< 2`
+    check, and the message reads "Enter every manual seasonal period as a whole
+    number of 2 or more, or clear it and run preflight again to try automatic
+    detection."
   - The other creation checks are unchanged.
+- Invalid periods when preflight is cleared:
+  - Whenever preflight is invalidated, for example by a request-field change
+    or a Models change between classes, drop every manual period that is not
+    a whole number of at least 2. No period input is shown then, so such a
+    period could not be corrected and would make every later request fail.
+  - Keep valid periods unchanged. A metric whose period was dropped and that
+    still requires one starts again from 2, under TASK-062's rule.
+  - Use the same whole-number rule as the creation check.
+- Form fields while a request runs:
+  - While preflight or creation is in flight, disable every queue form field:
+    version name, target scenarios, start and end dates, start and end events,
+    observation cutoff, prediction interval level, Models and the shown manual
+    period inputs. Use the existing `submitting` state, which already disables
+    the two buttons.
+  - Enable them again when the request succeeds or fails.
+  - The dropdowns and event selects are fieldsets, so disable them through the
+    fieldset's native `disabled`. Style a disabled dropdown's summary as
+    disabled, because a summary is not a form control.
+  - The "Compare saved results" filters are not part of the queue form and
+    stay enabled.
 
 ## Acceptance Criteria
 
@@ -71,6 +114,15 @@ the selected models use them. Entered periods are not lost while hidden.
 - [ ] A period entered before seasonal kinds were deselected is sent again
       after SARIMA or seasonal-naive is reselected and preflight is re-run.
 - [ ] The TASK-062 behaviour is unchanged with the default all-models selection.
+- [ ] Every queue form field, including a shown manual period input, is
+      disabled while preflight or creation is in flight and enabled again after
+      it succeeds or fails. The comparison filters stay enabled.
+- [ ] A manual period below 2 or not a whole number is dropped when preflight
+      is cleared, by a request-field change or a class change, so the next
+      preflight succeeds and shows the input again from 2. Valid periods are
+      kept.
+- [ ] Creation is blocked, with the form's message, while a shown manual
+      period is missing, below 2 or not a whole number (e.g. 2.5).
 
 ## Out Of Scope
 
@@ -115,6 +167,10 @@ Required:
   - Update "sends only the remaining models in canonical order without
     invalidating preflight" so its selection stays in one class, e.g. Naive and
     SARIMA.
+  - Update "blocks preflight and creation when no model is selected": an empty
+    selection has no seasonal-period kind, so deselecting all models after a
+    default all-models preflight clears it. Run preflight with a non-seasonal
+    selection first, so the creation check is still covered.
   - New tests:
     - input and period text hidden for a non-seasonal selection, with status
       and reason (including a non-period ineligible reason) still shown;
@@ -122,7 +178,16 @@ Required:
     - a class change invalidates preflight, and a same-class change does not;
     - `{}` sent and creation not blocked without a seasonal-period kind;
     - an entered period is kept while hidden and sent again after
-      reselection.
+      reselection;
+    - a hidden missing period does not block creation;
+    - the TASK-062 creation-block test also blocks `2.5` and expects the
+      updated message;
+    - invalid periods (`1`, `2.5`) are dropped and valid ones kept when a
+      request-field change or a class change clears preflight, and the next
+      preflight succeeds;
+    - the queue form fields are disabled while preflight and while creation
+      are pending, and enabled again after success and after failure, with the
+      comparison filters still enabled.
   - Existing TASK-062 manual-period tests still pass.
 - [ ] `frontend/src/api/predictions.test.ts`: cover the selection helper if
       it lives there.
@@ -134,6 +199,9 @@ Required:
     input appears and creation requires the period.
   - A target with no observations under the cutoff shows its ineligible reason
     for both selections.
+  - The form fields are disabled while preflight and queueing run.
+  - Enter 1 as a manual period, change the end date and run preflight again:
+    preflight succeeds and the input shows 2.
 - [ ] Lint
 - [ ] Build
 
@@ -151,8 +219,11 @@ Update:
 
 - `docs/TESTING.md`: add the new frontend coverage to the Predictions UI
   section.
-- `docs/domains/FORECASTING.md`: only if the UI behaviour differs from what
-  TASK-063A recorded.
+- `docs/domains/FORECASTING.md`: remove the "pending TASK-063C" markers, and
+  state that the queue form's fields are disabled while preflight or queueing
+  runs.
+- `docs/decisions/ADR-014-prophet-and-model-selection.md`: mark the UI as
+  implemented by TASK-063C in the status line.
 
 ## Notes For AI Agent
 

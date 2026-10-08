@@ -1,8 +1,8 @@
 # ADR-014: Prophet Result Kind And Per-Version Model Selection
 
 Status: Accepted; TASK-061B and TASK-061C implemented; seasonal-period
-amendment (TASK-063A) accepted, backend implemented by TASK-063B, UI pending
-TASK-063C
+amendment (TASK-063A) accepted, backend implemented by TASK-063B, UI
+implemented by TASK-063C
 
 Date: 2026-10-05
 

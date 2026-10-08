@@ -525,6 +525,24 @@ classes. The existing inconclusive-target test now includes SARIMA in its
 selection, so it still covers target-level ineligibility for every selected
 kind.
 
+TASK-063C's frontend tests in `PredictionsTab.test.tsx` cover a non-seasonal
+selection that shows no manual period input and no automatic period text while
+every row keeps its status and reason, including the no-observations
+ineligibility reason; the manual input and automatic period for seasonal-naive
+alone and SARIMA alone; preflight kept by a same-class model change (including
+an empty selection after a non-seasonal preflight) and cleared by a change
+between classes; `manualSeasonalPeriods: {}` in preflight and creation without
+a seasonal-period kind, with creation not blocked by a hidden missing period;
+an entered period kept while hidden and sent again after SARIMA is reselected
+and preflight is re-run; and invalid periods (`1`, `2.5`) dropped while valid
+ones are kept when a request-field or class change clears preflight, so the
+next preflight succeeds. The TASK-062 creation-block test also blocks a shown
+`2.5` period with the form's whole-number message. They also cover every queue
+form field, including the manual period input, disabled while preflight or
+queueing runs and enabled again after either succeeds or fails. A same-class
+subset test sends Naive and SARIMA with their manual period. `predictions.test.ts` covers
+`selectionUsesSeasonalPeriod`.
+
 Run assembled local browser and container QA separately with
 `docs/qa/PREDICTION-WORKER-RUNTIME-QA.md`. Record unavailable Docker, browser,
 Coolify-provider or production checks as unavailable, never as passing.

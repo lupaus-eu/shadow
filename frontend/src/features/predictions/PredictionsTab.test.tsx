@@ -61,7 +61,36 @@ async function runPreflight() {
   fireEvent.change(screen.getAllByLabelText("End date")[0], { target: { value: "2026-02-10" } });
   fireEvent.click(screen.getByRole("button", { name: "Run preflight" }));
   await screen.findByText("Preflight eligibility");
-  fireEvent.change(screen.getByLabelText("Manual seasonal period for revenue"), { target: { value: "12" } });
+  const manualInput = screen.queryByLabelText("Manual seasonal period for revenue");
+  if (manualInput) fireEvent.change(manualInput, { target: { value: "12" } });
+}
+
+function selectRequestModels(labels: string[]) {
+  const models = screen.getByRole("group", { name: "Models" });
+  const all = within(models).getByLabelText("All models");
+  // Clear the selection first, then pick the requested models.
+  if (!(all as HTMLInputElement).checked) fireEvent.click(all);
+  fireEvent.click(all);
+  for (const label of labels) fireEvent.click(within(models).getByLabelText(label));
+}
+
+const nonSeasonalLabels = ["Naive", "Average", "MLForecast", "Prophet"];
+
+function queueFormFields() {
+  const manualInput = screen.queryByLabelText("Manual seasonal period for revenue");
+  return [
+    screen.getByLabelText("Version name"),
+    screen.getAllByLabelText("Start date")[0],
+    screen.getAllByLabelText("End date")[0],
+    within(screen.getAllByRole("group", { name: "Target scenarios" })[0]).getByLabelText("Future plan"),
+    screen.getByLabelText("Search Start event"),
+    screen.getByLabelText("Search End event"),
+    screen.getByLabelText(/As of start/),
+    screen.getByLabelText(/All current scenario/),
+    screen.getByLabelText("Prediction interval level"),
+    within(screen.getByRole("group", { name: "Models" })).getByLabelText("Prophet"),
+    ...(manualInput ? [manualInput] : [])
+  ];
 }
 
 describe("PredictionsTab", () => {
@@ -291,10 +320,10 @@ describe("PredictionsTab", () => {
     expect(screen.getByText("Automatic seasonal period: 12 (automatic)")).toBeInTheDocument();
     expect(screen.queryByLabelText("Manual seasonal period for cost")).not.toBeInTheDocument();
 
-    for (const invalidPeriod of ["", "1"]) {
+    for (const invalidPeriod of ["", "1", "2.5"]) {
       fireEvent.change(manualInput, { target: { value: invalidPeriod } });
       fireEvent.click(screen.getByRole("button", { name: "Queue prediction" }));
-      expect(await screen.findByRole("alert")).toHaveTextContent("Enter every manual seasonal period as 2 or more, or clear it and run preflight again to try automatic detection.");
+      expect(await screen.findByRole("alert")).toHaveTextContent("Enter every manual seasonal period as a whole number of 2 or more, or clear it and run preflight again to try automatic detection.");
     }
     expect(api.createPrediction).not.toHaveBeenCalled();
 
@@ -564,27 +593,256 @@ describe("PredictionsTab", () => {
     await runPreflight();
 
     const models = screen.getByRole("group", { name: "Models" });
-    fireEvent.click(within(models).getByLabelText("All models"));
-    fireEvent.click(within(models).getByLabelText("Prophet"));
-    fireEvent.click(within(models).getByLabelText("Naive"));
+    for (const label of ["Seasonal naive", "Average", "MLForecast", "Prophet"]) {
+      fireEvent.click(within(models).getByLabelText(label));
+    }
     expect(within(models).getByText("2 selected", { selector: "summary" })).toBeInTheDocument();
     expect(screen.getByText("Preflight eligibility")).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "Queue prediction" }));
 
     await waitFor(() => expect(api.createPrediction).toHaveBeenCalledWith(
-      "acme", expect.objectContaining({ modelKinds: ["naive", "prophet"] })
+      "acme", expect.objectContaining({ modelKinds: ["naive", "sarima"], manualSeasonalPeriods: { revenue: 12 } })
     ));
     expect(api.preflightPredictions).toHaveBeenCalledTimes(1);
+  });
+
+  it("drops invalid manual periods but keeps valid ones when a request-field change clears preflight", async () => {
+    api.preflightPredictions.mockResolvedValue({ metrics: ["revenue", "cost"].map((metricId) => ({
+      scenarioId: "future", metricId, status: "eligible", reason: null,
+      seasonalPeriod: null, seasonalPeriodSource: null, requiresManualSeasonalPeriod: true
+    })) });
+    render(<PredictionsTab orgId="acme" />);
+    await screen.findByText(/selected scenario's own data/i);
+    await runPreflight();
+    fireEvent.change(screen.getByLabelText("Manual seasonal period for revenue"), { target: { value: "1" } });
+    fireEvent.change(screen.getByLabelText("Manual seasonal period for cost"), { target: { value: "4" } });
+    fireEvent.change(screen.getAllByLabelText("End date")[0], { target: { value: "2026-03-10" } });
+    expect(screen.queryByText("Preflight eligibility")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Run preflight" }));
+    await screen.findByText("Preflight eligibility");
+    expect(api.preflightPredictions).toHaveBeenLastCalledWith(
+      "acme", expect.objectContaining({ manualSeasonalPeriods: { cost: 4 } })
+    );
+    expect(screen.getByLabelText("Manual seasonal period for revenue")).toHaveValue(2);
+    expect(screen.getByLabelText("Manual seasonal period for cost")).toHaveValue(4);
+  });
+
+  it.each(["1", "2.5"])("drops an invalid manual period %s when a class change hides it", async (invalidPeriod) => {
+    render(<PredictionsTab orgId="acme" />);
+    await screen.findByText(/selected scenario's own data/i);
+    await runPreflight();
+    fireEvent.change(screen.getByLabelText("Manual seasonal period for revenue"), { target: { value: invalidPeriod } });
+    selectRequestModels(["Prophet"]);
+    fireEvent.click(within(screen.getByRole("group", { name: "Models" })).getByLabelText("SARIMA"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Run preflight" }));
+    expect(await screen.findByLabelText("Manual seasonal period for revenue")).toHaveValue(2);
+    expect(api.preflightPredictions).toHaveBeenLastCalledWith(
+      "acme", expect.objectContaining({ modelKinds: ["sarima", "prophet"], manualSeasonalPeriods: {} })
+    );
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("disables the queue form fields while preflight is running", async () => {
+    render(<PredictionsTab orgId="acme" />);
+    await screen.findByText(/selected scenario's own data/i);
+    await runPreflight();
+    let resolvePreflight!: (value: unknown) => void;
+    api.preflightPredictions.mockReturnValueOnce(new Promise((resolve) => { resolvePreflight = resolve; }));
+    fireEvent.click(screen.getByRole("button", { name: "Run preflight" }));
+
+    expect(queueFormFields()).toHaveLength(11);
+    for (const field of queueFormFields()) expect(field).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Run preflight" })).toBeDisabled();
+    // The comparison filters are not part of the queue form.
+    expect(within(screen.getByRole("group", { name: "Versions" })).getByLabelText("All saved versions")).toBeEnabled();
+
+    await act(async () => resolvePreflight({ metrics: [{
+      scenarioId: "future", metricId: "revenue", status: "eligible", reason: null,
+      seasonalPeriod: null, seasonalPeriodSource: null, requiresManualSeasonalPeriod: true
+    }] }));
+    for (const field of queueFormFields()) expect(field).toBeEnabled();
+  });
+
+  it("disables the queue form fields while a prediction is being queued", async () => {
+    render(<PredictionsTab orgId="acme" />);
+    await screen.findByText(/selected scenario's own data/i);
+    await runPreflight();
+    let resolveCreate!: (value: unknown) => void;
+    api.createPrediction.mockReturnValueOnce(new Promise((resolve) => { resolveCreate = resolve; }));
+    fireEvent.click(screen.getByRole("button", { name: "Queue prediction" }));
+
+    expect(queueFormFields()).toHaveLength(11);
+    for (const field of queueFormFields()) expect(field).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Queue prediction" })).toBeDisabled();
+
+    await act(async () => resolveCreate({
+      id: "request-2", name: "Created plan", state: "queued",
+      submittedTime: "2026-01-01T12:00:00Z", startTime: null, finishTime: null,
+      failureCode: null, failureReason: null, completedPredictionId: null
+    }));
+    for (const field of queueFormFields()) expect(field).toBeEnabled();
+  });
+
+  it("re-enables the queue form fields when preflight fails", async () => {
+    api.preflightPredictions.mockRejectedValueOnce(new Error("Service unavailable"));
+    render(<PredictionsTab orgId="acme" />);
+    await screen.findByText(/selected scenario's own data/i);
+    fireEvent.change(screen.getAllByLabelText("Start date")[0], { target: { value: "2026-01-10" } });
+    fireEvent.change(screen.getAllByLabelText("End date")[0], { target: { value: "2026-02-10" } });
+    fireEvent.click(screen.getByRole("button", { name: "Run preflight" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Preflight failed. Service unavailable");
+    expect(screen.getByLabelText("Version name")).toBeEnabled();
+    expect(within(screen.getByRole("group", { name: "Models" })).getByLabelText("Prophet")).toBeEnabled();
+  });
+
+  it("hides seasonal periods for a non-seasonal selection and still shows every status and reason", async () => {
+    api.preflightPredictions.mockResolvedValue({ metrics: [{
+      scenarioId: "future", metricId: "revenue", status: "eligible", reason: null,
+      seasonalPeriod: null, seasonalPeriodSource: null, requiresManualSeasonalPeriod: false
+    }, {
+      // A stale automatic period must not be shown without a seasonal-period kind.
+      scenarioId: "future", metricId: "cost", status: "eligible", reason: null,
+      seasonalPeriod: 12, seasonalPeriodSource: "automatic", requiresManualSeasonalPeriod: false
+    }, {
+      scenarioId: "reality", metricId: "revenue", status: "ineligible",
+      reason: "Target scenario has no observations available under the selected cutoff.",
+      seasonalPeriod: null, seasonalPeriodSource: null, requiresManualSeasonalPeriod: true
+    }] });
+    render(<PredictionsTab orgId="acme" />);
+    await screen.findByText(/selected scenario's own data/i);
+    selectRequestModels(nonSeasonalLabels);
+    await runPreflight();
+
+    expect(api.preflightPredictions).toHaveBeenLastCalledWith(
+      "acme", expect.objectContaining({ modelKinds: ["naive", "average", "mlforecast", "prophet"] })
+    );
+    expect(screen.queryByLabelText(/Manual seasonal period/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Automatic seasonal period/)).not.toBeInTheDocument();
+    expect(screen.getByText("future · revenue")).toBeVisible();
+    expect(screen.getByText("future · cost")).toBeVisible();
+    expect(screen.getByText("reality · revenue")).toBeVisible();
+    expect(screen.getAllByText("eligible")).toHaveLength(2);
+    expect(screen.getByText(
+      "ineligible — Target scenario has no observations available under the selected cutoff."
+    )).toBeVisible();
+  });
+
+  it.each([["Seasonal naive", "seasonal_naive"], ["SARIMA", "sarima"]])(
+    "shows the manual input and automatic period for %s alone",
+    async (label, kind) => {
+      api.preflightPredictions.mockResolvedValue({ metrics: [{
+        scenarioId: "future", metricId: "revenue", status: "eligible", reason: null,
+        seasonalPeriod: null, seasonalPeriodSource: null, requiresManualSeasonalPeriod: true
+      }, {
+        scenarioId: "future", metricId: "cost", status: "eligible", reason: null,
+        seasonalPeriod: 12, seasonalPeriodSource: "automatic", requiresManualSeasonalPeriod: false
+      }] });
+      render(<PredictionsTab orgId="acme" />);
+      await screen.findByText(/selected scenario's own data/i);
+      selectRequestModels([label]);
+      await runPreflight();
+
+      expect(screen.getByLabelText("Manual seasonal period for revenue")).toHaveValue(12);
+      expect(screen.getByText("Automatic seasonal period: 12 (automatic)")).toBeVisible();
+      fireEvent.click(screen.getByRole("button", { name: "Queue prediction" }));
+      await waitFor(() => expect(api.createPrediction).toHaveBeenCalledWith(
+        "acme", expect.objectContaining({ modelKinds: [kind], manualSeasonalPeriods: { revenue: 12 } })
+      ));
+    }
+  );
+
+  it("invalidates preflight only when the selection changes between seasonal and non-seasonal", async () => {
+    render(<PredictionsTab orgId="acme" />);
+    await screen.findByText(/selected scenario's own data/i);
+    selectRequestModels(["Naive", "Prophet"]);
+    await runPreflight();
+    const models = screen.getByRole("group", { name: "Models" });
+
+    fireEvent.click(within(models).getByLabelText("Average"));
+    fireEvent.click(within(models).getByLabelText("Prophet"));
+    expect(screen.getByText("Preflight eligibility")).toBeVisible();
+
+    fireEvent.click(within(models).getByLabelText("SARIMA"));
+    expect(screen.queryByText("Preflight eligibility")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Queue prediction" })).toBeDisabled();
+
+    await runPreflight();
+    fireEvent.click(within(models).getByLabelText("Seasonal naive"));
+    fireEvent.click(within(models).getByLabelText("SARIMA"));
+    expect(screen.getByText("Preflight eligibility")).toBeVisible();
+
+    fireEvent.click(within(models).getByLabelText("Seasonal naive"));
+    expect(screen.queryByText("Preflight eligibility")).not.toBeInTheDocument();
+    expect(api.preflightPredictions).toHaveBeenCalledTimes(2);
+  });
+
+  it("sends no periods and does not require one without a seasonal-period kind, then restores them", async () => {
+    render(<PredictionsTab orgId="acme" />);
+    await screen.findByText(/selected scenario's own data/i);
+    await runPreflight();
+    fireEvent.change(screen.getByLabelText("Manual seasonal period for revenue"), { target: { value: "3" } });
+    selectRequestModels(["Prophet"]);
+
+    api.preflightPredictions.mockResolvedValueOnce({ metrics: [{
+      scenarioId: "future", metricId: "revenue", status: "eligible", reason: null,
+      seasonalPeriod: null, seasonalPeriodSource: null, requiresManualSeasonalPeriod: false
+    }] });
+    fireEvent.click(screen.getByRole("button", { name: "Run preflight" }));
+    await screen.findByText("Preflight eligibility");
+    expect(api.preflightPredictions).toHaveBeenLastCalledWith(
+      "acme", expect.objectContaining({ modelKinds: ["prophet"], manualSeasonalPeriods: {} })
+    );
+    expect(screen.queryByLabelText(/Manual seasonal period/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Queue prediction" }));
+    await waitFor(() => expect(api.createPrediction).toHaveBeenCalledWith(
+      "acme", expect.objectContaining({ modelKinds: ["prophet"], manualSeasonalPeriods: {} })
+    ));
+    await waitFor(() => expect(screen.queryByText("Preflight eligibility")).not.toBeInTheDocument());
+
+    fireEvent.click(within(screen.getByRole("group", { name: "Models" })).getByLabelText("SARIMA"));
+    fireEvent.change(screen.getByLabelText("Version name"), { target: { value: "Second plan" } });
+    fireEvent.click(screen.getByRole("button", { name: "Run preflight" }));
+    expect(await screen.findByLabelText("Manual seasonal period for revenue")).toHaveValue(3);
+    expect(api.preflightPredictions).toHaveBeenLastCalledWith(
+      "acme", expect.objectContaining({ modelKinds: ["sarima", "prophet"], manualSeasonalPeriods: { revenue: 3 } })
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Queue prediction" }));
+    await waitFor(() => expect(api.createPrediction).toHaveBeenLastCalledWith(
+      "acme", expect.objectContaining({ modelKinds: ["sarima", "prophet"], manualSeasonalPeriods: { revenue: 3 } })
+    ));
+  });
+
+  it("does not block creation on a hidden missing period", async () => {
+    render(<PredictionsTab orgId="acme" />);
+    await screen.findByText(/selected scenario's own data/i);
+    await runPreflight();
+    fireEvent.change(screen.getByLabelText("Manual seasonal period for revenue"), { target: { value: "" } });
+    selectRequestModels(["Naive"]);
+    // The check follows the selection, even if a response still reports a required period.
+    fireEvent.click(screen.getByRole("button", { name: "Run preflight" }));
+    await screen.findByText("Preflight eligibility");
+    fireEvent.click(screen.getByRole("button", { name: "Queue prediction" }));
+
+    await waitFor(() => expect(api.createPrediction).toHaveBeenCalledWith(
+      "acme", expect.objectContaining({ modelKinds: ["naive"], manualSeasonalPeriods: {} })
+    ));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("blocks preflight and creation when no model is selected", async () => {
     render(<PredictionsTab orgId="acme" />);
     await screen.findByText(/selected scenario's own data/i);
+    // An empty selection has no seasonal-period kind, so a non-seasonal preflight stays valid.
+    selectRequestModels(["Average"]);
     await runPreflight();
 
     const models = screen.getByRole("group", { name: "Models" });
-    fireEvent.click(within(models).getByLabelText("All models"));
+    fireEvent.click(within(models).getByLabelText("Average"));
     expect(within(models).getByText("No models selected", { selector: "summary" })).toBeInTheDocument();
+    expect(screen.getByText("Preflight eligibility")).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "Queue prediction" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Select at least one model.");
     fireEvent.click(screen.getByRole("button", { name: "Run preflight" }));
@@ -610,6 +868,7 @@ describe("PredictionsTab", () => {
     );
     expect(screen.getByLabelText("Version name")).toHaveValue("Created plan");
     expect(screen.getByRole("button", { name: "Queue prediction" })).toBeEnabled();
+    for (const field of queueFormFields()) expect(field).toBeEnabled();
   });
 
   it("compares Prophet with its own interval band and shows each version's models", async () => {

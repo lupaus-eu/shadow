@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-063C/review-001",
+  "task": {
+    "id": "TASK-063C",
+    "path": "tasks/TASK-063C-seasonal-period-model-selection-ui.md"
+  },
+  "round": 1,
+  "reviewed_at": "2026-10-08T09:02:32Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": {
+    "number": 100,
+    "url": "https://github.com/reflector-oy/schatten/pull/100"
+  },
+  "source": {
+    "base_sha": "ec6cff72ad160646ec3971073270c9baacbc9925",
+    "head_sha": "2b1684d50666c6fe3624ef3f2546574d1387cc3c",
+    "comparison": "ec6cff72ad160646ec3971073270c9baacbc9925...2b1684d50666c6fe3624ef3f2546574d1387cc3c",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "The change implements TASK-063C, including the developer-requested amendment that disables the queue form fields while preflight or queueing runs. Whether a seasonal-period kind is selected is derived from the request model selection, not the chart filter. Preflight and creation send an empty manual-period map without such a kind, the keep/drop rules and the missing-period creation check apply only with one, and entered periods stay in the open tab and are sent again after reselection. Preflight rows always show the label, status and reason. A Models change invalidates preflight only between classes; an empty selection counts as no seasonal kind, and the task file records the resulting test update. Disabling the fields through the existing submitting state closes the in-flight race, so a shown preflight always matches the current class. There are no backend, API, schema or dependency changes. The new tests cover every acceptance criterion, and four of them fail against the previous component. Lint, the frontend suite (305 tests), the build and record validation passed, and the developer found no issues in manual browser verification. One low-severity, pre-existing issue remains.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "bug",
+        "severity": "low",
+        "summary": "A manual period below 2 left in state after preflight is cleared makes every later preflight fail with no visible input to correct it.",
+        "rationale": "Clearing preflight keeps the entered periods, and the next preflight sends them. The backend rejects a period below 2 with a validation response, so preflight fails, stays cleared, and the period input is never shown again; only a page reload recovers. This was reproduced with a temporary component test. The path already exists on main through a date or other request-field change, and TASK-063C adds another through a Models change from a seasonal to a non-seasonal selection and back. Creation is still blocked for a shown invalid period, so no wrong data is stored.",
+        "recommendation": "No change in TASK-063C. Consider a follow-up task that drops or flags invalid periods when preflight is cleared, or keeps the period inputs visible after a failed preflight.",
+        "locations": [
+          {
+            "path": "frontend/src/features/predictions/PredictionsTab.tsx",
+            "line": 501
+          },
+          {
+            "path": "frontend/src/features/predictions/PredictionsTab.tsx",
+            "line": 564
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": []
+  }
+}

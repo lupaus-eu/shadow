@@ -5,7 +5,9 @@ import {
   fetchPredictionRequest,
   fetchPredictionRequests,
   MODEL_KINDS,
-  preflightPredictions
+  preflightPredictions,
+  SEASONAL_PERIOD_MODEL_KINDS,
+  selectionUsesSeasonalPeriod
 } from "./predictions";
 
 const requestSummary = {
@@ -75,6 +77,15 @@ describe("predictions API", () => {
 
     expect(fetchMock.mock.calls[0][0]).toBe("/api/v1/organisations/acme/predictions/preflight");
     expect(JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string).modelKinds).toEqual([...MODEL_KINDS]);
+  });
+
+  it("tells whether a model selection contains a seasonal-period kind", () => {
+    expect(SEASONAL_PERIOD_MODEL_KINDS).toEqual(["seasonal_naive", "sarima"]);
+    expect(selectionUsesSeasonalPeriod(MODEL_KINDS)).toBe(true);
+    expect(selectionUsesSeasonalPeriod(["seasonal_naive"])).toBe(true);
+    expect(selectionUsesSeasonalPeriod(new Set(["naive", "sarima"]))).toBe(true);
+    expect(selectionUsesSeasonalPeriod(new Set(["naive", "average", "mlforecast", "prophet"]))).toBe(false);
+    expect(selectionUsesSeasonalPeriod([])).toBe(false);
   });
 
   it("surfaces only the server's safe validation messages", async () => {

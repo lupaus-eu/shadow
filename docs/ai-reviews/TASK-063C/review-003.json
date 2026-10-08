@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-063C/review-003",
+  "task": {
+    "id": "TASK-063C",
+    "path": "tasks/TASK-063C-seasonal-period-model-selection-ui.md"
+  },
+  "round": 3,
+  "reviewed_at": "2026-10-08T10:21:14Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": {
+    "number": 100,
+    "url": "https://github.com/reflector-oy/schatten/pull/100"
+  },
+  "source": {
+    "base_sha": "ec6cff72ad160646ec3971073270c9baacbc9925",
+    "head_sha": "b18e1152674721cf69c66cb23befdec9470bda4f",
+    "comparison": "ec6cff72ad160646ec3971073270c9baacbc9925...b18e1152674721cf69c66cb23befdec9470bda4f",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Since round 2 the creation check uses the same whole-number rule that drops invalid periods when preflight is cleared, and it still applies only with a seasonal-period kind selected. A shown period that is missing, below 2 or not a whole number now blocks creation with the form's updated message, and no request is sent. The TASK-062 creation-block test now also tries 2.5 and expects the new message. It fails against round 2's head. The task file records the developer-requested fix, replaces TASK-062's below-2 rule and adds an acceptance criterion. The forecasting domain doc states the new rule. Lint and the build passed on the reviewed head. One frontend suite run had a single failure in CustomersTab.test.tsx, a file this branch does not change. That test passed in three isolated reruns, and two further full runs passed all 308 tests, so the failure is an unrelated intermittent one. One info finding remains, and no change is required.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "bug",
+        "severity": "info",
+        "summary": "Running preflight again while a shown manual period is invalid sends it, so the user sees the backend's validation message instead of the form's whole-number message.",
+        "rationale": "The form checks shown periods only at creation, not before preflight. For a period below 2 this was already the case on main. The backend returns a safe validation message, the failed preflight keeps the shown results and input, and the value can be corrected, so nothing is stored or lost.",
+        "recommendation": "No change required. Optionally apply the creation check before preflight too, with the same message.",
+        "locations": [
+          {
+            "path": "frontend/src/features/predictions/PredictionsTab.tsx",
+            "line": 573
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-063C/review-002",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "The creation check now uses the whole-number rule, so a shown period such as 2.5 is blocked with the form's message and no request is sent. The updated component test covers it and fails against the round-2 head.",
+        "validated_by": {
+          "review_id": "TASK-063C/review-003",
+          "commit": "b18e1152674721cf69c66cb23befdec9470bda4f"
+        }
+      }
+    ]
+  }
+}

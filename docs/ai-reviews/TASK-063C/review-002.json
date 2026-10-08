@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-063C/review-002",
+  "task": {
+    "id": "TASK-063C",
+    "path": "tasks/TASK-063C-seasonal-period-model-selection-ui.md"
+  },
+  "round": 2,
+  "reviewed_at": "2026-10-08T10:10:11Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": {
+    "number": 100,
+    "url": "https://github.com/reflector-oy/schatten/pull/100"
+  },
+  "source": {
+    "base_sha": "ec6cff72ad160646ec3971073270c9baacbc9925",
+    "head_sha": "af61119a14bce844cca216fd70acdd3ea3a6037e",
+    "comparison": "ec6cff72ad160646ec3971073270c9baacbc9925...af61119a14bce844cca216fd70acdd3ea3a6037e",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Since round 1 the branch drops every manual period that is not a whole number of at least 2 whenever preflight is invalidated, and keeps valid periods. Request-field changes and Models changes between selection classes all clear preflight through this one function. The only other path that clears preflight is a successful creation, which an invalid period cannot reach: the form blocks a shown period below 2, and the backend rejects a non-integer. A failed preflight keeps the shown results, so a period entered there can still be corrected. The task file, the forecasting domain doc and the testing doc record the developer-requested fix. Three new tests cover a request-field change and a class change with the values 1 and 2.5; all three fail against round 1's head, and a valid period is shown to be kept. The earlier hidden-invalid test now uses a hidden missing period and still checks that the creation check depends on the selection. Lint, the frontend suite (308 tests) and the build passed on the reviewed head. One info finding remains, and no change is required.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "bug",
+        "severity": "info",
+        "summary": "A shown non-integer manual period of at least 2 passes the form's creation check, so the user sees the backend's integer validation message instead of the form's message.",
+        "rationale": "The creation check blocks only missing periods and periods below 2, as TASK-062 and this task specify. The backend rejects a non-integer period with a safe validation message, and creation fails without storing a request. Preflight and the period input stay visible, so the value can be corrected. The task explicitly keeps the creation check and its message unchanged.",
+        "recommendation": "No change required. A later task could make the creation check reuse the whole-number rule with an adjusted message.",
+        "locations": [
+          {
+            "path": "frontend/src/features/predictions/PredictionsTab.tsx",
+            "line": 607
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-063C/review-001",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "Invalidating preflight now drops manual periods that are not a whole number of at least 2, so the next preflight succeeds and shows the input again from 2. New component tests cover a request-field change and a class change, and they fail against the round-1 head.",
+        "validated_by": {
+          "review_id": "TASK-063C/review-002",
+          "commit": "af61119a14bce844cca216fd70acdd3ea3a6037e"
+        }
+      }
+    ]
+  }
+}
