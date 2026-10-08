@@ -35,7 +35,7 @@ describe("CustomersTab", () => {
 
     render(<CustomersTab />);
     const list = await screen.findByRole("generic", { name: "Customer list" });
-    expect(within(list).getAllByRole("button").map((row) => row.textContent)).toEqual([
+    expect((await within(list).findAllByRole("button")).map((row) => row.textContent)).toEqual([
       "Alphaalpha@example.comactive", "alphaalpha@example.comactive", "Zuluzulu@example.comarchived"
     ]);
     expect(within(list).getAllByRole("button")[0]).toHaveAttribute("aria-pressed", "true");
@@ -229,6 +229,8 @@ describe("CustomersTab", () => {
     render(<CustomersTab />);
     const createContactForm = await screen.findByRole("form", { name: "Create contact" });
     const createAddressForm = screen.getByRole("form", { name: "Create address" });
+    await screen.findByRole("button", { name: "Save contact" });
+    await screen.findByRole("button", { name: "Save address" });
 
     fireEvent.click(screen.getByRole("button", { name: "Refresh contacts" }));
     expect(within(createContactForm).getByLabelText("Name")).toBeDisabled();

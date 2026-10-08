@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-065/review-001",
+  "task": {
+    "id": "TASK-065",
+    "path": "tasks/TASK-065-frontend-async-test-races.md"
+  },
+  "round": 1,
+  "reviewed_at": "2026-10-08T14:32:25Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": {
+    "number": 102,
+    "url": "https://github.com/reflector-oy/schatten/pull/102"
+  },
+  "source": {
+    "base_sha": "a33646d26f283c218785bcace42b078bcf6adacf",
+    "head_sha": "73538b8fbe98f21e165c589f18c2bce0cc635831",
+    "comparison": "a33646d26f283c218785bcace42b078bcf6adacf...73538b8fbe98f21e165c589f18c2bce0cc635831",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "clean",
+    "summary": "The change implements the amended TASK-065 and meets every acceptance criterion. It is test-only: six frontend test files, docs/TESTING.md and the task file, with no application code, configuration, dependency or tooling changes. Each of the twelve tests now waits for the specific row, text, state or request its next assertion depends on, and no assertion was removed, weakened or changed in intent; the Customers route test now waits for the three exact customer request paths instead of a count, and its organisation-identifier check runs after all three exist. Removal waits cannot pass early, because the event list stays rendered while reloading and the deleted user row stays until the delete response is applied; the remaining synchronous queries render in the same commit as the awaited element, and the deliberate disabled-state checks are kept. The installed React Testing Library waitFor returns the callback's value, so the re-queried cancelled prediction row is current. Task test names, counts and line references match the code, and the TESTING.md rule is accurate, including that empty states can render before their load effects start. Lint, the frontend suite (311 tests) and the build passed. An independent forced-delay check with scratchpad-only temporary files showed all twelve tests failing at one or more of 5, 20 and 50 ms on the base revision and passing at 0 to 50 ms on the head revision; the remaining whole-suite failures under the delay come from fake-timer tests, which the task excludes.",
+    "findings": [],
+    "prior_finding_dispositions": []
+  }
+}

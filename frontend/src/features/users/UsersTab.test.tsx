@@ -69,7 +69,7 @@ describe("UsersTab", () => {
 
     expect(screen.getByText("Loading users...")).toBeInTheDocument();
     const list = await screen.findByRole("generic", { name: "Active user list" });
-    const rows = within(list).getAllByRole("button");
+    const rows = await within(list).findAllByRole("button");
     expect(rows.map((row) => row.textContent)).toEqual([
       "adaada@example.local · User ID 2Admin",
       "Adaada2@example.local · User ID 5Consultant",
@@ -208,7 +208,9 @@ describe("UsersTab", () => {
     fireEvent.click(screen.getByRole("button", { name: "Confirm delete user" }));
 
     await waitFor(() => expect(deleteUserMock).toHaveBeenCalledWith(ada.id));
-    expect(screen.queryByRole("button", { name: /ada/ })).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: /ada/ })).not.toBeInTheDocument()
+    );
     expect(await screen.findByRole("button", { name: /Grace/ })).toHaveAttribute(
       "aria-pressed",
       "true"
@@ -231,7 +233,7 @@ describe("UsersTab", () => {
     );
 
     await waitFor(() => expect(revokeUserSessionsMock).toHaveBeenCalledWith(ada.id));
-    expect(screen.getByRole("status")).toHaveTextContent(
+    expect(await screen.findByRole("status")).toHaveTextContent(
       "ada's Schatten application sessions were revoked."
     );
   });

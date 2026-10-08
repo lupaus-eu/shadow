@@ -177,7 +177,7 @@ describe("MetricsTab", () => {
       "future",
       expect.any(AbortSignal)
     );
-    expect(screen.getByText("3 timeserie(s)")).toBeInTheDocument();
+    expect(await screen.findByText("3 timeserie(s)")).toBeInTheDocument();
     expect(screen.getByLabelText("Revenue 2030-01-01")).toHaveValue(1000);
     expect(screen.getByLabelText("Status 2030-01-01")).toHaveValue("ready");
     expect(screen.getByLabelText("Capacity 2030-01-07")).toHaveValue("true");
@@ -207,7 +207,7 @@ describe("MetricsTab", () => {
     const month = within(filters).getByRole("checkbox", { name: "Month" });
     expect(derived).toBeChecked();
     expect(month).toBeChecked();
-    expect(screen.getByText("Average revenue")).toBeInTheDocument();
+    expect(await screen.findByText("Average revenue")).toBeInTheDocument();
 
     fireEvent.click(derived);
 

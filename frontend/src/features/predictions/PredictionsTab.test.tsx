@@ -383,8 +383,11 @@ describe("PredictionsTab", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Stop" }));
     await waitFor(() => expect(api.cancelPredictionRequest).toHaveBeenCalledWith("acme", "running-request"));
-    const completedRow = screen.getByText("Running plan").closest("article")!;
-    expect(within(completedRow).getByText("Completed")).toBeVisible();
+    const completedRow = await waitFor(() => {
+      const row = screen.getByText("Running plan").closest("article")!;
+      expect(within(row).getByText("Completed")).toBeVisible();
+      return row;
+    });
     expect(within(completedRow).queryByRole("button", { name: "Stop" })).not.toBeInTheDocument();
   });
 
@@ -457,7 +460,7 @@ describe("PredictionsTab", () => {
       "acme",
       expect.objectContaining({ confidenceLevel: 80 })
     ));
-    expect(screen.getByRole("button", { name: "Queue prediction" })).toBeEnabled();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Queue prediction" })).toBeEnabled());
 
     fireEvent.change(confidenceLevel, { target: { value: "90" } });
     expect(screen.getByRole("button", { name: "Queue prediction" })).toBeDisabled();

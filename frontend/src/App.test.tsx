@@ -914,9 +914,17 @@ describe("Schatten UI shell", () => {
     expect(await screen.findByRole("link", { name: "Customers" })).toHaveClass("tab-link--active");
     expect(await screen.findByRole("heading", { name: "Customers" })).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: /Acme Customer/ })).toBeVisible();
-    const customerCalls = fetchMock.mock.calls.filter(([input]) => String(input).includes("/api/v1/customers"));
-    expect(customerCalls.length).toBeGreaterThanOrEqual(3);
-    expect(customerCalls.every(([input]) => !String(input).includes("acme"))).toBe(true);
+    const customerPaths = () => fetchMock.mock.calls
+      .map(([input]) => String(input))
+      .filter((url) => url.includes("/api/v1/customers"));
+    await waitFor(() => expect(customerPaths()).toEqual(expect.arrayContaining([
+      "/api/v1/customers",
+      "/api/v1/customers/201/addresses",
+      "/api/v1/customers/201/contacts"
+    ])));
+    expect(await screen.findByText("No addresses available.")).toBeInTheDocument();
+    expect(await screen.findByText("No contacts available.")).toBeInTheDocument();
+    expect(customerPaths().every((url) => !url.includes("acme"))).toBe(true);
   });
 
   it("renders the Summary route without requiring an organisation state", async () => {
@@ -1975,12 +1983,12 @@ describe("Schatten UI shell", () => {
         })
       ).toBe(true);
     });
-    expect(
+    await waitFor(() => expect(
       screen.queryByRole("button", { name: /Kickoff/ })
-    ).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Launch event/ })).toHaveClass(
-      "entity-row--selected"
-    );
+    ).not.toBeInTheDocument());
+    await waitFor(() => expect(
+      screen.getByRole("button", { name: /Launch event/ })
+    ).toHaveClass("entity-row--selected"));
   });
 
   it("shows event load and mutation errors", async () => {

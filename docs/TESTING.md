@@ -924,6 +924,33 @@ container browser QA is owned by TASK-057E.
 
 ---
 
+# Frontend Async Component Tests (TASK-065)
+
+A `findBy*` query returns as soon as its element is in the DOM, and `waitFor`
+as soon as its callback passes. React may still run effects and follow-up
+renders afterwards, in an order that varies under load. In frontend component
+tests:
+
+- After a `findBy*` query, wait with `findBy*` or `waitFor` for the specific
+  element, text or request that the next assertion depends on, for example the
+  first row instead of its list container.
+- After waiting for a mutation call, such as a delete or cancel request, wait
+  for the UI that its response updates instead of checking it synchronously.
+- Do not count or check requests made by child effects right after waiting for
+  a parent element; wait for the requests themselves. An empty state can render
+  before its load effect has started.
+- Keep deliberate synchronous checks, such as a control being disabled while a
+  request is pending, but make them only after the prerequisite UI is present.
+
+TASK-065 applies this to the application-wide Customers route test, which waits
+for the customer list, address and contact requests; to Customers, Summary,
+Users and Metrics tab tests that query rows, edit forms, counts or timeline text
+loaded after the awaited element; and to event deletion, user deletion, session
+revocation, prediction cancellation and preflight tests that check the UI
+updated by a response.
+
+---
+
 # Test Levels
 
 Use the lightest useful test level.

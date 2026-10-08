@@ -224,7 +224,7 @@ describe("SummaryTab", () => {
 
     expect(await screen.findByRole("heading", { name: "Future plan" })).toBeInTheDocument();
     expect(
-      screen.getByText("Timeline: 2026-01-01 ... 2026-11-30 | rows: 8")
+      await screen.findByText("Timeline: 2026-01-01 ... 2026-11-30 | rows: 8")
     ).toBeInTheDocument();
     expect(screen.getAllByTitle(/Alpha · Person · 2026-01-01/)).toHaveLength(2);
     expect(screen.getAllByTitle(/Reports to · node-a → node-b/)).toHaveLength(2);
