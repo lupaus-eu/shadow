@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-063B/review-001",
+  "task": {
+    "id": "TASK-063B",
+    "path": "tasks/TASK-063B-seasonal-period-model-selection-backend.md"
+  },
+  "round": 1,
+  "reviewed_at": "2026-10-08T07:27:40Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": {
+    "number": 99,
+    "url": "https://github.com/reflector-oy/schatten/pull/99"
+  },
+  "source": {
+    "base_sha": "72d5a166d1c13ddb96db5d5fcaf5fee2c7847da1",
+    "head_sha": "5d6f887cbe8949c65847b6ff551ed2c8c2bd204e",
+    "comparison": "72d5a166d1c13ddb96db5d5fcaf5fee2c7847da1...5d6f887cbe8949c65847b6ff551ed2c8c2bd204e",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "The change implements TASK-063B within scope. One gate in target preparation evaluates seasonality only when the selection contains seasonal-naive or SARIMA, and preflight and creation share that code path. Requests without modelKinds default to all six kinds, legacy snapshots keep their frozen eligibility, and derived targets and the earlier ineligibility checks return before the gate. An eligible target in a seasonal selection always has a period, and only seasonal-naive and SARIMA read it. An ignored manual period is not stored anywhere in the snapshot. There are no schema, migration, ORM, snapshot-format or dependency changes. The new tests assert every acceptance criterion, and the three that cover the new behaviour fail against the previous implementation. Ruff, pyright and the backend suite passed. All findings are low or info: the current frontend disagrees with the new backend until TASK-063C lands, and two optional tests are missing.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "regression",
+        "severity": "low",
+        "summary": "Until TASK-063C lands, the current UI can keep a preflight that no longer matches what creation freezes, and it drops manual periods entered earlier after a non-seasonal preflight.",
+        "rationale": "The Models selection does not invalidate preflight, and its comment says eligibility does not depend on models. A Prophet-only preflight that shows an eligible target can therefore be kept after SARIMA is added, and creation then freezes that target as requiring a manual period, so every selected kind is ineligible. After preflight the UI keeps only periods for metrics that require or use a manual period, which a non-seasonal preflight no longer reports. Creation stays authoritative, so the worst outcome is a version with an ineligible target, not wrong data.",
+        "recommendation": "No change in TASK-063B. TASK-063C already requires invalidating preflight on a class change, keeping hidden periods without sending them, and updating the comment. Merge TASK-063C soon after this task.",
+        "locations": [
+          {
+            "path": "frontend/src/features/predictions/PredictionsTab.tsx",
+            "line": 576
+          },
+          {
+            "path": "frontend/src/features/predictions/PredictionsTab.tsx",
+            "line": 678
+          },
+          {
+            "path": "frontend/src/features/predictions/PredictionsTab.tsx",
+            "line": 679
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "missing_test",
+        "severity": "low",
+        "summary": "No test checks that a manual period ignored by a non-seasonal selection is still validated, so a blank key or a period below 2 should still return 422.",
+        "rationale": "ADR-014 and the forecasting domain doc say this validation applies to every selection. The behaviour is correct because the request schema is unchanged, and the task's Testing section does not require such a test.",
+        "recommendation": "Optionally add a non-seasonal selection case with a period below 2 that expects 422.",
+        "locations": [
+          {
+            "path": "backend/tests/test_predictions_api.py",
+            "line": 1743
+          }
+        ]
+      },
+      {
+        "id": "F-003",
+        "category": "missing_test",
+        "severity": "info",
+        "summary": "The seasonal-naive-only and SARIMA-only cases are tested through preflight but not creation, and no test runs a derived target with a non-seasonal selection.",
+        "rationale": "Creation shares the preparation code path, the adjusted inconclusive-target test covers creation for a selection that includes SARIMA, and the derived-target branch returns before the changed code. The task's required tests are present.",
+        "recommendation": "No change required.",
+        "locations": [
+          {
+            "path": "backend/tests/test_predictions_api.py",
+            "line": 1774
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": []
+  }
+}

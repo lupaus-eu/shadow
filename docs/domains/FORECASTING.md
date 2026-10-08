@@ -4,8 +4,8 @@ Status: durable request persistence, API, standalone worker, current-tab UI and
 supported-runtime wiring implemented by TASK-057C/TASK-057D/TASK-057E;
 ADR-014 Prophet result kind and per-version model selection backend
 implemented by TASK-061B; Predictions UI implemented by TASK-061C; ADR-014
-seasonal-period amendment accepted in TASK-063A, backend pending TASK-063B and
-UI pending TASK-063C
+seasonal-period amendment accepted in TASK-063A, backend implemented by
+TASK-063B and UI pending TASK-063C
 
 ## Purpose
 
@@ -103,7 +103,7 @@ attempts the result kinds selected for its version (see Model Selection):
 
 Only seasonal-naive and SARIMA use the seasonal period; naive, average,
 MLForecast and Prophet do not. Under the ADR-014 seasonal-period amendment
-(TASK-063A; implementation pending TASK-063B), whether a target needs a period
+(TASK-063A; backend implemented by TASK-063B), whether a target needs a period
 depends on the version's model selection. Eligibility stays one status per
 target:
 

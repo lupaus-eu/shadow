@@ -76,6 +76,7 @@ from app.api.v1.predictions.snapshots import (
     SnapshotMetricReference,
     SnapshotObservation,
     TimeUnit,
+    uses_seasonal_period,
 )
 
 INTERVAL_RESULT_KINDS: frozenset[ResultKind] = frozenset(
@@ -811,19 +812,22 @@ def _prepare_metric(
             history=history,
             periods=periods,
         )
-    seasonal_period, source = _seasonal_period(
-        history, payload.manual_seasonal_periods.get(metric.timeserie_key)
-    )
-    if seasonal_period is None:
-        return target(
-            current_status="requires_manual_seasonal_period",
-            current_reason=(
-                "Automatic seasonality is inconclusive; provide a manual seasonal "
-                "period."
-            ),
-            history=history,
-            periods=periods,
+    seasonal_period: int | None = None
+    source: str | None = None
+    if uses_seasonal_period(payload.model_kinds):
+        seasonal_period, source = _seasonal_period(
+            history, payload.manual_seasonal_periods.get(metric.timeserie_key)
         )
+        if seasonal_period is None:
+            return target(
+                current_status="requires_manual_seasonal_period",
+                current_reason=(
+                    "Automatic seasonality is inconclusive; provide a manual "
+                    "seasonal period."
+                ),
+                history=history,
+                periods=periods,
+            )
     history_features = _known_features(
         session,
         scenario,

@@ -1694,7 +1694,7 @@ def test_ineligible_target_makes_every_selected_kind_ineligible(
             target_key,
             name="Needs period",
             manualSeasonalPeriods={},
-            modelKinds=["average", "prophet"],
+            modelKinds=["average", "sarima", "prophet"],
         ),
     )
 
@@ -1702,12 +1702,205 @@ def test_ineligible_target_makes_every_selected_kind_ineligible(
     target = response.json()["targets"][0]
     assert target["status"] == "requires_manual_seasonal_period"
     results = _results_by_kind(response)
-    assert list(results) == ["average", "prophet"]
-    assert results["prophet"]["status"] == "ineligible"
-    assert results["prophet"]["reason"] == target["reason"]
-    assert results["prophet"]["predictionIntervalStatus"] == "unavailable"
-    assert results["prophet"]["predictionIntervalReason"] == target["reason"]
+    assert list(results) == ["average", "sarima", "prophet"]
+    for kind in ("sarima", "prophet"):
+        assert results[kind]["status"] == "ineligible"
+        assert results[kind]["reason"] == target["reason"]
+        assert results[kind]["predictionIntervalStatus"] == "unavailable"
+        assert results[kind]["predictionIntervalReason"] == target["reason"]
+    assert results["average"]["status"] == "ineligible"
     assert results["average"]["predictionIntervalStatus"] == "not_applicable"
+
+
+INCONCLUSIVE_REASON = (
+    "Automatic seasonality is inconclusive; provide a manual seasonal period."
+)
+NON_SEASONAL_KINDS = ["naive", "average", "mlforecast", "prophet"]
+
+
+def _create_inconclusive_seasonality_target(client: TestClient) -> tuple[str, str]:
+    """Twelve monthly observations without autocorrelation at lags 2-4."""
+    organisation_key = _create_organisation(client)
+    target_key = _create_target_and_metrics(client, organisation_key)
+    values = [100, 104, 99, 107, 101, 98, 106, 100, 103, 97, 105, 102]
+    replacement = client.patch(
+        (
+            f"/api/v1/organisations/{organisation_key}/scenarios/{target_key}/"
+            "timeseries/revenue/values"
+        ),
+        json={
+            "values": [
+                {"date": f"2024-{month:02d}-01", "value": float(value)}
+                for month, value in enumerate(values, start=1)
+            ]
+        },
+    )
+    assert replacement.status_code == 200
+    return organisation_key, target_key
+
+
+@pytest.mark.parametrize("manual_periods", [{}, {"revenue": 3}])
+def test_non_seasonal_selection_skips_seasonality_in_preflight(
+    client: TestClient, manual_periods: dict[str, int]
+) -> None:
+    organisation_key, target_key = _create_inconclusive_seasonality_target(client)
+
+    preflight = client.post(
+        f"/api/v1/organisations/{organisation_key}/predictions/preflight",
+        json=_prediction_payload(
+            target_key,
+            startDate="2025-01-01",
+            endDate="2025-02-28",
+            manualSeasonalPeriods=manual_periods,
+            modelKinds=NON_SEASONAL_KINDS,
+        ),
+    )
+
+    assert preflight.status_code == 200
+    assert preflight.json()["metrics"] == [
+        {
+            "scenarioId": target_key,
+            "metricId": "revenue",
+            "status": "eligible",
+            "reason": None,
+            "seasonalPeriod": None,
+            "seasonalPeriodSource": None,
+            "requiresManualSeasonalPeriod": False,
+        }
+    ]
+
+
+@pytest.mark.parametrize(
+    "manual_periods", [{"revenue": 1}, {"revenue": 0}, {" ": 2}, {"": 3}]
+)
+def test_non_seasonal_selection_still_validates_ignored_manual_periods(
+    client: TestClient,
+    session_factory: sessionmaker[Session],
+    manual_periods: dict[str, int],
+) -> None:
+    organisation_key, target_key = _create_inconclusive_seasonality_target(client)
+
+    for path, extra in (("/preflight", {}), ("", {"name": "Invalid period"})):
+        response = client.post(
+            f"/api/v1/organisations/{organisation_key}/predictions{path}",
+            json=_prediction_payload(
+                target_key,
+                manualSeasonalPeriods=manual_periods,
+                modelKinds=NON_SEASONAL_KINDS,
+                **extra,
+            ),
+        )
+        assert response.status_code == 422
+    with session_factory() as session:
+        assert session.scalar(select(PredictionRequest)) is None
+
+
+@pytest.mark.parametrize("model_kinds", [["seasonal_naive"], ["sarima"]])
+def test_seasonal_period_kind_alone_still_requires_manual_period(
+    client: TestClient, model_kinds: list[str]
+) -> None:
+    organisation_key, target_key = _create_inconclusive_seasonality_target(client)
+
+    preflight = client.post(
+        f"/api/v1/organisations/{organisation_key}/predictions/preflight",
+        json=_prediction_payload(
+            target_key,
+            startDate="2025-01-01",
+            endDate="2025-02-28",
+            manualSeasonalPeriods={},
+            modelKinds=model_kinds,
+        ),
+    )
+
+    assert preflight.status_code == 200
+    assert preflight.json()["metrics"] == [
+        {
+            "scenarioId": target_key,
+            "metricId": "revenue",
+            "status": "requires_manual_seasonal_period",
+            "reason": INCONCLUSIVE_REASON,
+            "seasonalPeriod": None,
+            "seasonalPeriodSource": None,
+            "requiresManualSeasonalPeriod": True,
+        }
+    ]
+
+
+def test_non_seasonal_selection_calculates_and_ignores_manual_period(
+    client: TestClient, session_factory: sessionmaker[Session]
+) -> None:
+    organisation_key, target_key = _create_inconclusive_seasonality_target(client)
+
+    response = _create_completed_prediction(
+        client,
+        f"/api/v1/organisations/{organisation_key}/predictions",
+        json=_prediction_payload(
+            target_key,
+            name="Without seasonality",
+            startDate="2025-01-01",
+            endDate="2025-02-28",
+            manualSeasonalPeriods={"revenue": 3},
+            modelKinds=NON_SEASONAL_KINDS,
+        ),
+    )
+
+    assert response.status_code == 201
+    target = response.json()["targets"][0]
+    assert target["status"] == "eligible"
+    assert target["reason"] is None
+    assert target["seasonalPeriod"] is None
+    assert target["seasonalPeriodSource"] is None
+    results = _results_by_kind(response)
+    assert list(results) == NON_SEASONAL_KINDS
+    for kind, result in results.items():
+        assert result["status"] == "available", (kind, result)
+        assert len(result["points"]) == 2
+    with session_factory() as session:
+        persisted = session.scalar(select(PredictionTarget))
+        assert persisted is not None
+        assert persisted.seasonal_period is None
+        assert persisted.seasonal_period_source is None
+        request = session.scalar(select(PredictionRequest))
+        assert request is not None
+        snapshot = PredictionInputSnapshot.model_validate(request.input_snapshot)
+    assert snapshot.targets[0].seasonal_period is None
+    assert snapshot.targets[0].seasonal_period_source is None
+
+
+@pytest.mark.parametrize(
+    "model_kinds", [["naive", "seasonal_naive"], NON_SEASONAL_KINDS]
+)
+def test_no_observations_reason_is_unchanged_for_every_selection(
+    client: TestClient, model_kinds: list[str]
+) -> None:
+    organisation_key = _create_organisation(client)
+    target_key = _create_target_and_metrics(client, organisation_key)
+
+    preflight = client.post(
+        f"/api/v1/organisations/{organisation_key}/predictions/preflight",
+        json=_prediction_payload(
+            target_key,
+            startDate="2024-11-01",
+            endDate="2024-12-31",
+            modelKinds=model_kinds,
+        ),
+    )
+
+    assert preflight.status_code == 200
+    assert preflight.json()["metrics"] == [
+        {
+            "scenarioId": target_key,
+            "metricId": "revenue",
+            "status": "ineligible",
+            "reason": (
+                "Target scenario has no observations available under the "
+                "selected cutoff."
+            ),
+            "seasonalPeriod": None,
+            "seasonalPeriodSource": None,
+            "requiresManualSeasonalPeriod": False,
+        }
+    ]
 
 
 def test_prophet_cmdstan_failure_uses_fixed_reason_and_spares_other_kinds(

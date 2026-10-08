@@ -23,6 +23,10 @@ RESULT_KINDS: tuple[ResultKind, ...] = (
     "prophet",
 )
 LEGACY_RESULT_KINDS: tuple[ResultKind, ...] = RESULT_KINDS[:5]
+# The only kinds that use the seasonal period (ADR-014, TASK-063A amendment).
+SEASONAL_PERIOD_RESULT_KINDS: frozenset[ResultKind] = frozenset(
+    {"seasonal_naive", "sarima"}
+)
 TimeUnit = Literal["day", "week", "month", "year"]
 EligibilityStatus = Literal["eligible", "ineligible", "requires_manual_seasonal_period"]
 ResultStatus = Literal["available", "ineligible"]
@@ -35,6 +39,11 @@ def canonical_result_kinds(values: list[ResultKind]) -> list[ResultKind]:
     if len(set(values)) != len(values):
         raise ValueError("Model kinds must not contain duplicates.")
     return [kind for kind in RESULT_KINDS if kind in values]
+
+
+def uses_seasonal_period(model_kinds: list[ResultKind]) -> bool:
+    """Whether the selection contains a kind that uses the seasonal period."""
+    return not SEASONAL_PERIOD_RESULT_KINDS.isdisjoint(model_kinds)
 
 
 class _FrozenModel(StrictBaseModel):

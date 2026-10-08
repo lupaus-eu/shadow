@@ -509,6 +509,22 @@ values. `predictionChart.test.ts` covers
 the display formatter for integers, one and two decimals, rounding, grouping,
 negatives, integers ending in zero, exponent notation and `-0`.
 
+TASK-063B's SQLite API tests in `tests/test_predictions_api.py` use a
+12-observation monthly history whose automatic seasonality is inconclusive.
+They cover preflight for a selection without seasonal-naive or SARIMA, which
+is `eligible` with a null period and source and
+`requiresManualSeasonalPeriod: false`, with and without a sent manual period.
+A manual period that such a selection ignores is still validated: a blank
+metric key or a period below 2 returns `422` for preflight and creation, and no
+request is stored. They cover `requires_manual_seasonal_period` with the existing reason for
+`seasonal_naive` alone and `sarima` alone. A created non-seasonal version gets
+`available` results for every selected kind, and the response, the persisted
+target and the frozen snapshot all record a null period although a manual
+period was sent. The no-observations reason is checked for both selection
+classes. The existing inconclusive-target test now includes SARIMA in its
+selection, so it still covers target-level ineligibility for every selected
+kind.
+
 Run assembled local browser and container QA separately with
 `docs/qa/PREDICTION-WORKER-RUNTIME-QA.md`. Record unavailable Docker, browser,
 Coolify-provider or production checks as unavailable, never as passing.
