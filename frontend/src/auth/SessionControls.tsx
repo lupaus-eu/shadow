@@ -1,7 +1,11 @@
 import { useState } from "react";
 import { useAuth } from "./AuthContext";
 
-export default function SessionControls() {
+type SessionControlsProps = {
+  variant?: "bar" | "header";
+};
+
+export default function SessionControls({ variant = "bar" }: SessionControlsProps) {
   const { user, logout, authError } = useAuth();
   const [loggingOut, setLoggingOut] = useState(false);
 
@@ -13,10 +17,10 @@ export default function SessionControls() {
     setLoggingOut(false);
   }
 
-  return (
-    <aside className="session-controls" aria-label="Current user session">
+  const content = (
+    <>
       <span className="session-controls__identity">
-        <strong>{user.name}</strong>
+        <strong title={variant === "header" ? user.name : undefined}>{user.name}</strong>
         <span>{user.role === "admin" ? "Admin" : "Consultant"}</span>
       </span>
       <button
@@ -27,7 +31,33 @@ export default function SessionControls() {
       >
         {loggingOut ? "Signing out..." : "Sign out"}
       </button>
-      {authError ? <span className="session-controls__error">{authError}</span> : null}
+      {authError ? (
+        <span
+          className="session-controls__error"
+          title={variant === "header" ? authError : undefined}
+        >
+          {authError}
+        </span>
+      ) : null}
+    </>
+  );
+
+  if (variant === "header") {
+    // A group rather than an aside, so the banner does not contain a complementary landmark.
+    return (
+      <div
+        className="session-controls session-controls--header"
+        role="group"
+        aria-label="Current user session"
+      >
+        {content}
+      </div>
+    );
+  }
+
+  return (
+    <aside className="session-controls" aria-label="Current user session">
+      {content}
     </aside>
   );
 }

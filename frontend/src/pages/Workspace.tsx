@@ -2,6 +2,7 @@ import { lazy, Suspense, useLayoutEffect, useMemo, useState } from "react";
 import { NavLink, Navigate, Route, Routes, useLocation, useParams } from "react-router-dom";
 import EmptyTab from "../components/EmptyTab";
 import { useAuth } from "../auth/AuthContext";
+import SessionControls from "../auth/SessionControls";
 import { RouteErrorBoundary, RouteLoadingFallback } from "../components/DeferredRoute";
 import OrganisationDropdown from "../components/OrganisationDropdown";
 import OrgStateDropdown from "../components/OrgStateDropdown";
@@ -75,11 +76,14 @@ function WorkspaceShell(props: { orgId: string; initialOrganisationName: string 
             </span>
             <span className="app-name">Schatten</span>
           </div>
-          <WorkspaceIndicators
-            orgId={props.orgId}
-            organisationName={organisationName}
-            onOrganisationNameChange={setOrganisationName}
-          />
+          <div className="workspace-header__actions">
+            <WorkspaceIndicators
+              orgId={props.orgId}
+              organisationName={organisationName}
+              onOrganisationNameChange={setOrganisationName}
+            />
+            <SessionControls variant="header" />
+          </div>
         </div>
         <WorkspaceTabs
           orgId={props.orgId}

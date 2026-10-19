@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-067/review-002",
+  "task": {
+    "id": "TASK-067",
+    "path": "tasks/TASK-067-workspace-sidebar-scroll-and-header-session.md"
+  },
+  "round": 2,
+  "reviewed_at": "2026-10-19T12:25:49Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "451b49d2b389f5c53d7c33773a2e6c1fde2b7911",
+    "head_sha": "4dd2c49753a76b4edc860d364deb4be97b0f9076",
+    "comparison": "451b49d2b389f5c53d7c33773a2e6c1fde2b7911...4dd2c49753a76b4edc860d364deb4be97b0f9076",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Round 2 reviews the whole branch after the fixes for round 1 findings F-001 and F-002. F-001 is fixed: on workspace routes the workspace route's Suspense fallback and error fallback now show the session bar, using a new optional errorPrefix prop on RouteErrorBoundary. Every checked state has exactly one Sign out control: loading, the switch from fallback to loaded workspace, chunk failure, a runtime error in the loaded workspace, tab-level loading and errors, error reset on navigation, and leaving to the home page. In headless Chromium the fallback bar and panel have the same position and size as the earlier bar placement at 1280px and 700px. The bar landmark is a sibling of the alert panel, and the optional prop does not change other boundary users. F-002 is fixed: an accurate CSS comment explains the stacked-row rule, and removing the rule in Chromium reproduces the overlap. F-003, the pre-existing Customers overlap, was left unchanged on purpose because the task requires Customers to stay unchanged; it remains open as a possible follow-up. The amended task text, docs/TESTING.md and the comments match the implementation. No new dependencies, security issues or scope problems were introduced. The new fallback tests use a stand-in Workspace module with a stable pending promise. They passed five isolated runs. They fail on the previous revision and under each targeted mutation of the fix: errorPrefix removed, bar removed from the loading fallback, outer bar always rendered. Format check, lint, the TypeScript check, 317 frontend tests, the build and the record validator passed. Noted for human judgement and not recorded as a finding: a click on Sign out in the loading-fallback bar is not carried over if the workspace finishes loading before logout completes, so the header shows an enabled Sign out for that short window. Also, a shuffled test order exposes an order-dependent home-page test in App.test.tsx that fails the same way on the base revision. Two informational findings are recorded.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "documentation",
+        "severity": "info",
+        "summary": "The task's estimate of roughly 150 changed lines was not updated after the review-driven amendment.",
+        "rationale": "Code and test changes now total about 325 lines, which is still under the 500-line review guideline but no longer matches the task's implementation note.",
+        "recommendation": "Optionally update or remove the estimate in the task's implementation notes.",
+        "locations": [
+          {
+            "path": "tasks/TASK-067-workspace-sidebar-scroll-and-header-session.md",
+            "line": 169
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "missing_test",
+        "severity": "info",
+        "summary": "The console error spy in the workspace failure test is restored only when the test passes.",
+        "rationale": "If an assertion fails before the end of the test, the spy stays installed for later tests in the same file. The impact is negligible: it is the last test in the file, test files are isolated, and DeferredRoute.test.tsx uses the same pattern.",
+        "recommendation": "Optionally restore all mocks in afterEach; no change is required.",
+        "locations": [
+          {
+            "path": "frontend/src/App.workspace-fallback.test.tsx",
+            "line": 78
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-067/review-001",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "The workspace route's loading and error fallbacks now show the session bar, so Sign out is available until the workspace header renders, with exactly one Sign out in every checked state. New fallback tests cover the loading state and sign out from the error state, and they fail without the fix.",
+        "validated_by": {
+          "review_id": "TASK-067/review-002",
+          "commit": "4dd2c49753a76b4edc860d364deb4be97b0f9076"
+        }
+      },
+      {
+        "record_id": "TASK-067/review-001",
+        "finding_id": "F-002",
+        "disposition": "fixed",
+        "rationale": "A CSS comment next to the stacked-row rule under 760px now explains why rows are sized to their content, and a Chromium check confirmed that removing the rule reproduces the overlap.",
+        "validated_by": {
+          "review_id": "TASK-067/review-002",
+          "commit": "4dd2c49753a76b4edc860d364deb4be97b0f9076"
+        }
+      }
+    ]
+  }
+}

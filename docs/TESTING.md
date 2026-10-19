@@ -603,7 +603,14 @@ expose Entra, Authentik, OIDC codes, provider tokens or provider claims. The
 shared request-helper tests cover same-origin credentials, memory-only CSRF
 headers, global `401` invalidation and non-invalidating `403` responses. UI
 tests cover restoration loading, protected routes, role-aware Users navigation,
-logout and user-session revocation.
+logout and user-session revocation. They also cover where the session controls
+appear: on workspace routes the user name, role and the single Sign out button
+are in the workspace header and the separate session bar is not rendered; the
+home and 404 pages keep the session bar; and logout from the workspace header
+shows the signing-out state and sends the CSRF header.
+`src/App.workspace-fallback.test.tsx` replaces the Workspace module with a
+stand-in that stays suspended or fails, and checks that the session bar and
+Sign out stay available while the workspace route is loading or has failed.
 
 Run the focused suite with:
 

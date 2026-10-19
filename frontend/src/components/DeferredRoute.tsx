@@ -12,6 +12,7 @@ export function RouteLoadingFallback(props: { message: string }) {
 type RouteErrorBoundaryProps = {
   children: ReactNode;
   title: string;
+  errorPrefix?: ReactNode;
   onReload?: () => void;
   resetKey?: string;
 };
@@ -48,16 +49,19 @@ export class RouteErrorBoundary extends Component<
   render() {
     if (this.state.hasError) {
       return (
-        <section className="route-load-error" role="alert">
-          <p className="eyebrow">Loading error</p>
-          <h1 className="page-title">{this.props.title}</h1>
-          <p className="muted">
-            The requested page could not be loaded. Reload the application to try again.
-          </p>
-          <button className="btn btn--primary" type="button" onClick={this.reload}>
-            Reload page
-          </button>
-        </section>
+        <>
+          {this.props.errorPrefix}
+          <section className="route-load-error" role="alert">
+            <p className="eyebrow">Loading error</p>
+            <h1 className="page-title">{this.props.title}</h1>
+            <p className="muted">
+              The requested page could not be loaded. Reload the application to try again.
+            </p>
+            <button className="btn btn--primary" type="button" onClick={this.reload}>
+              Reload page
+            </button>
+          </section>
+        </>
       );
     }
 

@@ -617,6 +617,55 @@ describe("Schatten UI shell", () => {
     );
   });
 
+  it("shows the session controls in the workspace header instead of the session bar", async () => {
+    mockSchattenApi();
+
+    renderAt("/schatten/acme/org-states");
+
+    const banner = await screen.findByRole("banner");
+    const session = within(banner).getByRole("group", { name: "Current user session" });
+    expect(within(session).getByText("Development Admin")).toBeVisible();
+    expect(within(session).getByText("Admin")).toBeVisible();
+    expect(within(session).getByRole("button", { name: "Sign out" })).toBeVisible();
+    expect(screen.getByLabelText("Current workspace context")).not.toContainElement(session);
+    expect(screen.getAllByRole("button", { name: "Sign out" })).toHaveLength(1);
+    expect(
+      screen.queryByRole("complementary", { name: "Current user session" })
+    ).not.toBeInTheDocument();
+  });
+
+  it.each(["/", "/404"])("shows the separate session bar on %s", async (path) => {
+    mockSchattenApi();
+
+    renderAt(path);
+
+    const bar = await screen.findByRole("complementary", { name: "Current user session" });
+    expect(within(bar).getByText("Development Admin")).toBeVisible();
+    expect(within(bar).getByRole("button", { name: "Sign out" })).toBeVisible();
+    expect(screen.getAllByRole("button", { name: "Sign out" })).toHaveLength(1);
+  });
+
+  it("logs out with CSRF from the workspace header", async () => {
+    const fetchMock = mockSchattenApi();
+
+    renderAt("/schatten/acme/org-states");
+    const banner = await screen.findByRole("banner");
+    fireEvent.click(within(banner).getByRole("button", { name: "Sign out" }));
+
+    expect(within(banner).getByRole("button", { name: "Signing out..." })).toBeDisabled();
+    await waitFor(() => expect(navigateBrowser).toHaveBeenCalledWith("/login"));
+    const logoutCall = fetchMock.mock.calls.find(([input]) =>
+      String(input).endsWith("/api/v1/auth/logout")
+    );
+    expect(logoutCall?.[1]).toEqual(
+      expect.objectContaining({
+        method: "POST",
+        credentials: "same-origin",
+        headers: expect.objectContaining({ "X-CSRF-Token": "app-csrf-token" })
+      })
+    );
+  });
+
   it("navigates to the trusted provider logout URL", async () => {
     mockSchattenApi({ logoutUrl: "https://identity.example.test/logout" });
 

@@ -104,6 +104,14 @@
   white-space: nowrap;
 }
 
+.workspace-header__actions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-3);
+}
+
 .workspace-indicators {
   display: flex;
   min-width: 0;
@@ -394,8 +402,10 @@
 
 .management-tab {
   display: grid;
-  min-height: 100%;
+  height: 100%;
+  min-height: 0;
   grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
 }
 
 .tab-toolbar {
@@ -425,6 +435,7 @@
   min-height: 0;
   gap: 0;
   grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+  overflow: hidden;
 }
 
 .main-detail-sidebar,
@@ -442,7 +453,8 @@
 
 .main-detail-sidebar {
   gap: var(--space-4);
-  min-height: 100%;
+  min-height: 0;
+  overflow-y: auto;
   padding: var(--space-3) var(--space-4) var(--space-4);
   border-radius: 0;
   background: var(--color-bg-surface);
@@ -470,8 +482,10 @@
 .detail-workspace {
   display: grid;
   min-width: 0;
+  min-height: 0;
   align-content: start;
   gap: 0;
+  overflow-y: auto;
   border: solid var(--color-border-subtle);
   border-width: 1px 0px 0px 0px;
 }
@@ -1350,6 +1364,12 @@
     flex-direction: column;
   }
 
+  .workspace-header__actions {
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
   .workspace-indicators {
     position: relative;
     width: 100%;
@@ -1378,6 +1398,19 @@
   .main-detail-layout,
   .detail-grid {
     grid-template-columns: 1fr;
+  }
+
+  /* Size stacked rows to their content; the panes keep min-height: 0, so auto
+     rows would shrink to the layout height and the panes would overlap. */
+  .main-detail-layout {
+    align-content: start;
+    grid-auto-rows: max-content;
+    overflow-y: auto;
+  }
+
+  .main-detail-sidebar,
+  .detail-workspace {
+    overflow: visible;
   }
 }
 
@@ -1913,4 +1946,47 @@
 .session-controls__error {
   color: var(--color-danger-500);
   font-size: var(--text-meta-size);
+}
+
+.session-controls--header {
+  min-width: 0;
+  min-height: 0;
+  flex: 0 1 auto;
+  justify-content: flex-start;
+  padding: 0 0 0 var(--space-3);
+  border-left: 1px solid var(--color-border-subtle);
+}
+
+.session-controls--header .session-controls__identity {
+  min-width: 0;
+  max-width: 14rem;
+  line-height: var(--text-meta-lh);
+}
+
+.session-controls--header .session-controls__identity > * {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-controls--header .btn {
+  flex: 0 0 auto;
+}
+
+.session-controls--header .session-controls__error {
+  display: -webkit-box;
+  min-width: 0;
+  max-width: 14rem;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-height: var(--text-meta-lh);
+}
+
+@media (max-width: 760px) {
+  .session-controls--header {
+    padding-left: 0;
+    border-left: 0;
+  }
 }

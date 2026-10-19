@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-067/review-001",
+  "task": {
+    "id": "TASK-067",
+    "path": "tasks/TASK-067-workspace-sidebar-scroll-and-header-session.md"
+  },
+  "round": 1,
+  "reviewed_at": "2026-10-19T12:09:57Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "451b49d2b389f5c53d7c33773a2e6c1fde2b7911",
+    "head_sha": "de8df4f45444453569d01c8f60e8da7031af2c50",
+    "comparison": "451b49d2b389f5c53d7c33773a2e6c1fde2b7911...de8df4f45444453569d01c8f60e8da7031af2c50",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "The change implements TASK-067 within scope and meets the acceptance criteria; no bugs, security issues or out-of-scope code changes were found. The diff touches only the files the task lists plus docs/TESTING.md and the task file, with no dependency, ADR or diagram changes. Users, Events and Scenarios now fill the workspace content height, and their sidebar and detail pane scroll independently under a fixed toolbar; a short sidebar still fills the layout. Under 760px the stacked layout scrolls as one column. The added grid-auto-rows max-content rule under 760px goes beyond the task text but is needed: without it the stacked rows shrink and overlap. Customers is unchanged: in headless Chromium its computed styles and measured sidebar, detail and layout behaviour matched the base revision at 1280, 900, 850, 760 and 700px. No other tab uses the changed classes, and none of the affected tabs has an absolutely positioned popover. On workspace routes the session controls render as a labelled group inside the banner, outside the workspace context element, with no complementary landmark. The header row stays 49px at 800-1280px, long names truncate, an auth error clamps to two lines without moving Sign out, and the 760px dropdown positioning is unaffected. useMatch is called before the early returns and matches the route pattern. The new tests cover the header controls, the home and 404 bar and header logout with CSRF; they fail on the base source and are not flaky. Format check, lint, 315 frontend tests, build and the review-record validator passed. Noted for human judgement and not recorded as a finding: at roughly 761-1000px the session block takes width from the dropdowns, so their values truncate sooner, especially while an auth error is shown. Three findings: one low regression, one low documentation gap and one informational pre-existing Customers issue.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "regression",
+        "severity": "low",
+        "summary": "No Sign out control is available on a workspace route while the workspace chunk is loading or after it fails to load.",
+        "rationale": "The session bar is now hidden for every workspace URL, but the header session controls only exist once the lazy Workspace component renders. The route error fallback offers only a reload action, so a user facing a persistent workspace load error cannot sign out from that page. Before this change the bar was always rendered. The task text prescribes hiding the bar on workspace routes, so this is a gap in the task design rather than an implementation mistake.",
+        "recommendation": "Have the developer decide whether this is acceptable. If not, keep the bar when the workspace route shows its loading or error fallback, or add a Sign out or home link to that fallback; otherwise note it as an accepted risk in the PR.",
+        "locations": [
+          {
+            "path": "frontend/src/App.tsx",
+            "line": 51
+          },
+          {
+            "path": "frontend/src/components/DeferredRoute.tsx",
+            "line": 50
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "The grid-auto-rows max-content rule under 760px is not explained in the code, task or other committed documentation.",
+        "rationale": "The rule goes beyond the task text and prevents the stacked sidebar and detail rows from shrinking and overlapping. Without a note, a later change could remove it as unnecessary.",
+        "recommendation": "Add a short CSS comment next to the rule, or record the deviation in the task notes and the PR description.",
+        "locations": [
+          {
+            "path": "frontend/src/styles/app.css",
+            "line": 1405
+          }
+        ]
+      },
+      {
+        "id": "F-003",
+        "category": "bug",
+        "severity": "info",
+        "summary": "Pre-existing and not caused by this diff: the Customers stacked layout at 900px and below can overlap when content is tall.",
+        "rationale": "The Customers 900px rules combine min-height 0 with visible overflow on auto-sized rows, the same pattern the shared layout needed grid-auto-rows max-content for. In headless Chromium at 850px with tall content, the sidebar box was much shorter than its content on both the base and head revisions. Customers is explicitly out of scope for TASK-067.",
+        "recommendation": "Do not change Customers in this PR. Consider a separate follow-up task to size the Customers stacked rows to content at 900px and below.",
+        "locations": [
+          {
+            "path": "frontend/src/styles/app.css",
+            "line": 1319
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": []
+  }
+}
