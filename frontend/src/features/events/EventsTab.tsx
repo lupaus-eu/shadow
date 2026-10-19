@@ -1,11 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { SubmitEvent } from "react";
-import {
-  createEvent,
-  deleteEvent,
-  fetchEvents,
-  updateEvent
-} from "../../api/events";
+import { createEvent, deleteEvent, fetchEvents, updateEvent } from "../../api/events";
 import type { EventDto } from "../../api/events";
 import { useWorkspaceSelection } from "../../workspace/WorkspaceSelectionContext";
 
@@ -83,9 +78,7 @@ export default function EventsTab(props: { orgId: string }) {
       try {
         setLoadingEvents(true);
         setEventsError("");
-        const items = sortEvents(
-          await fetchEvents(props.orgId, selectedScenario.id, signal)
-        );
+        const items = sortEvents(await fetchEvents(props.orgId, selectedScenario.id, signal));
         setEvents(items);
         const preferredEvent = preferredEventId
           ? items.find((event) => event.id === preferredEventId)
@@ -116,9 +109,7 @@ export default function EventsTab(props: { orgId: string }) {
       try {
         setLoadingEvents(true);
         setEventsError("");
-        const items = sortEvents(
-          await fetchEvents(props.orgId, activeScenarioId, ac.signal)
-        );
+        const items = sortEvents(await fetchEvents(props.orgId, activeScenarioId, ac.signal));
         if (ignore) return;
         setEvents(items);
         applySelectedEvent(items[0] ?? null);
@@ -199,16 +190,11 @@ export default function EventsTab(props: { orgId: string }) {
     try {
       setSaving(true);
       setActionError("");
-      const updated = await updateEvent(
-        props.orgId,
-        selectedScenario.id,
-        selectedEvent.id,
-        {
-          name,
-          targetDate: editTargetDate,
-          eventDetails: editDetails.trim()
-        }
-      );
+      const updated = await updateEvent(props.orgId, selectedScenario.id, selectedEvent.id, {
+        name,
+        targetDate: editTargetDate,
+        eventDetails: editDetails.trim()
+      });
       await loadEvents(updated.id);
     } catch (error) {
       setActionError(messageFromError(error));
@@ -240,9 +226,7 @@ export default function EventsTab(props: { orgId: string }) {
       <section className="tab-toolbar" aria-label="Events overview">
         <div className="tab-toolbar__title">
           <h1 className="page-title">Events</h1>
-          <span className="tab-toolbar__count">
-            {eventCountText(events.length)}
-          </span>
+          <span className="tab-toolbar__count">{eventCountText(events.length)}</span>
         </div>
         <button
           className="btn btn--secondary"
@@ -280,26 +264,18 @@ export default function EventsTab(props: { orgId: string }) {
                 return (
                   <button
                     key={eventRowKey(event, index)}
-                    className={`entity-row event-row${
-                      isSelected ? " entity-row--selected" : ""
-                    }`}
+                    className={`entity-row event-row${isSelected ? " entity-row--selected" : ""}`}
                     type="button"
                     onClick={() => selectEvent(event)}
                     aria-pressed={isSelected}
                   >
                     <span className="event-row__meta">
-                      <span
-                        className={`event-status event-status--${status}`}
-                      >
+                      <span className={`event-status event-status--${status}`}>
                         {status === "past" ? "Past" : "Upcoming"}
                       </span>
-                      <span className="entity-row__date">
-                        {event.targetDate}
-                      </span>
+                      <span className="entity-row__date">{event.targetDate}</span>
                     </span>
-                    <span className="entity-row__title event-row__title">
-                      {event.name}
-                    </span>
+                    <span className="entity-row__title event-row__title">{event.name}</span>
                     <span className="clamped-description event-row__description">
                       {event.eventDetails || "No details"}
                     </span>
@@ -377,10 +353,7 @@ function EventDetail(props: {
   }
 
   return (
-    <section
-      className="detail-card"
-      aria-labelledby="selected-event-title"
-    >
+    <section className="detail-card" aria-labelledby="selected-event-title">
       <div className="detail-card__header">
         <p className="eyebrow">Selected event</p>
         <h2 id="selected-event-title" className="section-title">
@@ -472,11 +445,7 @@ function CreateEventForm(props: {
   onSubmit: (event: SubmitEvent<HTMLFormElement>) => void;
 }) {
   return (
-    <form
-      className="detail-card"
-      aria-labelledby="create-event-title"
-      onSubmit={props.onSubmit}
-    >
+    <form className="detail-card" aria-labelledby="create-event-title" onSubmit={props.onSubmit}>
       <div className="detail-card__header">
         <h2 id="create-event-title" className="section-title">
           Create event
@@ -537,10 +506,7 @@ function EventFields(props: {
         onChange={(event) => props.onNameChange(event.target.value)}
         disabled={props.disabled}
       />
-      <label
-        className="form-label form-label--required"
-        htmlFor={targetDateId}
-      >
+      <label className="form-label form-label--required" htmlFor={targetDateId}>
         Target date
       </label>
       <input

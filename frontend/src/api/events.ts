@@ -19,27 +19,25 @@ export class ApiError extends Error {
   status: number;
 
   constructor(status: number, detail: string) {
-    super(
-      detail ? `API request failed (${status}). ${detail}` : `API request failed (${status}).`
-    );
+    super(detail ? `API request failed (${status}). ${detail}` : `API request failed (${status}).`);
     this.name = "ApiError";
     this.status = status;
   }
 }
 
-async function requestJson<T>(
-  path: string,
-  init?: RequestInit,
-  signal?: AbortSignal
-): Promise<T> {
-  const res = await authenticatedFetch(path, {
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-      ...init?.headers
+async function requestJson<T>(path: string, init?: RequestInit, signal?: AbortSignal): Promise<T> {
+  const res = await authenticatedFetch(
+    path,
+    {
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        ...init?.headers
+      },
+      ...init
     },
-    ...init
-  }, signal);
+    signal
+  );
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
@@ -57,10 +55,7 @@ function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
 }
 
-function nestedRecords(
-  item: Record<string, unknown>,
-  keys: string[]
-): Record<string, unknown>[] {
+function nestedRecords(item: Record<string, unknown>, keys: string[]): Record<string, unknown>[] {
   const records: Record<string, unknown>[] = [item];
 
   for (const key of keys) {
@@ -73,11 +68,7 @@ function nestedRecords(
   return records;
 }
 
-function pickString(
-  items: Record<string, unknown>[],
-  keys: string[],
-  fallback = ""
-): string {
+function pickString(items: Record<string, unknown>[], keys: string[], fallback = ""): string {
   for (const item of items) {
     for (const key of keys) {
       const value = item[key];
@@ -131,15 +122,7 @@ function normalizeEvent(payload: unknown, index = 0): EventDto {
   ]);
   const name = pickString(
     candidates,
-    [
-      "name",
-      "eventName",
-      "event_name",
-      "title",
-      "label",
-      "displayName",
-      "display_name"
-    ],
+    ["name", "eventName", "event_name", "title", "label", "displayName", "display_name"],
     id || targetDate || `Event ${index + 1}`
   );
 
@@ -181,11 +164,7 @@ export async function fetchEvents(
   signal?: AbortSignal
 ): Promise<EventDto[]> {
   return normalizeEvents(
-    await requestJson<unknown>(
-      eventsPath(orgId, scenarioId),
-      { method: "GET" },
-      signal
-    )
+    await requestJson<unknown>(eventsPath(orgId, scenarioId), { method: "GET" }, signal)
   );
 }
 
@@ -196,11 +175,7 @@ export async function fetchEvent(
   signal?: AbortSignal
 ): Promise<EventDto> {
   return normalizeEvent(
-    await requestJson<unknown>(
-      eventPath(orgId, scenarioId, eventId),
-      { method: "GET" },
-      signal
-    )
+    await requestJson<unknown>(eventPath(orgId, scenarioId, eventId), { method: "GET" }, signal)
   );
 }
 
@@ -247,9 +222,5 @@ export async function deleteEvent(
   eventId: string,
   signal?: AbortSignal
 ): Promise<void> {
-  return requestJson<void>(
-    eventPath(orgId, scenarioId, eventId),
-    { method: "DELETE" },
-    signal
-  );
+  return requestJson<void>(eventPath(orgId, scenarioId, eventId), { method: "DELETE" }, signal);
 }

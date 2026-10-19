@@ -2,12 +2,7 @@ import { Component, type ReactNode } from "react";
 
 export function RouteLoadingFallback(props: { message: string }) {
   return (
-    <section
-      className="route-loading-state"
-      role="status"
-      aria-live="polite"
-      aria-busy="true"
-    >
+    <section className="route-loading-state" role="status" aria-live="polite" aria-busy="true">
       <p className="eyebrow">Schatten</p>
       <p className="route-loading-state__message">{props.message}</p>
     </section>
@@ -36,10 +31,7 @@ export class RouteErrorBoundary extends Component<
   }
 
   componentDidUpdate(previousProps: RouteErrorBoundaryProps) {
-    if (
-      this.state.hasError &&
-      previousProps.resetKey !== this.props.resetKey
-    ) {
+    if (this.state.hasError && previousProps.resetKey !== this.props.resetKey) {
       this.setState({ hasError: false });
     }
   }
@@ -60,8 +52,7 @@ export class RouteErrorBoundary extends Component<
           <p className="eyebrow">Loading error</p>
           <h1 className="page-title">{this.props.title}</h1>
           <p className="muted">
-            The requested page could not be loaded. Reload the application to
-            try again.
+            The requested page could not be loaded. Reload the application to try again.
           </p>
           <button className="btn btn--primary" type="button" onClick={this.reload}>
             Reload page

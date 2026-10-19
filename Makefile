@@ -12,7 +12,7 @@ LOCAL_INIT := if [ ! -f .env.entra.local ] || ! grep -q '^OIDC_CLIENT_SECRET=' .
 	help \
 	install backend-install frontend-install \
 	check backend-check backend-lint backend-test backend-typecheck \
-	frontend-check frontend-lint frontend-test frontend-build \
+	frontend-check frontend-format frontend-format-check frontend-lint frontend-test frontend-build \
 	dev-init db-up migrate seed dev-up dev-down preview-up \
 	diagrams local-verify provision-local-admin
 
@@ -28,7 +28,9 @@ help:
 		'Validation:' \
 		'  check               Run all backend and frontend checks' \
 		'  backend-check       Run backend lint, tests, and typecheck' \
-		'  frontend-check      Run frontend lint, tests, and build' \
+		'  frontend-check      Run frontend format check, lint, tests, and build' \
+		'  frontend-format     Format frontend files with Prettier' \
+		'  frontend-format-check  Check frontend formatting with Prettier' \
 		'' \
 		'Local development (uses local Docker resources only):' \
 		'  dev-init            Create missing private direct-Entra configuration and local TLS material' \
@@ -69,6 +71,12 @@ backend-typecheck:
 
 backend-check: backend-lint backend-test backend-typecheck
 
+frontend-format:
+	cd frontend && pnpm format
+
+frontend-format-check:
+	cd frontend && pnpm format:check
+
 frontend-lint:
 	cd frontend && pnpm lint
 
@@ -78,7 +86,7 @@ frontend-test:
 frontend-build:
 	cd frontend && pnpm build
 
-frontend-check: frontend-lint frontend-test frontend-build
+frontend-check: frontend-format-check frontend-lint frontend-test frontend-build
 
 check: backend-check frontend-check
 

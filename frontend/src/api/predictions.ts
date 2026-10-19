@@ -32,12 +32,7 @@ export type PredictionRequest = {
 export type PredictionCreateRequest = PredictionRequest & { name: string };
 
 export type PredictionRequestState =
-  | "queued"
-  | "running"
-  | "cancelling"
-  | "completed"
-  | "cancelled"
-  | "failed";
+  "queued" | "running" | "cancelling" | "completed" | "cancelled" | "failed";
 
 export type PredictionRequestSummaryDto = {
   id: string;
@@ -153,11 +148,7 @@ function errorDetail(text: string): string {
   return typeof message === "string" ? message : text;
 }
 
-async function requestJson<T>(
-  path: string,
-  init: RequestInit,
-  signal?: AbortSignal
-): Promise<T> {
+async function requestJson<T>(path: string, init: RequestInit, signal?: AbortSignal): Promise<T> {
   const response = await authenticatedFetch(
     path,
     {
@@ -180,10 +171,14 @@ export function preflightPredictions(
   payload: PredictionRequest,
   signal?: AbortSignal
 ): Promise<PredictionPreflightDto> {
-  return requestJson(`${predictionsPath(orgId)}/preflight`, {
-    method: "POST",
-    body: JSON.stringify(payload)
-  }, signal);
+  return requestJson(
+    `${predictionsPath(orgId)}/preflight`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload)
+    },
+    signal
+  );
 }
 
 export function createPrediction(
@@ -191,10 +186,14 @@ export function createPrediction(
   payload: PredictionCreateRequest,
   signal?: AbortSignal
 ): Promise<PredictionRequestSummaryDto> {
-  return requestJson(predictionsPath(orgId), {
-    method: "POST",
-    body: JSON.stringify(payload)
-  }, signal);
+  return requestJson(
+    predictionsPath(orgId),
+    {
+      method: "POST",
+      body: JSON.stringify(payload)
+    },
+    signal
+  );
 }
 
 export function fetchPredictionRequests(

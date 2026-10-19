@@ -5,9 +5,7 @@ import type { OrgStateDto, ScenarioDto } from "../api/scenarios";
 import { useWorkspaceSelection } from "../workspace/WorkspaceSelectionContext";
 
 function sortOrgStates(items: OrgStateDto[]): OrgStateDto[] {
-  return [...items].sort((left, right) =>
-    left.targetDate.localeCompare(right.targetDate)
-  );
+  return [...items].sort((left, right) => left.targetDate.localeCompare(right.targetDate));
 }
 
 function messageFromError(error: unknown): string {
@@ -15,11 +13,7 @@ function messageFromError(error: unknown): string {
 }
 
 export default function ScenarioDropdown(props: { orgId: string }) {
-  const {
-    selectedScenario,
-    selectedOrgState,
-    setWorkspaceSelection
-  } = useWorkspaceSelection();
+  const { selectedScenario, selectedOrgState, setWorkspaceSelection } = useWorkspaceSelection();
   const panelId = useId();
   const rootRef = useRef<HTMLDivElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
@@ -63,10 +57,7 @@ export default function ScenarioDropdown(props: { orgId: string }) {
     if (!open) return;
 
     function onPointerDown(event: PointerEvent) {
-      if (
-        event.target instanceof Node &&
-        !rootRef.current?.contains(event.target)
-      ) {
+      if (event.target instanceof Node && !rootRef.current?.contains(event.target)) {
         closeDropdown(false);
       }
     }
@@ -131,11 +122,7 @@ export default function ScenarioDropdown(props: { orgId: string }) {
         setOrgStates([]);
         setDraftOrgStateId("");
         const items = sortOrgStates(
-          await fetchOrgStates(
-            props.orgId,
-            activeDraftScenarioId,
-            controller.signal
-          )
+          await fetchOrgStates(props.orgId, activeDraftScenarioId, controller.signal)
         );
         if (ignore) return;
         setOrgStates(items);
@@ -159,14 +146,7 @@ export default function ScenarioDropdown(props: { orgId: string }) {
       ignore = true;
       controller.abort();
     };
-  }, [
-    draftScenarioId,
-    open,
-    orgStateRetry,
-    props.orgId,
-    selectedOrgState,
-    selectedScenario?.id
-  ]);
+  }, [draftScenarioId, open, orgStateRetry, props.orgId, selectedOrgState, selectedScenario?.id]);
 
   function chooseDraftScenario(scenarioId: string) {
     if (scenarioId === draftScenarioId) return;
@@ -179,9 +159,7 @@ export default function ScenarioDropdown(props: { orgId: string }) {
   useEffect(() => {
     if (!open || !focusFirstOptionRef.current || scenarios.length === 0) return;
     focusFirstOptionRef.current = false;
-    panelRef.current
-      ?.querySelector<HTMLButtonElement>("[data-scenario-option]")
-      ?.focus();
+    panelRef.current?.querySelector<HTMLButtonElement>("[data-scenario-option]")?.focus();
   }, [open, scenarios]);
 
   function onTriggerKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
@@ -196,10 +174,7 @@ export default function ScenarioDropdown(props: { orgId: string }) {
     const orgState = orgStates.find((item) => item.id === draftOrgStateId);
     if (!scenario || !orgState || loadingScenarios || loadingOrgStates) return;
 
-    if (
-      scenario.id !== selectedScenario?.id ||
-      orgState.id !== selectedOrgState?.id
-    ) {
+    if (scenario.id !== selectedScenario?.id || orgState.id !== selectedOrgState?.id) {
       setWorkspaceSelection(
         { id: scenario.id, name: scenario.name },
         {
@@ -214,10 +189,7 @@ export default function ScenarioDropdown(props: { orgId: string }) {
 
   const displayedName = selectedScenario?.name ?? "None";
   const canCommit = Boolean(
-    draftScenarioId &&
-      draftOrgStateId &&
-      !loadingScenarios &&
-      !loadingOrgStates
+    draftScenarioId && draftOrgStateId && !loadingScenarios && !loadingOrgStates
   );
 
   return (
@@ -250,20 +222,13 @@ export default function ScenarioDropdown(props: { orgId: string }) {
           ref={panelRef}
         >
           <div className="scenario-dropdown__columns">
-            <section
-              className="scenario-dropdown__column"
-              aria-label="Scenarios"
-            >
+            <section className="scenario-dropdown__column" aria-label="Scenarios">
               <p className="eyebrow context-dropdown__heading">Scenarios</p>
               {loadingScenarios ? (
-                <p className="muted context-dropdown__message">
-                  Loading scenarios...
-                </p>
+                <p className="muted context-dropdown__message">Loading scenarios...</p>
               ) : null}
               {!loadingScenarios && !scenarioError && scenarios.length === 0 ? (
-                <p className="muted context-dropdown__message">
-                  No scenarios available.
-                </p>
+                <p className="muted context-dropdown__message">No scenarios available.</p>
               ) : null}
               {scenarioError ? (
                 <LoadError
@@ -287,35 +252,21 @@ export default function ScenarioDropdown(props: { orgId: string }) {
                       aria-pressed={isDraft}
                       onClick={() => chooseDraftScenario(scenario.id)}
                     >
-                      <span className="context-dropdown__option-name">
-                        {scenario.name}
-                      </span>
-                      {isActive ? (
-                        <span className="context-dropdown__status">Active</span>
-                      ) : null}
+                      <span className="context-dropdown__option-name">{scenario.name}</span>
+                      {isActive ? <span className="context-dropdown__status">Active</span> : null}
                     </button>
                   );
                 })}
               </div>
             </section>
 
-            <section
-              className="scenario-dropdown__column"
-              aria-label="Scenario org states"
-            >
+            <section className="scenario-dropdown__column" aria-label="Scenario org states">
               <p className="eyebrow context-dropdown__heading">Org states</p>
               {loadingOrgStates ? (
-                <p className="muted context-dropdown__message">
-                  Loading org states...
-                </p>
+                <p className="muted context-dropdown__message">Loading org states...</p>
               ) : null}
-              {!loadingOrgStates &&
-              draftScenarioId &&
-              !orgStateError &&
-              orgStates.length === 0 ? (
-                <p className="muted context-dropdown__message">
-                  No org states available.
-                </p>
+              {!loadingOrgStates && draftScenarioId && !orgStateError && orgStates.length === 0 ? (
+                <p className="muted context-dropdown__message">No org states available.</p>
               ) : null}
               {orgStateError ? (
                 <LoadError
@@ -341,16 +292,10 @@ export default function ScenarioDropdown(props: { orgId: string }) {
                       onClick={() => setDraftOrgStateId(orgState.id)}
                     >
                       <span className="context-dropdown__option-copy">
-                        <span className="context-dropdown__option-name">
-                          {orgState.name}
-                        </span>
-                        <span className="context-dropdown__option-meta">
-                          {orgState.targetDate}
-                        </span>
+                        <span className="context-dropdown__option-name">{orgState.name}</span>
+                        <span className="context-dropdown__option-meta">{orgState.targetDate}</span>
                       </span>
-                      {isActive ? (
-                        <span className="context-dropdown__status">Active</span>
-                      ) : null}
+                      {isActive ? <span className="context-dropdown__status">Active</span> : null}
                     </button>
                   );
                 })}
@@ -374,20 +319,12 @@ export default function ScenarioDropdown(props: { orgId: string }) {
   );
 }
 
-function LoadError(props: {
-  title: string;
-  message: string;
-  onRetry: () => void;
-}) {
+function LoadError(props: { title: string; message: string; onRetry: () => void }) {
   return (
     <div className="alert alert--danger context-dropdown__alert" role="alert">
       <p className="alert__title">{props.title}</p>
       <p className="alert__text">{props.message}</p>
-      <button
-        className="btn btn--secondary"
-        type="button"
-        onClick={props.onRetry}
-      >
+      <button className="btn btn--secondary" type="button" onClick={props.onRetry}>
         Retry
       </button>
     </div>
@@ -396,11 +333,7 @@ function LoadError(props: {
 
 function ChevronIcon() {
   return (
-    <svg
-      className="dropdown-chevron"
-      viewBox="0 0 24 24"
-      aria-hidden="true"
-    >
+    <svg className="dropdown-chevron" viewBox="0 0 24 24" aria-hidden="true">
       <path d="m7 10 5 5 5-5" />
     </svg>
   );

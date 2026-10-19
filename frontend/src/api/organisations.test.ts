@@ -1,8 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  deleteOrganisation,
-  updateOrganisation
-} from "./organisations";
+import { deleteOrganisation, updateOrganisation } from "./organisations";
 
 function jsonResponse(payload: unknown, init?: ResponseInit) {
   return new Response(JSON.stringify(payload), {
@@ -25,9 +22,9 @@ describe("organisations API mutations", () => {
       .mockResolvedValueOnce(new Response(null, { status: 204 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(
-      updateOrganisation("acme / north", { name: "Acme North" })
-    ).resolves.toEqual(updated);
+    await expect(updateOrganisation("acme / north", { name: "Acme North" })).resolves.toEqual(
+      updated
+    );
     await expect(deleteOrganisation("acme / north")).resolves.toBeUndefined();
 
     expect(fetchMock.mock.calls[0]).toEqual([
@@ -56,14 +53,10 @@ describe("organisations API mutations", () => {
           { status: 409 }
         )
       )
-      .mockResolvedValueOnce(
-        jsonResponse({ detail: "Organisation not found." }, { status: 404 })
-      );
+      .mockResolvedValueOnce(jsonResponse({ detail: "Organisation not found." }, { status: 404 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(
-      updateOrganisation("acme", { name: "Beta" })
-    ).rejects.toThrow(
+    await expect(updateOrganisation("acme", { name: "Beta" })).rejects.toThrow(
       "Failed to update organisation (409): An active organisation with this name already exists."
     );
     await expect(deleteOrganisation("acme")).rejects.toThrow(

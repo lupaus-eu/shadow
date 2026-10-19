@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { EventDto } from "../../api/events";
-import type {
-  GraphHistoryDto,
-  GraphTypeCatalogDto
-} from "../../api/orgTwinStructure";
+import type { GraphHistoryDto, GraphTypeCatalogDto } from "../../api/orgTwinStructure";
 import type { TimeserieDto } from "../../api/timeseries";
 import {
   MAX_PIXELS_PER_DAY,
@@ -164,16 +161,13 @@ describe("summary timeline helpers", () => {
 
   it("filters categories and endpoint node types", () => {
     const rows = buildTimelineRows(history, catalog, events, timeseries);
-    const filtered = filterTimelineRows(
-      rows,
-      {
-        nodes: true,
-        edges: true,
-        events: false,
-        timeseries: true,
-        nodeTypeIds: new Set(["type-a"])
-      }
-    );
+    const filtered = filterTimelineRows(rows, {
+      nodes: true,
+      edges: true,
+      events: false,
+      timeseries: true,
+      nodeTypeIds: new Set(["type-a"])
+    });
     expect(filtered.map((row) => row.id)).toEqual([
       "node:node-a",
       "timeserie:a-series",
@@ -202,11 +196,7 @@ describe("summary timeline helpers", () => {
       end: new Date("2026-02-28T00:00:00Z"),
       dayCount: 76
     };
-    expect(monthMarkers(bounds).map((marker) => marker.label)).toEqual([
-      "Dec",
-      "2026",
-      "Feb"
-    ]);
+    expect(monthMarkers(bounds).map((marker) => marker.label)).toEqual(["Dec", "2026", "Feb"]);
     expect(monthMarkers(bounds, true).map((marker) => marker.label)).toEqual([
       "2025 Dec",
       "2026 Jan",
@@ -224,10 +214,7 @@ describe("summary timeline helpers", () => {
     expect(shouldUseYearOnlyHeader(bounds, 0.5)).toBe(true);
     expect(shouldShowYearAndMonthHeader(bounds, 2)).toBe(false);
     expect(shouldShowYearAndMonthHeader(bounds, 3)).toBe(true);
-    expect(yearMarkers(bounds).map((marker) => marker.label)).toEqual([
-      "2025",
-      "2026"
-    ]);
+    expect(yearMarkers(bounds).map((marker) => marker.label)).toEqual(["2025", "2026"]);
   });
 
   it("rounds chart scales for positive, negative, mixed, zero and fractional values", () => {

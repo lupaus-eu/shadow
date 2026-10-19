@@ -27,9 +27,7 @@ export default function SessionControls() {
       >
         {loggingOut ? "Signing out..." : "Sign out"}
       </button>
-      {authError ? (
-        <span className="session-controls__error">{authError}</span>
-      ) : null}
+      {authError ? <span className="session-controls__error">{authError}</span> : null}
     </aside>
   );
 }

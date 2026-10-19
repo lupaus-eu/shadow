@@ -1,17 +1,7 @@
 import { useMemo } from "react";
-import type {
-  GraphNodeDto,
-  NodeTypeMetadataDto
-} from "../../api/orgTwinStructure";
+import type { GraphNodeDto, NodeTypeMetadataDto } from "../../api/orgTwinStructure";
 
-const FALLBACK_COLORS = [
-  "#dbeafe",
-  "#dcfce7",
-  "#fef3c7",
-  "#fce7f3",
-  "#ede9fe",
-  "#cffafe"
-];
+const FALLBACK_COLORS = ["#dbeafe", "#dcfce7", "#fef3c7", "#fce7f3", "#ede9fe", "#cffafe"];
 
 function nodeTypeLabel(type: NodeTypeMetadataDto | undefined, id: string): string {
   return type?.displayName || type?.name || id;
@@ -107,33 +97,22 @@ export default function NodeList(props: {
                       +
                     </span>
                   </button>
-                  <div
-                    className="structure-type-tag"
-                    style={{ backgroundColor: group.color }}
-                  >
+                  <div className="structure-type-tag" style={{ backgroundColor: group.color }}>
                     <label className="structure-type-toggle">
                       <input
                         type="checkbox"
                         checked={isVisible}
-                        onChange={() =>
-                          props.onToggleVisibleNodeType(group.nodeTypeId)
-                        }
+                        onChange={() => props.onToggleVisibleNodeType(group.nodeTypeId)}
                       />
-                      <span className="structure-type-toggle__label">
-                        {group.label}
-                      </span>
-                      <span className="structure-type-count">
-                        ({group.nodes.length})
-                      </span>
+                      <span className="structure-type-toggle__label">{group.label}</span>
+                      <span className="structure-type-count">({group.nodes.length})</span>
                     </label>
                     <button
                       className={`disclosure-button structure-type-caret${
                         isCollapsed ? " disclosure-button--collapsed" : ""
                       }`}
                       type="button"
-                      onClick={() =>
-                        props.onToggleCollapsedNodeType(group.nodeTypeId)
-                      }
+                      onClick={() => props.onToggleCollapsedNodeType(group.nodeTypeId)}
                       aria-expanded={!isCollapsed}
                       aria-label={
                         isCollapsed
@@ -165,9 +144,7 @@ export default function NodeList(props: {
                         >
                           <span className="entity-row__main">
                             <span className="entity-row__title">{node.name}</span>
-                            <span className="clamped-description">
-                              {node.description || "" }
-                            </span>
+                            <span className="clamped-description">{node.description || ""}</span>
                           </span>
                         </button>
                       );

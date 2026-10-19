@@ -1,13 +1,6 @@
 import { useMemo, useState } from "react";
 import type { ContextType, ReactNode } from "react";
-import {
-  act,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-  within
-} from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as scenariosApi from "../api/scenarios";
 import type { OrgStateDto, ScenarioDto } from "../api/scenarios";
@@ -63,9 +56,7 @@ const futureStates: OrgStateDto[] = [
   }
 ];
 
-type WorkspaceValue = NonNullable<
-  ContextType<typeof WorkspaceSelectionContext>
->;
+type WorkspaceValue = NonNullable<ContextType<typeof WorkspaceSelectionContext>>;
 
 function SelectionHarness(props: {
   children: ReactNode;
@@ -74,18 +65,14 @@ function SelectionHarness(props: {
   onPairCommit?: () => void;
   onOrgStateChange?: () => void;
 }) {
-  const [selectedScenario, setSelectedScenario] =
-    useState<WorkspaceScenarioSummary | null>(
-      props.initialScenario === undefined
-        ? { id: "reality", name: "Reality" }
-        : props.initialScenario
-    );
-  const [selectedOrgState, setSelectedOrgStateState] =
-    useState<WorkspaceOrgStateSummary | null>(
-      props.initialOrgState === undefined
-        ? { id: "today", name: "Today", targetDate: "2026-06-23" }
-        : props.initialOrgState
-    );
+  const [selectedScenario, setSelectedScenario] = useState<WorkspaceScenarioSummary | null>(
+    props.initialScenario === undefined ? { id: "reality", name: "Reality" } : props.initialScenario
+  );
+  const [selectedOrgState, setSelectedOrgStateState] = useState<WorkspaceOrgStateSummary | null>(
+    props.initialOrgState === undefined
+      ? { id: "today", name: "Today", targetDate: "2026-06-23" }
+      : props.initialOrgState
+  );
 
   const value = useMemo<WorkspaceValue>(
     () => ({
@@ -102,11 +89,7 @@ function SelectionHarness(props: {
         setSelectedOrgStateState(orgState);
       }
     }),
-    [
-      props,
-      selectedOrgState,
-      selectedScenario
-    ]
+    [props, selectedOrgState, selectedScenario]
   );
 
   return (
@@ -135,9 +118,8 @@ function renderDropdowns(options?: {
 
 function mockSuccessfulReads() {
   vi.mocked(scenariosApi.fetchScenarios).mockResolvedValue(scenarios);
-  vi.mocked(scenariosApi.fetchOrgStates).mockImplementation(
-    async (_orgId, scenarioId) =>
-      scenarioId === "future" ? futureStates : realityStates
+  vi.mocked(scenariosApi.fetchOrgStates).mockImplementation(async (_orgId, scenarioId) =>
+    scenarioId === "future" ? futureStates : realityStates
   );
 }
 
@@ -180,12 +162,11 @@ describe("workspace scenario and org state dropdowns", () => {
     const stateColumn = within(dialog).getByRole("region", {
       name: "Scenario org states"
     });
-    expect(
-      await within(stateColumn).findByRole("button", { name: /Draft state/ })
-    ).toHaveAttribute("aria-pressed", "true");
-    expect(
-      within(stateColumn).queryByRole("button", { name: /Today/ })
-    ).not.toBeInTheDocument();
+    expect(await within(stateColumn).findByRole("button", { name: /Draft state/ })).toHaveAttribute(
+      "aria-pressed",
+      "true"
+    );
+    expect(within(stateColumn).queryByRole("button", { name: /Today/ })).not.toBeInTheDocument();
 
     fireEvent.click(within(dialog).getByRole("button", { name: "Select" }));
 
@@ -243,9 +224,7 @@ describe("workspace scenario and org state dropdowns", () => {
     const dialog = await screen.findByRole("dialog", {
       name: "Org state selector"
     });
-    fireEvent.click(
-      await within(dialog).findByRole("button", { name: /Planned launch/ })
-    );
+    fireEvent.click(await within(dialog).findByRole("button", { name: /Planned launch/ }));
 
     expect(onPairCommit).not.toHaveBeenCalled();
     expect(onOrgStateChange).toHaveBeenCalledTimes(1);
@@ -265,18 +244,14 @@ describe("workspace scenario and org state dropdowns", () => {
       name: "Scenario and org state selector"
     });
     await within(scenarioDialog).findByRole("button", { name: /Today/ });
-    fireEvent.click(
-      within(scenarioDialog).getByRole("button", { name: "Select" })
-    );
+    fireEvent.click(within(scenarioDialog).getByRole("button", { name: "Select" }));
     expect(onPairCommit).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "Change org state" }));
     const stateDialog = await screen.findByRole("dialog", {
       name: "Org state selector"
     });
-    fireEvent.click(
-      await within(stateDialog).findByRole("button", { name: /Today/ })
-    );
+    fireEvent.click(await within(stateDialog).findByRole("button", { name: /Today/ }));
     expect(onOrgStateChange).not.toHaveBeenCalled();
   });
 
@@ -294,17 +269,14 @@ describe("workspace scenario and org state dropdowns", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
 
-    expect(
-      await screen.findByRole("button", { name: /Reality/ })
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /Reality/ })).toBeInTheDocument();
   });
 
   it("ignores a late org-state response from an abandoned draft scenario", async () => {
     const futureResponse = deferred<OrgStateDto[]>();
     vi.mocked(scenariosApi.fetchScenarios).mockResolvedValue(scenarios);
-    vi.mocked(scenariosApi.fetchOrgStates).mockImplementation(
-      async (_orgId, scenarioId) =>
-        scenarioId === "future" ? futureResponse.promise : realityStates
+    vi.mocked(scenariosApi.fetchOrgStates).mockImplementation(async (_orgId, scenarioId) =>
+      scenarioId === "future" ? futureResponse.promise : realityStates
     );
     renderDropdowns();
 
@@ -320,29 +292,21 @@ describe("workspace scenario and org state dropdowns", () => {
     });
     await within(stateColumn).findByRole("button", { name: /Today/ });
 
-    fireEvent.click(
-      within(scenarioColumn).getByRole("button", { name: /Future plan/ })
-    );
-    fireEvent.click(
-      within(scenarioColumn).getByRole("button", { name: /Reality/ })
-    );
+    fireEvent.click(within(scenarioColumn).getByRole("button", { name: /Future plan/ }));
+    fireEvent.click(within(scenarioColumn).getByRole("button", { name: /Reality/ }));
     await within(stateColumn).findByRole("button", { name: /Today/ });
 
     await act(async () => futureResponse.resolve(futureStates));
     expect(
       within(stateColumn).queryByRole("button", { name: /Planned launch/ })
     ).not.toBeInTheDocument();
-    expect(
-      within(stateColumn).getByRole("button", { name: /Today/ })
-    ).toBeInTheDocument();
+    expect(within(stateColumn).getByRole("button", { name: /Today/ })).toBeInTheDocument();
   });
 
   it("disables org state selection until a scenario is active", () => {
     mockSuccessfulReads();
     renderDropdowns({ initialScenario: null, initialOrgState: null });
 
-    expect(
-      screen.getByRole("button", { name: "Change org state" })
-    ).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Change org state" })).toBeDisabled();
   });
 });

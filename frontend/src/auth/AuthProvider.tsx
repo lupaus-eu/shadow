@@ -1,10 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PropsWithChildren } from "react";
-import {
-  authenticatedFetch,
-  buildApiUrl,
-  configureRequestAuthentication
-} from "../api/client";
+import { authenticatedFetch, buildApiUrl, configureRequestAuthentication } from "../api/client";
 import type { UserDto } from "../api/users";
 import { AuthContext } from "./AuthContext";
 import type { AuthContextValue, AuthStatus } from "./AuthContext";
@@ -35,11 +31,7 @@ function parseSession(value: unknown): SessionResponse {
     throw new Error("Invalid authentication session response.");
   }
   const session = value as Partial<SessionResponse>;
-  if (
-    !isUser(session.user) ||
-    typeof session.csrfToken !== "string" ||
-    !session.csrfToken
-  ) {
+  if (!isUser(session.user) || typeof session.csrfToken !== "string" || !session.csrfToken) {
     throw new Error("Invalid authentication session response.");
   }
   return { user: session.user, csrfToken: session.csrfToken };
@@ -119,9 +111,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       } catch (error) {
         if (!active || (error as { name?: string }).name === "AbortError") return;
         invalidateSession();
-        setAuthError(
-          error instanceof Error ? error.message : "Session restoration failed."
-        );
+        setAuthError(error instanceof Error ? error.message : "Session restoration failed.");
       }
     }
 

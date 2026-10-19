@@ -23,17 +23,11 @@ const cytoscapeMock = vi.hoisted(() => ({
   cyOn: vi.fn(
     (
       eventNames: string,
-      selectorOrHandler:
-        | string
-        | ((event: { target: unknown }) => void),
+      selectorOrHandler: string | ((event: { target: unknown }) => void),
       maybeHandler?: (event: { target: unknown }) => void
     ) => {
-      const selector =
-        typeof selectorOrHandler === "string" ? selectorOrHandler : undefined;
-      const handler =
-        typeof selectorOrHandler === "function"
-          ? selectorOrHandler
-          : maybeHandler;
+      const selector = typeof selectorOrHandler === "string" ? selectorOrHandler : undefined;
+      const handler = typeof selectorOrHandler === "function" ? selectorOrHandler : maybeHandler;
 
       if (!handler) return;
 
@@ -44,11 +38,7 @@ const cytoscapeMock = vi.hoisted(() => ({
       }
     }
   ),
-  trigger(
-    eventName: string,
-    target: unknown,
-    selector?: string
-  ) {
+  trigger(eventName: string, target: unknown, selector?: string) {
     for (const entry of cytoscapeMock.eventHandlers.get(eventName) ?? []) {
       if (entry.selector && entry.selector !== selector) continue;
       entry.handler({ target });
@@ -222,55 +212,55 @@ describe("GraphViewer", () => {
     vi.clearAllMocks();
     cytoscapeMock.eventHandlers.clear();
     resizeObserverMock.install();
-    vi
-      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
-      .mockImplementation(function mockRect(this: HTMLElement) {
-        if (this.dataset.testid === "graph-canvas-shell") {
-          return {
-            x: 0,
-            y: 0,
-            top: 0,
-            left: 0,
-            right: 320,
-            bottom: 280,
-            width: 320,
-            height: 280,
-            toJSON() {
-              return {};
-            }
-          } as DOMRect;
-        }
-
-        if (this.getAttribute("role") === "tooltip") {
-          return {
-            x: 0,
-            y: 0,
-            top: 0,
-            left: 0,
-            right: 180,
-            bottom: 84,
-            width: 180,
-            height: 84,
-            toJSON() {
-              return {};
-            }
-          } as DOMRect;
-        }
-
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function mockRect(
+      this: HTMLElement
+    ) {
+      if (this.dataset.testid === "graph-canvas-shell") {
         return {
           x: 0,
           y: 0,
           top: 0,
           left: 0,
-          right: 0,
-          bottom: 0,
-          width: 0,
-          height: 0,
+          right: 320,
+          bottom: 280,
+          width: 320,
+          height: 280,
           toJSON() {
             return {};
           }
         } as DOMRect;
-      });
+      }
+
+      if (this.getAttribute("role") === "tooltip") {
+        return {
+          x: 0,
+          y: 0,
+          top: 0,
+          left: 0,
+          right: 180,
+          bottom: 84,
+          width: 180,
+          height: 84,
+          toJSON() {
+            return {};
+          }
+        } as DOMRect;
+      }
+
+      return {
+        x: 0,
+        y: 0,
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        width: 0,
+        height: 0,
+        toJSON() {
+          return {};
+        }
+      } as DOMRect;
+    });
   });
 
   it("renders graph controls and sends visible elements to Cytoscape", async () => {
@@ -295,10 +285,7 @@ describe("GraphViewer", () => {
     const elements = cytoscapeMock.cyAdd.mock.calls.at(-1)?.[0] as Array<{
       data: { id: string; label?: string };
     }>;
-    expect(elements.map((element) => element.data.id)).toEqual([
-      "node_ceo",
-      "edge_visible"
-    ]);
+    expect(elements.map((element) => element.data.id)).toEqual(["node_ceo", "edge_visible"]);
     expect(elements).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -315,9 +302,7 @@ describe("GraphViewer", () => {
         })
       ])
     );
-    expect(cytoscape).toHaveBeenCalledWith(
-      expect.objectContaining({ wheelSensitivity: 2.5 })
-    );
+    expect(cytoscape).toHaveBeenCalledWith(expect.objectContaining({ wheelSensitivity: 2.5 }));
     expect(cytoscape).toHaveBeenCalledWith(
       expect.objectContaining({
         style: expect.arrayContaining([
@@ -397,18 +382,13 @@ describe("GraphViewer", () => {
       fitRequestId: 1
     };
 
-    const { rerender } = render(
-      <GraphViewer {...baseProps} centerNodeRequest={null} />
-    );
+    const { rerender } = render(<GraphViewer {...baseProps} centerNodeRequest={null} />);
 
     await waitFor(() => expect(cytoscapeMock.cySelect).toHaveBeenCalled());
     expect(cytoscapeMock.cyAnimate).not.toHaveBeenCalled();
 
     rerender(
-      <GraphViewer
-        {...baseProps}
-        centerNodeRequest={{ nodeId: "node_ceo", requestId: 1 }}
-      />
+      <GraphViewer {...baseProps} centerNodeRequest={{ nodeId: "node_ceo", requestId: 1 }} />
     );
 
     await waitFor(() => expect(cytoscapeMock.cyAnimate).toHaveBeenCalled());
@@ -454,9 +434,9 @@ describe("GraphViewer", () => {
 
     const tooltip = await screen.findByRole("tooltip");
     expect(tooltip).toHaveTextContent("Chief executive");
-    expect(
-      tooltip.querySelector(".graph-viewer__popover-description")
-    ).toHaveTextContent("Chief executive");
+    expect(tooltip.querySelector(".graph-viewer__popover-description")).toHaveTextContent(
+      "Chief executive"
+    );
     expect(tooltip).toHaveStyle({
       left: "90px",
       top: "92px",

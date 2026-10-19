@@ -1,9 +1,6 @@
 import { useAuth } from "./AuthContext";
 
-export default function LoginPage(props: {
-  returnTo: string;
-  authenticationFailed?: boolean;
-}) {
+export default function LoginPage(props: { returnTo: string; authenticationFailed?: boolean }) {
   const { authError, login } = useAuth();
   const message = props.authenticationFailed
     ? "Authentication failed. Please try again."
@@ -23,11 +20,7 @@ export default function LoginPage(props: {
             <p className="alert__text">{message}</p>
           </div>
         ) : null}
-        <button
-          className="btn btn--primary"
-          type="button"
-          onClick={() => login(props.returnTo)}
-        >
+        <button className="btn btn--primary" type="button" onClick={() => login(props.returnTo)}>
           Sign in
         </button>
       </section>

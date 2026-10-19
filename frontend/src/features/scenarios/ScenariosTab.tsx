@@ -75,18 +75,10 @@ function todayDateValue(): string {
 }
 
 export default function ScenariosTab(props: { orgId: string }) {
-  const {
-    selectedScenario,
-    setSelectedScenario,
-    selectedOrgState,
-    setSelectedOrgState
-  } = useWorkspaceSelection();
-  const selectedScenarioIdRef = useRef<string | null>(
-    selectedScenario?.id ?? null
-  );
-  const selectedOrgStateIdRef = useRef<string | null>(
-    selectedOrgState?.id ?? null
-  );
+  const { selectedScenario, setSelectedScenario, selectedOrgState, setSelectedOrgState } =
+    useWorkspaceSelection();
+  const selectedScenarioIdRef = useRef<string | null>(selectedScenario?.id ?? null);
+  const selectedOrgStateIdRef = useRef<string | null>(selectedOrgState?.id ?? null);
   const forkSourceScenarioIdRef = useRef("");
   const hydratedScenarioIdRef = useRef<string | null>(null);
   const hydratedOrgStateIdRef = useRef<string | null>(null);
@@ -104,8 +96,7 @@ export default function ScenariosTab(props: { orgId: string }) {
 
   const [scenarioEditName, setScenarioEditName] = useState("");
   const [scenarioEditDescription, setScenarioEditDescription] = useState("");
-  const [scenarioDeleteConfirmation, setScenarioDeleteConfirmation] =
-    useState("");
+  const [scenarioDeleteConfirmation, setScenarioDeleteConfirmation] = useState("");
   const [scenarioActionError, setScenarioActionError] = useState("");
 
   const [forkName, setForkName] = useState("");
@@ -113,21 +104,18 @@ export default function ScenariosTab(props: { orgId: string }) {
   const [forkSourceScenarioId, setForkSourceScenarioId] = useState("");
   const [forkSourceOrgStates, setForkSourceOrgStates] = useState<OrgStateDto[]>([]);
   const [forkSourceOrgStateId, setForkSourceOrgStateId] = useState("");
-  const [loadingForkSourceOrgStates, setLoadingForkSourceOrgStates] =
-    useState(false);
+  const [loadingForkSourceOrgStates, setLoadingForkSourceOrgStates] = useState(false);
   const [forkError, setForkError] = useState("");
 
   const [stateCreateName, setStateCreateName] = useState("");
   const [stateCreateDescription, setStateCreateDescription] = useState("");
-  const [stateCreateTargetDate, setStateCreateTargetDate] =
-    useState(todayDateValue);
+  const [stateCreateTargetDate, setStateCreateTargetDate] = useState(todayDateValue);
   const [stateCreateError, setStateCreateError] = useState("");
 
   const [stateEditName, setStateEditName] = useState("");
   const [stateEditDescription, setStateEditDescription] = useState("");
   const [stateEditTargetDate, setStateEditTargetDate] = useState("");
-  const [orgStateDeleteConfirmation, setOrgStateDeleteConfirmation] =
-    useState("");
+  const [orgStateDeleteConfirmation, setOrgStateDeleteConfirmation] = useState("");
   const [orgStateActionError, setOrgStateActionError] = useState("");
 
   const [cleanConfirming, setCleanConfirming] = useState(false);
@@ -136,32 +124,22 @@ export default function ScenariosTab(props: { orgId: string }) {
   const [cleanError, setCleanError] = useState("");
 
   const selectedScenarioDto = useMemo(
-    () =>
-      scenarios.find((scenario) => scenario.id === selectedScenario?.id) ??
-      null,
+    () => scenarios.find((scenario) => scenario.id === selectedScenario?.id) ?? null,
     [scenarios, selectedScenario?.id]
   );
   const selectedOrgStateDto = useMemo(
-    () =>
-      orgStates.find((orgState) => orgState.id === selectedOrgState?.id) ??
-      null,
+    () => orgStates.find((orgState) => orgState.id === selectedOrgState?.id) ?? null,
     [orgStates, selectedOrgState?.id]
   );
   const forkSourceScenarioDto = useMemo(
-    () =>
-      scenarios.find((scenario) => scenario.id === forkSourceScenarioId) ??
-      null,
+    () => scenarios.find((scenario) => scenario.id === forkSourceScenarioId) ?? null,
     [forkSourceScenarioId, scenarios]
   );
   const availableForkSourceOrgStates =
-    forkSourceScenarioId === selectedScenarioDto?.id
-      ? orgStates
-      : forkSourceOrgStates;
+    forkSourceScenarioId === selectedScenarioDto?.id ? orgStates : forkSourceOrgStates;
   const forkSourceOrgStateDto = useMemo(
     () =>
-      availableForkSourceOrgStates.find(
-        (orgState) => orgState.id === forkSourceOrgStateId
-      ) ?? null,
+      availableForkSourceOrgStates.find((orgState) => orgState.id === forkSourceOrgStateId) ?? null,
     [availableForkSourceOrgStates, forkSourceOrgStateId]
   );
 
@@ -181,9 +159,7 @@ export default function ScenariosTab(props: { orgId: string }) {
       setStateEditName(orgState?.name ?? "");
       setStateEditDescription(orgState?.description ?? "");
       setStateEditTargetDate(orgState?.targetDate ?? "");
-      if (
-        forkSourceScenarioIdRef.current === selectedScenarioIdRef.current
-      ) {
+      if (forkSourceScenarioIdRef.current === selectedScenarioIdRef.current) {
         setForkSourceOrgStateId(orgState?.id ?? "");
       }
       setOrgStateActionError("");
@@ -193,19 +169,14 @@ export default function ScenariosTab(props: { orgId: string }) {
   );
 
   const applySelectedScenario = useCallback(
-    (
-      scenario: ScenarioDto | null,
-      options?: { preserveOrgState?: boolean }
-    ) => {
+    (scenario: ScenarioDto | null, options?: { preserveOrgState?: boolean }) => {
       selectedScenarioIdRef.current = scenario?.id ?? null;
       hydratedScenarioIdRef.current = scenario?.id ?? null;
       forkSourceScenarioIdRef.current = scenario?.id ?? "";
       setForkSourceScenarioId(scenario?.id ?? "");
       setForkSourceOrgStates([]);
       setLoadingForkSourceOrgStates(false);
-      setSelectedScenario(
-        scenario ? { id: scenario.id, name: scenario.name } : null
-      );
+      setSelectedScenario(scenario ? { id: scenario.id, name: scenario.name } : null);
       if (!options?.preserveOrgState) {
         applySelectedOrgState(null);
       }
@@ -231,9 +202,7 @@ export default function ScenariosTab(props: { orgId: string }) {
   useEffect(() => {
     const scenarioId = selectedScenario?.id ?? null;
     if (hydratedScenarioIdRef.current === scenarioId) return;
-    const scenario = scenarioId
-      ? scenarios.find((item) => item.id === scenarioId) ?? null
-      : null;
+    const scenario = scenarioId ? (scenarios.find((item) => item.id === scenarioId) ?? null) : null;
     if (scenarioId && !scenario) return;
     let cancelled = false;
     queueMicrotask(() => {
@@ -263,9 +232,7 @@ export default function ScenariosTab(props: { orgId: string }) {
   useEffect(() => {
     const orgStateId = selectedOrgState?.id ?? null;
     if (hydratedOrgStateIdRef.current === orgStateId) return;
-    const orgState = orgStateId
-      ? orgStates.find((item) => item.id === orgStateId) ?? null
-      : null;
+    const orgState = orgStateId ? (orgStates.find((item) => item.id === orgStateId) ?? null) : null;
     if (orgStateId && !orgState) return;
     let cancelled = false;
     queueMicrotask(() => {
@@ -274,9 +241,7 @@ export default function ScenariosTab(props: { orgId: string }) {
       setStateEditName(orgState?.name ?? "");
       setStateEditDescription(orgState?.description ?? "");
       setStateEditTargetDate(orgState?.targetDate ?? "");
-      if (
-        forkSourceScenarioIdRef.current === selectedScenarioIdRef.current
-      ) {
+      if (forkSourceScenarioIdRef.current === selectedScenarioIdRef.current) {
         setForkSourceOrgStateId(orgState?.id ?? "");
       }
       setOrgStateActionError("");
@@ -291,7 +256,7 @@ export default function ScenariosTab(props: { orgId: string }) {
     (items: ScenarioDto[]) => {
       const storedScenarioId = selectedScenarioIdRef.current;
       const storedScenario = storedScenarioId
-        ? items.find((scenario) => scenario.id === storedScenarioId) ?? null
+        ? (items.find((scenario) => scenario.id === storedScenarioId) ?? null)
         : null;
       const nextScenario = storedScenario ?? items[0] ?? null;
 
@@ -363,9 +328,7 @@ export default function ScenariosTab(props: { orgId: string }) {
         setLoadingOrgStates(true);
         setOrgStateError("");
         setOrgStates([]);
-        const items = sortOrgStates(
-          await fetchOrgStates(props.orgId, activeScenarioId, ac.signal)
-        );
+        const items = sortOrgStates(await fetchOrgStates(props.orgId, activeScenarioId, ac.signal));
         if (ignore) return;
         setOrgStates(items);
         const selectedOrgStateId = selectedOrgStateIdRef.current;
@@ -389,17 +352,10 @@ export default function ScenariosTab(props: { orgId: string }) {
       ignore = true;
       ac.abort();
     };
-  }, [
-    applySelectedOrgState,
-    props.orgId,
-    selectedScenario?.id
-  ]);
+  }, [applySelectedOrgState, props.orgId, selectedScenario?.id]);
 
   useEffect(() => {
-    if (
-      !forkSourceScenarioId ||
-      forkSourceScenarioId === selectedScenario?.id
-    ) {
+    if (!forkSourceScenarioId || forkSourceScenarioId === selectedScenario?.id) {
       return;
     }
     const activeForkSourceScenarioId = forkSourceScenarioId;
@@ -413,11 +369,7 @@ export default function ScenariosTab(props: { orgId: string }) {
         setForkSourceOrgStates([]);
         setForkSourceOrgStateId("");
         const items = sortOrgStates(
-          await fetchOrgStates(
-            props.orgId,
-            activeForkSourceScenarioId,
-            ac.signal
-          )
+          await fetchOrgStates(props.orgId, activeForkSourceScenarioId, ac.signal)
         );
         if (ignore) return;
         setForkSourceOrgStates(items);
@@ -425,9 +377,7 @@ export default function ScenariosTab(props: { orgId: string }) {
       } catch (error) {
         const err = error as { name?: string };
         if (ignore || err.name === "AbortError") return;
-        setForkError(
-          `Could not load source states. ${messageFromError(error)}`
-        );
+        setForkError(`Could not load source states. ${messageFromError(error)}`);
       } finally {
         if (!ignore) setLoadingForkSourceOrgStates(false);
       }
@@ -463,7 +413,7 @@ export default function ScenariosTab(props: { orgId: string }) {
     setLoadingForkSourceOrgStates(false);
     setForkSourceOrgStateId(
       scenario.id === selectedScenarioDto?.id
-        ? selectedOrgStateDto?.id ?? orgStates[0]?.id ?? ""
+        ? (selectedOrgStateDto?.id ?? orgStates[0]?.id ?? "")
         : ""
     );
     setForkName(`Fork of ${scenario.name}`);
@@ -495,8 +445,7 @@ export default function ScenariosTab(props: { orgId: string }) {
 
   function hasDuplicateTargetDate(targetDate: string, currentId?: string) {
     return orgStates.some(
-      (orgState) =>
-        orgState.targetDate === targetDate && orgState.id !== currentId
+      (orgState) => orgState.targetDate === targetDate && orgState.id !== currentId
     );
   }
 
@@ -517,9 +466,7 @@ export default function ScenariosTab(props: { orgId: string }) {
       ]);
       const sortedOrgStates = sortOrgStates(updatedOrgStates);
       setScenarios((current) =>
-        current.map((scenario) =>
-          scenario.id === updatedScenario.id ? updatedScenario : scenario
-        )
+        current.map((scenario) => (scenario.id === updatedScenario.id ? updatedScenario : scenario))
       );
       setSelectedScenario({
         id: updatedScenario.id,
@@ -564,9 +511,7 @@ export default function ScenariosTab(props: { orgId: string }) {
         description: scenarioEditDescription.trim()
       });
       setScenarios((current) =>
-        current.map((scenario) =>
-          scenario.id === updated.id ? updated : scenario
-        )
+        current.map((scenario) => (scenario.id === updated.id ? updated : scenario))
       );
       setSelectedScenario({ id: updated.id, name: updated.name });
       setScenarioEditName(updated.name);
@@ -725,11 +670,7 @@ export default function ScenariosTab(props: { orgId: string }) {
         }
       );
       setOrgStates((current) =>
-        sortOrgStates(
-          current.map((orgState) =>
-            orgState.id === updated.id ? updated : orgState
-          )
-        )
+        sortOrgStates(current.map((orgState) => (orgState.id === updated.id ? updated : orgState)))
       );
       selectOrgState(updated);
     } catch (error) {
@@ -741,22 +682,14 @@ export default function ScenariosTab(props: { orgId: string }) {
 
   async function onOrgStateDeleteSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (
-      !selectedScenarioDto ||
-      !selectedOrgStateDto ||
-      orgStateDeleteConfirmation !== "DELETE"
-    ) {
+    if (!selectedScenarioDto || !selectedOrgStateDto || orgStateDeleteConfirmation !== "DELETE") {
       return;
     }
 
     try {
       setSaving(true);
       setOrgStateActionError("");
-      await deleteOrgState(
-        props.orgId,
-        selectedScenarioDto.id,
-        selectedOrgStateDto.id
-      );
+      await deleteOrgState(props.orgId, selectedScenarioDto.id, selectedOrgStateDto.id);
       const remainingOrgStates = orgStates.filter(
         (orgState) => orgState.id !== selectedOrgStateDto.id
       );
@@ -799,17 +732,14 @@ export default function ScenariosTab(props: { orgId: string }) {
   }
 
   const refreshDisabled = loadingScenarios || loadingOrgStates;
-  const cleanDisabled =
-    !selectedScenarioDto || selectedScenarioDto.protected || cleaningStates;
+  const cleanDisabled = !selectedScenarioDto || selectedScenarioDto.protected || cleaningStates;
 
   return (
     <div className="management-tab">
       <section className="tab-toolbar" aria-label="Scenario overview">
         <div className="tab-toolbar__title">
           <h1 className="page-title">Scenarios</h1>
-          <span className="tab-toolbar__count">
-            {scenarioCountText(scenarios.length)}
-          </span>
+          <span className="tab-toolbar__count">{scenarioCountText(scenarios.length)}</span>
         </div>
         <button
           className="btn btn--secondary"
@@ -822,15 +752,10 @@ export default function ScenariosTab(props: { orgId: string }) {
       </section>
 
       <div className="main-detail-layout">
-        <aside
-          className="main-detail-sidebar"
-          aria-label="Scenario and org state selection"
-        >
+        <aside className="main-detail-sidebar" aria-label="Scenario and org state selection">
           <section className="sidebar-section">
             <h3 className="secondary-title">Scenarios</h3>
-            {loadingScenarios ? (
-              <p className="muted">Loading scenarios...</p>
-            ) : null}
+            {loadingScenarios ? <p className="muted">Loading scenarios...</p> : null}
             {scenarioError ? (
               <div className="alert alert--danger" role="alert">
                 <p className="alert__title">Scenario API error</p>
@@ -853,20 +778,14 @@ export default function ScenariosTab(props: { orgId: string }) {
                     }`}
                   >
                     <button
-                      className={`entity-row${
-                        isSelected ? " entity-row--selected" : ""
-                      }`}
+                      className={`entity-row${isSelected ? " entity-row--selected" : ""}`}
                       type="button"
                       onClick={() => selectScenario(scenario)}
                       aria-pressed={isSelected}
                     >
                       <span className="entity-row__main">
-                        <span className="entity-row__title">
-                          {scenario.name}
-                        </span>
-                        <ScenarioProtectionBadge
-                          protected={scenario.protected}
-                        />
+                        <span className="entity-row__title">{scenario.name}</span>
+                        <ScenarioProtectionBadge protected={scenario.protected} />
                       </span>
                     </button>
                     {isSelected ? (
@@ -894,9 +813,7 @@ export default function ScenariosTab(props: { orgId: string }) {
             <div className="detail-mode-switch" aria-label="Detail view">
               <button
                 className={`detail-mode-switch__button${
-                  detailMode === "scenario"
-                    ? " detail-mode-switch__button--active"
-                    : ""
+                  detailMode === "scenario" ? " detail-mode-switch__button--active" : ""
                 }`}
                 type="button"
                 onClick={() => setDetailMode("scenario")}
@@ -906,9 +823,7 @@ export default function ScenariosTab(props: { orgId: string }) {
               </button>
               <button
                 className={`detail-mode-switch__button${
-                  detailMode === "state"
-                    ? " detail-mode-switch__button--active"
-                    : ""
+                  detailMode === "state" ? " detail-mode-switch__button--active" : ""
                 }`}
                 type="button"
                 onClick={() => setDetailMode("state")}
@@ -971,9 +886,7 @@ export default function ScenariosTab(props: { orgId: string }) {
                     : loadingForkSourceOrgStates
                 }
                 onSourceScenarioChange={selectForkSourceScenario}
-                onSourceOrgStateChange={(orgState) =>
-                  setForkSourceOrgStateId(orgState.id)
-                }
+                onSourceOrgStateChange={(orgState) => setForkSourceOrgStateId(orgState.id)}
                 onNameChange={setForkName}
                 onDescriptionChange={setForkDescription}
                 onSubmit={onForkSubmit}
@@ -1137,8 +1050,7 @@ function ScenarioDetail(props: {
     ? editedScenarioName !== props.scenario.name ||
       editedScenarioDescription !== props.scenario.description
     : false;
-  const saveScenarioDisabled =
-    !props.scenario || !editedScenarioName || !scenarioHasChanges;
+  const saveScenarioDisabled = !props.scenario || !editedScenarioName || !scenarioHasChanges;
 
   return (
     <section className="detail-card" aria-labelledby="selected-scenario-title">
@@ -1183,9 +1095,7 @@ function ScenarioDetail(props: {
                 className="input"
                 placeholder="Type DELETE to confirm"
                 value={props.deleteConfirmation}
-                onChange={(event) =>
-                  props.onDeleteConfirmationChange(event.target.value)
-                }
+                onChange={(event) => props.onDeleteConfirmationChange(event.target.value)}
                 autoComplete="off"
               />
               <ActionError message={props.error} />
@@ -1200,7 +1110,6 @@ function ScenarioDetail(props: {
               </div>
             </form>
           )}
-
         </>
       )}
     </section>
@@ -1209,11 +1118,7 @@ function ScenarioDetail(props: {
 
 function ScenarioProtectionBadge(props: { protected: boolean }) {
   return (
-    <span
-      className={`badge ${
-        props.protected ? "badge--neutral" : "badge--accent"
-      }`}
-    >
+    <span className={`badge ${props.protected ? "badge--neutral" : "badge--accent"}`}>
       {props.protected ? "Protected" : "Not protected"}
     </span>
   );
@@ -1238,20 +1143,13 @@ function ForkScenarioForm(props: {
   const disabled = !props.scenario || !props.orgState || props.saving;
 
   return (
-    <form
-      className="detail-card"
-      aria-labelledby="fork-scenario-title"
-      onSubmit={props.onSubmit}
-    >
+    <form className="detail-card" aria-labelledby="fork-scenario-title" onSubmit={props.onSubmit}>
       <div className="detail-card__header">
         <h2 id="fork-scenario-title" className="section-title">
           Fork from existing
         </h2>
       </div>
-      <label
-        className="form-label form-label--required"
-        htmlFor="fork-source-scenario"
-      >
+      <label className="form-label form-label--required" htmlFor="fork-source-scenario">
         Source scenario
       </label>
       <select
@@ -1259,9 +1157,7 @@ function ForkScenarioForm(props: {
         className="select"
         value={props.scenario?.id ?? ""}
         onChange={(event) => {
-          const scenario = props.scenarios.find(
-            (item) => item.id === event.target.value
-          );
+          const scenario = props.scenarios.find((item) => item.id === event.target.value);
           if (scenario) props.onSourceScenarioChange(scenario);
         }}
         disabled={props.scenarios.length === 0 || props.saving}
@@ -1275,10 +1171,7 @@ function ForkScenarioForm(props: {
           </option>
         ))}
       </select>
-      <label
-        className="form-label form-label--required"
-        htmlFor="fork-source-state"
-      >
+      <label className="form-label form-label--required" htmlFor="fork-source-state">
         Source state
       </label>
       <select
@@ -1286,9 +1179,7 @@ function ForkScenarioForm(props: {
         className="select"
         value={props.orgState?.id ?? ""}
         onChange={(event) => {
-          const orgState = props.orgStates.find(
-            (item) => item.id === event.target.value
-          );
+          const orgState = props.orgStates.find((item) => item.id === event.target.value);
           if (orgState) props.onSourceOrgStateChange(orgState);
         }}
         disabled={!props.scenario || props.loadingOrgStates || props.saving}
@@ -1346,10 +1237,7 @@ function OrgStateDetail(props: {
       props.editTargetDate !== props.orgState.targetDate
     : false;
   const saveOrgStateDisabled =
-    !props.orgState ||
-    !editedOrgStateName ||
-    !props.editTargetDate ||
-    !orgStateHasChanges;
+    !props.orgState || !editedOrgStateName || !props.editTargetDate || !orgStateHasChanges;
 
   return (
     <section className="detail-card" aria-labelledby="selected-state-title">
@@ -1393,9 +1281,7 @@ function OrgStateDetail(props: {
               className="input"
               placeholder="Type DELETE to confirm"
               value={props.deleteConfirmation}
-              onChange={(event) =>
-                props.onDeleteConfirmationChange(event.target.value)
-              }
+              onChange={(event) => props.onDeleteConfirmationChange(event.target.value)}
               autoComplete="off"
             />
             <div className="form-actions">
@@ -1427,11 +1313,7 @@ function CreateOrgStateForm(props: {
   onSubmit: (event: SubmitEvent<HTMLFormElement>) => void;
 }) {
   return (
-    <form
-      className="detail-card"
-      aria-labelledby="create-state-title"
-      onSubmit={props.onSubmit}
-    >
+    <form className="detail-card" aria-labelledby="create-state-title" onSubmit={props.onSubmit}>
       <div className="detail-card__header">
         <h2 id="create-state-title" className="section-title">
           Create state
@@ -1457,12 +1339,7 @@ function CreateOrgStateForm(props: {
         <button
           className="btn btn--primary"
           type="submit"
-          disabled={
-            !props.scenario ||
-            !props.name.trim() ||
-            !props.targetDate ||
-            props.saving
-          }
+          disabled={!props.scenario || !props.name.trim() || !props.targetDate || props.saving}
         >
           {props.saving ? "Saving..." : "Create state"}
         </button>
@@ -1486,15 +1363,11 @@ function ScenarioFields(props: {
   return (
     <>
       <label
-        className={`form-label${
-          props.optionalLabels ? "" : " form-label--required"
-        }`}
+        className={`form-label${props.optionalLabels ? "" : " form-label--required"}`}
         htmlFor={nameId}
       >
         Name
-        {props.optionalLabels ? (
-          <span className="form-label__hint">(optional)</span>
-        ) : null}
+        {props.optionalLabels ? <span className="form-label__hint">(optional)</span> : null}
       </label>
       <input
         id={nameId}
@@ -1505,9 +1378,7 @@ function ScenarioFields(props: {
       />
       <label className="form-label" htmlFor={descriptionId}>
         Description
-        {props.optionalLabels ? (
-          <span className="form-label__hint">(optional)</span>
-        ) : null}
+        {props.optionalLabels ? <span className="form-label__hint">(optional)</span> : null}
       </label>
       <textarea
         id={descriptionId}
@@ -1546,10 +1417,7 @@ function OrgStateFields(props: {
         onChange={(event) => props.onNameChange(event.target.value)}
         disabled={props.disabled}
       />
-      <label
-        className="form-label form-label--required"
-        htmlFor={targetDateId}
-      >
+      <label className="form-label form-label--required" htmlFor={targetDateId}>
         Target date
       </label>
       <input
@@ -1592,11 +1460,7 @@ function ActionButtons(props: {
 }) {
   return (
     <div className="form-actions">
-      <button
-        className="btn btn--primary"
-        type="submit"
-        disabled={props.saving || props.disabled}
-      >
+      <button className="btn btn--primary" type="submit" disabled={props.saving || props.disabled}>
         {props.saving ? "Saving..." : props.submitLabel}
       </button>
     </div>

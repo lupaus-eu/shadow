@@ -48,19 +48,19 @@ export class ApiError extends Error {
   }
 }
 
-async function requestJson<T>(
-  path: string,
-  init?: RequestInit,
-  signal?: AbortSignal
-): Promise<T> {
-  const res = await authenticatedFetch(path, {
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-      ...init?.headers
+async function requestJson<T>(path: string, init?: RequestInit, signal?: AbortSignal): Promise<T> {
+  const res = await authenticatedFetch(
+    path,
+    {
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        ...init?.headers
+      },
+      ...init
     },
-    ...init
-  }, signal);
+    signal
+  );
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
@@ -78,10 +78,7 @@ function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
 }
 
-function nestedRecords(
-  item: Record<string, unknown>,
-  keys: string[]
-): Record<string, unknown>[] {
+function nestedRecords(item: Record<string, unknown>, keys: string[]): Record<string, unknown>[] {
   const records: Record<string, unknown>[] = [item];
 
   for (const key of keys) {
@@ -94,11 +91,7 @@ function nestedRecords(
   return records;
 }
 
-function pickString(
-  items: Record<string, unknown>[],
-  keys: string[],
-  fallback = ""
-): string {
+function pickString(items: Record<string, unknown>[], keys: string[], fallback = ""): string {
   for (const item of items) {
     for (const key of keys) {
       const value = item[key];
@@ -160,15 +153,7 @@ function normalizeScenario(payload: unknown, index = 0): ScenarioDto {
   ]);
   const name = pickString(
     candidates,
-    [
-      "name",
-      "scenarioName",
-      "scenario_name",
-      "title",
-      "label",
-      "displayName",
-      "display_name"
-    ],
+    ["name", "scenarioName", "scenario_name", "title", "label", "displayName", "display_name"],
     id || `Scenario ${index + 1}`
   );
   const description = pickString(candidates, [
@@ -203,8 +188,8 @@ function normalizeScenario(payload: unknown, index = 0): ScenarioDto {
 }
 
 function normalizeScenarios(payload: unknown): ScenarioDto[] {
-  return pickArray(payload, ["scenarios", "items", "data"]).map(
-    (item, index) => normalizeScenario(item, index)
+  return pickArray(payload, ["scenarios", "items", "data"]).map((item, index) =>
+    normalizeScenario(item, index)
   );
 }
 
@@ -223,25 +208,25 @@ function normalizeOrgState(payload: unknown, index = 0): OrgStateDto {
   ]);
 
   const id = pickString(candidates, [
-      "id",
-      "_id",
-      "uuid",
-      "key",
-      "slug",
-      "orgStateId",
-      "org_state_id",
-      "stateId",
-      "state_id"
-    ]);
+    "id",
+    "_id",
+    "uuid",
+    "key",
+    "slug",
+    "orgStateId",
+    "org_state_id",
+    "stateId",
+    "state_id"
+  ]);
   const targetDate = pickString(candidates, [
-      "targetDate",
-      "target_date",
-      "date",
-      "effectiveDate",
-      "effective_date",
-      "asOfDate",
-      "as_of_date"
-    ]);
+    "targetDate",
+    "target_date",
+    "date",
+    "effectiveDate",
+    "effective_date",
+    "asOfDate",
+    "as_of_date"
+  ]);
   const name = pickString(
     candidates,
     [
@@ -277,8 +262,8 @@ function normalizeOrgState(payload: unknown, index = 0): OrgStateDto {
 }
 
 function normalizeOrgStates(payload: unknown): OrgStateDto[] {
-  return pickArray(payload, ["orgStates", "org_states", "items", "data"]).map(
-    (item, index) => normalizeOrgState(item, index)
+  return pickArray(payload, ["orgStates", "org_states", "items", "data"]).map((item, index) =>
+    normalizeOrgState(item, index)
   );
 }
 
@@ -307,13 +292,8 @@ function orgStatePath(orgId: string, scenarioId: string, orgStateId: string) {
   return `${orgStatesPath(orgId, scenarioId)}/${encodeURIComponent(orgStateId)}`;
 }
 
-export async function fetchScenarios(
-  orgId: string,
-  signal?: AbortSignal
-): Promise<ScenarioDto[]> {
-  return normalizeScenarios(
-    await requestJson<unknown>(orgPath(orgId), { method: "GET" }, signal)
-  );
+export async function fetchScenarios(orgId: string, signal?: AbortSignal): Promise<ScenarioDto[]> {
+  return normalizeScenarios(await requestJson<unknown>(orgPath(orgId), { method: "GET" }, signal));
 }
 
 export async function fetchScenario(
@@ -322,11 +302,7 @@ export async function fetchScenario(
   signal?: AbortSignal
 ): Promise<ScenarioDto> {
   return normalizeScenario(
-    await requestJson<unknown>(
-      scenarioPath(orgId, scenarioId),
-      { method: "GET" },
-      signal
-    )
+    await requestJson<unknown>(scenarioPath(orgId, scenarioId), { method: "GET" }, signal)
   );
 }
 
@@ -353,11 +329,7 @@ export async function deleteScenario(
   scenarioId: string,
   signal?: AbortSignal
 ): Promise<void> {
-  return requestJson<void>(
-    scenarioPath(orgId, scenarioId),
-    { method: "DELETE" },
-    signal
-  );
+  return requestJson<void>(scenarioPath(orgId, scenarioId), { method: "DELETE" }, signal);
 }
 
 export async function copyScenario(
@@ -383,11 +355,7 @@ export async function fetchOrgStates(
   signal?: AbortSignal
 ): Promise<OrgStateDto[]> {
   return normalizeOrgStates(
-    await requestJson<unknown>(
-      orgStatesPath(orgId, scenarioId),
-      { method: "GET" },
-      signal
-    )
+    await requestJson<unknown>(orgStatesPath(orgId, scenarioId), { method: "GET" }, signal)
   );
 }
 

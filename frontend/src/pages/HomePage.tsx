@@ -1,9 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  createOrganisation,
-  fetchOrganisations
-} from "../api/organisations";
+import { createOrganisation, fetchOrganisations } from "../api/organisations";
 import type { OrganisationDto } from "../api/organisations";
 
 function sortOrganisations(items: OrganisationDto[]): OrganisationDto[] {
@@ -79,10 +76,7 @@ export default function HomePage() {
       const created = await createOrganisation({ name });
 
       setOrganisations((current) =>
-        sortOrganisations([
-          ...current.filter((item) => item.id !== created.id),
-          created
-        ])
+        sortOrganisations([...current.filter((item) => item.id !== created.id), created])
       );
       setSelectedOrgId(created.id);
       setNewOrgName("");
@@ -100,9 +94,7 @@ export default function HomePage() {
         <h1 id="home-title" className="display-title">
           Select organisation
         </h1>
-        <p className="muted">
-          Choose an organisation to open the workspace, or create a new one.
-        </p>
+        <p className="muted">Choose an organisation to open the workspace, or create a new one.</p>
 
         <div className="form-row">
           <label className="form-label" htmlFor="organisation-select">
@@ -116,9 +108,7 @@ export default function HomePage() {
             disabled={loading || organisations.length === 0}
           >
             {organisations.length === 0 ? (
-              <option value="">
-                {loading ? "Loading..." : "No organisations available"}
-              </option>
+              <option value="">{loading ? "Loading..." : "No organisations available"}</option>
             ) : (
               organisations.map((organisation) => (
                 <option key={organisation.id} value={organisation.id}>

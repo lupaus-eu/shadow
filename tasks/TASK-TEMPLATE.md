@@ -83,6 +83,7 @@ Required:
 - [ ] Backend tests
 - [ ] Integration tests
 - [ ] Manual verification
+- [ ] Format check
 - [ ] Lint
 - [ ] Build
 - [ ] Typecheck
@@ -96,6 +97,7 @@ Commands:
 ```bash
 # Frontend, if applicable
 cd frontend
+pnpm format:check
 pnpm lint
 pnpm test
 pnpm build

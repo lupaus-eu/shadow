@@ -1,11 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  createUser,
-  deleteUser,
-  fetchUsers,
-  revokeUserSessions,
-  updateUser
-} from "./users";
+import { createUser, deleteUser, fetchUsers, revokeUserSessions, updateUser } from "./users";
 
 function jsonResponse(payload: unknown, init?: ResponseInit) {
   return new Response(JSON.stringify(payload), {
@@ -21,9 +15,7 @@ afterEach(() => {
 
 describe("users API", () => {
   it("loads application-wide users with the supplied abort signal", async () => {
-    const users = [
-      { id: 101, name: "Ada", email: "ada@example.local", role: "admin" }
-    ];
+    const users = [{ id: 101, name: "Ada", email: "ada@example.local", role: "admin" }];
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(users));
     vi.stubGlobal("fetch", fetchMock);
     const controller = new AbortController();
@@ -107,19 +99,19 @@ describe("users API", () => {
   it("extracts FastAPI validation details into an actionable error", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(
-        jsonResponse(
-          { detail: [{ msg: "Input should be 'consultant' or 'admin'" }] },
-          { status: 422 }
+      vi
+        .fn()
+        .mockResolvedValue(
+          jsonResponse(
+            { detail: [{ msg: "Input should be 'consultant' or 'admin'" }] },
+            { status: 422 }
+          )
         )
-      )
     );
 
     await expect(
       createUser({ name: "Ada", email: "ada@example.local", role: "admin" })
-    ).rejects.toThrow(
-      "Failed to create user (422): Input should be 'consultant' or 'admin'"
-    );
+    ).rejects.toThrow("Failed to create user (422): Input should be 'consultant' or 'admin'");
   });
 
   it("revokes sessions through the admin endpoint", async () => {

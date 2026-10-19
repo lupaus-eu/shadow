@@ -1,8 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  authenticatedFetch,
-  configureRequestAuthentication
-} from "./client";
+import { authenticatedFetch, configureRequestAuthentication } from "./client";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -66,9 +63,9 @@ describe("authenticated request transport", () => {
       onUnauthorized: vi.fn()
     });
 
-    await expect(
-      authenticatedFetch("/api/v1/example", { method: "DELETE" })
-    ).rejects.toThrow("An authenticated session is required");
+    await expect(authenticatedFetch("/api/v1/example", { method: "DELETE" })).rejects.toThrow(
+      "An authenticated session is required"
+    );
     expect(fetchMock).not.toHaveBeenCalled();
     remove();
   });

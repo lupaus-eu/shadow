@@ -132,10 +132,15 @@ Frontendin oletustarkistukset:
 
 ```bash
 cd frontend
+pnpm format:check
 pnpm lint
 pnpm test
 pnpm build
 ```
+
+Aja `pnpm format` (tai `make frontend-format`) ennen frontend-muutosten
+commitointia. CI hylkää `frontend/`-hakemiston muotoilemattomat `.ts`-, `.tsx`-,
+`.js`-, `.css`-, `.html`- ja `.json`-tiedostot.
 
 Kun typecheck-scripti on lisätty frontendiin, aja myös se ennen PR:ää.
 

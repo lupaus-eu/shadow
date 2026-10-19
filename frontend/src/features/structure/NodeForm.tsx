@@ -7,10 +7,7 @@ import type {
   NodeTypeMetadataDto
 } from "../../api/orgTwinStructure";
 
-export type NodeFormCreatePayload = Omit<
-  GraphNodeCreateRequest,
-  "attributes" | "id" | "position"
->;
+export type NodeFormCreatePayload = Omit<GraphNodeCreateRequest, "attributes" | "id" | "position">;
 
 export default function NodeForm(props: {
   idPrefix: string;
@@ -83,10 +80,7 @@ export default function NodeForm(props: {
       {nodeTypeHelp ? <p className="muted">{nodeTypeHelp}</p> : null}
       <form onSubmit={submit}>
         <div className="form-row">
-          <label
-            className="form-label form-label--required"
-            htmlFor={`${props.idPrefix}-name`}
-          >
+          <label className="form-label form-label--required" htmlFor={`${props.idPrefix}-name`}>
             Name
           </label>
           <input
@@ -98,10 +92,7 @@ export default function NodeForm(props: {
           />
         </div>
         <div className="form-row">
-          <label
-            className="form-label form-label--required"
-            htmlFor={`${props.idPrefix}-type`}
-          >
+          <label className="form-label form-label--required" htmlFor={`${props.idPrefix}-type`}>
             Type
           </label>
           <select

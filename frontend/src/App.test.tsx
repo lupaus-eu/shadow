@@ -1,10 +1,4 @@
-import {
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-  within
-} from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { navigateBrowser } from "./auth/browserNavigation";
@@ -141,7 +135,16 @@ function mockSchattenApi(options?: {
 
     if (url.endsWith("/api/v1/customers") && method === "GET") {
       return Promise.resolve(
-        jsonResponse([{ id: 201, name: "Acme Customer", email: null, status: "active", createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z" }])
+        jsonResponse([
+          {
+            id: 201,
+            name: "Acme Customer",
+            email: null,
+            status: "active",
+            createdAt: "2026-01-01T00:00:00Z",
+            updatedAt: "2026-01-01T00:00:00Z"
+          }
+        ])
       );
     }
 
@@ -153,10 +156,7 @@ function mockSchattenApi(options?: {
       return Promise.resolve(jsonResponse([]));
     }
 
-    if (
-      url.endsWith("/api/v1/organisations/acme/predictions") &&
-      method === "GET"
-    ) {
+    if (url.endsWith("/api/v1/organisations/acme/predictions") && method === "GET") {
       return Promise.resolve(jsonResponse([]));
     }
 
@@ -171,32 +171,20 @@ function mockSchattenApi(options?: {
       );
     }
 
-    if (
-      url.endsWith("/api/v1/organisations/acme/scenarios/future/events") &&
-      method === "GET"
-    ) {
+    if (url.endsWith("/api/v1/organisations/acme/scenarios/future/events") && method === "GET") {
       if (options?.eventsStatus) {
         return Promise.resolve(
-          jsonResponse(
-            { detail: "Events unavailable." },
-            { status: options.eventsStatus }
-          )
+          jsonResponse({ detail: "Events unavailable." }, { status: options.eventsStatus })
         );
       }
       return Promise.resolve(jsonResponse(futureEvents));
     }
 
-    if (
-      url.endsWith("/api/v1/organisations/acme/scenarios/reality/events") &&
-      method === "GET"
-    ) {
+    if (url.endsWith("/api/v1/organisations/acme/scenarios/reality/events") && method === "GET") {
       return Promise.resolve(jsonResponse([]));
     }
 
-    if (
-      url.endsWith("/api/v1/organisations/acme/scenarios/future/events") &&
-      method === "POST"
-    ) {
+    if (url.endsWith("/api/v1/organisations/acme/scenarios/future/events") && method === "POST") {
       if (options?.eventMutationStatus) {
         return Promise.resolve(
           jsonResponse(
@@ -216,9 +204,7 @@ function mockSchattenApi(options?: {
     }
 
     if (
-      url.endsWith(
-        "/api/v1/organisations/acme/scenarios/future/events/kickoff"
-      ) &&
+      url.endsWith("/api/v1/organisations/acme/scenarios/future/events/kickoff") &&
       method === "PATCH"
     ) {
       if (options?.eventMutationStatus) {
@@ -235,16 +221,12 @@ function mockSchattenApi(options?: {
         eventDetails: string;
       };
       const updated = { id: "kickoff", ...payload };
-      futureEvents = futureEvents.map((event) =>
-        event.id === "kickoff" ? updated : event
-      );
+      futureEvents = futureEvents.map((event) => (event.id === "kickoff" ? updated : event));
       return Promise.resolve(jsonResponse(updated));
     }
 
     if (
-      url.endsWith(
-        "/api/v1/organisations/acme/scenarios/future/events/kickoff"
-      ) &&
+      url.endsWith("/api/v1/organisations/acme/scenarios/future/events/kickoff") &&
       method === "DELETE"
     ) {
       futureEvents = futureEvents.filter((event) => event.id !== "kickoff");
@@ -253,10 +235,7 @@ function mockSchattenApi(options?: {
 
     if (url.endsWith("/api/v1/organisations/acme/scenarios")) {
       scenarioListRequestCount += 1;
-      if (
-        options?.omitFutureAfterFirstScenarioLoad &&
-        scenarioListRequestCount > 1
-      ) {
+      if (options?.omitFutureAfterFirstScenarioLoad && scenarioListRequestCount > 1) {
         return Promise.resolve(
           jsonResponse([
             {
@@ -287,17 +266,11 @@ function mockSchattenApi(options?: {
       );
     }
 
-    if (
-      url.endsWith("/api/v1/organisations/acme/scenarios/future") &&
-      method === "DELETE"
-    ) {
+    if (url.endsWith("/api/v1/organisations/acme/scenarios/future") && method === "DELETE") {
       return Promise.resolve(noContentResponse());
     }
 
-    if (
-      url.endsWith("/api/v1/organisations/acme/scenarios/future") &&
-      method === "PATCH"
-    ) {
+    if (url.endsWith("/api/v1/organisations/acme/scenarios/future") && method === "PATCH") {
       return Promise.resolve(
         jsonResponse({
           scenario_id: "future",
@@ -308,10 +281,7 @@ function mockSchattenApi(options?: {
       );
     }
 
-    if (
-      url.endsWith("/api/v1/organisations/acme/scenarios/reality") &&
-      method === "PATCH"
-    ) {
+    if (url.endsWith("/api/v1/organisations/acme/scenarios/reality") && method === "PATCH") {
       return Promise.resolve(
         jsonResponse({
           scenario_id: "reality",
@@ -322,10 +292,7 @@ function mockSchattenApi(options?: {
       );
     }
 
-    if (
-      url.endsWith("/api/v1/organisations/acme/scenarios/reality") &&
-      method === "GET"
-    ) {
+    if (url.endsWith("/api/v1/organisations/acme/scenarios/reality") && method === "GET") {
       return Promise.resolve(
         jsonResponse({
           scenario_id: "reality",
@@ -336,10 +303,7 @@ function mockSchattenApi(options?: {
       );
     }
 
-    if (
-      url.endsWith("/api/v1/organisations/acme/scenarios/future") &&
-      method === "GET"
-    ) {
+    if (url.endsWith("/api/v1/organisations/acme/scenarios/future") && method === "GET") {
       return Promise.resolve(
         jsonResponse({
           scenario_id: "future",
@@ -390,9 +354,7 @@ function mockSchattenApi(options?: {
     }
 
     if (
-      url.endsWith(
-        "/api/v1/organisations/acme/scenarios/future/org-states/clean"
-      ) &&
+      url.endsWith("/api/v1/organisations/acme/scenarios/future/org-states/clean") &&
       method === "POST"
     ) {
       if (options?.cleanResponse) {
@@ -404,10 +366,7 @@ function mockSchattenApi(options?: {
 
       if (options?.cleanStatus) {
         return Promise.resolve(
-          jsonResponse(
-            { detail: "Clean states failed." },
-            { status: options.cleanStatus }
-          )
+          jsonResponse({ detail: "Clean states failed." }, { status: options.cleanStatus })
         );
       }
 
@@ -430,9 +389,7 @@ function mockSchattenApi(options?: {
     }
 
     if (
-      url.endsWith(
-        "/api/v1/organisations/acme/scenarios/future/org-states/draft"
-      ) &&
+      url.endsWith("/api/v1/organisations/acme/scenarios/future/org-states/draft") &&
       method === "PATCH"
     ) {
       return Promise.resolve(
@@ -446,28 +403,20 @@ function mockSchattenApi(options?: {
     }
 
     if (
-      url.endsWith(
-        "/api/v1/organisations/acme/scenarios/future/org-states/draft"
-      ) &&
+      url.endsWith("/api/v1/organisations/acme/scenarios/future/org-states/draft") &&
       method === "DELETE"
     ) {
       return Promise.resolve(noContentResponse());
     }
 
     if (
-      url.endsWith(
-        "/api/v1/organisations/acme/scenarios/future/org-states/launch"
-      ) &&
+      url.endsWith("/api/v1/organisations/acme/scenarios/future/org-states/launch") &&
       method === "DELETE"
     ) {
       return Promise.resolve(noContentResponse());
     }
 
-    if (
-      url.endsWith(
-        "/api/v1/organisations/acme/scenarios/reality/org-states"
-      )
-    ) {
+    if (url.endsWith("/api/v1/organisations/acme/scenarios/reality/org-states")) {
       return Promise.resolve(
         jsonResponse([
           {
@@ -518,15 +467,9 @@ describe("Schatten UI shell", () => {
 
     renderAt("/");
 
-    expect(
-      await screen.findByRole("heading", { name: "Select organisation" })
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "Open organisation" })
-    ).toBeDisabled();
-    expect(
-      screen.getByRole("button", { name: "Create organisation" })
-    ).toBeDisabled();
+    expect(await screen.findByRole("heading", { name: "Select organisation" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Open organisation" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Create organisation" })).toBeDisabled();
 
     expect(await screen.findByRole("option", { name: "Acme" })).toBeVisible();
     expect(screen.getByLabelText("Create new organisation")).toBeVisible();
@@ -545,9 +488,7 @@ describe("Schatten UI shell", () => {
     renderAt("/");
 
     expect(screen.getByRole("heading", { name: "Loading session..." })).toBeVisible();
-    expect(
-      screen.queryByRole("heading", { name: "Select organisation" })
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Select organisation" })).not.toBeInTheDocument();
 
     sessionResponse.resolve(
       jsonResponse({
@@ -561,9 +502,7 @@ describe("Schatten UI shell", () => {
       })
     );
 
-    expect(
-      await screen.findByRole("heading", { name: "Select organisation" })
-    ).toBeVisible();
+    expect(await screen.findByRole("heading", { name: "Select organisation" })).toBeVisible();
   });
 
   it("shows login for an anonymous protected route and preserves that route", async () => {
@@ -606,9 +545,7 @@ describe("Schatten UI shell", () => {
 
     expect(await screen.findByRole("heading", { name: "Sign in" })).toBeVisible();
     expect(
-      fetchMock.mock.calls.filter(([input]) =>
-        String(input).endsWith("/api/v1/auth/session")
-      )
+      fetchMock.mock.calls.filter(([input]) => String(input).endsWith("/api/v1/auth/session"))
     ).toHaveLength(1);
   });
 
@@ -627,9 +564,7 @@ describe("Schatten UI shell", () => {
           })
         );
       }
-      return Promise.resolve(
-        jsonResponse({ detail: "Permission denied." }, { status: 403 })
-      );
+      return Promise.resolve(jsonResponse({ detail: "Permission denied." }, { status: 403 }));
     });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -647,9 +582,7 @@ describe("Schatten UI shell", () => {
 
     renderAt("/schatten/acme/users");
 
-    expect(
-      await screen.findByRole("heading", { name: "Scenarios", level: 1 })
-    ).toBeVisible();
+    expect(await screen.findByRole("heading", { name: "Scenarios", level: 1 })).toBeVisible();
     expect(screen.queryByRole("link", { name: "Users" })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Users" })).not.toBeInTheDocument();
   });
@@ -660,9 +593,7 @@ describe("Schatten UI shell", () => {
     renderAt("/schatten/acme/users");
     await screen.findByRole("button", { name: /Development Admin/ });
     fireEvent.click(screen.getByRole("button", { name: "Revoke sessions" }));
-    fireEvent.click(
-      screen.getByRole("button", { name: "Confirm revoke sessions" })
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Confirm revoke sessions" }));
 
     expect(await screen.findByRole("heading", { name: "Sign in" })).toBeVisible();
   });
@@ -693,9 +624,7 @@ describe("Schatten UI shell", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Sign out" }));
 
     await waitFor(() => {
-      expect(navigateBrowser).toHaveBeenCalledWith(
-        "https://identity.example.test/logout"
-      );
+      expect(navigateBrowser).toHaveBeenCalledWith("https://identity.example.test/logout");
     });
   });
 
@@ -774,12 +703,8 @@ describe("Schatten UI shell", () => {
 
     renderAt("/schatten/acme");
 
-    expect(
-      await screen.findByRole("heading", { name: "Scenarios", level: 1 })
-    ).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Scenarios" })).toHaveClass(
-      "tab-link--active"
-    );
+    expect(await screen.findByRole("heading", { name: "Scenarios", level: 1 })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Scenarios" })).toHaveClass("tab-link--active");
   });
 
   it("shows the scenario count and refresh control", async () => {
@@ -827,9 +752,8 @@ describe("Schatten UI shell", () => {
       fetchMock.mock.calls.some(([input, init]) => {
         const url = String(input);
         return (
-          url.endsWith(
-            "/api/v1/organisations/acme/scenarios/future/org-states"
-          ) && (init?.method ?? "GET") === "GET"
+          url.endsWith("/api/v1/organisations/acme/scenarios/future/org-states") &&
+          (init?.method ?? "GET") === "GET"
         );
       })
     ).toBe(true);
@@ -840,12 +764,8 @@ describe("Schatten UI shell", () => {
         )
       )
     ).toBe(false);
-    expect(
-      screen.getByTitle("Scenario: Future refreshed")
-    ).toBeInTheDocument();
-    expect(
-      screen.getByTitle("Org state: Draft state (2026-06-01)")
-    ).toBeInTheDocument();
+    expect(screen.getByTitle("Scenario: Future refreshed")).toBeInTheDocument();
+    expect(screen.getByTitle("Org state: Draft state (2026-06-01)")).toBeInTheDocument();
   });
 
   it("renders tab URLs and disables Structure and Events before selection", async () => {
@@ -865,10 +785,7 @@ describe("Schatten UI shell", () => {
 
     await screen.findByRole("link", { name: "Scenarios" });
     for (const [label, href] of expectedLinks) {
-      expect(screen.getByRole("link", { name: label })).toHaveAttribute(
-        "href",
-        href
-      );
+      expect(screen.getByRole("link", { name: label })).toHaveAttribute("href", href);
     }
     expect(screen.queryByRole("link", { name: "Structure" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Events" })).not.toBeInTheDocument();
@@ -880,12 +797,8 @@ describe("Schatten UI shell", () => {
     mockSchattenApi();
     renderAt("/schatten/acme/metrics");
 
-    expect(await screen.findByRole("link", { name: "Metrics" })).toHaveClass(
-      "tab-link--active"
-    );
-    expect(screen.getByRole("link", { name: "Scenarios" })).not.toHaveClass(
-      "tab-link--active"
-    );
+    expect(await screen.findByRole("link", { name: "Metrics" })).toHaveClass("tab-link--active");
+    expect(screen.getByRole("link", { name: "Scenarios" })).not.toHaveClass("tab-link--active");
   });
 
   it("renders the application-wide Users route without workspace selections", async () => {
@@ -893,15 +806,12 @@ describe("Schatten UI shell", () => {
 
     renderAt("/schatten/acme/users");
 
-    expect(await screen.findByRole("link", { name: "Users" })).toHaveClass(
-      "tab-link--active"
-    );
+    expect(await screen.findByRole("link", { name: "Users" })).toHaveClass("tab-link--active");
     expect(await screen.findByRole("heading", { name: "Users" })).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: /Development Admin/ })).toBeVisible();
     expect(
       fetchMock.mock.calls.some(
-        ([input, init]) =>
-          String(input) === "/api/v1/users" && init?.method === "GET"
+        ([input, init]) => String(input) === "/api/v1/users" && init?.method === "GET"
       )
     ).toBe(true);
   });
@@ -914,14 +824,19 @@ describe("Schatten UI shell", () => {
     expect(await screen.findByRole("link", { name: "Customers" })).toHaveClass("tab-link--active");
     expect(await screen.findByRole("heading", { name: "Customers" })).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: /Acme Customer/ })).toBeVisible();
-    const customerPaths = () => fetchMock.mock.calls
-      .map(([input]) => String(input))
-      .filter((url) => url.includes("/api/v1/customers"));
-    await waitFor(() => expect(customerPaths()).toEqual(expect.arrayContaining([
-      "/api/v1/customers",
-      "/api/v1/customers/201/addresses",
-      "/api/v1/customers/201/contacts"
-    ])));
+    const customerPaths = () =>
+      fetchMock.mock.calls
+        .map(([input]) => String(input))
+        .filter((url) => url.includes("/api/v1/customers"));
+    await waitFor(() =>
+      expect(customerPaths()).toEqual(
+        expect.arrayContaining([
+          "/api/v1/customers",
+          "/api/v1/customers/201/addresses",
+          "/api/v1/customers/201/contacts"
+        ])
+      )
+    );
     expect(await screen.findByText("No addresses available.")).toBeInTheDocument();
     expect(await screen.findByText("No contacts available.")).toBeInTheDocument();
     expect(customerPaths().every((url) => !url.includes("acme"))).toBe(true);
@@ -932,12 +847,8 @@ describe("Schatten UI shell", () => {
 
     renderAt("/schatten/acme/summary");
 
-    expect(await screen.findByRole("link", { name: "Summary" })).toHaveClass(
-      "tab-link--active"
-    );
-    expect(
-      await screen.findByRole("heading", { name: "Summary" })
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: "Summary" })).toHaveClass("tab-link--active");
+    expect(await screen.findByRole("heading", { name: "Summary" })).toBeInTheDocument();
     expect(screen.getByText(/Select a scenario/)).toBeInTheDocument();
   });
 
@@ -947,9 +858,7 @@ describe("Schatten UI shell", () => {
     renderAt("/schatten/acme/predictions");
 
     expect(await screen.findByText(/selected scenario's own data/i)).toBeVisible();
-    expect(screen.getByRole("link", { name: "Predictions" })).toHaveClass(
-      "tab-link--active"
-    );
+    expect(screen.getByRole("link", { name: "Predictions" })).toHaveClass("tab-link--active");
     expect(screen.getByTitle("Scenario: None")).toBeInTheDocument();
     expect(screen.getByTitle("Org state: None")).toBeInTheDocument();
   });
@@ -976,27 +885,22 @@ describe("Schatten UI shell", () => {
     fireEvent.click(await screen.findByRole("button", { name: /Reality/ }));
 
     expect(screen.getAllByText("Protected")).not.toHaveLength(0);
-    expect(
-      screen.getByText("Protected scenario cannot be deleted.")
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Delete scenario" })
-    ).not.toBeInTheDocument();
+    expect(screen.getByText("Protected scenario cannot be deleted.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Delete scenario" })).not.toBeInTheDocument();
 
     const selectedScenarioPanel = screen.getByRole("region", {
       name: "Selected scenario"
     });
     const nameInput = within(selectedScenarioPanel).getByLabelText("Name");
-    const descriptionInput =
-      within(selectedScenarioPanel).getByLabelText("Description");
+    const descriptionInput = within(selectedScenarioPanel).getByLabelText("Description");
     const saveButton = within(selectedScenarioPanel).getByRole("button", {
       name: "Save scenario"
     });
 
     expect(nameInput).toHaveValue("Reality");
-    expect(
-      selectedScenarioPanel.querySelector("label[for='scenario-edit-name']")
-    ).toHaveClass("form-label--required");
+    expect(selectedScenarioPanel.querySelector("label[for='scenario-edit-name']")).toHaveClass(
+      "form-label--required"
+    );
     expect(descriptionInput).toHaveValue("Current baseline");
     expect(nameInput).not.toBeDisabled();
     expect(descriptionInput).not.toBeDisabled();
@@ -1013,8 +917,7 @@ describe("Schatten UI shell", () => {
         fetchMock.mock.calls.some(([input, init]) => {
           const url = String(input);
           return (
-            url.endsWith("/api/v1/organisations/acme/scenarios/reality") &&
-            init?.method === "PATCH"
+            url.endsWith("/api/v1/organisations/acme/scenarios/reality") && init?.method === "PATCH"
           );
         })
       ).toBe(true);
@@ -1034,9 +937,7 @@ describe("Schatten UI shell", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Future plan/ }));
     await screen.findByRole("button", { name: /Draft state/ });
-    expect(
-      screen.getByRole("button", { name: "Clean states" })
-    ).not.toBeDisabled();
+    expect(screen.getByRole("button", { name: "Clean states" })).not.toBeDisabled();
   });
 
   it("confirms before cleaning states and refreshes the selected scenario states", async () => {
@@ -1048,15 +949,12 @@ describe("Schatten UI shell", () => {
     await screen.findByRole("button", { name: /Draft state/ });
 
     fireEvent.click(screen.getByRole("button", { name: "Clean states" }));
-    expect(
-      screen.getByRole("button", { name: "Confirm clean states" })
-    ).toBeVisible();
+    expect(screen.getByRole("button", { name: "Confirm clean states" })).toBeVisible();
     expect(
       fetchMock.mock.calls.some(([input, init]) => {
         return (
-          String(input).endsWith(
-            "/api/v1/organisations/acme/scenarios/future/org-states/clean"
-          ) && init?.method === "POST"
+          String(input).endsWith("/api/v1/organisations/acme/scenarios/future/org-states/clean") &&
+          init?.method === "POST"
         );
       })
     ).toBe(false);
@@ -1067,9 +965,8 @@ describe("Schatten UI shell", () => {
     expect(
       fetchMock.mock.calls.some(([input, init]) => {
         return (
-          String(input).endsWith(
-            "/api/v1/organisations/acme/scenarios/future/org-states/clean"
-          ) && init?.method === "POST"
+          String(input).endsWith("/api/v1/organisations/acme/scenarios/future/org-states/clean") &&
+          init?.method === "POST"
         );
       })
     ).toBe(true);
@@ -1082,12 +979,8 @@ describe("Schatten UI shell", () => {
         );
       })
     ).toBe(true);
-    expect(
-      screen.queryByRole("button", { name: /Draft state/ })
-    ).not.toBeInTheDocument();
-    expect(
-      screen.getByTitle("Org state: Planned launch (2026-07-01)")
-    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Draft state/ })).not.toBeInTheDocument();
+    expect(screen.getByTitle("Org state: Planned launch (2026-07-01)")).toBeInTheDocument();
   });
 
   it("shows a busy clean states state while cleanup is in progress", async () => {
@@ -1139,8 +1032,7 @@ describe("Schatten UI shell", () => {
       name: "Selected scenario"
     });
     const nameInput = within(selectedScenarioPanel).getByLabelText("Name");
-    const descriptionInput =
-      within(selectedScenarioPanel).getByLabelText("Description");
+    const descriptionInput = within(selectedScenarioPanel).getByLabelText("Description");
     const saveButton = within(selectedScenarioPanel).getByRole("button", {
       name: "Save scenario"
     });
@@ -1183,9 +1075,7 @@ describe("Schatten UI shell", () => {
     await screen.findByRole("button", { name: /Today/ });
 
     expect(screen.getByTitle("Scenario: Reality")).toBeInTheDocument();
-    expect(
-      screen.getByTitle("Org state: Today (2026-06-23)")
-    ).toBeInTheDocument();
+    expect(screen.getByTitle("Org state: Today (2026-06-23)")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Structure" })).toHaveAttribute(
       "href",
       "/schatten/acme/graph"
@@ -1206,9 +1096,7 @@ describe("Schatten UI shell", () => {
     await waitFor(() => {
       expect(
         fetchMock.mock.calls.some(([input]) =>
-          String(input).endsWith(
-            "/api/v1/organisations/acme/scenarios/reality/events"
-          )
+          String(input).endsWith("/api/v1/organisations/acme/scenarios/reality/events")
         )
       ).toBe(true);
     });
@@ -1230,42 +1118,30 @@ describe("Schatten UI shell", () => {
     });
     await within(stateColumn).findByRole("button", { name: /Draft state/ });
 
-    expect(screen.getByRole("link", { name: "Events" })).toHaveClass(
-      "tab-link--active"
-    );
+    expect(screen.getByRole("link", { name: "Events" })).toHaveClass("tab-link--active");
     expect(
       fetchMock.mock.calls.some(([input]) =>
-        String(input).endsWith(
-          "/api/v1/organisations/acme/scenarios/future/events"
-        )
+        String(input).endsWith("/api/v1/organisations/acme/scenarios/future/events")
       )
     ).toBe(false);
 
-    fireEvent.click(
-      within(scenarioDialog).getByRole("button", { name: "Select" })
-    );
+    fireEvent.click(within(scenarioDialog).getByRole("button", { name: "Select" }));
 
     await waitFor(() => {
       expect(
         fetchMock.mock.calls.some(([input]) =>
-          String(input).endsWith(
-            "/api/v1/organisations/acme/scenarios/future/events"
-          )
+          String(input).endsWith("/api/v1/organisations/acme/scenarios/future/events")
         )
       ).toBe(true);
     });
-    expect(screen.getByRole("link", { name: "Events" })).toHaveClass(
-      "tab-link--active"
-    );
+    expect(screen.getByRole("link", { name: "Events" })).toHaveClass("tab-link--active");
     expect(screen.getByTitle("Scenario: Future plan")).toBeInTheDocument();
-    expect(
-      screen.getByTitle("Org state: Draft state (2026-06-01)")
-    ).toBeInTheDocument();
+    expect(screen.getByTitle("Org state: Draft state (2026-06-01)")).toBeInTheDocument();
 
-    const futureEventReadCount = fetchMock.mock.calls.filter(([input, init]) =>
-      String(input).endsWith(
-        "/api/v1/organisations/acme/scenarios/future/events"
-      ) && (init?.method ?? "GET") === "GET"
+    const futureEventReadCount = fetchMock.mock.calls.filter(
+      ([input, init]) =>
+        String(input).endsWith("/api/v1/organisations/acme/scenarios/future/events") &&
+        (init?.method ?? "GET") === "GET"
     ).length;
     fireEvent.click(screen.getByRole("button", { name: "Change org state" }));
     const orgStateDialog = await screen.findByRole("dialog", {
@@ -1277,18 +1153,14 @@ describe("Schatten UI shell", () => {
       })
     );
 
-    expect(screen.getByRole("link", { name: "Events" })).toHaveClass(
-      "tab-link--active"
-    );
+    expect(screen.getByRole("link", { name: "Events" })).toHaveClass("tab-link--active");
     expect(screen.getByTitle("Scenario: Future plan")).toBeInTheDocument();
+    expect(screen.getByTitle("Org state: Planned launch (2026-07-01)")).toBeInTheDocument();
     expect(
-      screen.getByTitle("Org state: Planned launch (2026-07-01)")
-    ).toBeInTheDocument();
-    expect(
-      fetchMock.mock.calls.filter(([input, init]) =>
-        String(input).endsWith(
-          "/api/v1/organisations/acme/scenarios/future/events"
-        ) && (init?.method ?? "GET") === "GET"
+      fetchMock.mock.calls.filter(
+        ([input, init]) =>
+          String(input).endsWith("/api/v1/organisations/acme/scenarios/future/events") &&
+          (init?.method ?? "GET") === "GET"
       )
     ).toHaveLength(futureEventReadCount);
   });
@@ -1304,32 +1176,27 @@ describe("Schatten UI shell", () => {
       name: "Scenario and org state selector"
     });
     fireEvent.click(
-      await within(
-        within(dialog).getByRole("region", { name: "Scenarios" })
-      ).findByRole("button", { name: /Future plan/ })
+      await within(within(dialog).getByRole("region", { name: "Scenarios" })).findByRole("button", {
+        name: /Future plan/
+      })
     );
-    await within(
-      within(dialog).getByRole("region", { name: "Scenario org states" })
-    ).findByRole("button", { name: /Draft state/ });
+    await within(within(dialog).getByRole("region", { name: "Scenario org states" })).findByRole(
+      "button",
+      { name: /Draft state/ }
+    );
     fireEvent.click(within(dialog).getByRole("button", { name: "Select" }));
 
     const selectedScenarioPanel = screen.getByRole("region", {
       name: "Selected scenario"
     });
     await waitFor(() => {
-      expect(within(selectedScenarioPanel).getByLabelText("Name")).toHaveValue(
-        "Future plan"
+      expect(within(selectedScenarioPanel).getByLabelText("Name")).toHaveValue("Future plan");
+      expect(within(selectedScenarioPanel).getByLabelText("Description")).toHaveValue(
+        "A possible future"
       );
-      expect(
-        within(selectedScenarioPanel).getByLabelText("Description")
-      ).toHaveValue("A possible future");
     });
-    expect(screen.getByRole("link", { name: "Scenarios" })).toHaveClass(
-      "tab-link--active"
-    );
-    expect(
-      screen.getByTitle("Org state: Draft state (2026-06-01)")
-    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Scenarios" })).toHaveClass("tab-link--active");
+    expect(screen.getByTitle("Org state: Draft state (2026-06-01)")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "State" }));
     const selectedStateHeading = await screen.findByRole("heading", {
@@ -1337,12 +1204,8 @@ describe("Schatten UI shell", () => {
     });
     const selectedStatePanel = selectedStateHeading.closest("section");
     expect(selectedStatePanel).not.toBeNull();
-    expect(within(selectedStatePanel!).getByLabelText("Name")).toHaveValue(
-      "Draft state"
-    );
-    expect(within(selectedStatePanel!).getByLabelText("Target date")).toHaveValue(
-      "2026-06-01"
-    );
+    expect(within(selectedStatePanel!).getByLabelText("Name")).toHaveValue("Draft state");
+    expect(within(selectedStatePanel!).getByLabelText("Target date")).toHaveValue("2026-06-01");
   });
 
   it("renders the selected scenario group without sidebar descriptions", async () => {
@@ -1357,18 +1220,16 @@ describe("Schatten UI shell", () => {
     const selectedScenarioButton = within(scenarioList).getByRole("button", {
       name: /Future plan/
     });
-    const selectedScenarioGroup = selectedScenarioButton.closest(
-      ".scenario-list-item"
-    );
+    const selectedScenarioGroup = selectedScenarioButton.closest(".scenario-list-item");
 
     expect(selectedScenarioGroup).toHaveClass("scenario-list-item--selected");
     expect(selectedScenarioButton).toHaveClass("entity-row--selected");
     expect(within(scenarioList).getByText("STATES")).toBeInTheDocument();
     expect(within(scenarioList).queryByText("A possible future")).not.toBeInTheDocument();
     expect(within(scenarioList).queryByText("Draft")).not.toBeInTheDocument();
-    expect(
-      within(scenarioList).getByRole("button", { name: /Draft state/ })
-    ).toHaveClass("entity-row--selected");
+    expect(within(scenarioList).getByRole("button", { name: /Draft state/ })).toHaveClass(
+      "entity-row--selected"
+    );
   });
 
   it("chooses a fork source state without changing the active org-state view", async () => {
@@ -1379,12 +1240,8 @@ describe("Schatten UI shell", () => {
     fireEvent.click(await screen.findByRole("button", { name: /Future plan/ }));
     await screen.findByRole("button", { name: /Draft state/ });
 
-    expect(
-      screen.getByTitle("Org state: Draft state (2026-06-01)")
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", { name: "Selected scenario" })
-    ).toBeInTheDocument();
+    expect(screen.getByTitle("Org state: Draft state (2026-06-01)")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Selected scenario" })).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("Source state"), {
       target: { value: "launch" }
@@ -1394,12 +1251,8 @@ describe("Schatten UI shell", () => {
       target: { value: "" }
     });
 
-    expect(
-      screen.getByTitle("Org state: Draft state (2026-06-01)")
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", { name: "Selected scenario" })
-    ).toBeInTheDocument();
+    expect(screen.getByTitle("Org state: Draft state (2026-06-01)")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Selected scenario" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Fork scenario" }));
 
@@ -1435,21 +1288,13 @@ describe("Schatten UI shell", () => {
     });
 
     await waitFor(() => {
-      expect(within(forkForm).getByLabelText("Source state")).toHaveValue(
-        "draft"
-      );
+      expect(within(forkForm).getByLabelText("Source state")).toHaveValue("draft");
     });
 
     expect(screen.getByTitle("Scenario: Reality")).toBeInTheDocument();
-    expect(
-      screen.getByTitle("Org state: Today (2026-06-23)")
-    ).toBeInTheDocument();
-    expect(within(forkForm).getByLabelText(/Name/)).toHaveValue(
-      "Fork of Future plan"
-    );
-    expect(within(forkForm).getByLabelText(/Description/)).toHaveValue(
-      "A possible future"
-    );
+    expect(screen.getByTitle("Org state: Today (2026-06-23)")).toBeInTheDocument();
+    expect(within(forkForm).getByLabelText(/Name/)).toHaveValue("Fork of Future plan");
+    expect(within(forkForm).getByLabelText(/Description/)).toHaveValue("A possible future");
 
     fireEvent.click(within(forkForm).getByRole("button", { name: "Fork scenario" }));
 
@@ -1457,9 +1302,7 @@ describe("Schatten UI shell", () => {
       expect(
         fetchMock.mock.calls.some(([input, init]) => {
           return (
-            String(input).endsWith(
-              "/api/v1/organisations/acme/scenarios/copy"
-            ) &&
+            String(input).endsWith("/api/v1/organisations/acme/scenarios/copy") &&
             init?.method === "POST" &&
             init.body ===
               JSON.stringify({
@@ -1487,9 +1330,7 @@ describe("Schatten UI shell", () => {
     );
 
     expect(screen.getByTitle("Scenario: Future plan")).toBeInTheDocument();
-    expect(
-      screen.getByTitle("Org state: Draft state (2026-06-01)")
-    ).toBeInTheDocument();
+    expect(screen.getByTitle("Org state: Draft state (2026-06-01)")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Structure" })).toHaveAttribute(
       "href",
       "/schatten/acme/graph"
@@ -1502,12 +1343,8 @@ describe("Schatten UI shell", () => {
     fireEvent.click(screen.getByRole("button", { name: /Reality/ }));
     await screen.findByRole("button", { name: /Today/ });
     const stateList = screen.getByLabelText("Org state list");
-    expect(
-      within(stateList).getByRole("button", { name: /Today/ })
-    ).toBeVisible();
-    expect(
-      screen.queryByRole("button", { name: /Draft state/ })
-    ).not.toBeInTheDocument();
+    expect(within(stateList).getByRole("button", { name: /Today/ })).toBeVisible();
+    expect(screen.queryByRole("button", { name: /Draft state/ })).not.toBeInTheDocument();
   });
 
   it("preserves the selected org state when returning to Scenarios", async () => {
@@ -1519,35 +1356,27 @@ describe("Schatten UI shell", () => {
     await screen.findByRole("button", { name: /Draft state/ });
     fireEvent.click(screen.getByRole("button", { name: /Planned launch/ }));
 
-    expect(
-      screen.getByTitle("Org state: Planned launch (2026-07-01)")
-    ).toBeInTheDocument();
+    expect(screen.getByTitle("Org state: Planned launch (2026-07-01)")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("link", { name: "Events" }));
-    expect(
-      await screen.findByRole("heading", { name: "Events", level: 1 })
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Events", level: 1 })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("link", { name: "Scenarios" }));
 
     await waitFor(() => {
-      expect(
-        screen.getByTitle("Org state: Planned launch (2026-07-01)")
-      ).toBeInTheDocument();
-      expect(
-        screen.getByRole("button", { name: /Planned launch/ })
-      ).toHaveClass("entity-row--selected");
+      expect(screen.getByTitle("Org state: Planned launch (2026-07-01)")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Planned launch/ })).toHaveClass(
+        "entity-row--selected"
+      );
     });
 
     const selectedScenarioPanel = screen.getByRole("region", {
       name: "Selected scenario"
     });
-    expect(within(selectedScenarioPanel).getByLabelText("Name")).toHaveValue(
-      "Future plan"
+    expect(within(selectedScenarioPanel).getByLabelText("Name")).toHaveValue("Future plan");
+    expect(within(selectedScenarioPanel).getByLabelText("Description")).toHaveValue(
+      "A possible future"
     );
-    expect(
-      within(selectedScenarioPanel).getByLabelText("Description")
-    ).toHaveValue("A possible future");
     expect(
       within(selectedScenarioPanel).getByRole("button", {
         name: "Save scenario"
@@ -1555,12 +1384,8 @@ describe("Schatten UI shell", () => {
     ).toBeDisabled();
 
     const forkForm = screen.getByRole("form", { name: "Fork from existing" });
-    expect(within(forkForm).getByLabelText(/Name/)).toHaveValue(
-      "Fork of Future plan"
-    );
-    expect(within(forkForm).getByLabelText(/Description/)).toHaveValue(
-      "A possible future"
-    );
+    expect(within(forkForm).getByLabelText(/Name/)).toHaveValue("Fork of Future plan");
+    expect(within(forkForm).getByLabelText(/Description/)).toHaveValue("A possible future");
   });
 
   it("falls back when the selected scenario is missing on return", async () => {
@@ -1570,35 +1395,25 @@ describe("Schatten UI shell", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: /Future plan/ }));
     await screen.findByRole("button", { name: /Draft state/ });
-    expect(
-      screen.getByTitle("Org state: Draft state (2026-06-01)")
-    ).toBeInTheDocument();
+    expect(screen.getByTitle("Org state: Draft state (2026-06-01)")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("link", { name: "Events" }));
-    expect(
-      await screen.findByRole("heading", { name: "Events", level: 1 })
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Events", level: 1 })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("link", { name: "Scenarios" }));
 
     await waitFor(() => {
       expect(screen.getByTitle("Scenario: Reality")).toBeInTheDocument();
-      expect(
-        screen.getByTitle("Org state: Today (2026-06-23)")
-      ).toBeInTheDocument();
+      expect(screen.getByTitle("Org state: Today (2026-06-23)")).toBeInTheDocument();
     });
-    expect(
-      screen.queryByRole("button", { name: /Draft state/ })
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Draft state/ })).not.toBeInTheDocument();
 
     const selectedScenarioPanel = screen.getByRole("region", {
       name: "Selected scenario"
     });
-    expect(within(selectedScenarioPanel).getByLabelText("Name")).toHaveValue(
-      "Reality"
+    expect(within(selectedScenarioPanel).getByLabelText("Name")).toHaveValue("Reality");
+    expect(within(selectedScenarioPanel).getByLabelText("Description")).toHaveValue(
+      "Current baseline"
     );
-    expect(
-      within(selectedScenarioPanel).getByLabelText("Description")
-    ).toHaveValue("Current baseline");
   });
 
   it("edits the selected org state immediately and saves only after changes", async () => {
@@ -1610,17 +1425,14 @@ describe("Schatten UI shell", () => {
     await screen.findByRole("button", { name: /Draft state/ });
     fireEvent.click(screen.getByRole("button", { name: "State" }));
 
-    expect(
-      screen.queryByRole("button", { name: "Edit state" })
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit state" })).not.toBeInTheDocument();
     expect(screen.queryByText("State ID")).not.toBeInTheDocument();
 
     const selectedStatePanel = screen.getByRole("region", {
       name: "Draft state"
     });
     const nameInput = within(selectedStatePanel).getByLabelText("Name");
-    const descriptionInput =
-      within(selectedStatePanel).getByLabelText("Description");
+    const descriptionInput = within(selectedStatePanel).getByLabelText("Description");
     const saveButton = within(selectedStatePanel).getByRole("button", {
       name: "Save state"
     });
@@ -1638,9 +1450,7 @@ describe("Schatten UI shell", () => {
         fetchMock.mock.calls.some(([input, init]) => {
           const url = String(input);
           return (
-            url.endsWith(
-              "/api/v1/organisations/acme/scenarios/future/org-states/draft"
-            ) &&
+            url.endsWith("/api/v1/organisations/acme/scenarios/future/org-states/draft") &&
             init?.method === "PATCH" &&
             init.body ===
               JSON.stringify({
@@ -1666,8 +1476,7 @@ describe("Schatten UI shell", () => {
     const selectedStatePanel = screen.getByRole("region", {
       name: "Draft state"
     });
-    const confirmInput =
-      within(selectedStatePanel).getByPlaceholderText("Type DELETE to confirm");
+    const confirmInput = within(selectedStatePanel).getByPlaceholderText("Type DELETE to confirm");
     const deleteButton = within(selectedStatePanel).getByRole("button", {
       name: "Delete state"
     });
@@ -1686,9 +1495,8 @@ describe("Schatten UI shell", () => {
         fetchMock.mock.calls.some(([input, init]) => {
           const url = String(input);
           return (
-            url.endsWith(
-              "/api/v1/organisations/acme/scenarios/future/org-states/draft"
-            ) && init?.method === "DELETE"
+            url.endsWith("/api/v1/organisations/acme/scenarios/future/org-states/draft") &&
+            init?.method === "DELETE"
           );
         })
       ).toBe(true);
@@ -1706,18 +1514,14 @@ describe("Schatten UI shell", () => {
     const createStatePanel = screen.getByRole("form", {
       name: "Create state"
     });
-    expect(within(createStatePanel).getByLabelText("Target date")).toHaveValue(
-      todayDateValue()
-    );
+    expect(within(createStatePanel).getByLabelText("Target date")).toHaveValue(todayDateValue());
     fireEvent.change(within(createStatePanel).getByLabelText("Name"), {
       target: { value: "Duplicate date state" }
     });
     fireEvent.change(within(createStatePanel).getByLabelText("Target date"), {
       target: { value: "2026-07-01" }
     });
-    fireEvent.click(
-      within(createStatePanel).getByRole("button", { name: "Create state" })
-    );
+    fireEvent.click(within(createStatePanel).getByRole("button", { name: "Create state" }));
 
     expect(
       await screen.findByText("Target date must be unique within the scenario.")
@@ -1726,9 +1530,8 @@ describe("Schatten UI shell", () => {
       fetchMock.mock.calls.some(([input, init]) => {
         const url = String(input);
         return (
-          url.endsWith(
-            "/api/v1/organisations/acme/scenarios/future/org-states"
-          ) && init?.method === "POST"
+          url.endsWith("/api/v1/organisations/acme/scenarios/future/org-states") &&
+          init?.method === "POST"
         );
       })
     ).toBe(false);
@@ -1759,8 +1562,7 @@ describe("Schatten UI shell", () => {
         fetchMock.mock.calls.some(([input, init]) => {
           const url = String(input);
           return (
-            url.endsWith("/api/v1/organisations/acme/scenarios/future") &&
-            init?.method === "DELETE"
+            url.endsWith("/api/v1/organisations/acme/scenarios/future") && init?.method === "DELETE"
           );
         })
       ).toBe(true);
@@ -1786,22 +1588,14 @@ describe("Schatten UI shell", () => {
     await screen.findByRole("button", { name: /Draft state/ });
     fireEvent.click(screen.getByRole("link", { name: "Events" }));
 
-    expect(
-      await screen.findByRole("heading", { name: "Events", level: 1 })
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Events", level: 1 })).toBeInTheDocument();
     expect(await screen.findByText("2 event(s)")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Kickoff/ })).toHaveClass(
-      "entity-row--selected"
-    );
+    expect(screen.getByRole("button", { name: /Kickoff/ })).toHaveClass("entity-row--selected");
     expect(screen.getByRole("button", { name: /Kickoff/ })).toHaveTextContent(
       /Past\s*2026-06-15\s*Kickoff\s*Internal kickoff/
     );
-    expect(
-      screen.getByRole("button", { name: /Launch event/ })
-    ).toHaveTextContent("No details");
-    expect(
-      screen.getByRole("heading", { name: "Kickoff" })
-    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Launch event/ })).toHaveTextContent("No details");
+    expect(screen.getByRole("heading", { name: "Kickoff" })).toBeInTheDocument();
     expect(
       fetchMock.mock.calls.some(([input, init]) => {
         const url = String(input);
@@ -1822,9 +1616,7 @@ describe("Schatten UI shell", () => {
     fireEvent.click(screen.getByRole("link", { name: "Events" }));
 
     expect(await screen.findByText("No events available.")).toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", { name: "No event selected" })
-    ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "No event selected" })).toBeInTheDocument();
   });
 
   it("creates an event and refreshes the event list selection", async () => {
@@ -1838,34 +1630,26 @@ describe("Schatten UI shell", () => {
     await screen.findByRole("button", { name: /Kickoff/ });
 
     const createEventForm = screen.getByRole("form", { name: "Create event" });
-    expect(
-      createEventForm.querySelector("label[for='event-create-name']")
-    ).toHaveClass("form-label--required");
-    expect(within(createEventForm).getByLabelText("Target date")).toHaveValue(
-      todayDateValue()
+    expect(createEventForm.querySelector("label[for='event-create-name']")).toHaveClass(
+      "form-label--required"
     );
+    expect(within(createEventForm).getByLabelText("Target date")).toHaveValue(todayDateValue());
     fireEvent.change(within(createEventForm).getByLabelText("Name"), {
       target: { value: "Board review" }
     });
     fireEvent.change(within(createEventForm).getByLabelText("Event details"), {
       target: { value: "Review growth plan" }
     });
-    fireEvent.click(
-      within(createEventForm).getByRole("button", { name: "Create event" })
-    );
+    fireEvent.click(within(createEventForm).getByRole("button", { name: "Create event" }));
 
     const createdEventRow = await screen.findByRole("button", {
       name: /Board review/
     });
     expect(createdEventRow).toHaveClass("entity-row--selected");
     expect(createdEventRow).toHaveTextContent(
-      new RegExp(
-        `Upcoming\\s*${todayDateValue()}\\s*Board review\\s*Review growth plan`
-      )
+      new RegExp(`Upcoming\\s*${todayDateValue()}\\s*Board review\\s*Review growth plan`)
     );
-    expect(
-      screen.getByRole("heading", { name: "Board review" })
-    ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Board review" })).toBeInTheDocument();
     expect(
       fetchMock.mock.calls.some(([input, init]) => {
         const url = String(input);
@@ -1911,9 +1695,7 @@ describe("Schatten UI shell", () => {
         fetchMock.mock.calls.some(([input, init]) => {
           const url = String(input);
           return (
-            url.endsWith(
-              "/api/v1/organisations/acme/scenarios/future/events/kickoff"
-            ) &&
+            url.endsWith("/api/v1/organisations/acme/scenarios/future/events/kickoff") &&
             init?.method === "PATCH" &&
             init.body ===
               JSON.stringify({
@@ -1940,35 +1722,34 @@ describe("Schatten UI shell", () => {
     await screen.findByRole("button", { name: /Kickoff/ });
     const selectedEventPanel = screen.getByRole("region", { name: "Kickoff" });
 
-    fireEvent.click(within(selectedEventPanel).getByRole("button", {
-      name: "Delete event"
-    }));
+    fireEvent.click(
+      within(selectedEventPanel).getByRole("button", {
+        name: "Delete event"
+      })
+    );
     expect(
-      within(selectedEventPanel).getByText(
-        "Are you sure you want to delete the selected event?"
-      )
+      within(selectedEventPanel).getByText("Are you sure you want to delete the selected event?")
     ).toBeInTheDocument();
 
     fireEvent.click(within(selectedEventPanel).getByRole("button", { name: "No" }));
     expect(
-      within(selectedEventPanel).queryByText(
-        "Are you sure you want to delete the selected event?"
-      )
+      within(selectedEventPanel).queryByText("Are you sure you want to delete the selected event?")
     ).not.toBeInTheDocument();
     expect(
       fetchMock.mock.calls.some(([input, init]) => {
         const url = String(input);
         return (
-          url.endsWith(
-            "/api/v1/organisations/acme/scenarios/future/events/kickoff"
-          ) && init?.method === "DELETE"
+          url.endsWith("/api/v1/organisations/acme/scenarios/future/events/kickoff") &&
+          init?.method === "DELETE"
         );
       })
     ).toBe(false);
 
-    fireEvent.click(within(selectedEventPanel).getByRole("button", {
-      name: "Delete event"
-    }));
+    fireEvent.click(
+      within(selectedEventPanel).getByRole("button", {
+        name: "Delete event"
+      })
+    );
     fireEvent.click(within(selectedEventPanel).getByRole("button", { name: "Yes" }));
 
     await waitFor(() => {
@@ -1976,19 +1757,20 @@ describe("Schatten UI shell", () => {
         fetchMock.mock.calls.some(([input, init]) => {
           const url = String(input);
           return (
-            url.endsWith(
-              "/api/v1/organisations/acme/scenarios/future/events/kickoff"
-            ) && init?.method === "DELETE"
+            url.endsWith("/api/v1/organisations/acme/scenarios/future/events/kickoff") &&
+            init?.method === "DELETE"
           );
         })
       ).toBe(true);
     });
-    await waitFor(() => expect(
-      screen.queryByRole("button", { name: /Kickoff/ })
-    ).not.toBeInTheDocument());
-    await waitFor(() => expect(
-      screen.getByRole("button", { name: /Launch event/ })
-    ).toHaveClass("entity-row--selected"));
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: /Kickoff/ })).not.toBeInTheDocument()
+    );
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /Launch event/ })).toHaveClass(
+        "entity-row--selected"
+      )
+    );
   });
 
   it("shows event load and mutation errors", async () => {
@@ -2021,9 +1803,7 @@ describe("Schatten UI shell", () => {
     fireEvent.change(within(createEventForm).getByLabelText("Target date"), {
       target: { value: "2026-08-01" }
     });
-    fireEvent.click(
-      within(createEventForm).getByRole("button", { name: "Create event" })
-    );
+    fireEvent.click(within(createEventForm).getByRole("button", { name: "Create event" }));
 
     expect(await screen.findByText("Action error")).toBeInTheDocument();
     expect(screen.getByText(/API request failed \(500\)/)).toBeInTheDocument();

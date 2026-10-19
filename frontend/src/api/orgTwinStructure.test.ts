@@ -1,8 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  fetchGraphHistory,
-  fetchGraphTypeCatalog
-} from "./orgTwinStructure";
+import { fetchGraphHistory, fetchGraphTypeCatalog } from "./orgTwinStructure";
 
 function jsonResponse(payload: unknown) {
   return new Response(JSON.stringify(payload), {
@@ -17,15 +14,14 @@ afterEach(() => {
 
 describe("organisation twin structure API", () => {
   it("loads scenario graph history with the supplied abort signal", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      jsonResponse({ nodes: [], edges: [] })
-    );
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ nodes: [], edges: [] }));
     vi.stubGlobal("fetch", fetchMock);
     const controller = new AbortController();
 
-    await expect(
-      fetchGraphHistory("acme / north", "future", controller.signal)
-    ).resolves.toEqual({ nodes: [], edges: [] });
+    await expect(fetchGraphHistory("acme / north", "future", controller.signal)).resolves.toEqual({
+      nodes: [],
+      edges: []
+    });
 
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/v1/organisations/acme%20%2F%20north/scenarios/future/graph/history",
@@ -35,9 +31,7 @@ describe("organisation twin structure API", () => {
 
   it("supports both scenario-level and organisation-state type catalogs", async () => {
     const catalog = { nodeTypes: [], edgeTypes: [], allowedConnections: [] };
-    const fetchMock = vi.fn().mockImplementation(() =>
-      Promise.resolve(jsonResponse(catalog))
-    );
+    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(jsonResponse(catalog)));
     vi.stubGlobal("fetch", fetchMock);
     const controller = new AbortController();
 

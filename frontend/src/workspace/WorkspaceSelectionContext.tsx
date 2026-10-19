@@ -22,15 +22,12 @@ type WorkspaceSelectionContextValue = {
   ) => void;
 };
 
-export const WorkspaceSelectionContext =
-  createContext<WorkspaceSelectionContextValue | null>(null);
+export const WorkspaceSelectionContext = createContext<WorkspaceSelectionContextValue | null>(null);
 
 export function useWorkspaceSelection(): WorkspaceSelectionContextValue {
   const value = useContext(WorkspaceSelectionContext);
   if (!value) {
-    throw new Error(
-      "useWorkspaceSelection must be used inside WorkspaceSelectionProvider"
-    );
+    throw new Error("useWorkspaceSelection must be used inside WorkspaceSelectionProvider");
   }
   return value;
 }

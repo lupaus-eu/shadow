@@ -75,13 +75,12 @@ export default function OrganisationDropdown(props: OrganisationDropdownProps) {
   const [renameName, setRenameName] = useState("");
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const [createName, setCreateName] = useState("");
-  const [pendingAction, setPendingAction] =
-    useState<Exclude<OrganisationAction, null> | null>(null);
+  const [pendingAction, setPendingAction] = useState<Exclude<OrganisationAction, null> | null>(
+    null
+  );
 
   const currentOrganisation = useMemo(
-    () =>
-      organisations.find((organisation) => organisation.id === orgId) ??
-      null,
+    () => organisations.find((organisation) => organisation.id === orgId) ?? null,
     [organisations, orgId]
   );
   const displayedName = currentOrganisation?.name ?? organisationName;
@@ -114,9 +113,7 @@ export default function OrganisationDropdown(props: OrganisationDropdownProps) {
       try {
         setLoading(true);
         setLoadError("");
-        const items = sortOrganisations(
-          await fetchOrganisations(controller.signal)
-        );
+        const items = sortOrganisations(await fetchOrganisations(controller.signal));
         if (ignore) return;
 
         setOrganisations(items);
@@ -144,10 +141,7 @@ export default function OrganisationDropdown(props: OrganisationDropdownProps) {
     if (!open) return;
 
     function onPointerDown(event: PointerEvent) {
-      if (
-        event.target instanceof Node &&
-        !rootRef.current?.contains(event.target)
-      ) {
+      if (event.target instanceof Node && !rootRef.current?.contains(event.target)) {
         closeDropdown(false);
       }
     }
@@ -189,18 +183,15 @@ export default function OrganisationDropdown(props: OrganisationDropdownProps) {
 
   function currentTabSignature(): string {
     const candidate = location.pathname.split("/").filter(Boolean).at(-1);
-    return WORKSPACE_TABS.some((tab) => tab.signature === candidate)
-      ? candidate!
-      : "org-states";
+    return WORKSPACE_TABS.some((tab) => tab.signature === candidate) ? candidate! : "org-states";
   }
 
   function navigateToOrganisation(organisation: OrganisationDto): void {
     storeOrganisationName(organisation.id, organisation.name);
     onOrganisationNameChange(organisation.name);
-    navigate(
-      `/schatten/${encodeURIComponent(organisation.id)}/${currentTabSignature()}`,
-      { state: { organisationName: organisation.name } }
-    );
+    navigate(`/schatten/${encodeURIComponent(organisation.id)}/${currentTabSignature()}`, {
+      state: { organisationName: organisation.name }
+    });
   }
 
   function onTriggerKeyDown(event: KeyboardEvent<HTMLButtonElement>): void {
@@ -259,9 +250,7 @@ export default function OrganisationDropdown(props: OrganisationDropdownProps) {
       const updated = await updateOrganisation(currentOrganisation.id, { name });
       setOrganisations((current) =>
         sortOrganisations(
-          current.map((organisation) =>
-            organisation.id === updated.id ? updated : organisation
-          )
+          current.map((organisation) => (organisation.id === updated.id ? updated : organisation))
         )
       );
       storeOrganisationName(updated.id, updated.name);
@@ -280,11 +269,7 @@ export default function OrganisationDropdown(props: OrganisationDropdownProps) {
 
   async function onDeleteSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (
-      !currentOrganisation ||
-      busy ||
-      deleteConfirmation !== "DELETE"
-    ) {
+    if (!currentOrganisation || busy || deleteConfirmation !== "DELETE") {
       return;
     }
 
@@ -294,9 +279,7 @@ export default function OrganisationDropdown(props: OrganisationDropdownProps) {
       await deleteOrganisation(currentOrganisation.id);
 
       const remaining = sortOrganisations(
-        organisations.filter(
-          (organisation) => organisation.id !== currentOrganisation.id
-        )
+        organisations.filter((organisation) => organisation.id !== currentOrganisation.id)
       );
       removeStoredOrganisationName(currentOrganisation.id);
       setOrganisations(remaining);
@@ -523,9 +506,7 @@ export default function OrganisationDropdown(props: OrganisationDropdownProps) {
                   type="submit"
                   disabled={busy || deleteConfirmation !== "DELETE"}
                 >
-                  {pendingAction === "delete"
-                    ? "Deleting..."
-                    : "Delete organisation"}
+                  {pendingAction === "delete" ? "Deleting..." : "Delete organisation"}
                 </button>
               </div>
             </form>
@@ -564,9 +545,7 @@ export default function OrganisationDropdown(props: OrganisationDropdownProps) {
                   type="submit"
                   disabled={busy || !createName.trim()}
                 >
-                  {pendingAction === "create"
-                    ? "Creating..."
-                    : "Create organisation"}
+                  {pendingAction === "create" ? "Creating..." : "Create organisation"}
                 </button>
               </div>
             </form>
@@ -600,11 +579,7 @@ function ActionError(props: { message: string }) {
 
 function ChevronIcon() {
   return (
-    <svg
-      className="dropdown-chevron"
-      viewBox="0 0 24 24"
-      aria-hidden="true"
-    >
+    <svg className="dropdown-chevron" viewBox="0 0 24 24" aria-hidden="true">
       <path d="m7 10 5 5 5-5" />
     </svg>
   );

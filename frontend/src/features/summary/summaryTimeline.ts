@@ -173,9 +173,7 @@ export function buildTimelineRows(
     });
   }
 
-  for (const timeserie of [...timeseries].sort((left, right) =>
-    compareText(left.id, right.id)
-  )) {
+  for (const timeserie of [...timeseries].sort((left, right) => compareText(left.id, right.id))) {
     rows.push({
       kind: "timeserie",
       id: `timeserie:${timeserie.id}`,
@@ -188,10 +186,7 @@ export function buildTimelineRows(
   return rows;
 }
 
-export function filterTimelineRows(
-  rows: TimelineRow[],
-  filters: TimelineFilters
-): TimelineRow[] {
+export function filterTimelineRows(rows: TimelineRow[], filters: TimelineFilters): TimelineRow[] {
   return rows.filter((row) => {
     if (row.kind === "node") {
       return filters.nodes && filters.nodeTypeIds.has(row.node.nodeTypeId);
@@ -248,9 +243,7 @@ export function calculateTimelineBounds(
     latest = new Date(start);
   }
 
-  const end = new Date(
-    Date.UTC(latest.getUTCFullYear(), latest.getUTCMonth() + 2, 0)
-  );
+  const end = new Date(Date.UTC(latest.getUTCFullYear(), latest.getUTCMonth() + 2, 0));
   return {
     start,
     end,
@@ -302,9 +295,7 @@ export function calculateChartScale(values: number[]): ChartScale {
 
 export function monthMarkers(bounds: TimelineBounds, includeYear = false) {
   const markers: Array<{ date: Date; label: string }> = [];
-  const cursor = new Date(
-    Date.UTC(bounds.start.getUTCFullYear(), bounds.start.getUTCMonth(), 1)
-  );
+  const cursor = new Date(Date.UTC(bounds.start.getUTCFullYear(), bounds.start.getUTCMonth(), 1));
   markers.push({
     date: new Date(bounds.start),
     label: monthMarkerLabel(cursor, includeYear)
@@ -338,10 +329,7 @@ export function yearMarkers(bounds: TimelineBounds) {
   return markers;
 }
 
-export function shouldUseYearOnlyHeader(
-  bounds: TimelineBounds,
-  pixelsPerDay: number
-): boolean {
+export function shouldUseYearOnlyHeader(bounds: TimelineBounds, pixelsPerDay: number): boolean {
   return !headerMarkersFit(bounds, pixelsPerDay, monthMarkers(bounds));
 }
 

@@ -1,5 +1,4 @@
-const API_BASE_URL =
-  (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim() ?? "";
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim() ?? "";
 
 const UNSAFE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
@@ -15,9 +14,7 @@ export function buildApiUrl(path: string): string {
   return `${API_BASE_URL.replace(/\/+$/, "")}${path}`;
 }
 
-export function configureRequestAuthentication(
-  authentication: RequestAuthentication
-): () => void {
+export function configureRequestAuthentication(authentication: RequestAuthentication): () => void {
   requestAuthentication = authentication;
 
   return () => {

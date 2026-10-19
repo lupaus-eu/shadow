@@ -1,11 +1,4 @@
-import {
-  act,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-  within
-} from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { StrictMode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -80,18 +73,14 @@ describe("UsersTab", () => {
   });
 
   it("shows load failure, empty, and retry states", async () => {
-    fetchUsersMock
-      .mockRejectedValueOnce(new Error("Users unavailable."))
-      .mockResolvedValueOnce([]);
+    fetchUsersMock.mockRejectedValueOnce(new Error("Users unavailable.")).mockResolvedValueOnce([]);
 
     render(<UsersTab />);
 
     expect(await screen.findByText("Users unavailable.")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
 
-    expect(
-      await screen.findByText("No active users available.")
-    ).toBeInTheDocument();
+    expect(await screen.findByText("No active users available.")).toBeInTheDocument();
     expect(fetchUsersMock).toHaveBeenCalledTimes(2);
   });
 
@@ -188,9 +177,10 @@ describe("UsersTab", () => {
         role: "consultant"
       });
     });
-    expect(
-      await screen.findByRole("button", { name: /Ada Lovelace/ })
-    ).toHaveAttribute("aria-pressed", "true");
+    expect(await screen.findByRole("button", { name: /Ada Lovelace/ })).toHaveAttribute(
+      "aria-pressed",
+      "true"
+    );
   });
 
   it("cancels deletion and then soft-deletes with a predictable fallback", async () => {
@@ -228,9 +218,7 @@ describe("UsersTab", () => {
     expect(screen.getByRole("alertdialog")).toHaveTextContent(
       "This does not sign them out of the identity provider."
     );
-    fireEvent.click(
-      screen.getByRole("button", { name: "Confirm revoke sessions" })
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Confirm revoke sessions" }));
 
     await waitFor(() => expect(revokeUserSessionsMock).toHaveBeenCalledWith(ada.id));
     expect(await screen.findByRole("status")).toHaveTextContent(
@@ -245,9 +233,7 @@ describe("UsersTab", () => {
     render(<UsersTab />);
     await screen.findByRole("button", { name: /ada/ });
     fireEvent.click(screen.getByRole("button", { name: "Revoke sessions" }));
-    fireEvent.click(
-      screen.getByRole("button", { name: "Confirm revoke sessions" })
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Confirm revoke sessions" }));
 
     expect(await screen.findByText("Revocation forbidden.")).toBeInTheDocument();
   });
@@ -265,9 +251,7 @@ describe("UsersTab", () => {
     );
     await screen.findByRole("button", { name: /ada/ });
     fireEvent.click(screen.getByRole("button", { name: "Revoke sessions" }));
-    fireEvent.click(
-      screen.getByRole("button", { name: "Confirm revoke sessions" })
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Confirm revoke sessions" }));
 
     await waitFor(() => {
       expect(onCurrentUserSessionsRevoked).toHaveBeenCalledTimes(1);
@@ -335,17 +319,13 @@ describe("UsersTab", () => {
     });
     fireEvent.submit(form);
 
-    expect(
-      await screen.findByRole("button", { name: /Ada updated/ })
-    ).toBeVisible();
+    expect(await screen.findByRole("button", { name: /Ada updated/ })).toBeVisible();
     expect(fetchUsersMock).toHaveBeenCalledTimes(1);
   });
 
   it("disables mutation controls while a refresh is in progress", async () => {
     const refreshedUsers = deferred<UserDto[]>();
-    fetchUsersMock
-      .mockResolvedValueOnce([ada])
-      .mockReturnValueOnce(refreshedUsers.promise);
+    fetchUsersMock.mockResolvedValueOnce([ada]).mockReturnValueOnce(refreshedUsers.promise);
 
     render(<UsersTab />);
     const userRow = await screen.findByRole("button", { name: /ada/ });
@@ -376,9 +356,7 @@ describe("UsersTab", () => {
   it("does not let an older list response overwrite the current users", async () => {
     const older = deferred<UserDto[]>();
     const current = deferred<UserDto[]>();
-    fetchUsersMock
-      .mockReturnValueOnce(older.promise)
-      .mockReturnValueOnce(current.promise);
+    fetchUsersMock.mockReturnValueOnce(older.promise).mockReturnValueOnce(current.promise);
 
     render(
       <StrictMode>

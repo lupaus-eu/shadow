@@ -157,10 +157,7 @@ function renderSummary(
   );
 }
 
-function withSelection(
-  child: ReactElement,
-  selectedScenario: WorkspaceScenarioSummary | null
-) {
+function withSelection(child: ReactElement, selectedScenario: WorkspaceScenarioSummary | null) {
   return (
     <WorkspaceSelectionContext.Provider
       value={{
@@ -229,7 +226,9 @@ describe("SummaryTab", () => {
     expect(screen.getAllByTitle(/Alpha · Person · 2026-01-01/)).toHaveLength(2);
     expect(screen.getAllByTitle(/Reports to · node-a → node-b/)).toHaveLength(2);
     expect(screen.getAllByTitle(/Launch · 2026-05-01/)).toHaveLength(2);
-    expect(screen.getByRole("img", { name: /Revenue numeric timeseries chart/ })).toBeInTheDocument();
+    expect(
+      screen.getByRole("img", { name: /Revenue numeric timeseries chart/ })
+    ).toBeInTheDocument();
     expect(screen.getByText("Y min = -1.5 max = 3.25")).toBeInTheDocument();
     expect(document.querySelectorAll(".summary-timeline-row--numeric-timeserie")).toHaveLength(1);
     expect(screen.getByText("string timeseries are not plotted.")).toBeInTheDocument();
@@ -238,9 +237,7 @@ describe("SummaryTab", () => {
   });
 
   it("fits the initial zoom to the mounted timeline viewport", async () => {
-    const clientWidth = vi
-      .spyOn(HTMLElement.prototype, "clientWidth", "get")
-      .mockReturnValue(420);
+    const clientWidth = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(420);
 
     try {
       renderSummary();
@@ -262,9 +259,7 @@ describe("SummaryTab", () => {
     const view = render(withSelection(<SummaryTab orgId="acme" />, scenario));
     const firstSignal = vi.mocked(structureApi.fetchGraphHistory).mock.calls[0][2];
 
-    view.rerender(
-      withSelection(<SummaryTab orgId="acme" />, { id: "second", name: "Second" })
-    );
+    view.rerender(withSelection(<SummaryTab orgId="acme" />, { id: "second", name: "Second" }));
     expect(firstSignal?.aborted).toBe(true);
     expect(await screen.findByRole("heading", { name: "Second" })).toBeInTheDocument();
 
@@ -348,9 +343,7 @@ describe("SummaryTab", () => {
     expect(Number((zoom as HTMLInputElement).value)).toBeGreaterThan(oldZoom);
     expect(container.querySelectorAll(".summary-grid-line")).toHaveLength(0);
     fireEvent.change(zoom, { target: { value: "0.3" } });
-    expect(screen.getByLabelText("Timeline zoom scale")).toHaveTextContent(
-      "1 pixel / 3.3 days"
-    );
+    expect(screen.getByLabelText("Timeline zoom scale")).toHaveTextContent("1 pixel / 3.3 days");
     expect(screen.getByText("2026")).toBeInTheDocument();
     expect(screen.queryByText("Feb")).not.toBeInTheDocument();
     expect(container.querySelectorAll(".summary-grid-line").length).toBeGreaterThan(0);
@@ -453,9 +446,7 @@ describe("SummaryTab", () => {
     });
     timelineViewport.scrollLeft = Math.max(0, secondPointX - 90);
     fireEvent.mouseMove(chart, { clientX: secondPointX, clientY: secondPointY });
-    expect(screen.getByText("2026-06-01: 3.25 EUR")).toHaveClass(
-      "summary-chart__tooltip--right"
-    );
+    expect(screen.getByText("2026-06-01: 3.25 EUR")).toHaveClass("summary-chart__tooltip--right");
     fireEvent.mouseLeave(chartContainer);
     expect(screen.queryByText("2026-06-01: 3.25 EUR")).not.toBeInTheDocument();
   });

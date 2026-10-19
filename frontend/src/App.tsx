@@ -4,10 +4,7 @@ import { AuthProvider } from "./auth/AuthProvider";
 import { useAuth } from "./auth/AuthContext";
 import LoginPage from "./auth/LoginPage";
 import SessionControls from "./auth/SessionControls";
-import {
-  RouteErrorBoundary,
-  RouteLoadingFallback
-} from "./components/DeferredRoute";
+import { RouteErrorBoundary, RouteLoadingFallback } from "./components/DeferredRoute";
 import HomePage from "./pages/HomePage";
 import NotFound from "./pages/NotFound";
 
@@ -39,11 +36,8 @@ function AuthenticatedApplication() {
   if (location.pathname === "/login") {
     if (status === "authenticated") return <Navigate to="/" replace />;
     const authenticationFailed =
-      new URLSearchParams(location.search).get("error") ===
-      "authentication_failed";
-    return (
-      <LoginPage returnTo="/" authenticationFailed={authenticationFailed} />
-    );
+      new URLSearchParams(location.search).get("error") === "authentication_failed";
+    return <LoginPage returnTo="/" authenticationFailed={authenticationFailed} />;
   }
 
   if (status === "anonymous") {
@@ -59,15 +53,8 @@ function AuthenticatedApplication() {
           <Route
             path="/schatten/:orgId/*"
             element={
-              <RouteErrorBoundary
-                title="Unable to load workspace"
-                resetKey={location.pathname}
-              >
-                <Suspense
-                  fallback={
-                    <RouteLoadingFallback message="Loading workspace..." />
-                  }
-                >
+              <RouteErrorBoundary title="Unable to load workspace" resetKey={location.pathname}>
+                <Suspense fallback={<RouteLoadingFallback message="Loading workspace..." />}>
                   <Workspace />
                 </Suspense>
               </RouteErrorBoundary>

@@ -14,6 +14,7 @@ Task: `tasks/TASK-XXX-short-name.md`
 
 ## Testing
 
+- [ ] Format check
 - [ ] Lint
 - [ ] Tests
 - [ ] Typecheck

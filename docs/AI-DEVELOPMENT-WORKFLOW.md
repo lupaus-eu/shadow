@@ -162,6 +162,7 @@ Frontendin oletustarkistukset:
 
 ```bash
 cd frontend
+pnpm format:check
 pnpm lint
 pnpm test
 pnpm build
@@ -206,6 +207,7 @@ Minimiputki, kun sovelluskoodi on olemassa:
 
 ```text
 Install
+Format check
 Lint
 Tests
 Typecheck

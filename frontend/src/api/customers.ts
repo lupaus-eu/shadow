@@ -35,23 +35,11 @@ export type AddressDto = {
 };
 
 export type CustomerCreateRequest = Pick<CustomerDto, "name" | "email">;
-export type CustomerUpdateRequest = Pick<
-  CustomerDto,
-  "name" | "email" | "status"
->;
-export type ContactWriteRequest = Pick<
-  ContactDto,
-  "name" | "email" | "phone" | "jobTitle"
->;
+export type CustomerUpdateRequest = Pick<CustomerDto, "name" | "email" | "status">;
+export type ContactWriteRequest = Pick<ContactDto, "name" | "email" | "phone" | "jobTitle">;
 export type AddressWriteRequest = Pick<
   AddressDto,
-  | "label"
-  | "addressLine1"
-  | "addressLine2"
-  | "postalCode"
-  | "city"
-  | "region"
-  | "countryCode"
+  "label" | "addressLine1" | "addressLine2" | "postalCode" | "city" | "region" | "countryCode"
 >;
 
 export type CustomerListOptions = {
@@ -69,8 +57,7 @@ function messageFromPayload(payload: unknown): string {
   if (Array.isArray(detail)) {
     return detail
       .map((item) =>
-        item && typeof item === "object" &&
-        typeof (item as { msg?: unknown }).msg === "string"
+        item && typeof item === "object" && typeof (item as { msg?: unknown }).msg === "string"
           ? String((item as { msg: string }).msg)
           : ""
       )
@@ -78,7 +65,8 @@ function messageFromPayload(payload: unknown): string {
       .join(" ");
   }
   const error = (payload as { error?: unknown }).error;
-  return error && typeof error === "object" &&
+  return error &&
+    typeof error === "object" &&
     typeof (error as { message?: unknown }).message === "string"
     ? String((error as { message: string }).message)
     : "";
@@ -105,14 +93,18 @@ async function requestJson<T>(
   init: RequestInit,
   signal?: AbortSignal
 ): Promise<T> {
-  const response = await authenticatedFetch(path, {
-    ...init,
-    headers: {
-      Accept: "application/json",
-      ...(init.body ? { "Content-Type": "application/json" } : {}),
-      ...init.headers
+  const response = await authenticatedFetch(
+    path,
+    {
+      ...init,
+      headers: {
+        Accept: "application/json",
+        ...(init.body ? { "Content-Type": "application/json" } : {}),
+        ...init.headers
+      }
     },
-  }, signal);
+    signal
+  );
   if (!response.ok) throw new Error(await responseErrorMessage(response, action));
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
@@ -153,49 +145,131 @@ export function fetchCustomers(options: CustomerListOptions = {}) {
 }
 
 export function fetchCustomer(customerId: number, signal?: AbortSignal) {
-  return requestJson<CustomerDto>(customerPath(customerId), "fetch customer", { method: "GET" }, signal);
+  return requestJson<CustomerDto>(
+    customerPath(customerId),
+    "fetch customer",
+    { method: "GET" },
+    signal
+  );
 }
 
 export function createCustomer(payload: CustomerCreateRequest, signal?: AbortSignal) {
-  return requestJson<CustomerDto>(customersPath, "create customer", { method: "POST", body: JSON.stringify(payload) }, signal);
+  return requestJson<CustomerDto>(
+    customersPath,
+    "create customer",
+    { method: "POST", body: JSON.stringify(payload) },
+    signal
+  );
 }
 
-export function updateCustomer(customerId: number, payload: CustomerUpdateRequest, signal?: AbortSignal) {
-  return requestJson<CustomerDto>(customerPath(customerId), "update customer", { method: "PUT", body: JSON.stringify(payload) }, signal);
+export function updateCustomer(
+  customerId: number,
+  payload: CustomerUpdateRequest,
+  signal?: AbortSignal
+) {
+  return requestJson<CustomerDto>(
+    customerPath(customerId),
+    "update customer",
+    { method: "PUT", body: JSON.stringify(payload) },
+    signal
+  );
 }
 
 export function deleteCustomer(customerId: number, signal?: AbortSignal) {
-  return requestJson<void>(customerPath(customerId), "delete customer", { method: "DELETE" }, signal);
+  return requestJson<void>(
+    customerPath(customerId),
+    "delete customer",
+    { method: "DELETE" },
+    signal
+  );
 }
 
 export function fetchContacts(customerId: number, signal?: AbortSignal) {
-  return requestJson<ContactDto[]>(contactsPath(customerId), "fetch contacts", { method: "GET" }, signal);
+  return requestJson<ContactDto[]>(
+    contactsPath(customerId),
+    "fetch contacts",
+    { method: "GET" },
+    signal
+  );
 }
 
-export function createContact(customerId: number, payload: ContactWriteRequest, signal?: AbortSignal) {
-  return requestJson<ContactDto>(contactsPath(customerId), "create contact", { method: "POST", body: JSON.stringify(payload) }, signal);
+export function createContact(
+  customerId: number,
+  payload: ContactWriteRequest,
+  signal?: AbortSignal
+) {
+  return requestJson<ContactDto>(
+    contactsPath(customerId),
+    "create contact",
+    { method: "POST", body: JSON.stringify(payload) },
+    signal
+  );
 }
 
-export function updateContact(customerId: number, contactId: number, payload: ContactWriteRequest, signal?: AbortSignal) {
-  return requestJson<ContactDto>(contactPath(customerId, contactId), "update contact", { method: "PUT", body: JSON.stringify(payload) }, signal);
+export function updateContact(
+  customerId: number,
+  contactId: number,
+  payload: ContactWriteRequest,
+  signal?: AbortSignal
+) {
+  return requestJson<ContactDto>(
+    contactPath(customerId, contactId),
+    "update contact",
+    { method: "PUT", body: JSON.stringify(payload) },
+    signal
+  );
 }
 
 export function deleteContact(customerId: number, contactId: number, signal?: AbortSignal) {
-  return requestJson<void>(contactPath(customerId, contactId), "delete contact", { method: "DELETE" }, signal);
+  return requestJson<void>(
+    contactPath(customerId, contactId),
+    "delete contact",
+    { method: "DELETE" },
+    signal
+  );
 }
 
 export function fetchAddresses(customerId: number, signal?: AbortSignal) {
-  return requestJson<AddressDto[]>(addressesPath(customerId), "fetch addresses", { method: "GET" }, signal);
+  return requestJson<AddressDto[]>(
+    addressesPath(customerId),
+    "fetch addresses",
+    { method: "GET" },
+    signal
+  );
 }
 
-export function createAddress(customerId: number, payload: AddressWriteRequest, signal?: AbortSignal) {
-  return requestJson<AddressDto>(addressesPath(customerId), "create address", { method: "POST", body: JSON.stringify(payload) }, signal);
+export function createAddress(
+  customerId: number,
+  payload: AddressWriteRequest,
+  signal?: AbortSignal
+) {
+  return requestJson<AddressDto>(
+    addressesPath(customerId),
+    "create address",
+    { method: "POST", body: JSON.stringify(payload) },
+    signal
+  );
 }
 
-export function updateAddress(customerId: number, addressId: number, payload: AddressWriteRequest, signal?: AbortSignal) {
-  return requestJson<AddressDto>(addressPath(customerId, addressId), "update address", { method: "PUT", body: JSON.stringify(payload) }, signal);
+export function updateAddress(
+  customerId: number,
+  addressId: number,
+  payload: AddressWriteRequest,
+  signal?: AbortSignal
+) {
+  return requestJson<AddressDto>(
+    addressPath(customerId, addressId),
+    "update address",
+    { method: "PUT", body: JSON.stringify(payload) },
+    signal
+  );
 }
 
 export function deleteAddress(customerId: number, addressId: number, signal?: AbortSignal) {
-  return requestJson<void>(addressPath(customerId, addressId), "delete address", { method: "DELETE" }, signal);
+  return requestJson<void>(
+    addressPath(customerId, addressId),
+    "delete address",
+    { method: "DELETE" },
+    signal
+  );
 }

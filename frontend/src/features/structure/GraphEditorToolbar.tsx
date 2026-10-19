@@ -56,9 +56,7 @@ export function EditorModeSelector(props: {
         <button
           key={option.mode}
           className={`detail-mode-switch__button${
-            props.mode === option.mode
-              ? " detail-mode-switch__button--active"
-              : ""
+            props.mode === option.mode ? " detail-mode-switch__button--active" : ""
           }`}
           type="button"
           onClick={() => props.onModeChange(option.mode)}

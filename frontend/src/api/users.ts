@@ -42,10 +42,7 @@ function messageFromPayload(payload: unknown): string {
   return "";
 }
 
-async function responseErrorMessage(
-  response: Response,
-  action: string
-): Promise<string> {
+async function responseErrorMessage(response: Response, action: string): Promise<string> {
   const text = await response.text().catch(() => "");
   let detail = text;
 
@@ -68,14 +65,18 @@ async function requestJson<T>(
   init: RequestInit,
   signal?: AbortSignal
 ): Promise<T> {
-  const response = await authenticatedFetch(path, {
-    ...init,
-    headers: {
-      Accept: "application/json",
-      ...(init.body ? { "Content-Type": "application/json" } : {}),
-      ...init.headers
+  const response = await authenticatedFetch(
+    path,
+    {
+      ...init,
+      headers: {
+        Accept: "application/json",
+        ...(init.body ? { "Content-Type": "application/json" } : {}),
+        ...init.headers
+      }
     },
-  }, signal);
+    signal
+  );
 
   if (!response.ok) {
     throw new Error(await responseErrorMessage(response, action));
@@ -92,12 +93,7 @@ function userPath(userId: number): string {
 }
 
 export async function fetchUsers(signal?: AbortSignal): Promise<UserDto[]> {
-  return requestJson<UserDto[]>(
-    usersPath,
-    "fetch users",
-    { method: "GET" },
-    signal
-  );
+  return requestJson<UserDto[]>(usersPath, "fetch users", { method: "GET" }, signal);
 }
 
 export async function createUser(
@@ -125,22 +121,11 @@ export async function updateUser(
   );
 }
 
-export async function deleteUser(
-  userId: number,
-  signal?: AbortSignal
-): Promise<void> {
-  return requestJson<void>(
-    userPath(userId),
-    "delete user",
-    { method: "DELETE" },
-    signal
-  );
+export async function deleteUser(userId: number, signal?: AbortSignal): Promise<void> {
+  return requestJson<void>(userPath(userId), "delete user", { method: "DELETE" }, signal);
 }
 
-export async function revokeUserSessions(
-  userId: number,
-  signal?: AbortSignal
-): Promise<void> {
+export async function revokeUserSessions(userId: number, signal?: AbortSignal): Promise<void> {
   return requestJson<void>(
     `${userPath(userId)}/sessions/revoke`,
     "revoke user sessions",

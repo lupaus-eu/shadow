@@ -66,7 +66,9 @@ export function sortModelKinds(kinds: Iterable<string>): string[] {
     const index = (MODEL_KINDS as readonly string[]).indexOf(kind);
     return index === -1 ? MODEL_KINDS.length : index;
   };
-  return [...new Set(kinds)].sort((left, right) => order(left) - order(right) || left.localeCompare(right));
+  return [...new Set(kinds)].sort(
+    (left, right) => order(left) - order(right) || left.localeCompare(right)
+  );
 }
 
 // Versions saved before ADR-014 have no recorded selection; their result rows
@@ -76,10 +78,15 @@ export function predictionVersionModelKinds(version: PredictionVersionDetailDto)
   if (Array.isArray(recorded) && recorded.every((kind) => typeof kind === "string")) {
     return sortModelKinds(recorded as string[]);
   }
-  return sortModelKinds(version.targets.flatMap((target) => target.results.map((result) => result.kind)));
+  return sortModelKinds(
+    version.targets.flatMap((target) => target.results.map((result) => result.kind))
+  );
 }
 
-export function predictionChartAxisTicks(dates: string[], plotWidth = 646): Array<{
+export function predictionChartAxisTicks(
+  dates: string[],
+  plotWidth = 646
+): Array<{
   date: string;
   label: string;
   isFirst: boolean;
@@ -94,14 +101,17 @@ export function predictionChartAxisTicks(dates: string[], plotWidth = 646): Arra
   while (labelCount > 2 && Math.floor((dates.length - 1) / (labelCount - 1)) * spacing < 36) {
     labelCount--;
   }
-  const labelledIndices = new Set(Array.from({ length: labelCount }, (_, index) =>
-    labelCount < 2 ? 0 : Math.round(index * (dates.length - 1) / (labelCount - 1))
-  ));
+  const labelledIndices = new Set(
+    Array.from({ length: labelCount }, (_, index) =>
+      labelCount < 2 ? 0 : Math.round((index * (dates.length - 1)) / (labelCount - 1))
+    )
+  );
   let lastYearPosition = -Infinity;
   return dates.map((date, index) => {
     const year = date.slice(0, 4);
     const isYearBoundary = index > 0 && year !== dates[index - 1].slice(0, 4);
-    const showYearLabel = (index === 0 || isYearBoundary) && index * spacing - lastYearPosition >= 36;
+    const showYearLabel =
+      (index === 0 || isYearBoundary) && index * spacing - lastYearPosition >= 36;
     if (showYearLabel) lastYearPosition = index * spacing;
     return {
       date,
@@ -130,8 +140,16 @@ function formatLineValue(line: PredictionChartLine, value: number): string {
   return line.kind === "prediction" ? formatPredictionPointValue(value) : String(value);
 }
 
-function intervalText(line: PredictionChartLine, point: PredictionChartPoint, unit: string): string | null {
-  if (line.predictionIntervalStatus !== "available" || point.lowerBound === null || point.upperBound === null) {
+function intervalText(
+  line: PredictionChartLine,
+  point: PredictionChartPoint,
+  unit: string
+): string | null {
+  if (
+    line.predictionIntervalStatus !== "available" ||
+    point.lowerBound === null ||
+    point.upperBound === null
+  ) {
     return null;
   }
   return `lower bound ${formatLineValue(line, point.lowerBound)} ${unit}, upper bound ${formatLineValue(line, point.upperBound)} ${unit} (${line.confidenceLevel}% prediction interval)`;
@@ -174,19 +192,25 @@ export function predictionIntervalBandPath(
   x: (date: string) => number,
   y: (value: number) => number
 ): string | null {
-  if (!points.length || points.some((point) =>
-    point.lowerBound === null || point.upperBound === null ||
-    !Number.isFinite(point.lowerBound) || !Number.isFinite(point.upperBound)
-  )) {
+  if (
+    !points.length ||
+    points.some(
+      (point) =>
+        point.lowerBound === null ||
+        point.upperBound === null ||
+        !Number.isFinite(point.lowerBound) ||
+        !Number.isFinite(point.upperBound)
+    )
+  ) {
     return null;
   }
 
-  const upperPath = points.map((point, index) =>
-    `${index ? "L" : "M"}${x(point.date)} ${y(point.upperBound as number)}`
+  const upperPath = points.map(
+    (point, index) => `${index ? "L" : "M"}${x(point.date)} ${y(point.upperBound as number)}`
   );
-  const lowerPath = [...points].reverse().map((point) =>
-    `L${x(point.date)} ${y(point.lowerBound as number)}`
-  );
+  const lowerPath = [...points]
+    .reverse()
+    .map((point) => `L${x(point.date)} ${y(point.lowerBound as number)}`);
   return [...upperPath, ...lowerPath, "Z"].join(" ");
 }
 
@@ -202,11 +226,12 @@ function targetLine(
   start: string,
   end: string
 ): PredictionChartLine {
-  const intervalDescription = result.predictionIntervalStatus === "available"
-    ? ` Saved ${version.confidenceLevel}% prediction interval is shown.`
-    : result.predictionIntervalStatus === "unavailable"
-      ? ` Prediction interval unavailable${result.predictionIntervalReason ? `: ${result.predictionIntervalReason}` : "."}`
-      : " This result has no prediction interval.";
+  const intervalDescription =
+    result.predictionIntervalStatus === "available"
+      ? ` Saved ${version.confidenceLevel}% prediction interval is shown.`
+      : result.predictionIntervalStatus === "unavailable"
+        ? ` Prediction interval unavailable${result.predictionIntervalReason ? `: ${result.predictionIntervalReason}` : "."}`
+        : " This result has no prediction interval.";
   return {
     id: `${version.id}:${target.scenarioId}:${target.metricId}:${result.kind}`,
     label: `${version.name} · ${scenarioName} · ${formatModelKind(result.kind)}`,
@@ -236,7 +261,11 @@ export function buildPredictionMetricCharts(args: {
   for (const version of args.versions) {
     if (!args.selectedVersionIds.has(version.id)) continue;
     for (const target of version.targets) {
-      if (!args.selectedScenarioIds.has(target.scenarioId) || !args.selectedMetricIds.has(target.metricId)) continue;
+      if (
+        !args.selectedScenarioIds.has(target.scenarioId) ||
+        !args.selectedMetricIds.has(target.metricId)
+      )
+        continue;
       const range = ranges.get(target.metricId);
       ranges.set(target.metricId, {
         start: range && range.start < version.startDate ? range.start : version.startDate,
@@ -244,9 +273,12 @@ export function buildPredictionMetricCharts(args: {
       });
     }
   }
-  const includesPlotDate = (metricId: string, date: string) => includesDate(
-    date, args.startDate || ranges.get(metricId)!.start, args.endDate || ranges.get(metricId)!.end
-  );
+  const includesPlotDate = (metricId: string, date: string) =>
+    includesDate(
+      date,
+      args.startDate || ranges.get(metricId)!.start,
+      args.endDate || ranges.get(metricId)!.end
+    );
   const charts = new Map<string, PredictionMetricChart>();
   const ranModelKinds = new Map<string, Set<string>>();
   for (const version of args.versions) {
@@ -299,9 +331,16 @@ export function buildPredictionMetricCharts(args: {
       const points = reality.values
         .filter(
           (point): point is { date: string; value: number } =>
-            typeof point.value === "number" && Number.isFinite(point.value) && includesPlotDate(chart.metricId, point.date)
+            typeof point.value === "number" &&
+            Number.isFinite(point.value) &&
+            includesPlotDate(chart.metricId, point.date)
         )
-        .map((point) => ({ date: point.date, value: point.value, lowerBound: null, upperBound: null }));
+        .map((point) => ({
+          date: point.date,
+          value: point.value,
+          lowerBound: null,
+          upperBound: null
+        }));
       if (!points.length) {
         chart.realityMessage = "No current Reality observations in the displayed period.";
         continue;
@@ -309,7 +348,8 @@ export function buildPredictionMetricCharts(args: {
       chart.lines.unshift({
         id: `reality:${chart.metricId}`,
         label: `Current Reality · manually entered realized data · ${reality.name}`,
-        provenance: "Current manually entered realized data from Reality. This live series is not part of the saved prediction version.",
+        provenance:
+          "Current manually entered realized data from Reality. This live series is not part of the saved prediction version.",
         kind: "reality",
         points
       });
@@ -323,8 +363,8 @@ export function buildPredictionMetricCharts(args: {
       return {
         ...chart,
         // Only kinds that a plotted version ran can be missing results.
-        missingModelKinds: selected.filter((kind) =>
-          ran.has(kind) && !chart.lines.some((line) => line.modelKind === kind)
+        missingModelKinds: selected.filter(
+          (kind) => ran.has(kind) && !chart.lines.some((line) => line.modelKind === kind)
         ),
         notRunModelKinds: selected.filter((kind) => !ran.has(kind))
       };

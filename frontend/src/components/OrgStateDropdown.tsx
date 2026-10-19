@@ -5,9 +5,7 @@ import type { OrgStateDto } from "../api/scenarios";
 import { useWorkspaceSelection } from "../workspace/WorkspaceSelectionContext";
 
 function sortOrgStates(items: OrgStateDto[]): OrgStateDto[] {
-  return [...items].sort((left, right) =>
-    left.targetDate.localeCompare(right.targetDate)
-  );
+  return [...items].sort((left, right) => left.targetDate.localeCompare(right.targetDate));
 }
 
 function messageFromError(error: unknown): string {
@@ -15,11 +13,7 @@ function messageFromError(error: unknown): string {
 }
 
 export default function OrgStateDropdown(props: { orgId: string }) {
-  const {
-    selectedScenario,
-    selectedOrgState,
-    setSelectedOrgState
-  } = useWorkspaceSelection();
+  const { selectedScenario, selectedOrgState, setSelectedOrgState } = useWorkspaceSelection();
   const panelId = useId();
   const rootRef = useRef<HTMLDivElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
@@ -51,10 +45,7 @@ export default function OrgStateDropdown(props: { orgId: string }) {
     if (!open) return;
 
     function onPointerDown(event: PointerEvent) {
-      if (
-        event.target instanceof Node &&
-        !rootRef.current?.contains(event.target)
-      ) {
+      if (event.target instanceof Node && !rootRef.current?.contains(event.target)) {
         closeDropdown(false);
       }
     }
@@ -109,9 +100,7 @@ export default function OrgStateDropdown(props: { orgId: string }) {
   useEffect(() => {
     if (!open || !focusFirstOptionRef.current || orgStates.length === 0) return;
     focusFirstOptionRef.current = false;
-    panelRef.current
-      ?.querySelector<HTMLButtonElement>("[data-org-state-option]")
-      ?.focus();
+    panelRef.current?.querySelector<HTMLButtonElement>("[data-org-state-option]")?.focus();
   }, [open, orgStates]);
 
   function onTriggerKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
@@ -172,20 +161,13 @@ export default function OrgStateDropdown(props: { orgId: string }) {
         >
           <p className="eyebrow context-dropdown__heading">Org states</p>
           {loading ? (
-            <p className="muted context-dropdown__message">
-              Loading org states...
-            </p>
+            <p className="muted context-dropdown__message">Loading org states...</p>
           ) : null}
           {!loading && !loadError && orgStates.length === 0 ? (
-            <p className="muted context-dropdown__message">
-              No org states available.
-            </p>
+            <p className="muted context-dropdown__message">No org states available.</p>
           ) : null}
           {loadError ? (
-            <div
-              className="alert alert--danger context-dropdown__alert"
-              role="alert"
-            >
+            <div className="alert alert--danger context-dropdown__alert" role="alert">
               <p className="alert__title">Org state load error</p>
               <p className="alert__text">{loadError}</p>
               <button
@@ -212,16 +194,10 @@ export default function OrgStateDropdown(props: { orgId: string }) {
                   onClick={() => selectOrgState(orgState)}
                 >
                   <span className="context-dropdown__option-copy">
-                    <span className="context-dropdown__option-name">
-                      {orgState.name}
-                    </span>
-                    <span className="context-dropdown__option-meta">
-                      {orgState.targetDate}
-                    </span>
+                    <span className="context-dropdown__option-name">{orgState.name}</span>
+                    <span className="context-dropdown__option-meta">{orgState.targetDate}</span>
                   </span>
-                  {isActive ? (
-                    <span className="context-dropdown__status">Active</span>
-                  ) : null}
+                  {isActive ? <span className="context-dropdown__status">Active</span> : null}
                 </button>
               );
             })}
@@ -234,11 +210,7 @@ export default function OrgStateDropdown(props: { orgId: string }) {
 
 function ChevronIcon() {
   return (
-    <svg
-      className="dropdown-chevron"
-      viewBox="0 0 24 24"
-      aria-hidden="true"
-    >
+    <svg className="dropdown-chevron" viewBox="0 0 24 24" aria-hidden="true">
       <path d="m7 10 5 5 5-5" />
     </svg>
   );

@@ -79,11 +79,7 @@ function slugPart(value: string): string {
   return slug || "item";
 }
 
-function uniqueGraphKey(
-  prefix: "edge" | "node",
-  name: string,
-  existingKeys: Set<string>
-): string {
+function uniqueGraphKey(prefix: "edge" | "node", name: string, existingKeys: Set<string>): string {
   const base = `${prefix}_${slugPart(name)}`;
   let candidate = base;
   let suffix = 2;
@@ -96,10 +92,7 @@ function uniqueGraphKey(
   return candidate;
 }
 
-function collapsedEmptyNodeTypeIds(
-  graph: GraphDto,
-  catalog: GraphTypeCatalogDto
-): Set<string> {
+function collapsedEmptyNodeTypeIds(graph: GraphDto, catalog: GraphTypeCatalogDto): Set<string> {
   const usedNodeTypeIds = new Set(graph.nodes.map((node) => node.nodeTypeId));
   return new Set(
     catalog.nodeTypes
@@ -117,10 +110,7 @@ function positionsEqual(
   return left.x === right.x && left.y === right.y;
 }
 
-function mergePositionUpdate(
-  current: GraphDto | null,
-  updated: GraphDto
-): GraphDto {
+function mergePositionUpdate(current: GraphDto | null, updated: GraphDto): GraphDto {
   if (!current) return updated;
 
   const updatedNodesById = new Map(updated.nodes.map((node) => [node.id, node]));
@@ -172,14 +162,12 @@ function trimmed(value: string | null | undefined): string {
   return value?.trim() ?? "";
 }
 
-function nodeTypeHasTimeserieMetadata(
-  nodeType: NodeTypeMetadataDto | undefined
-): boolean {
+function nodeTypeHasTimeserieMetadata(nodeType: NodeTypeMetadataDto | undefined): boolean {
   if (!nodeType) return false;
   return Boolean(
     trimmed(nodeType.timeserieId) ||
-      trimmed(nodeType.timeserieSecondaryId) ||
-      trimmed(nodeType.timeserieIdRule)
+    trimmed(nodeType.timeserieSecondaryId) ||
+    trimmed(nodeType.timeserieIdRule)
   );
 }
 
@@ -198,9 +186,9 @@ function nodeSupportsTimeserie(
   if (!node) return false;
   return Boolean(
     trimmed(node.timeserieId) ||
-      trimmed(node.timeserieSecondaryId) ||
-      nodeTypeHasTimeserieMetadata(nodeType) ||
-      isMetricNodeType(nodeType, node.nodeTypeId)
+    trimmed(node.timeserieSecondaryId) ||
+    nodeTypeHasTimeserieMetadata(nodeType) ||
+    isMetricNodeType(nodeType, node.nodeTypeId)
   );
 }
 
@@ -210,19 +198,12 @@ export default function StructureTab(props: { orgId: string }) {
   const [graph, setGraph] = useState<GraphDto | null>(null);
   const [catalog, setCatalog] = useState<GraphTypeCatalogDto | null>(null);
   const [selected, setSelected] = useState<GraphSelection | null>(null);
-  const [centerNodeRequest, setCenterNodeRequest] =
-    useState<GraphCenterRequest | null>(null);
+  const [centerNodeRequest, setCenterNodeRequest] = useState<GraphCenterRequest | null>(null);
   const [fitRequestId, setFitRequestId] = useState(0);
-  const [createEdgeDraft, setCreateEdgeDraft] = useState<CreateEdgeDraft>(
-    EMPTY_CREATE_EDGE_DRAFT
-  );
+  const [createEdgeDraft, setCreateEdgeDraft] = useState<CreateEdgeDraft>(EMPTY_CREATE_EDGE_DRAFT);
   const [preferredCreateNodeTypeId, setPreferredCreateNodeTypeId] = useState("");
-  const [visibleNodeTypeIds, setVisibleNodeTypeIds] = useState<Set<string>>(
-    () => new Set()
-  );
-  const [collapsedNodeTypeIds, setCollapsedNodeTypeIds] = useState<Set<string>>(
-    () => new Set()
-  );
+  const [visibleNodeTypeIds, setVisibleNodeTypeIds] = useState<Set<string>>(() => new Set());
+  const [collapsedNodeTypeIds, setCollapsedNodeTypeIds] = useState<Set<string>>(() => new Set());
   const [loading, setLoading] = useState(false);
   const [isMutatingEntity, setIsMutatingEntity] = useState(false);
   const [isPersistingPositions, setIsPersistingPositions] = useState(false);
@@ -231,9 +212,7 @@ export default function StructureTab(props: { orgId: string }) {
 
   const pendingPositionsRef = useRef(new Map<string, PendingPosition>());
   const graphViewportCenterRef = useRef<GraphPosition>({ x: 0, y: 0 });
-  const debounceTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(
-    null
-  );
+  const debounceTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
   const contextRef = useRef<{
     scenarioId: string;
     orgStateId: string;
@@ -249,23 +228,21 @@ export default function StructureTab(props: { orgId: string }) {
   const selectedNode = useMemo(
     () =>
       selected?.kind === "node"
-        ? graph?.nodes.find((node) => node.id === selected.id) ?? null
+        ? (graph?.nodes.find((node) => node.id === selected.id) ?? null)
         : null,
     [graph, selected]
   );
   const selectedEdge = useMemo(
     () =>
       selected?.kind === "edge"
-        ? graph?.edges.find((edge) => edge.id === selected.id) ?? null
+        ? (graph?.edges.find((edge) => edge.id === selected.id) ?? null)
         : null,
     [graph, selected]
   );
   const selectedNodeType = useMemo(
     () =>
       selectedNode
-        ? catalog?.nodeTypes.find(
-            (nodeType) => nodeType.id === selectedNode.nodeTypeId
-          )
+        ? catalog?.nodeTypes.find((nodeType) => nodeType.id === selectedNode.nodeTypeId)
         : undefined,
     [catalog, selectedNode]
   );
@@ -317,18 +294,8 @@ export default function StructureTab(props: { orgId: string }) {
         setLoadError("");
         setActionError("");
         const [nextGraph, nextCatalog] = await Promise.all([
-          fetchGraph(
-            props.orgId,
-            selectedScenario.id,
-            selectedOrgState.id,
-            signal
-          ),
-          fetchGraphTypeCatalog(
-            props.orgId,
-            selectedScenario.id,
-            selectedOrgState.id,
-            signal
-          )
+          fetchGraph(props.orgId, selectedScenario.id, selectedOrgState.id, signal),
+          fetchGraphTypeCatalog(props.orgId, selectedScenario.id, selectedOrgState.id, signal)
         ]);
         setGraph(nextGraph);
         setCatalog(nextCatalog);
@@ -416,9 +383,7 @@ export default function StructureTab(props: { orgId: string }) {
       current
         ? {
             ...current,
-            nodes: current.nodes.map((node) =>
-              node.id === nodeId ? { ...node, position } : node
-            )
+            nodes: current.nodes.map((node) => (node.id === nodeId ? { ...node, position } : node))
           }
         : current
     );
@@ -492,12 +457,9 @@ export default function StructureTab(props: { orgId: string }) {
             ...current,
             nodes: current.nodes.map((node) => ({
               ...node,
-              timeserieId:
-                node.timeserieId === timeserieId ? null : node.timeserieId,
+              timeserieId: node.timeserieId === timeserieId ? null : node.timeserieId,
               timeserieSecondaryId:
-                node.timeserieSecondaryId === timeserieId
-                  ? null
-                  : node.timeserieSecondaryId
+                node.timeserieSecondaryId === timeserieId ? null : node.timeserieSecondaryId
             }))
           }
         : current
@@ -509,12 +471,7 @@ export default function StructureTab(props: { orgId: string }) {
     try {
       setIsMutatingEntity(true);
       setActionError("");
-      await deleteGraphNode(
-        props.orgId,
-        selectedScenario.id,
-        selectedOrgState.id,
-        selectedNode.id
-      );
+      await deleteGraphNode(props.orgId, selectedScenario.id, selectedOrgState.id, selectedNode.id);
       if (selectedNode.createDate === selectedOrgState.targetDate) {
         setGraph((current) =>
           current
@@ -523,18 +480,13 @@ export default function StructureTab(props: { orgId: string }) {
                 nodes: current.nodes.filter((node) => node.id !== selectedNode.id),
                 edges: current.edges.filter(
                   (edge) =>
-                    edge.sourceNodeId !== selectedNode.id &&
-                    edge.targetNodeId !== selectedNode.id
+                    edge.sourceNodeId !== selectedNode.id && edge.targetNodeId !== selectedNode.id
                 )
               }
             : current
         );
       } else {
-        const nextGraph = await fetchGraph(
-          props.orgId,
-          selectedScenario.id,
-          selectedOrgState.id
-        );
+        const nextGraph = await fetchGraph(props.orgId, selectedScenario.id, selectedOrgState.id);
         if (
           contextRef.current?.scenarioId === selectedScenario.id &&
           contextRef.current.orgStateId === selectedOrgState.id
@@ -555,11 +507,7 @@ export default function StructureTab(props: { orgId: string }) {
     if (!selectedScenario || !selectedOrgState) return;
     const edgePayload: GraphEdgeCreateRequest = {
       ...payload,
-      id: uniqueGraphKey(
-        "edge",
-        payload.name,
-        new Set((graph?.edges ?? []).map((edge) => edge.id))
-      )
+      id: uniqueGraphKey("edge", payload.name, new Set((graph?.edges ?? []).map((edge) => edge.id)))
     };
 
     try {
@@ -608,12 +556,7 @@ export default function StructureTab(props: { orgId: string }) {
     try {
       setIsMutatingEntity(true);
       setActionError("");
-      await deleteGraphEdge(
-        props.orgId,
-        selectedScenario.id,
-        selectedOrgState.id,
-        selectedEdge.id
-      );
+      await deleteGraphEdge(props.orgId, selectedScenario.id, selectedOrgState.id, selectedEdge.id);
       if (selectedEdge.createDate === selectedOrgState.targetDate) {
         setGraph((current) =>
           current
@@ -624,11 +567,7 @@ export default function StructureTab(props: { orgId: string }) {
             : current
         );
       } else {
-        const nextGraph = await fetchGraph(
-          props.orgId,
-          selectedScenario.id,
-          selectedOrgState.id
-        );
+        const nextGraph = await fetchGraph(props.orgId, selectedScenario.id, selectedOrgState.id);
         if (
           contextRef.current?.scenarioId === selectedScenario.id &&
           contextRef.current.orgStateId === selectedOrgState.id
@@ -696,7 +635,7 @@ export default function StructureTab(props: { orgId: string }) {
     if (mode === "timeserie") {
       const nextNode =
         selection?.kind === "node"
-          ? graph?.nodes.find((node) => node.id === selection.id) ?? null
+          ? (graph?.nodes.find((node) => node.id === selection.id) ?? null)
           : null;
       const nextNodeType = nextNode
         ? catalog?.nodeTypes.find((nodeType) => nodeType.id === nextNode.nodeTypeId)
@@ -772,10 +711,7 @@ export default function StructureTab(props: { orgId: string }) {
         />
 
         <aside className="structure-editor-panel" aria-label="Structure editor">
-          <section
-            className="structure-editor-mode"
-            aria-labelledby="structure-editor-mode-title"
-          >
+          <section className="structure-editor-mode" aria-labelledby="structure-editor-mode-title">
             <h2 id="structure-editor-mode-title" className="section-title">
               Editor mode
             </h2>

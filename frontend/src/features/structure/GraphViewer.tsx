@@ -9,15 +9,9 @@ import type {
   SingularElementReturnValue,
   StylesheetJson
 } from "cytoscape";
-import type {
-  GraphDto,
-  GraphPosition,
-  GraphTypeCatalogDto
-} from "../../api/orgTwinStructure";
+import type { GraphDto, GraphPosition, GraphTypeCatalogDto } from "../../api/orgTwinStructure";
 
-export type GraphSelection =
-  | { kind: "node"; id: string }
-  | { kind: "edge"; id: string };
+export type GraphSelection = { kind: "node"; id: string } | { kind: "edge"; id: string };
 
 export type GraphCenterRequest = { nodeId: string; requestId: number };
 
@@ -203,15 +197,9 @@ function placePopover(
     left: clamp(candidate.left, minLeft, maxLeft),
     top: clamp(candidate.top, minTop, maxTop)
   }));
-  const nonOverlappingCandidate = clampedCandidates.find((candidate) =>
-    !overlapsNode(
-      candidate.left,
-      candidate.top,
-      popoverWidth,
-      popoverHeight,
-      nodeX,
-      nodeY
-    )
+  const nonOverlappingCandidate = clampedCandidates.find(
+    (candidate) =>
+      !overlapsNode(candidate.left, candidate.top, popoverWidth, popoverHeight, nodeX, nodeY)
   );
 
   return nonOverlappingCandidate ?? clampedCandidates[0] ?? { left: minLeft, top: minTop };
@@ -235,9 +223,7 @@ function snapshotElement(element: ElementDefinition): ElementSnapshot {
     ? {
         group: "nodes",
         data,
-        position: element.position
-          ? { x: element.position.x, y: element.position.y }
-          : undefined
+        position: element.position ? { x: element.position.x, y: element.position.y } : undefined
       }
     : { group: "edges", data };
 }
@@ -276,10 +262,7 @@ function positionChanged(
   return previous.x !== next.x || previous.y !== next.y;
 }
 
-function setElementData(
-  element: SingularElementReturnValue,
-  nextData: Record<string, string>
-) {
+function setElementData(element: SingularElementReturnValue, nextData: Record<string, string>) {
   for (const [key, value] of Object.entries(nextData)) {
     element.data(key, value);
   }
@@ -352,8 +335,7 @@ function syncElements(
 
   return {
     nextSnapshots,
-    needsInitialFit:
-      !previousSnapshots && elements.length > 0,
+    needsInitialFit: !previousSnapshots && elements.length > 0,
     idsStable
   };
 }
@@ -390,11 +372,7 @@ export default function GraphViewer(props: {
     onSelectRef.current = props.onSelect;
     onNodePositionChangeRef.current = props.onNodePositionChange;
     onViewportCenterChangeRef.current = props.onViewportCenterChange;
-  }, [
-    props.onNodePositionChange,
-    props.onSelect,
-    props.onViewportCenterChange
-  ]);
+  }, [props.onNodePositionChange, props.onSelect, props.onViewportCenterChange]);
 
   const elements = useMemo<ElementDefinition[]>(() => {
     if (!props.graph) return [];
@@ -418,10 +396,7 @@ export default function GraphViewer(props: {
           id: node.id,
           name: node.name,
           description: node.description ?? "",
-          label: buildInstanceLabel(
-            typeDisplayName(nodeType, node.nodeTypeId),
-            node.name
-          ),
+          label: buildInstanceLabel(typeDisplayName(nodeType, node.nodeTypeId), node.name),
           color: nodeType?.color || DEFAULT_NODE_COLOR,
           shape: cytoscapeShape(nodeType?.shape)
         },
@@ -431,9 +406,7 @@ export default function GraphViewer(props: {
 
     const edgeElements: ElementDefinition[] = props.graph.edges
       .filter(
-        (edge) =>
-          visibleNodeIds.has(edge.sourceNodeId) &&
-          visibleNodeIds.has(edge.targetNodeId)
+        (edge) => visibleNodeIds.has(edge.sourceNodeId) && visibleNodeIds.has(edge.targetNodeId)
       )
       .map((edge) => {
         const edgeType = edgeTypes.get(edge.edgeTypeId);
@@ -443,10 +416,7 @@ export default function GraphViewer(props: {
             id: edge.id,
             source: edge.sourceNodeId,
             target: edge.targetNodeId,
-            label: buildInstanceLabel(
-              typeDisplayName(edgeType, edge.edgeTypeId),
-              edge.name
-            ),
+            label: buildInstanceLabel(typeDisplayName(edgeType, edge.edgeTypeId), edge.name),
             lineStyle: edgeLineStyle(edgeType?.style),
             sourceArrow: edgeArrow(edgeType?.sourceEnd),
             targetArrow: edgeArrow(edgeType?.targetEnd)
@@ -568,8 +538,11 @@ export default function GraphViewer(props: {
     const cy = cyRef.current;
     if (!cy) return;
 
-    elementSnapshotsRef.current = syncElements(cy, elements, elementSnapshotsRef.current)
-      .nextSnapshots;
+    elementSnapshotsRef.current = syncElements(
+      cy,
+      elements,
+      elementSnapshotsRef.current
+    ).nextSnapshots;
   }, [elements]);
 
   useEffect(() => {
@@ -642,11 +615,7 @@ export default function GraphViewer(props: {
         ref={canvasShellRef}
         data-testid="graph-canvas-shell"
       >
-        <div
-          className="graph-viewer__canvas"
-          ref={containerRef}
-          data-testid="graph-canvas"
-        />
+        <div className="graph-viewer__canvas" ref={containerRef} data-testid="graph-canvas" />
         {hoveredNode ? (
           <div
             className="graph-viewer__popover"
@@ -659,9 +628,7 @@ export default function GraphViewer(props: {
             }}
           >
             <p className="graph-viewer__popover-title">{hoveredNode.name}</p>
-            <p className="graph-viewer__popover-description">
-              {hoveredNode.description}
-            </p>
+            <p className="graph-viewer__popover-description">{hoveredNode.description}</p>
           </div>
         ) : null}
       </div>

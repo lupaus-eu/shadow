@@ -8,10 +8,7 @@ import type {
   GraphNodeDto
 } from "../../api/orgTwinStructure";
 
-export type EdgeFormCreatePayload = Omit<
-  GraphEdgeCreateRequest,
-  "attributes" | "id"
->;
+export type EdgeFormCreatePayload = Omit<GraphEdgeCreateRequest, "attributes" | "id">;
 
 export default function EdgeForm(props: {
   idPrefix: string;
@@ -34,40 +31,25 @@ export default function EdgeForm(props: {
   const defaultEdgeTypeId = props.edgeTypes[0]?.id ?? "";
   const [name, setName] = useState(props.edge?.name ?? "");
   const [description, setDescription] = useState(props.edge?.description ?? "");
-  const [edgeTypeId, setEdgeTypeId] = useState(
-    props.edge?.edgeTypeId ?? defaultEdgeTypeId
-  );
-  const [localSourceNodeId, setLocalSourceNodeId] = useState(
-    props.edge?.sourceNodeId ?? ""
-  );
-  const [localTargetNodeId, setLocalTargetNodeId] = useState(
-    props.edge?.targetNodeId ?? ""
-  );
+  const [edgeTypeId, setEdgeTypeId] = useState(props.edge?.edgeTypeId ?? defaultEdgeTypeId);
+  const [localSourceNodeId, setLocalSourceNodeId] = useState(props.edge?.sourceNodeId ?? "");
+  const [localTargetNodeId, setLocalTargetNodeId] = useState(props.edge?.targetNodeId ?? "");
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [formError, setFormError] = useState("");
 
   const isEdit = Boolean(props.edge);
   const isCreateSelectionControlled =
-    !isEdit &&
-    props.sourceNodeId !== undefined &&
-    props.targetNodeId !== undefined;
+    !isEdit && props.sourceNodeId !== undefined && props.targetNodeId !== undefined;
   const hasNodeChoices = props.nodes.length > 0;
   const hasEdgeTypeChoices = props.edgeTypes.length > 0;
-  const sourceNodeId = isCreateSelectionControlled
-    ? (props.sourceNodeId ?? "")
-    : localSourceNodeId;
-  const targetNodeId = isCreateSelectionControlled
-    ? (props.targetNodeId ?? "")
-    : localTargetNodeId;
+  const sourceNodeId = isCreateSelectionControlled ? (props.sourceNodeId ?? "") : localSourceNodeId;
+  const targetNodeId = isCreateSelectionControlled ? (props.targetNodeId ?? "") : localTargetNodeId;
   const hasSelfReferenceSelection =
-    !isEdit &&
-    Boolean(sourceNodeId) &&
-    sourceNodeId === targetNodeId;
+    !isEdit && Boolean(sourceNodeId) && sourceNodeId === targetNodeId;
   const selectedEdgeTypeId = props.edgeTypes.some((edgeType) => edgeType.id === edgeTypeId)
     ? edgeTypeId
     : (props.edgeTypes[0]?.id ?? "");
-  const formDisabled =
-    props.disabled || props.saving || !hasNodeChoices || !hasEdgeTypeChoices;
+  const formDisabled = props.disabled || props.saving || !hasNodeChoices || !hasEdgeTypeChoices;
   const sourceTargetDisabled = props.disabled || props.saving || !hasNodeChoices;
   const submitDisabled =
     formDisabled ||
@@ -85,9 +67,7 @@ export default function EdgeForm(props: {
     Boolean(sourceNodeId) &&
     Boolean(targetNodeId) &&
     !hasEdgeTypeChoices;
-  const submitTooltip = hasSelfReferenceSelection
-    ? "Self referencing edges not allowed"
-    : "";
+  const submitTooltip = hasSelfReferenceSelection ? "Self referencing edges not allowed" : "";
 
   async function submit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -133,10 +113,7 @@ export default function EdgeForm(props: {
       ) : null}
       <form onSubmit={submit}>
         <div className="form-row">
-          <label
-            className="form-label form-label--required"
-            htmlFor={`${props.idPrefix}-name`}
-          >
+          <label className="form-label form-label--required" htmlFor={`${props.idPrefix}-name`}>
             Name
           </label>
           <input
@@ -148,10 +125,7 @@ export default function EdgeForm(props: {
           />
         </div>
         <div className="form-row">
-          <label
-            className="form-label form-label--required"
-            htmlFor={`${props.idPrefix}-type`}
-          >
+          <label className="form-label form-label--required" htmlFor={`${props.idPrefix}-type`}>
             Type
           </label>
           <select
@@ -174,10 +148,7 @@ export default function EdgeForm(props: {
         </div>
         <div className="structure-coordinate-grid">
           <div className="form-row">
-            <label
-              className="form-label form-label--required"
-              htmlFor={`${props.idPrefix}-source`}
-            >
+            <label className="form-label form-label--required" htmlFor={`${props.idPrefix}-source`}>
               Source
             </label>
             <select
@@ -203,10 +174,7 @@ export default function EdgeForm(props: {
             </select>
           </div>
           <div className="form-row">
-            <label
-              className="form-label form-label--required"
-              htmlFor={`${props.idPrefix}-target`}
-            >
+            <label className="form-label form-label--required" htmlFor={`${props.idPrefix}-target`}>
               Target
             </label>
             <select

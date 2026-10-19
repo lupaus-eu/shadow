@@ -70,43 +70,44 @@ export default function UsersTab(props: {
     setConfirmingRevoke(false);
   }, []);
 
-  const applyUsers = useCallback((items: UserDto[], preferredUserId?: number | null) => {
-    const sortedItems = sortUsers(items);
-    setUsers(sortedItems);
-    const preferred =
-      preferredUserId === undefined
-        ? selectedUserIdRef.current
-        : preferredUserId;
-    const nextSelectedUser =
-      sortedItems.find((user) => user.id === preferred) ??
-      sortedItems[0] ??
-      null;
-    applySelectedUser(nextSelectedUser);
-  }, [applySelectedUser]);
+  const applyUsers = useCallback(
+    (items: UserDto[], preferredUserId?: number | null) => {
+      const sortedItems = sortUsers(items);
+      setUsers(sortedItems);
+      const preferred = preferredUserId === undefined ? selectedUserIdRef.current : preferredUserId;
+      const nextSelectedUser =
+        sortedItems.find((user) => user.id === preferred) ?? sortedItems[0] ?? null;
+      applySelectedUser(nextSelectedUser);
+    },
+    [applySelectedUser]
+  );
 
-  const loadUsers = useCallback(async (preferredUserId?: number | null) => {
-    requestController.current?.abort();
-    const controller = new AbortController();
-    requestController.current = controller;
+  const loadUsers = useCallback(
+    async (preferredUserId?: number | null) => {
+      requestController.current?.abort();
+      const controller = new AbortController();
+      requestController.current = controller;
 
-    try {
-      setLoading(true);
-      setListError("");
-      const items = await fetchUsers(controller.signal);
-      if (requestController.current !== controller) return;
+      try {
+        setLoading(true);
+        setListError("");
+        const items = await fetchUsers(controller.signal);
+        if (requestController.current !== controller) return;
 
-      applyUsers(items, preferredUserId);
-    } catch (error) {
-      if (requestController.current !== controller) return;
-      if ((error as { name?: string }).name === "AbortError") return;
-      setListError(messageFromError(error));
-    } finally {
-      if (requestController.current === controller) {
-        requestController.current = null;
-        setLoading(false);
+        applyUsers(items, preferredUserId);
+      } catch (error) {
+        if (requestController.current !== controller) return;
+        if ((error as { name?: string }).name === "AbortError") return;
+        setListError(messageFromError(error));
+      } finally {
+        if (requestController.current === controller) {
+          requestController.current = null;
+          setLoading(false);
+        }
       }
-    }
-  }, [applyUsers]);
+    },
+    [applyUsers]
+  );
 
   useEffect(() => {
     async function loadInitialUsers() {
@@ -141,10 +142,7 @@ export default function UsersTab(props: {
       setSaving(true);
       setCreateError("");
       const created = await createUser({ name, email, role: createRole });
-      applyUsers(
-        [...users.filter((user) => user.id !== created.id), created],
-        created.id
-      );
+      applyUsers([...users.filter((user) => user.id !== created.id), created], created.id);
       setCreateName("");
       setCreateEmail("");
       setCreateRole("consultant");
@@ -178,10 +176,7 @@ export default function UsersTab(props: {
         email,
         role: editRole
       });
-      applyUsers(
-        [...users.filter((user) => user.id !== updated.id), updated],
-        updated.id
-      );
+      applyUsers([...users.filter((user) => user.id !== updated.id), updated], updated.id);
     } catch (error) {
       setActionError(messageFromError(error));
     } finally {
@@ -220,9 +215,7 @@ export default function UsersTab(props: {
         return;
       }
       setConfirmingRevoke(false);
-      setActionSuccess(
-        `${selectedUser.name}'s Schatten application sessions were revoked.`
-      );
+      setActionSuccess(`${selectedUser.name}'s Schatten application sessions were revoked.`);
     } catch (error) {
       setActionError(messageFromError(error));
     } finally {
@@ -242,9 +235,7 @@ export default function UsersTab(props: {
       <section className="tab-toolbar" aria-label="Users overview">
         <div className="tab-toolbar__title">
           <h1 className="page-title">Users</h1>
-          <span className="tab-toolbar__count">
-            {userCountText(users.length)}
-          </span>
+          <span className="tab-toolbar__count">{userCountText(users.length)}</span>
         </div>
         <button
           className="btn btn--secondary"
@@ -260,9 +251,7 @@ export default function UsersTab(props: {
         <aside className="main-detail-sidebar" aria-label="User selection">
           <section className="sidebar-section">
             <h2 className="secondary-title">Active users</h2>
-            {loading && users.length === 0 ? (
-              <p className="muted">Loading users...</p>
-            ) : null}
+            {loading && users.length === 0 ? <p className="muted">Loading users...</p> : null}
             {listError ? (
               <div className="alert alert--danger" role="alert">
                 <p className="alert__title">User API error</p>
@@ -288,9 +277,7 @@ export default function UsersTab(props: {
                 return (
                   <button
                     key={user.id}
-                    className={`entity-row user-row${
-                      isSelected ? " entity-row--selected" : ""
-                    }`}
+                    className={`entity-row user-row${isSelected ? " entity-row--selected" : ""}`}
                     type="button"
                     onClick={() => selectUser(user.id)}
                     aria-pressed={isSelected}
@@ -302,9 +289,7 @@ export default function UsersTab(props: {
                         {user.email} · User ID {user.id}
                       </span>
                     </span>
-                    <span className="badge badge--neutral">
-                      {roleLabel(user.role)}
-                    </span>
+                    <span className="badge badge--neutral">{roleLabel(user.role)}</span>
                   </button>
                 );
               })}
@@ -314,10 +299,7 @@ export default function UsersTab(props: {
 
         <section className="detail-workspace" aria-label="User management">
           <div className="detail-grid">
-            <section
-              className="detail-card"
-              aria-labelledby="selected-user-title"
-            >
+            <section className="detail-card" aria-labelledby="selected-user-title">
               <div className="detail-card__header">
                 <p className="eyebrow">Selected user</p>
                 <h2 id="selected-user-title" className="section-title">
@@ -381,8 +363,8 @@ export default function UsersTab(props: {
                         aria-labelledby="revoke-session-confirmation"
                       >
                         <p id="revoke-session-confirmation">
-                          Sign {selectedUser.name} out of every Schatten session?
-                          This does not sign them out of the identity provider.
+                          Sign {selectedUser.name} out of every Schatten session? This does not sign
+                          them out of the identity provider.
                         </p>
                         <div className="form-actions">
                           <button
@@ -427,9 +409,7 @@ export default function UsersTab(props: {
                         role="alertdialog"
                         aria-labelledby="delete-user-confirmation"
                       >
-                        <p id="delete-user-confirmation">
-                          Soft-delete {selectedUser.name}?
-                        </p>
+                        <p id="delete-user-confirmation">Soft-delete {selectedUser.name}?</p>
                         <div className="form-actions">
                           <button
                             className="btn btn--secondary"
@@ -453,9 +433,7 @@ export default function UsersTab(props: {
                   </section>
                 </>
               ) : (
-                <p className="muted">
-                  Select an active user to edit or delete it.
-                </p>
+                <p className="muted">Select an active user to edit or delete it.</p>
               )}
             </section>
 

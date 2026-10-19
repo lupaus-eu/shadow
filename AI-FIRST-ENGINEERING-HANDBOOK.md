@@ -473,6 +473,7 @@ Päätetyllä stackilla minimikomentoja ovat tyypillisesti:
 
 ```bash
 cd frontend
+pnpm format:check
 pnpm lint
 pnpm test
 pnpm build
@@ -518,6 +519,7 @@ Jokaisessa PR:ssä suoritetaan, kun sovelluksen stack on valittu:
 
 ```text
 Install
+Format check
 Lint
 Test
 Build
@@ -768,6 +770,7 @@ Kun sovelluksen stack on valittu, jokaisessa PR:ssä suoritetaan:
 
 ```text
 Install
+Format check
 Lint
 Test
 Typecheck

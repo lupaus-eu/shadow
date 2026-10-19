@@ -129,19 +129,19 @@ export class ApiError extends Error {
   }
 }
 
-async function requestJson<T>(
-  path: string,
-  init?: RequestInit,
-  signal?: AbortSignal
-): Promise<T> {
-  const res = await authenticatedFetch(path, {
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-      ...init?.headers
+async function requestJson<T>(path: string, init?: RequestInit, signal?: AbortSignal): Promise<T> {
+  const res = await authenticatedFetch(
+    path,
+    {
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        ...init?.headers
+      },
+      ...init
     },
-    ...init
-  }, signal);
+    signal
+  );
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
@@ -188,11 +188,7 @@ export async function fetchGraph(
   orgStateId: string,
   signal?: AbortSignal
 ): Promise<GraphDto> {
-  return requestJson<GraphDto>(
-    graphPath(orgId, scenarioId, orgStateId),
-    { method: "GET" },
-    signal
-  );
+  return requestJson<GraphDto>(graphPath(orgId, scenarioId, orgStateId), { method: "GET" }, signal);
 }
 
 export function fetchGraphTypeCatalog(

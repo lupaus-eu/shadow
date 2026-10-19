@@ -38,10 +38,7 @@ function messageFromPayload(payload: unknown): string {
   return "";
 }
 
-async function responseErrorMessage(
-  res: Response,
-  action: string
-): Promise<string> {
+async function responseErrorMessage(res: Response, action: string): Promise<string> {
   const text = await res.text().catch(() => "");
   let detail = text;
 
@@ -58,15 +55,17 @@ async function responseErrorMessage(
     : `Failed to ${action} (${res.status}).`;
 }
 
-export async function fetchOrganisations(
-  signal?: AbortSignal
-): Promise<OrganisationDto[]> {
-  const res = await authenticatedFetch("/api/v1/organisations", {
-    method: "GET",
-    headers: {
-      Accept: "application/json"
-    }
-  }, signal);
+export async function fetchOrganisations(signal?: AbortSignal): Promise<OrganisationDto[]> {
+  const res = await authenticatedFetch(
+    "/api/v1/organisations",
+    {
+      method: "GET",
+      headers: {
+        Accept: "application/json"
+      }
+    },
+    signal
+  );
 
   if (!res.ok) {
     throw new Error(await responseErrorMessage(res, "fetch organisations"));
@@ -79,14 +78,18 @@ export async function createOrganisation(
   payload: OrganisationCreateRequest,
   signal?: AbortSignal
 ): Promise<OrganisationDto> {
-  const res = await authenticatedFetch("/api/v1/organisations", {
-    method: "POST",
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json"
+  const res = await authenticatedFetch(
+    "/api/v1/organisations",
+    {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload)
     },
-    body: JSON.stringify(payload)
-  }, signal);
+    signal
+  );
 
   if (!res.ok) {
     throw new Error(await responseErrorMessage(res, "create organisation"));

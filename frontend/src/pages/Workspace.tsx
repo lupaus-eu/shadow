@@ -1,18 +1,8 @@
 import { lazy, Suspense, useLayoutEffect, useMemo, useState } from "react";
-import {
-  NavLink,
-  Navigate,
-  Route,
-  Routes,
-  useLocation,
-  useParams
-} from "react-router-dom";
+import { NavLink, Navigate, Route, Routes, useLocation, useParams } from "react-router-dom";
 import EmptyTab from "../components/EmptyTab";
 import { useAuth } from "../auth/AuthContext";
-import {
-  RouteErrorBoundary,
-  RouteLoadingFallback
-} from "../components/DeferredRoute";
+import { RouteErrorBoundary, RouteLoadingFallback } from "../components/DeferredRoute";
 import OrganisationDropdown from "../components/OrganisationDropdown";
 import OrgStateDropdown from "../components/OrgStateDropdown";
 import ScenarioDropdown from "../components/ScenarioDropdown";
@@ -25,9 +15,7 @@ const StructureTab = lazy(() => import("../features/structure/StructureTab"));
 const EventsTab = lazy(() => import("../features/events/EventsTab"));
 const MetricsTab = lazy(() => import("../features/metrics/MetricsTab"));
 const SummaryTab = lazy(() => import("../features/summary/SummaryTab"));
-const PredictionsTab = lazy(
-  () => import("../features/predictions/PredictionsTab")
-);
+const PredictionsTab = lazy(() => import("../features/predictions/PredictionsTab"));
 const CustomersTab = lazy(() => import("../features/customers/CustomersTab"));
 const UsersTab = lazy(() => import("../features/users/UsersTab"));
 
@@ -39,12 +27,8 @@ export default function Workspace() {
   const { orgId } = useParams<{ orgId: string }>();
   const location = useLocation();
 
-  const stateOrgName =
-    (location.state as WorkspaceNavState | null)?.organisationName || undefined;
-  const storageKey = useMemo(
-    () => (orgId ? `schatten:organisationName:${orgId}` : ""),
-    [orgId]
-  );
+  const stateOrgName = (location.state as WorkspaceNavState | null)?.organisationName || undefined;
+  const storageKey = useMemo(() => (orgId ? `schatten:organisationName:${orgId}` : ""), [orgId]);
 
   useLayoutEffect(() => {
     if (!orgId || !stateOrgName) return;
@@ -75,15 +59,10 @@ export default function Workspace() {
   );
 }
 
-function WorkspaceShell(props: {
-  orgId: string;
-  initialOrganisationName: string;
-}) {
+function WorkspaceShell(props: { orgId: string; initialOrganisationName: string }) {
   const { user } = useAuth();
   const location = useLocation();
-  const [organisationName, setOrganisationName] = useState(
-    props.initialOrganisationName
-  );
+  const [organisationName, setOrganisationName] = useState(props.initialOrganisationName);
   const forwardedState: WorkspaceNavState = { organisationName };
 
   return (
@@ -111,27 +90,13 @@ function WorkspaceShell(props: {
 
       <main
         className={`workspace-content${
-          location.pathname.endsWith("/predictions")
-            ? " workspace-content--predictions"
-            : ""
+          location.pathname.endsWith("/predictions") ? " workspace-content--predictions" : ""
         }`}
       >
-        <RouteErrorBoundary
-          title="Unable to load workspace tab"
-          resetKey={location.pathname}
-        >
-          <Suspense
-            fallback={
-              <RouteLoadingFallback message="Loading workspace tab..." />
-            }
-          >
+        <RouteErrorBoundary title="Unable to load workspace tab" resetKey={location.pathname}>
+          <Suspense fallback={<RouteLoadingFallback message="Loading workspace tab..." />}>
             <Routes>
-              <Route
-                index
-                element={
-                  <Navigate to="org-states" replace state={forwardedState} />
-                }
-              />
+              <Route index element={<Navigate to="org-states" replace state={forwardedState} />} />
               {WORKSPACE_TABS.filter(
                 (tab) => tab.signature !== "users" || user?.role === "admin"
               ).map((tab) => (
@@ -144,21 +109,13 @@ function WorkspaceShell(props: {
               {user?.role !== "admin" ? (
                 <Route
                   path="users"
-                  element={
-                    <Navigate
-                      to={`/schatten/${props.orgId}/org-states`}
-                      replace
-                    />
-                  }
+                  element={<Navigate to={`/schatten/${props.orgId}/org-states`} replace />}
                 />
               ) : null}
               <Route
                 path="*"
                 element={
-                  <EmptyTab
-                    title="Not found"
-                    description="This workspace tab does not exist."
-                  />
+                  <EmptyTab title="Not found" description="This workspace tab does not exist." />
                 }
               />
             </Routes>
@@ -197,11 +154,8 @@ function WorkspaceTabs(props: {
 
   return (
     <nav className="tab-bar" aria-label="Schatten workspace tabs">
-      {WORKSPACE_TABS.filter(
-        (tab) => tab.signature !== "users" || props.isAdmin
-      ).map((tab) => {
-        const isDisabled =
-          tab.requiresScenarioAndOrgState && !hasScenarioAndOrgState;
+      {WORKSPACE_TABS.filter((tab) => tab.signature !== "users" || props.isAdmin).map((tab) => {
+        const isDisabled = tab.requiresScenarioAndOrgState && !hasScenarioAndOrgState;
 
         if (isDisabled) {
           return (
@@ -219,9 +173,7 @@ function WorkspaceTabs(props: {
         return (
           <NavLink
             key={tab.signature}
-            className={({ isActive }) =>
-              `tab-link${isActive ? " tab-link--active" : ""}`
-            }
+            className={({ isActive }) => `tab-link${isActive ? " tab-link--active" : ""}`}
             to={`/schatten/${props.orgId}/${tab.signature}`}
             state={props.forwardedState}
             end
@@ -242,10 +194,7 @@ function WorkspaceTabContent(props: { tab: WorkspaceTab; orgId: string }) {
     return <ScenariosTab orgId={props.orgId} />;
   }
 
-  if (
-    props.tab.requiresScenarioAndOrgState &&
-    (!selectedScenario || !selectedOrgState)
-  ) {
+  if (props.tab.requiresScenarioAndOrgState && (!selectedScenario || !selectedOrgState)) {
     return (
       <EmptyTab
         title={props.tab.label}
@@ -271,12 +220,7 @@ function WorkspaceTabContent(props: { tab: WorkspaceTab; orgId: string }) {
   }
 
   if (props.tab.signature === "users") {
-    return (
-      <UsersTab
-        currentUserId={user?.id}
-        onCurrentUserSessionsRevoked={invalidateSession}
-      />
-    );
+    return <UsersTab currentUserId={user?.id} onCurrentUserSessionsRevoked={invalidateSession} />;
   }
 
   if (props.tab.signature === "customers") {

@@ -1,11 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState
-} from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, CSSProperties, FormEvent } from "react";
 import EmptyTab from "../../components/EmptyTab";
 import {
@@ -26,10 +19,7 @@ import { useWorkspaceSelection } from "../../workspace/WorkspaceSelectionContext
 
 type DraftState = Record<string, Record<string, string>>;
 type SavingRowsState = Record<string, boolean>;
-type MetricsFilterValue =
-  | "manual"
-  | "derived"
-  | TimeserieTimeUnit;
+type MetricsFilterValue = "manual" | "derived" | TimeserieTimeUnit;
 type ParsedDateParts = {
   year: number;
   month: number;
@@ -183,10 +173,7 @@ function isValidDateValue(value: string): boolean {
   return parseDateParts(value) !== null;
 }
 
-function isValidStartDateForTimeUnit(
-  value: string,
-  timeUnit: TimeserieTimeUnit
-): boolean {
+function isValidStartDateForTimeUnit(value: string, timeUnit: TimeserieTimeUnit): boolean {
   const parts = parseDateParts(value);
   if (!parts) return false;
 
@@ -196,10 +183,7 @@ function isValidStartDateForTimeUnit(
   return parts.month === 1 && parts.day === 1;
 }
 
-function normaliseDateToUnitStart(
-  value: string,
-  timeUnit: TimeserieTimeUnit
-): string {
+function normaliseDateToUnitStart(value: string, timeUnit: TimeserieTimeUnit): string {
   const parts = parseDateParts(value);
   if (!parts) return value;
   const date = new Date(parts.date);
@@ -235,10 +219,7 @@ function addTimeUnit(value: string, timeUnit: TimeserieTimeUnit): string {
   return formatDateValue(date);
 }
 
-function nextValidDateForRow(
-  timeserie: TimeserieDto,
-  columns: string[]
-): string {
+function nextValidDateForRow(timeserie: TimeserieDto, columns: string[]): string {
   const validDates = columns.filter((date) =>
     isValidStartDateForTimeUnit(date, timeserie.timeUnit)
   );
@@ -259,11 +240,7 @@ function baselineValueForDate(timeserie: TimeserieDto, date: string): string {
   return value ? formatCellValue(value.value) : "";
 }
 
-function draftValueForDate(
-  timeserie: TimeserieDto,
-  date: string,
-  draftValues: DraftState
-): string {
+function draftValueForDate(timeserie: TimeserieDto, date: string, draftValues: DraftState): string {
   if (Object.hasOwn(draftValues[timeserie.id] ?? {}, date)) {
     return draftValues[timeserie.id][date];
   }
@@ -276,10 +253,7 @@ function buildInitialDrafts(items: TimeserieDto[]): DraftState {
     items.map((timeserie) => [
       timeserie.id,
       Object.fromEntries(
-        timeserie.values.map((value) => [
-          value.date,
-          formatCellValue(value.value)
-        ])
+        timeserie.values.map((value) => [value.date, formatCellValue(value.value)])
       )
     ])
   );
@@ -302,39 +276,24 @@ function buildDateColumns(items: TimeserieDto[], manualDates: string[]): string[
   return [...dates].filter(isValidDateValue).sort();
 }
 
-function filterDateColumns(
-  columns: string[],
-  fromDate: string,
-  untilDate: string
-): string[] {
+function filterDateColumns(columns: string[], fromDate: string, untilDate: string): string[] {
   return columns.filter(
     (date) => (!fromDate || date >= fromDate) && (!untilDate || date <= untilDate)
   );
 }
 
 function isDateCellEditable(timeserie: TimeserieDto, date: string): boolean {
-  return (
-    timeserie.isDerived !== true &&
-    isValidStartDateForTimeUnit(date, timeserie.timeUnit)
-  );
+  return timeserie.isDerived !== true && isValidStartDateForTimeUnit(date, timeserie.timeUnit);
 }
 
 function hasDerivedValueForDate(timeserie: TimeserieDto, date: string): boolean {
-  return (
-    timeserie.isDerived === true &&
-    timeserie.values.some((value) => value.date === date)
-  );
+  return timeserie.isDerived === true && timeserie.values.some((value) => value.date === date);
 }
 
-function filterActionableDateColumns(
-  columns: string[],
-  timeseries: TimeserieDto[]
-): string[] {
+function filterActionableDateColumns(columns: string[], timeseries: TimeserieDto[]): string[] {
   return columns.filter((date) =>
     timeseries.some(
-      (timeserie) =>
-        isDateCellEditable(timeserie, date) ||
-        hasDerivedValueForDate(timeserie, date)
+      (timeserie) => isDateCellEditable(timeserie, date) || hasDerivedValueForDate(timeserie, date)
     )
   );
 }
@@ -351,9 +310,7 @@ function parseDraftCellValue(
 
   if (valueUnit === "number") {
     const parsed = Number(value);
-    return Number.isFinite(parsed)
-      ? { kind: "value", value: parsed }
-      : { kind: "error" };
+    return Number.isFinite(parsed) ? { kind: "value", value: parsed } : { kind: "error" };
   }
 
   if (valueUnit === "boolean") {
@@ -402,10 +359,7 @@ function rowHasChanges(
 
   for (const date of dates) {
     if (!isValidStartDateForTimeUnit(date, timeserie.timeUnit)) continue;
-    if (
-      draftValueForDate(timeserie, date, draftValues) !==
-      baselineValueForDate(timeserie, date)
-    ) {
+    if (draftValueForDate(timeserie, date, draftValues) !== baselineValueForDate(timeserie, date)) {
       return true;
     }
   }
@@ -448,8 +402,7 @@ function parseCsvImport(
       };
     }
 
-    values[date] =
-      parsed.kind === "blank" ? "" : formatCellValue(parsed.value);
+    values[date] = parsed.kind === "blank" ? "" : formatCellValue(parsed.value);
   }
 
   return { values, dates: Object.keys(values) };
@@ -480,10 +433,8 @@ export default function MetricsTab(props: { orgId: string }) {
   const [fromDate, setFromDate] = useState("");
   const [untilDate, setUntilDate] = useState("");
   const [cellWidth, setCellWidth] = useState(DEFAULT_METRICS_CELL_WIDTH);
-  const [isDerivedMetricEditorVisible, setDerivedMetricEditorVisible] =
-    useState(false);
-  const [editingDerivedMetric, setEditingDerivedMetric] =
-    useState<TimeserieDto | null>(null);
+  const [isDerivedMetricEditorVisible, setDerivedMetricEditorVisible] = useState(false);
+  const [editingDerivedMetric, setEditingDerivedMetric] = useState<TimeserieDto | null>(null);
 
   const allDateColumns = useMemo(
     () => buildDateColumns(timeseries, manualDates),
@@ -510,10 +461,7 @@ export default function MetricsTab(props: { orgId: string }) {
     [allDateColumns, displayedTimeseries, fromDate, untilDate]
   );
   const dirtyRows = useMemo(
-    () =>
-      timeseries.filter((timeserie) =>
-        rowHasChanges(timeserie, allDateColumns, draftValues)
-      ),
+    () => timeseries.filter((timeserie) => rowHasChanges(timeserie, allDateColumns, draftValues)),
     [allDateColumns, draftValues, timeseries]
   );
   const isSaving = savingAll || Object.values(savingRows).some(Boolean);
@@ -587,9 +535,7 @@ export default function MetricsTab(props: { orgId: string }) {
       return false;
     }
 
-    setManualDates((current) =>
-      current.includes(date) ? current : [...current, date].sort()
-    );
+    setManualDates((current) => (current.includes(date) ? current : [...current, date].sort()));
     setManualDateError("");
     return true;
   }
@@ -625,9 +571,7 @@ export default function MetricsTab(props: { orgId: string }) {
         payload
       );
       setTimeseries((current) =>
-        sortTimeseries(
-          current.map((item) => (item.id === updated.id ? updated : item))
-        )
+        sortTimeseries(current.map((item) => (item.id === updated.id ? updated : item)))
       );
       setDraftValues((current) => ({
         ...current,
@@ -677,21 +621,14 @@ export default function MetricsTab(props: { orgId: string }) {
       const failedResults = results.filter(
         (result): result is PromiseRejectedResult => result.status === "rejected"
       );
-      const updatedById = new Map(
-        updatedRows.map((timeserie) => [timeserie.id, timeserie])
-      );
+      const updatedById = new Map(updatedRows.map((timeserie) => [timeserie.id, timeserie]));
       setTimeseries((current) =>
-        sortTimeseries(
-          current.map((item) => updatedById.get(item.id) ?? item)
-        )
+        sortTimeseries(current.map((item) => updatedById.get(item.id) ?? item))
       );
       setDraftValues((current) => ({
         ...current,
         ...Object.fromEntries(
-          updatedRows.map((timeserie) => [
-            timeserie.id,
-            draftForUpdatedTimeserie(timeserie)
-          ])
+          updatedRows.map((timeserie) => [timeserie.id, draftForUpdatedTimeserie(timeserie)])
         )
       }));
       if (updatedRows.length > 0 && timeseries.some((item) => item.isDerived)) {
@@ -699,8 +636,7 @@ export default function MetricsTab(props: { orgId: string }) {
       }
 
       if (failedResults.length > 0) {
-        const savedSummary =
-          updatedRows.length > 0 ? ` Saved ${updatedRows.length} row(s).` : "";
+        const savedSummary = updatedRows.length > 0 ? ` Saved ${updatedRows.length} row(s).` : "";
         setActionError(
           `Could not save ${failedResults.length} of ${updates.length} row(s).${savedSummary} ${messageFromError(failedResults[0].reason)}`
         );
@@ -734,9 +670,7 @@ export default function MetricsTab(props: { orgId: string }) {
       return;
     }
 
-    setManualDates((current) =>
-      [...new Set([...current, ...parsed.dates])].sort()
-    );
+    setManualDates((current) => [...new Set([...current, ...parsed.dates])].sort());
     setDraftValues((current) => ({
       ...current,
       [timeserie.id]: {
@@ -757,17 +691,8 @@ export default function MetricsTab(props: { orgId: string }) {
       setSavingAll(true);
       setActionError("");
       const updated = current
-        ? await updateDerivedMetric(
-            props.orgId,
-            selectedScenario?.id ?? "",
-            current.id,
-            payload
-          )
-        : await createDerivedMetric(
-            props.orgId,
-            selectedScenario?.id ?? "",
-            payload
-          );
+        ? await updateDerivedMetric(props.orgId, selectedScenario?.id ?? "", current.id, payload)
+        : await createDerivedMetric(props.orgId, selectedScenario?.id ?? "", payload);
       setTimeseries((items) =>
         sortTimeseries(
           current
@@ -805,18 +730,13 @@ export default function MetricsTab(props: { orgId: string }) {
       <section className="tab-toolbar" aria-label="Metrics overview">
         <div className="tab-toolbar__title">
           <h1 className="page-title">Metrics</h1>
-          <span className="tab-toolbar__count">
-            {metricsCountText(timeseries.length)}
-          </span>
+          <span className="tab-toolbar__count">{metricsCountText(timeseries.length)}</span>
         </div>
       </section>
 
       <div className="metrics-notices">
         {manualDateError ? (
-          <ActionError
-            message={manualDateError}
-            onClose={() => setManualDateError("")}
-          />
+          <ActionError message={manualDateError} onClose={() => setManualDateError("")} />
         ) : null}
         {loadError ? (
           <ActionError
@@ -826,10 +746,7 @@ export default function MetricsTab(props: { orgId: string }) {
           />
         ) : null}
         {actionError ? (
-          <ActionError
-            message={actionError}
-            onClose={() => setActionError("")}
-          />
+          <ActionError message={actionError} onClose={() => setActionError("")} />
         ) : null}
         {actionMessage ? (
           <MetricsNotice
@@ -892,13 +809,19 @@ export default function MetricsTab(props: { orgId: string }) {
             onChange={(event) => setUntilDate(event.target.value)}
           />
         </label>
-        <div className="metrics-toolbar__cell-width" role="group" aria-label="Timeserie value cell width">
+        <div
+          className="metrics-toolbar__cell-width"
+          role="group"
+          aria-label="Timeserie value cell width"
+        >
           <button
             className="btn btn--secondary"
             type="button"
             aria-label="Decrease timeserie value cell width"
             disabled={isSaving || cellWidth <= MIN_METRICS_CELL_WIDTH}
-            onClick={() => setCellWidth((value) => clampMetricsCellWidth(value - METRICS_CELL_WIDTH_STEP))}
+            onClick={() =>
+              setCellWidth((value) => clampMetricsCellWidth(value - METRICS_CELL_WIDTH_STEP))
+            }
           >
             −
           </button>
@@ -907,7 +830,9 @@ export default function MetricsTab(props: { orgId: string }) {
             type="button"
             aria-label="Increase timeserie value cell width"
             disabled={isSaving || cellWidth >= MAX_METRICS_CELL_WIDTH}
-            onClick={() => setCellWidth((value) => clampMetricsCellWidth(value + METRICS_CELL_WIDTH_STEP))}
+            onClick={() =>
+              setCellWidth((value) => clampMetricsCellWidth(value + METRICS_CELL_WIDTH_STEP))
+            }
           >
             +
           </button>
@@ -927,9 +852,7 @@ export default function MetricsTab(props: { orgId: string }) {
           aria-label="Sort metrics"
           value={sortValue}
           disabled={isSaving}
-          onChange={(event) =>
-            setSortValue(event.target.value as MetricsSortValue)
-          }
+          onChange={(event) => setSortValue(event.target.value as MetricsSortValue)}
         >
           <option value="">Sort by:</option>
           {METRICS_SORT_OPTIONS.map((option) => (
@@ -1077,10 +1000,7 @@ function DerivedMetricEditor(props: {
   editing: TimeserieDto | null;
   disabled: boolean;
   normalMetrics: TimeserieDto[];
-  onSave: (
-    payload: DerivedMetricCreateRequest,
-    current: TimeserieDto | null
-  ) => Promise<void>;
+  onSave: (payload: DerivedMetricCreateRequest, current: TimeserieDto | null) => Promise<void>;
   onCancel: () => void;
 }) {
   const [name, setName] = useState(props.editing?.name ?? "");
@@ -1107,20 +1027,37 @@ function DerivedMetricEditor(props: {
           <label className="form-label form-label--required" htmlFor="derived-metric-name">
             Name
           </label>
-          <input id="derived-metric-name" className="input derived-metric-editor__name" value={name} disabled={props.disabled}
-            onChange={(event) => setName(event.target.value)} />
+          <input
+            id="derived-metric-name"
+            className="input derived-metric-editor__name"
+            value={name}
+            disabled={props.disabled}
+            onChange={(event) => setName(event.target.value)}
+          />
         </div>
         <div className="form-row">
-          <label className="form-label" htmlFor="derived-metric-unit">Unit</label>
-          <input id="derived-metric-unit" className="input derived-metric-editor__unit" value={unit} disabled={props.disabled}
-            onChange={(event) => setUnit(event.target.value)} />
+          <label className="form-label" htmlFor="derived-metric-unit">
+            Unit
+          </label>
+          <input
+            id="derived-metric-unit"
+            className="input derived-metric-editor__unit"
+            value={unit}
+            disabled={props.disabled}
+            onChange={(event) => setUnit(event.target.value)}
+          />
         </div>
         <div className="form-row">
           <label className="form-label form-label--required" htmlFor="derived-metric-formula">
             Formula
           </label>
-          <input id="derived-metric-formula" className="input" value={formula} disabled={props.disabled}
-            onChange={(event) => setFormula(event.target.value)} />
+          <input
+            id="derived-metric-formula"
+            className="input"
+            value={formula}
+            disabled={props.disabled}
+            onChange={(event) => setFormula(event.target.value)}
+          />
           <small className="muted">Use +, -, *, /, ** or ^ and normal metric short names.</small>
         </div>
         {props.normalMetrics.length > 0 ? (
@@ -1129,10 +1066,19 @@ function DerivedMetricEditor(props: {
           </p>
         ) : null}
         <div className="form-actions">
-          <button className="btn btn--primary" type="submit" disabled={props.disabled || !name.trim() || !formula.trim()}>
+          <button
+            className="btn btn--primary"
+            type="submit"
+            disabled={props.disabled || !name.trim() || !formula.trim()}
+          >
             {props.editing ? "Save derived metric" : "Create derived metric"}
           </button>
-          <button className="btn btn--secondary" type="button" disabled={props.disabled} onClick={props.onCancel}>
+          <button
+            className="btn btn--secondary"
+            type="button"
+            disabled={props.disabled}
+            onClick={props.onCancel}
+          >
             Cancel
           </button>
         </div>
@@ -1193,18 +1139,20 @@ function MetricsGrid(props: {
             return (
               <tr
                 key={timeserie.id}
-                className={[
-                  rowIsDirty ? "metrics-grid__row--dirty" : "",
-                  isDerived ? "metrics-grid__row--derived" : ""
-                ].filter(Boolean).join(" ") || undefined}
+                className={
+                  [
+                    rowIsDirty ? "metrics-grid__row--dirty" : "",
+                    isDerived ? "metrics-grid__row--derived" : ""
+                  ]
+                    .filter(Boolean)
+                    .join(" ") || undefined
+                }
               >
                 <th scope="row" className="metrics-grid__metric-cell">
                   <div className="metrics-grid__metric">
                     <span className="metrics-grid__metric-heading">
                       <strong>{timeserie.name}</strong>
-                      {rowIsDirty ? (
-                        <span className="badge badge--accent">Changed</span>
-                      ) : null}
+                      {rowIsDirty ? <span className="badge badge--accent">Changed</span> : null}
                     </span>
                     {!isDerived ? <code className="metadata-code">{timeserie.id}</code> : null}
                     {timeserie.shortName ? (
@@ -1217,9 +1165,7 @@ function MetricsGrid(props: {
                       {timeserie.unit ? ` / ${timeserie.unit}` : ""}
                     </span>
                     {timeserie.description ? (
-                      <span className="clamped-description">
-                        {timeserie.description}
-                      </span>
+                      <span className="clamped-description">{timeserie.description}</span>
                     ) : null}
                     {timeserie.derivedFormula ? (
                       <code className="metadata-code">{timeserie.derivedFormula}</code>
@@ -1289,14 +1235,8 @@ function MetricsGrid(props: {
                     <CellEditor
                       timeserie={timeserie}
                       date={date}
-                      value={draftValueForDate(
-                        timeserie,
-                        date,
-                        props.draftValues
-                      )}
-                      onChange={(value) =>
-                        props.onDraftChange(timeserie.id, date, value)
-                      }
+                      value={draftValueForDate(timeserie, date, props.draftValues)}
+                      onChange={(value) => props.onDraftChange(timeserie.id, date, value)}
                       disabled={isDerived || props.isSaving}
                     />
                   </td>
@@ -1319,10 +1259,7 @@ function CellEditor(props: {
 }) {
   const label = `${props.timeserie.name} ${props.date}`;
   const isEditable = isDateCellEditable(props.timeserie, props.date);
-  const isValidTimeUnitDate = isValidStartDateForTimeUnit(
-    props.date,
-    props.timeserie.timeUnit
-  );
+  const isValidTimeUnitDate = isValidStartDateForTimeUnit(props.date, props.timeserie.timeUnit);
 
   if (!isValidTimeUnitDate) {
     return (
@@ -1400,11 +1337,7 @@ function MetricsNotice(props: {
   );
 }
 
-function ActionError(props: {
-  title?: string;
-  message: string;
-  onClose: () => void;
-}) {
+function ActionError(props: { title?: string; message: string; onClose: () => void }) {
   if (!props.message) return null;
   return (
     <MetricsNotice

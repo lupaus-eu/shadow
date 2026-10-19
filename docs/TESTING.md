@@ -1036,6 +1036,7 @@ Commands:
 ```bash
 # Frontend, if applicable
 cd frontend
+pnpm format:check
 pnpm lint
 pnpm test
 pnpm build
@@ -1098,6 +1099,7 @@ should run:
 
 ```text
 Install
+Format check
 Lint
 Tests
 Typecheck

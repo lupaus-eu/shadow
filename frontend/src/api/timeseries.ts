@@ -56,27 +56,25 @@ export class ApiError extends Error {
   status: number;
 
   constructor(status: number, detail: string) {
-    super(
-      detail ? `API request failed (${status}). ${detail}` : `API request failed (${status}).`
-    );
+    super(detail ? `API request failed (${status}). ${detail}` : `API request failed (${status}).`);
     this.name = "ApiError";
     this.status = status;
   }
 }
 
-async function requestJson<T>(
-  path: string,
-  init?: RequestInit,
-  signal?: AbortSignal
-): Promise<T> {
-  const res = await authenticatedFetch(path, {
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-      ...init?.headers
+async function requestJson<T>(path: string, init?: RequestInit, signal?: AbortSignal): Promise<T> {
+  const res = await authenticatedFetch(
+    path,
+    {
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        ...init?.headers
+      },
+      ...init
     },
-    ...init
-  }, signal);
+    signal
+  );
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
@@ -94,11 +92,7 @@ function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
 }
 
-function pickString(
-  item: Record<string, unknown>,
-  keys: string[],
-  fallback = ""
-): string {
+function pickString(item: Record<string, unknown>, keys: string[], fallback = ""): string {
   for (const key of keys) {
     const value = item[key];
     if (typeof value === "string") return value;
@@ -171,9 +165,7 @@ function normalizeTimeserie(payload: unknown, index = 0): TimeserieDto {
     unit: pickString(item, ["unit", "valueLabel", "value_label"]),
     timeUnit: normalizeTimeUnit(pickString(item, ["timeUnit", "time_unit"])),
     valueUnit: normalizeValueUnit(pickString(item, ["valueUnit", "value_unit"])),
-    values: pickArray(item.values, ["values", "items", "data"]).map(
-      normalizeTimeserieValue
-    ),
+    values: pickArray(item.values, ["values", "items", "data"]).map(normalizeTimeserieValue),
     isDerived: item.isDerived === true || item.is_derived === true,
     derivedFormula:
       typeof item.derivedFormula === "string"
@@ -181,8 +173,7 @@ function normalizeTimeserie(payload: unknown, index = 0): TimeserieDto {
         : typeof item.derived_formula === "string"
           ? item.derived_formula
           : null,
-    shortNameEditable:
-      item.shortNameEditable !== false && item.short_name_editable !== false
+    shortNameEditable: item.shortNameEditable !== false && item.short_name_editable !== false
   };
 }
 
@@ -230,11 +221,7 @@ export async function fetchTimeseries(
   signal?: AbortSignal
 ): Promise<TimeserieDto[]> {
   return normalizeTimeseries(
-    await requestJson<unknown>(
-      timeseriesPath(orgId, scenarioId),
-      { method: "GET" },
-      signal
-    )
+    await requestJson<unknown>(timeseriesPath(orgId, scenarioId), { method: "GET" }, signal)
   );
 }
 

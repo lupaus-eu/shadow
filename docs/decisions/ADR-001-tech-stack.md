@@ -84,6 +84,7 @@ Dokumentoitavat komennot täsmentyvät, kun `frontend/` ja `backend/` alustetaan
 
 ```bash
 cd frontend
+pnpm format:check
 pnpm lint
 pnpm test
 pnpm build

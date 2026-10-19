@@ -1,19 +1,10 @@
-import {
-  act,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-  within
-} from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ContextType } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as structureApi from "../../api/orgTwinStructure";
 import type { GraphDto, GraphTypeCatalogDto } from "../../api/orgTwinStructure";
 import * as timeseriesApi from "../../api/timeseries";
-import {
-  WorkspaceSelectionContext
-} from "../../workspace/WorkspaceSelectionContext";
+import { WorkspaceSelectionContext } from "../../workspace/WorkspaceSelectionContext";
 import StructureTab from "./StructureTab";
 
 vi.mock("../../api/orgTwinStructure", async (importOriginal) => {
@@ -62,10 +53,7 @@ vi.mock("./GraphViewer", () => ({
           ? `${props.centerNodeRequest.nodeId}:${props.centerNodeRequest.requestId}`
           : "none"}
       </span>
-      <button
-        type="button"
-        onClick={() => props.onViewportCenterChange({ x: 250, y: 300 })}
-      >
+      <button type="button" onClick={() => props.onViewportCenterChange({ x: 250, y: 300 })}>
         Set graph center
       </button>
       <button
@@ -74,34 +62,19 @@ vi.mock("./GraphViewer", () => ({
       >
         Move CEO
       </button>
-      <button
-        type="button"
-        onClick={() => props.onSelect({ kind: "node", id: "node_ceo" })}
-      >
+      <button type="button" onClick={() => props.onSelect({ kind: "node", id: "node_ceo" })}>
         Select CEO node in graph
       </button>
-      <button
-        type="button"
-        onClick={() => props.onSelect({ kind: "node", id: "node_cfo" })}
-      >
+      <button type="button" onClick={() => props.onSelect({ kind: "node", id: "node_cfo" })}>
         Select CFO node in graph
       </button>
-      <button
-        type="button"
-        onClick={() => props.onSelect({ kind: "node", id: "node_sales" })}
-      >
+      <button type="button" onClick={() => props.onSelect({ kind: "node", id: "node_sales" })}>
         Select sales node in graph
       </button>
-      <button
-        type="button"
-        onClick={() => props.onSelect({ kind: "node", id: "node_revenue" })}
-      >
+      <button type="button" onClick={() => props.onSelect({ kind: "node", id: "node_revenue" })}>
         Select revenue node in graph
       </button>
-      <button
-        type="button"
-        onClick={() => props.onSelect({ kind: "edge", id: "edge_reports" })}
-      >
+      <button type="button" onClick={() => props.onSelect({ kind: "edge", id: "edge_reports" })}>
         Select reports edge
       </button>
     </div>
@@ -379,8 +352,7 @@ describe("StructureTab", () => {
           nodeTypeId: payload.nodeTypeId ?? node.nodeTypeId,
           position: payload.position ?? node.position,
           attributes: payload.attributes ?? node.attributes,
-          timeserieId:
-            payload.timeserieId === undefined ? node.timeserieId : payload.timeserieId,
+          timeserieId: payload.timeserieId === undefined ? node.timeserieId : payload.timeserieId,
           timeserieSecondaryId:
             payload.timeserieSecondaryId === undefined
               ? node.timeserieSecondaryId
@@ -453,14 +425,10 @@ describe("StructureTab", () => {
 
     const vendorRegion = await screen.findByRole("region", { name: "Vendor nodes" });
 
-    fireEvent.click(
-      within(vendorRegion).getByRole("button", { name: "Expand Vendor nodes" })
-    );
+    fireEvent.click(within(vendorRegion).getByRole("button", { name: "Expand Vendor nodes" }));
     expect(within(vendorRegion).getByText("No nodes")).toBeInTheDocument();
 
-    fireEvent.click(
-      within(vendorRegion).getByRole("button", { name: "Create Vendor node" })
-    );
+    fireEvent.click(within(vendorRegion).getByRole("button", { name: "Create Vendor node" }));
 
     const createNodePanel = screen.getByRole("region", { name: "Create node" });
     expect(within(createNodePanel).getByLabelText("Type")).toHaveValue("nt_vendor");
@@ -521,7 +489,9 @@ describe("StructureTab", () => {
     await screen.findByRole("region", { name: "Person nodes" });
 
     const createEdgePanel = screen.getByRole("region", { name: "Create edge" });
-    expect(within(createEdgePanel).getByText("Click two nodes to connect, or use the dropdown menus...")).toBeInTheDocument();
+    expect(
+      within(createEdgePanel).getByText("Click two nodes to connect, or use the dropdown menus...")
+    ).toBeInTheDocument();
     expect(within(createEdgePanel).getByLabelText("Source")).toHaveValue("");
     expect(within(createEdgePanel).getByLabelText("Target")).toHaveValue("");
   });
@@ -548,7 +518,9 @@ describe("StructureTab", () => {
     expect(targetSelect).toHaveValue("node_sales");
     expect(typeSelect).toHaveValue("et_partners_with");
     expect(
-      within(createEdgePanel).queryByText("Click two nodes to connect, or use the dropdown menus...")
+      within(createEdgePanel).queryByText(
+        "Click two nodes to connect, or use the dropdown menus..."
+      )
     ).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Select CEO node in graph" }));
@@ -634,9 +606,7 @@ describe("StructureTab", () => {
     fireEvent.click(screen.getByRole("button", { name: "Select CEO node in graph" }));
     expect(within(modeGroup).queryByRole("button", { name: "Timeserie" })).toBeNull();
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Select revenue node in graph" })
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Select revenue node in graph" }));
     expect(
       within(modeGroup)
         .getAllByRole("button")
@@ -651,9 +621,7 @@ describe("StructureTab", () => {
     renderStructureTab();
     await screen.findByRole("region", { name: "Person nodes" });
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Select revenue node in graph" })
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Select revenue node in graph" }));
     fireEvent.click(screen.getByRole("button", { name: "Timeserie" }));
     expect(screen.getByRole("heading", { name: "Timeserie" })).toBeInTheDocument();
 
@@ -672,9 +640,7 @@ describe("StructureTab", () => {
     renderStructureTab();
     await screen.findByRole("region", { name: "Person nodes" });
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Select revenue node in graph" })
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Select revenue node in graph" }));
     fireEvent.click(screen.getByRole("button", { name: "Timeserie" }));
 
     const panel = screen.getByRole("region", { name: "Timeserie" });
@@ -699,14 +665,10 @@ describe("StructureTab", () => {
     vi.mocked(structureApi.updateGraphNode).mockClear();
     await waitFor(() => {
       expect(
-        within(screen.getByRole("region", { name: "Timeserie" })).getByLabelText(
-          "Primary link"
-        )
+        within(screen.getByRole("region", { name: "Timeserie" })).getByLabelText("Primary link")
       ).toHaveValue("id1");
       expect(
-        within(screen.getByRole("region", { name: "Timeserie" })).getByLabelText(
-          "Secondary link"
-        )
+        within(screen.getByRole("region", { name: "Timeserie" })).getByLabelText("Secondary link")
       ).toHaveValue("id2");
     });
     const updatedPanel = screen.getByRole("region", { name: "Timeserie" });
@@ -735,9 +697,7 @@ describe("StructureTab", () => {
     renderStructureTab();
     await screen.findByRole("region", { name: "Person nodes" });
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Select revenue node in graph" })
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Select revenue node in graph" }));
     fireEvent.click(screen.getByRole("button", { name: "Timeserie" }));
 
     const panel = screen.getByRole("region", { name: "Timeserie" });
@@ -761,9 +721,7 @@ describe("StructureTab", () => {
     renderStructureTab();
     await screen.findByRole("region", { name: "Person nodes" });
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Select revenue node in graph" })
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Select revenue node in graph" }));
     fireEvent.click(screen.getByRole("button", { name: "Timeserie" }));
 
     expect(screen.getByRole("region", { name: "Timeserie" })).toHaveTextContent(
@@ -808,9 +766,7 @@ describe("StructureTab", () => {
     renderStructureTab();
     await screen.findByRole("region", { name: "Person nodes" });
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Select revenue node in graph" })
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Select revenue node in graph" }));
     fireEvent.click(screen.getByRole("button", { name: "Timeserie" }));
 
     expect(screen.getByRole("region", { name: "Timeserie" })).toHaveTextContent(
@@ -822,9 +778,7 @@ describe("StructureTab", () => {
     renderStructureTab();
     await screen.findByRole("region", { name: "Person nodes" });
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Select revenue node in graph" })
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Select revenue node in graph" }));
     fireEvent.click(screen.getByRole("button", { name: "Timeserie" }));
 
     const panel = screen.getByRole("region", { name: "Timeserie" });
@@ -853,24 +807,18 @@ describe("StructureTab", () => {
     fireEvent.change(within(secondary).getByLabelText("Value unit"), {
       target: { value: "boolean" }
     });
-    fireEvent.click(
-      within(secondary).getByRole("button", { name: "Create timeserie" })
-    );
+    fireEvent.click(within(secondary).getByRole("button", { name: "Create timeserie" }));
 
     await waitFor(() => {
-      expect(timeseriesApi.createTimeserie).toHaveBeenCalledWith(
-        "acme",
-        "future",
-        {
-          id: "id2",
-          name: "Revenue secondary",
-          shortName: "revenue_secondary",
-          description: null,
-          unit: "%",
-          timeUnit: "year",
-          valueUnit: "boolean"
-        }
-      );
+      expect(timeseriesApi.createTimeserie).toHaveBeenCalledWith("acme", "future", {
+        id: "id2",
+        name: "Revenue secondary",
+        shortName: "revenue_secondary",
+        description: null,
+        unit: "%",
+        timeUnit: "year",
+        valueUnit: "boolean"
+      });
       expect(within(secondary).getByText("Exists")).toBeInTheDocument();
     });
   });
@@ -879,9 +827,7 @@ describe("StructureTab", () => {
     renderStructureTab();
     await screen.findByRole("region", { name: "Person nodes" });
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Select revenue node in graph" })
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Select revenue node in graph" }));
     fireEvent.click(screen.getByRole("button", { name: "Timeserie" }));
 
     const panel = screen.getByRole("region", { name: "Timeserie" });
@@ -902,11 +848,7 @@ describe("StructureTab", () => {
     fireEvent.click(within(primary).getByRole("button", { name: "Yes" }));
 
     await waitFor(() => {
-      expect(timeseriesApi.deleteTimeserie).toHaveBeenCalledWith(
-        "acme",
-        "future",
-        "id1"
-      );
+      expect(timeseriesApi.deleteTimeserie).toHaveBeenCalledWith("acme", "future", "id1");
       expect(within(primary).getByText("Missing")).toBeInTheDocument();
     });
   });
@@ -951,14 +893,9 @@ describe("StructureTab", () => {
       await Promise.resolve();
     });
 
-    expect(structureApi.bulkUpdatePositions).toHaveBeenCalledWith(
-      "acme",
-      "future",
-      "draft",
-      {
-        positions: [{ nodeId: "node_ceo", x: 44, y: 55 }]
-      }
-    );
+    expect(structureApi.bulkUpdatePositions).toHaveBeenCalledWith("acme", "future", "draft", {
+      positions: [{ nodeId: "node_ceo", x: 44, y: 55 }]
+    });
     vi.useRealTimers();
   });
 
@@ -1094,9 +1031,7 @@ describe("StructureTab", () => {
     vi.mocked(structureApi.fetchGraph).mockResolvedValue({
       ...graph,
       nodes: graph.nodes.map((node) =>
-        node.id === "node_ceo"
-          ? { ...node, createDate: "2026-07-01" }
-          : node
+        node.id === "node_ceo" ? { ...node, createDate: "2026-07-01" } : node
       )
     });
     renderStructureTab();

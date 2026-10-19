@@ -71,10 +71,7 @@ function statusClass(status: ExistenceStatus | undefined, id: string): string {
   return "badge badge--neutral";
 }
 
-function displayNodeLabel(
-  node: GraphNodeDto,
-  nodeTypes: NodeTypeMetadataDto[]
-): string {
+function displayNodeLabel(node: GraphNodeDto, nodeTypes: NodeTypeMetadataDto[]): string {
   const nodeType = nodeTypes.find((item) => item.id === node.nodeTypeId);
   return `${node.name} (${nodeType?.displayName ?? node.nodeTypeId})`;
 }
@@ -95,10 +92,7 @@ function matchingSourceNodes(
 ): GraphNodeDto[] {
   const sourceNodesById = new Map<string, GraphNodeDto>();
   for (const edge of edges) {
-    if (
-      edge.targetNodeId === targetNodeId &&
-      hasEdgeTypeIds.has(edge.edgeTypeId)
-    ) {
+    if (edge.targetNodeId === targetNodeId && hasEdgeTypeIds.has(edge.edgeTypeId)) {
       const sourceNode = nodesById.get(edge.sourceNodeId);
       if (sourceNode) sourceNodesById.set(sourceNode.id, sourceNode);
     }
@@ -125,12 +119,7 @@ function ruleLinesForNode(props: {
 }): string[] {
   const nodesById = new Map(props.nodes.map((node) => [node.id, node]));
   const hasEdgeTypeIds = hasRelationshipEdgeTypeIds(props.edgeTypes);
-  const goalCandidates = matchingSourceNodes(
-    props.node.id,
-    props.edges,
-    nodesById,
-    hasEdgeTypeIds
-  );
+  const goalCandidates = matchingSourceNodes(props.node.id, props.edges, nodesById, hasEdgeTypeIds);
   const goalLineValue = ruleLineValue(
     goalCandidates,
     props.nodeTypes,
@@ -139,12 +128,7 @@ function ruleLinesForNode(props: {
   );
   const organisationCandidates =
     goalCandidates.length === 1
-      ? matchingSourceNodes(
-          goalCandidates[0].id,
-          props.edges,
-          nodesById,
-          hasEdgeTypeIds
-        )
+      ? matchingSourceNodes(goalCandidates[0].id, props.edges, nodesById, hasEdgeTypeIds)
       : [];
   const organisationLineValue = ruleLineValue(
     organisationCandidates,
@@ -155,10 +139,7 @@ function ruleLinesForNode(props: {
     "Multiple linked organisation nodes"
   );
 
-  return [
-    `Measured by from ${goalLineValue}`,
-    `Has goal from ${organisationLineValue}`
-  ];
+  return [`Measured by from ${goalLineValue}`, `Has goal from ${organisationLineValue}`];
 }
 
 export default function TimeseriePanel(props: {
@@ -176,12 +157,8 @@ export default function TimeseriePanel(props: {
   onTimeserieDeleted: (timeserieId: string) => void;
 }) {
   const [primaryId, setPrimaryId] = useState(props.node.timeserieId ?? "");
-  const [secondaryId, setSecondaryId] = useState(
-    props.node.timeserieSecondaryId ?? ""
-  );
-  const [existenceById, setExistenceById] = useState<
-    Record<string, ExistenceStatus>
-  >({});
+  const [secondaryId, setSecondaryId] = useState(props.node.timeserieSecondaryId ?? "");
+  const [existenceById, setExistenceById] = useState<Record<string, ExistenceStatus>>({});
   const [panelError, setPanelError] = useState("");
   const [busyTimeserieId, setBusyTimeserieId] = useState<string | null>(null);
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
@@ -210,12 +187,7 @@ export default function TimeseriePanel(props: {
         source: explicitSecondaryId ? "node" : inheritedSecondaryId ? "type" : "none"
       }
     ];
-  }, [
-    primaryId,
-    props.nodeType?.timeserieId,
-    props.nodeType?.timeserieSecondaryId,
-    secondaryId
-  ]);
+  }, [primaryId, props.nodeType?.timeserieId, props.nodeType?.timeserieSecondaryId, secondaryId]);
 
   const effectiveIds = useMemo(
     () => uniqueValues(effectiveItems.map((item) => item.id)),
@@ -434,9 +406,7 @@ export default function TimeseriePanel(props: {
                   <h3>{item.label}</h3>
                   <code className="metadata-code">{item.id || "No id"}</code>
                 </div>
-                <span className={statusClass(status, item.id)}>
-                  {statusLabel(status, item.id)}
-                </span>
+                <span className={statusClass(status, item.id)}>{statusLabel(status, item.id)}</span>
               </div>
               {item.source !== "none" || status?.state === "exists" ? (
                 <dl className="detail-meta">
@@ -502,9 +472,7 @@ export default function TimeseriePanel(props: {
                   )}
                 </div>
               ) : null}
-              {status?.state === "error" ? (
-                <p className="muted">{status.message}</p>
-              ) : null}
+              {status?.state === "error" ? <p className="muted">{status.message}</p> : null}
               {item.id && status?.state === "missing" ? (
                 <MissingTimeserieForm
                   key={`${item.slot}:${item.id}`}
@@ -518,7 +486,10 @@ export default function TimeseriePanel(props: {
                 />
               ) : null}
               {item.id && status?.state === "exists" ? (
-                <section className="destructive-action-section" aria-label={`${item.label} deletion`}>
+                <section
+                  className="destructive-action-section"
+                  aria-label={`${item.label} deletion`}
+                >
                   <div className="form-actions">
                     {!isDeleting ? (
                       <button
@@ -597,19 +568,14 @@ function MissingTimeserieForm(props: {
         valueUnit
       });
     } catch (error) {
-      setFormError(
-        error instanceof Error ? error.message : "Could not create timeserie."
-      );
+      setFormError(error instanceof Error ? error.message : "Could not create timeserie.");
     }
   }
 
   return (
     <form className="timeserie-create-form" onSubmit={submit}>
       <div className="form-row">
-        <label
-          className="form-label form-label--required"
-          htmlFor={`${props.idPrefix}-name`}
-        >
+        <label className="form-label form-label--required" htmlFor={`${props.idPrefix}-name`}>
           Name
         </label>
         <input
@@ -689,9 +655,7 @@ function MissingTimeserieForm(props: {
             id={`${props.idPrefix}-value-unit`}
             className="select"
             value={valueUnit}
-            onChange={(event) =>
-              setValueUnit(event.target.value as TimeserieValueUnit)
-            }
+            onChange={(event) => setValueUnit(event.target.value as TimeserieValueUnit)}
             disabled={props.disabled}
           >
             {VALUE_UNIT_OPTIONS.map((option) => (
