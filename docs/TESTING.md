@@ -486,9 +486,14 @@ children through the supervisor and uses Linux `/proc` to verify the child's
 own process group, its private `/tmp` directory, stopping before `os.setsid()`,
 stopping a child with a running grandchild, a crashed child whose grandchild is
 still running, and stopping during a real Prophet MCMC fit with no CmdStan
-process or temporary directory left within five seconds. The PostgreSQL suites
-above add six-kind and subset publication, a legacy queued snapshot, migration
-016 up/down and per-child directory removal in the worker cycle.
+process or temporary directory left within five seconds. The Prophet stop test
+waits for a member of the child's group running the CmdStan model binary,
+`prophet_model.bin`, before it checks the private temporary directory, because
+matplotlib's font cache rebuild runs `fc-list` in the same group first. It
+stops the child in `finally`, so a failed assertion does not leave CmdStan
+sampling and pytest waiting for the child at exit. The PostgreSQL suites above
+add six-kind and subset publication, a legacy queued snapshot, migration 016
+up/down and per-child directory removal in the worker cycle.
 
 TASK-061C's frontend tests cover the six-kind default request, a canonical-order
 subset that keeps preflight, blocked submission with no model, a create-time
@@ -949,6 +954,9 @@ tests:
   before its load effect has started.
 - Keep deliberate synchronous checks, such as a control being disabled while a
   request is pending, but make them only after the prerequisite UI is present.
+- Restore spies, such as a silenced `console.error`, in `afterEach` with
+  `vi.restoreAllMocks()`, not at the end of the test, so a failing assertion
+  does not leave them active.
 
 TASK-065 applies this to the application-wide Customers route test, which waits
 for the customer list, address and contact requests; to Customers, Summary,

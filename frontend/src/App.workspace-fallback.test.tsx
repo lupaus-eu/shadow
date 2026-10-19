@@ -60,6 +60,7 @@ describe("workspace route session bar fallback", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
   });
 
   it("shows the session bar while the workspace is loading", async () => {
@@ -75,7 +76,7 @@ describe("workspace route session bar fallback", () => {
   });
 
   it("shows the session bar and allows sign out when the workspace fails to load", async () => {
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
     workspace.mode = "failed";
     const fetchMock = mockSessionApi();
 
@@ -91,6 +92,5 @@ describe("workspace route session bar fallback", () => {
     expect(
       fetchMock.mock.calls.some(([input]) => String(input).endsWith("/api/v1/auth/logout"))
     ).toBe(true);
-    consoleError.mockRestore();
   });
 });

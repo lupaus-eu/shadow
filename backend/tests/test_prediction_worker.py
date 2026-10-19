@@ -146,6 +146,18 @@ def _group_members(process_group_id: int) -> set[int]:
     return members
 
 
+def _group_runs(process_group_id: int, executable_name: str) -> bool:
+    # cmdline, not comm: comm is truncated to 15 characters.
+    for pid in _group_members(process_group_id):
+        try:
+            command = Path(f"/proc/{pid}/cmdline").read_bytes()
+        except (FileNotFoundError, ProcessLookupError):
+            continue
+        if Path(os.fsdecode(command.split(b"\0", 1)[0])).name == executable_name:
+            return True
+    return False
+
+
 def _wait_until(condition: Callable[[], bool], timeout: float = 30.0) -> bool:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -303,18 +315,24 @@ def test_stopping_during_a_prophet_fit_leaves_no_cmdstan_process() -> None:
     child, receiver = worker._start_child("{}", "prophet")
     receiver.close()
     temporary_directory = worker._child_temporary_directory
-    assert child.pid is not None
-    child_pid = child.pid
-    assert _wait_until(lambda: bool(_group_members(child_pid) - {child_pid}), 60), (
-        "CmdStan did not start"
-    )
-    assert any(
-        Path(temporary_directory or "").iterdir()
-    ), "CmdStan did not write into the private temporary directory"
+    try:
+        assert child.pid is not None
+        child_pid = child.pid
+        # matplotlib's font cache rebuild runs fc-list in the same group first.
+        assert _wait_until(lambda: _group_runs(child_pid, "prophet_model.bin"), 60), (
+            "CmdStan did not start"
+        )
+        assert any(
+            Path(temporary_directory or "").iterdir()
+        ), "CmdStan did not write into the private temporary directory"
 
-    started = time.monotonic()
-    worker._stop_child()
+        started = time.monotonic()
+        worker._stop_child()
 
-    assert time.monotonic() - started < 5
+        assert time.monotonic() - started < 5
+    finally:
+        # A failed assertion must not leave CmdStan sampling and pytest waiting
+        # for the child at exit. After the timed stop this is a no-op.
+        worker._stop_child()
     assert _wait_until(lambda: not _group_members(child_pid), timeout=5)
     assert not Path(str(temporary_directory)).exists()

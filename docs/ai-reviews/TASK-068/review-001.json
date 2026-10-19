@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-068/review-001",
+  "task": {
+    "id": "TASK-068",
+    "path": "tasks/TASK-068-test-reliability-fixes.md"
+  },
+  "round": 1,
+  "reviewed_at": "2026-10-19T14:17:06Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "e92ec65383d74fa756945cffa17217213e49f3c6",
+    "head_sha": "285cb279b31e4d5827c0bf685bc622d8d7447598",
+    "comparison": "e92ec65383d74fa756945cffa17217213e49f3c6...285cb279b31e4d5827c0bf685bc622d8d7447598",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "clean",
+    "summary": "The change implements TASK-068 within scope, including the developer-approved try/finally extension. Only the Prophet worker test, two frontend test files, docs/TESTING.md and the new task file changed. There are no application code, dependency, tooling or configuration changes, no test was removed, skipped or weakened, and the 60-second wait and 5-second limits are unchanged. The Prophet stop test now waits for a member of the child's process group whose command line runs prophet_model.bin. The helper reads the command line instead of the truncated comm name, uses the same /proc style as the existing group helper, ignores processes that exit while read, and cannot match zombies or forked processes that have not executed CmdStan. cmdstanpy creates its directory in the private temporary directory when it is imported, which always precedes any CmdStan run, including the brief model information run, so the unchanged directory assertion cannot fail because of an early match. The try/finally stops the child when an assertion fails. The second stop call is a no-op after the timed stop because the supervisor releases the child, and the child PID is only used after a successful try block. With a temporary fc-list shim that sleeps two seconds, the previous wait failed with the reported private temporary directory message and pytest exited promptly, and the fixed test passed. No CmdStan process or private temporary directory remained after either run. Before the try/finally, the same failure left CmdStan sampling and pytest hanging. In the frontend tests, console.error spies are restored in afterEach with vi.restoreAllMocks(). In Vitest 4 this does not reset the navigateBrowser module mock or the stubbed fetch. A temporary mutation that made both spied tests fail showed that a following test saw the real console.error and fetch. docs/TESTING.md and the task text match the code. The Prophet test, ruff, pyright, the frontend format check, lint, 317 frontend tests, the build and the record validator passed, and the implementer's full backend run gave 458 passed and 45 skipped. Disposition of TASK-067 review-002 F-002, recorded here as text because the record schema only allows prior finding dispositions within the same task: fixed by this change in frontend/src/App.workspace-fallback.test.tsx, and the same pattern in frontend/src/components/DeferredRoute.test.tsx is fixed too. Noted for human judgement and not recorded as findings: if the wait matches the brief model information run, the timed stop may happen just before MCMC sampling starts, but the test still checks timing, group termination and directory removal. Manual mockRestore calls remain in SummaryTab.test.tsx and MetricsTab.test.tsx, which the task leaves out of scope. The other worker tests have no try/finally cleanup, which the task also leaves out of scope.",
+    "findings": [],
+    "prior_finding_dispositions": []
+  }
+}

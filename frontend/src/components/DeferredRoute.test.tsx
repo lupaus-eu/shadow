@@ -1,6 +1,6 @@
 import { lazy, Suspense, type ReactNode } from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { RouteErrorBoundary, RouteLoadingFallback } from "./DeferredRoute";
 
 function deferredComponent() {
@@ -13,6 +13,10 @@ function deferredComponent() {
 }
 
 describe("deferred route states", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("announces loading while keeping content outside the Suspense seam visible", async () => {
     const deferred = deferredComponent();
     const DeferredContent = lazy(() => deferred.promise);
@@ -36,7 +40,7 @@ describe("deferred route states", () => {
   });
 
   it("shows a non-sensitive error and reload action for a rejected lazy import", async () => {
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
     const reload = vi.fn();
     const RejectedContent = lazy(() => Promise.reject(new Error("private chunk failure details")));
 
@@ -53,7 +57,5 @@ describe("deferred route states", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Reload page" }));
     expect(reload).toHaveBeenCalledOnce();
-
-    consoleError.mockRestore();
   });
 });
