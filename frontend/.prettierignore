@@ -1,0 +1,4 @@
+dist
+.vite
+.pnpm-store
+node_modules

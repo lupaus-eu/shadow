@@ -8,6 +8,7 @@ Testityökalut on päätetty ADR-001:ssä:
 
 - frontend: Vitest
 - frontend linting: ESLint
+- frontend formatting: Prettier
 - backend: pytest
 - backend type checking: pyright
 - backend linting: Ruff

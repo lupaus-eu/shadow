@@ -24,7 +24,7 @@ Teknologiapino on päätetty ADR-001:ssä.
 
 Päätetty tekninen perusrakenne:
 
-- frontend: React, TypeScript, Vite, pnpm, Vitest, ESLint hakemistossa `frontend/`
+- frontend: React, TypeScript, Vite, pnpm, Vitest, ESLint, Prettier hakemistossa `frontend/`
 - backend: Python, FastAPI, Pydantic, uv, pytest, pyright, Ruff hakemistossa `backend/`
 - database: PostgreSQL
 - ORM: SQLAlchemy
@@ -116,6 +116,7 @@ Teknologiat:
 - pnpm
 - Vitest
 - ESLint
+- Prettier
 
 Frontend kutsuu backendin APIa saman originin `/api`-polulla. Tuotantoimage
 rakentaa Vite SPA:n ja palvelee sen pinnatulla virallisella Caddy-imagella.

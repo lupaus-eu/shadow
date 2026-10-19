@@ -50,7 +50,7 @@ Status: decided in `docs/decisions/ADR-001-tech-stack.md`
 
 Päätetty teknologiapino:
 
-- frontend: React, TypeScript, Vite, pnpm, Vitest, ESLint hakemistossa `frontend/`
+- frontend: React, TypeScript, Vite, pnpm, Vitest, ESLint, Prettier hakemistossa `frontend/`
 - backend: Python, FastAPI, Pydantic, uv, pytest, pyright, Ruff hakemistossa `backend/`
 - database: PostgreSQL
 - ORM: SQLAlchemy

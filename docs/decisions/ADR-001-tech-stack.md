@@ -22,6 +22,7 @@ Projektin teknologiapino on:
 - Frontend package manager: pnpm
 - Frontend test framework: Vitest
 - Frontend linting: ESLint
+- Frontend formatting: Prettier, print width 100 (TASK-066A)
 - Frontend hakemisto: `./frontend`
 - Backend: Python, FastAPI
 - Backend validation and schemas: Pydantic
@@ -67,7 +68,7 @@ Tämä päätös mahdollistaa:
 
 - frontend- ja backend-työn erottamisen selkeisiin hakemistoihin
 - paikallisen kehitysympäristön rakentamisen Docker Composella
-- CI-putken rakentamisen pnpm-, uv-, pytest-, pyright-, Vitest-, Vite-, ESLint- ja Ruff-komentojen ympärille
+- CI-putken rakentamisen pnpm-, uv-, pytest-, pyright-, Vitest-, Vite-, ESLint-, Prettier- ja Ruff-komentojen ympärille
 - PostgreSQL- ja SQLAlchemy-pohjaisen tietokantakerroksen suunnittelun
 - FastAPI- ja Pydantic-pohjaisen API-validoinnin suunnittelun
 - Entra ID -autentikoinnin suunnittelun backendin luotettavan authorization-kerroksen kanssa

@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-066A/review-001",
+  "task": {
+    "id": "TASK-066A",
+    "path": "tasks/TASK-066A-frontend-prettier-setup.md"
+  },
+  "round": 1,
+  "reviewed_at": "2026-10-19T08:46:41Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "c619a2f3c20d29280a9e034aaf6e572913b670ee",
+    "head_sha": "8e75f99f87c1354b68d60e814409b9b72cd86271",
+    "comparison": "c619a2f3c20d29280a9e034aaf6e572913b670ee...8e75f99f87c1354b68d60e814409b9b72cd86271",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "The change implements TASK-066A and meets every acceptance criterion; the two findings are low-severity documentation issues. Prettier is pinned exactly to 3.9.9, the newest 3.x release at least two weeks old on 2026-10-19, and the lockfile adds only Prettier with the registry's integrity hash. The Prettier configuration, ignore file, format scripts and root .editorconfig match the task exactly; no existing TypeScript, JavaScript, CSS or HTML file, CI workflow or Makefile changed; and ADR-001, AGENTS.md and README.md record Prettier as specified. In a separate worktree with a fresh frozen-lockfile install, lint, the frontend suite (311 tests) and the build passed on the committed branch, and format:check failed as expected before TASK-066B. A temporary reformat matched the 79 intended tracked files and changed 63 of them, changed only wrapping and whitespace (no quote, semicolon, trailing-comma or arrow-parenthesis changes), passed lint, tests and build, and was stable on a second run; the built CSS was byte-identical and the built index.html differed only in the hashed script name. The TASK-066B specification is consistent with TASK-066A, and its references to CI steps, Makefile targets and documentation files are correct. A reported discrepancy in the task's base line counts was not reproduced and is not recorded.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "The implementation note says Prettier parses the tsconfig files as JSON with comments and relies on trailingComma none to avoid trailing commas, but Prettier 3.9.9 uses its json parser for them.",
+        "rationale": "Prettier's file-info reports the json parser for tsconfig.json and tsconfig.app.json. The json parser keeps comments and never prints trailing commas regardless of the trailingComma option, so the note's conclusion holds but its stated reasons are wrong and could mislead a later configuration change.",
+        "recommendation": "Reword the note to say the tsconfig files use Prettier's json parser, which keeps comments and never adds trailing commas.",
+        "locations": [
+          {
+            "path": "tasks/TASK-066A-frontend-prettier-setup.md",
+            "line": 184
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "ARCHITECTURE.md and the tool list in docs/TESTING.md still describe the frontend tooling without Prettier, while AGENTS.md, README.md and ADR-001 now include it.",
+        "rationale": "ARCHITECTURE.md ranks above README.md in the source-of-truth order and repeats the same frontend tech-stack line, and docs/TESTING.md lists the frontend tools decided in ADR-001. The task's Documentation section did not name these files, so the implementation followed the specification, but the documents now disagree.",
+        "recommendation": "With developer approval, add Prettier to the frontend line in ARCHITECTURE.md and to the frontend tool list in docs/TESTING.md, in this task or in TASK-066B, and add them to that task's Documentation section.",
+        "locations": [
+          {
+            "path": "ARCHITECTURE.md",
+            "line": 27
+          },
+          {
+            "path": "docs/TESTING.md",
+            "line": 10
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": []
+  }
+}
