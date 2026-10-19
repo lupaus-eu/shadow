@@ -142,6 +142,23 @@ Aja `pnpm format` (tai `make frontend-format`) ennen frontend-muutosten
 commitointia. CI hylkää `frontend/`-hakemiston muotoilemattomat `.ts`-, `.tsx`-,
 `.js`-, `.css`-, `.html`- ja `.json`-tiedostot.
 
+Repository-juuren `.git-blame-ignore-revs` listaa commitit, jotka ovat
+pääosin mekaanista muotoilua, kuten TASK-066B:n Prettier-muotoilun. GitHub
+ohittaa ne blame-näkymässä automaattisesti. TASK-066B:n squash-commit sisältää
+myös taskin CI-, `Makefile`- ja dokumentaatiomuutokset, joten blame ohittaa
+nekin ja voi näyttää niille aiemman, asiaan liittymättömän commitin. Ota sama
+asetus käyttöön paikallisesti:
+
+```bash
+git config blame.ignoreRevsFile .git-blame-ignore-revs
+```
+
+Näet ohitettujen rivien todellisen commitin ilman listaa:
+
+```bash
+git blame --ignore-revs-file="" <file>
+```
+
 Kun typecheck-scripti on lisätty frontendiin, aja myös se ennen PR:ää.
 
 ---

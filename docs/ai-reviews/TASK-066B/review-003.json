@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-066B/review-003",
+  "task": {
+    "id": "TASK-066B",
+    "path": "tasks/TASK-066B-frontend-prettier-format.md"
+  },
+  "round": 3,
+  "reviewed_at": "2026-10-19T10:46:51Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "c70d0c1a4749ce7e81697faf7b360fd48abc5c78",
+    "head_sha": "864d1a24e3d085f25e62dc382f6fad210607db22",
+    "comparison": "c70d0c1a4749ce7e81697faf7b360fd48abc5c78...864d1a24e3d085f25e62dc382f6fad210607db22",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "This round reviews the post-merge follow-up from the task's Git Blame section, branch chore/TASK-066B-blame-ignore-revs, which starts from the TASK-066B squash commit on main. The squash commit c70d0c1 (#104) is on origin/main, and its tree is identical to the branch head reviewed in round 2. The change adds only a root .git-blame-ignore-revs and a CONTRIBUTING.md paragraph. The ignore file has one comment line naming TASK-066B and the squash commit's full 40-character SHA, in the format Git and GitHub accept. With the file, git blame on a reformatted PredictionsTab.tsx line reports the earlier commit instead of the squash commit. CONTRIBUTING.md documents the local blame.ignoreRevsFile opt-in as the task requires. The review-record validator passed. No frontend, CI or dependency change and no out-of-scope change was found; the one finding is a low-severity wording issue.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "The new CONTRIBUTING.md paragraph says .git-blame-ignore-revs lists only formatting commits, but the listed TASK-066B squash commit also contains CI, Makefile, documentation and review-record changes that blame now skips as well.",
+        "rationale": "The task accepts that blame skips those non-formatting lines, but the paragraph implies every ignored line is a pure whitespace change. A reader tracing the format-check CI step, the Make targets or the documentation lines would not know why blame attributes them to an older commit.",
+        "recommendation": "Reword the paragraph to say the file lists commits that are mostly mechanical formatting, and note that the TASK-066B squash commit also contains its CI, Makefile and documentation lines, which blame skips too.",
+        "locations": [
+          {
+            "path": "CONTRIBUTING.md",
+            "line": 145
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": []
+  }
+}
