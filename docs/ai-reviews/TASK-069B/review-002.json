@@ -1,0 +1,92 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-069B/review-002",
+  "task": {
+    "id": "TASK-069B",
+    "path": "tasks/TASK-069B-domain-service-transaction-cores.md"
+  },
+  "round": 2,
+  "reviewed_at": "2026-10-22T14:24:32Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "2a727b05c93757c6be7e8b5d2b9ecf353c531322",
+    "head_sha": "8fa0c19d97475b7843d22c28e22f0a89218da244",
+    "comparison": "2a727b05c93757c6be7e8b5d2b9ecf353c531322...8fa0c19d97475b7843d22c28e22f0a89218da244",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Round 2 reviews the whole TASK-069B branch, including the documentation-only commit that responds to round 1. The application code and tests are unchanged since round 1, and ruff, pyright and the full backend suite still pass at this head; the PostgreSQL integration tests were skipped without a database. TASK-069B is now marked implemented, with TASK-069C through TASK-069O pending, in AGENTS.md, ARCHITECTURE.md (stack summary, AI Via MCP status and ADR index), the ADR-015 status line, its Scope And Status paragraph and task table, DOMAIN.md and AI.md. The wording keeps the statement that no MCP feature is runtime behaviour yet, which remains true. The remaining 'TASK-069B through' mentions are historical task text or still accurate. TASK-069I now requires a PostgreSQL integration case that composes the TASK-069B cores on the migrated schema, hits a real unique-index conflict in a later core, expects that core's 409 and checks that rollback leaves no rows. That covers the gap from round 1 F-001 in the task that first composes cores in production code. No direct service caller of create_timeserie exists, so the round 1 F-002 condition for narrowing the rollback is not met. Two info-level documentation findings remain; neither blocks the PR.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "documentation",
+        "severity": "info",
+        "summary": "Two edited status paragraphs were not re-wrapped and now have lines longer than the surrounding text.",
+        "rationale": "The edited AI via MCP paragraph in AGENTS.md and the AI Domain status in DOMAIN.md each leave one line clearly longer than the paragraph's wrap width. Both files already contain other long lines and no Markdown linter runs in CI, so this is cosmetic only.",
+        "recommendation": "Re-wrap the two paragraphs in a later documentation touch, or leave them as they are.",
+        "locations": [
+          {
+            "path": "AGENTS.md",
+            "line": 117
+          },
+          {
+            "path": "docs/domains/DOMAIN.md",
+            "line": 360
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "documentation",
+        "severity": "info",
+        "summary": "TASK-069I's Testing section does not list the new composed-core PostgreSQL case in its summary of the integration module.",
+        "rationale": "The new case was added to the acceptance criteria inside the PostgreSQL integration module list, but the Testing section still describes that module as covering migrations, concurrent apply and lock-timeout classification only. The acceptance criteria are the binding scope, so the case will not be lost, but the summary is incomplete.",
+        "recommendation": "When TASK-069I starts, add the composed-core conflict case to the Testing section's description of the integration module.",
+        "locations": [
+          {
+            "path": "tasks/TASK-069I-ai-change-set-engine.md",
+            "line": 267
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-069B/review-001",
+        "finding_id": "F-001",
+        "disposition": "accepted_risk",
+        "rationale": "As the round 1 recommendation proposed, the PostgreSQL test is deferred to TASK-069I, which now requires it as an acceptance criterion in its PostgreSQL integration module. TASK-069B's SQLite tests remain the task's required coverage, and no production code composes cores until TASK-069I.",
+        "validated_by": {
+          "review_id": "TASK-069B/review-002",
+          "commit": "8fa0c19d97475b7843d22c28e22f0a89218da244"
+        }
+      },
+      {
+        "record_id": "TASK-069B/review-001",
+        "finding_id": "F-002",
+        "disposition": "accepted_risk",
+        "rationale": "The developer decided to narrow the rollback to the conflict case only if a direct service caller of create_timeserie appears. The REST routers are still the only callers, and their request-scoped session is rolled back on close, so REST behaviour is unchanged.",
+        "validated_by": {
+          "review_id": "TASK-069B/review-002",
+          "commit": "8fa0c19d97475b7843d22c28e22f0a89218da244"
+        }
+      },
+      {
+        "record_id": "TASK-069B/review-001",
+        "finding_id": "F-003",
+        "disposition": "fixed",
+        "rationale": "AGENTS.md, ARCHITECTURE.md, ADR-015, DOMAIN.md and AI.md now mark TASK-069B as implemented and TASK-069C through TASK-069O as pending, while still stating that no MCP feature is runtime behaviour yet.",
+        "validated_by": {
+          "review_id": "TASK-069B/review-002",
+          "commit": "8fa0c19d97475b7843d22c28e22f0a89218da244"
+        }
+      }
+    ]
+  }
+}

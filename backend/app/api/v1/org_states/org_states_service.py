@@ -139,6 +139,21 @@ def create_scenario(
     payload: ScenarioCreateRequest,
     actor_user_id: int,
 ) -> ScenarioResponse:
+    scenario = create_scenario_in_transaction(
+        session, organisation_key, payload, actor_user_id
+    )
+    session.commit()
+    session.refresh(scenario)
+
+    return to_scenario_response(scenario)
+
+
+def create_scenario_in_transaction(
+    session: Session,
+    organisation_key: str,
+    payload: ScenarioCreateRequest,
+    actor_user_id: int,
+) -> Scenario:
     organisation = _get_active_organisation(session, organisation_key)
     scenario = Scenario(
         organisation_id=organisation.organisation_id,
@@ -149,10 +164,9 @@ def create_scenario(
         created_by=actor_user_id,
     )
     session.add(scenario)
-    session.commit()
-    session.refresh(scenario)
+    session.flush()
 
-    return to_scenario_response(scenario)
+    return scenario
 
 
 def copy_scenario(
@@ -161,6 +175,21 @@ def copy_scenario(
     payload: ScenarioCopyRequest,
     actor_user_id: int,
 ) -> ScenarioResponse:
+    copied_scenario = copy_scenario_in_transaction(
+        session, organisation_key, payload, actor_user_id
+    )
+    session.commit()
+    session.refresh(copied_scenario)
+
+    return to_scenario_response(copied_scenario)
+
+
+def copy_scenario_in_transaction(
+    session: Session,
+    organisation_key: str,
+    payload: ScenarioCopyRequest,
+    actor_user_id: int,
+) -> Scenario:
     organisation = _get_active_organisation(session, organisation_key)
     source_scenario = _get_active_scenario(
         session,
@@ -298,11 +327,9 @@ def copy_scenario(
         copied_timeserie_id_by_source_id,
         actor_user_id,
     )
+    session.flush()
 
-    session.commit()
-    session.refresh(copied_scenario)
-
-    return to_scenario_response(copied_scenario)
+    return copied_scenario
 
 
 def patch_scenario(
@@ -484,6 +511,22 @@ def create_org_state(
     payload: OrgStateCreateRequest,
     actor_user_id: int,
 ) -> OrgStateResponse:
+    org_state = create_org_state_in_transaction(
+        session, organisation_key, scenario_key, payload, actor_user_id
+    )
+    session.commit()
+    session.refresh(org_state)
+
+    return to_org_state_response(org_state)
+
+
+def create_org_state_in_transaction(
+    session: Session,
+    organisation_key: str,
+    scenario_key: str,
+    payload: OrgStateCreateRequest,
+    actor_user_id: int,
+) -> OrgState:
     organisation = _get_active_organisation(session, organisation_key)
     scenario = _get_active_scenario(
         session,
@@ -502,10 +545,9 @@ def create_org_state(
         created_by=actor_user_id,
     )
     session.add(org_state)
-    session.commit()
-    session.refresh(org_state)
+    session.flush()
 
-    return to_org_state_response(org_state)
+    return org_state
 
 
 def patch_org_state(
@@ -620,6 +662,22 @@ def create_event(
     payload: EventCreateRequest,
     actor_user_id: int,
 ) -> EventResponse:
+    event = create_event_in_transaction(
+        session, organisation_key, scenario_key, payload, actor_user_id
+    )
+    session.commit()
+    session.refresh(event)
+
+    return to_event_response(event)
+
+
+def create_event_in_transaction(
+    session: Session,
+    organisation_key: str,
+    scenario_key: str,
+    payload: EventCreateRequest,
+    actor_user_id: int,
+) -> Event:
     organisation = _get_active_organisation(session, organisation_key)
     scenario = _get_active_scenario(session, organisation, scenario_key)
 
@@ -632,10 +690,9 @@ def create_event(
         created_by=actor_user_id,
     )
     session.add(event)
-    session.commit()
-    session.refresh(event)
+    session.flush()
 
-    return to_event_response(event)
+    return event
 
 
 def patch_event(
@@ -794,6 +851,29 @@ def create_timeserie(
     payload: TimeserieCreateRequest,
     actor_user_id: int,
 ) -> TimeserieResponse:
+    try:
+        timeserie = create_timeserie_in_transaction(
+            session, organisation_key, scenario_key, payload, actor_user_id
+        )
+        session.commit()
+    except IntegrityError as exc:
+        session.rollback()
+        raise _timeserie_conflict_exception() from exc
+    except HTTPException:
+        session.rollback()
+        raise
+    session.refresh(timeserie)
+
+    return to_timeserie_response(timeserie)
+
+
+def create_timeserie_in_transaction(
+    session: Session,
+    organisation_key: str,
+    scenario_key: str,
+    payload: TimeserieCreateRequest,
+    actor_user_id: int,
+) -> Timeserie:
     organisation = _get_active_organisation(session, organisation_key)
     scenario = _get_active_scenario(session, organisation, scenario_key)
     _ensure_timeserie_key_available(session, scenario, payload.id)
@@ -813,18 +893,11 @@ def create_timeserie(
     )
     session.add(timeserie)
     try:
-        session.commit()
+        session.flush()
     except IntegrityError as exc:
-        session.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=(
-                "An active timeserie with this id, name, or short name already exists."
-            ),
-        ) from exc
-    session.refresh(timeserie)
+        raise _timeserie_conflict_exception() from exc
 
-    return to_timeserie_response(timeserie)
+    return timeserie
 
 
 def update_timeserie_short_name(
@@ -871,6 +944,25 @@ def create_derived_metric(
     payload: DerivedMetricCreateRequest,
     actor_user_id: int,
 ) -> TimeserieResponse:
+    timeserie = create_derived_metric_in_transaction(
+        session, organisation_key, scenario_key, payload, actor_user_id
+    )
+    session.commit()
+    session.refresh(timeserie)
+    return to_timeserie_response(
+        timeserie,
+        _active_timeserie_values(session, timeserie),
+        equation=_active_derived_equation_for_timeserie(session, timeserie),
+    )
+
+
+def create_derived_metric_in_transaction(
+    session: Session,
+    organisation_key: str,
+    scenario_key: str,
+    payload: DerivedMetricCreateRequest,
+    actor_user_id: int,
+) -> Timeserie:
     organisation = _get_active_organisation(session, organisation_key)
     scenario = _get_active_scenario(session, organisation, scenario_key)
     _ensure_timeserie_name_available(session, scenario, payload.name)
@@ -899,11 +991,8 @@ def create_derived_metric(
     _materialize_derived_metric(
         session, equation, timeserie, parsed, references, actor_user_id
     )
-    session.commit()
-    session.refresh(timeserie)
-    return to_timeserie_response(
-        timeserie, _active_timeserie_values(session, timeserie), equation=equation
-    )
+    session.flush()
+    return timeserie
 
 
 def update_derived_metric(
@@ -962,6 +1051,34 @@ def replace_timeserie_values(
     payload: TimeserieValuesPatchRequest,
     actor_user_id: int,
 ) -> TimeserieResponse:
+    timeserie = replace_timeserie_values_in_transaction(
+        session,
+        organisation_key,
+        scenario_key,
+        timeserie_key,
+        payload,
+        actor_user_id,
+    )
+    scenario = session.get_one(Scenario, timeserie.scenario_id)
+    session.commit()
+    session.refresh(timeserie)
+
+    values = _active_timeserie_values(session, timeserie)
+    return to_timeserie_response(
+        timeserie,
+        values,
+        short_name_editable=not _is_timeserie_referenced(session, scenario, timeserie),
+    )
+
+
+def replace_timeserie_values_in_transaction(
+    session: Session,
+    organisation_key: str,
+    scenario_key: str,
+    timeserie_key: str,
+    payload: TimeserieValuesPatchRequest,
+    actor_user_id: int,
+) -> Timeserie:
     organisation = _get_active_organisation(session, organisation_key)
     scenario = _get_active_scenario(session, organisation, scenario_key)
     timeserie = _get_active_timeserie(
@@ -1025,15 +1142,9 @@ def replace_timeserie_values(
     timeserie.modified_by = actor_user_id
     session.flush()
     _recalculate_dependent_derived_metrics(session, scenario, timeserie, actor_user_id)
-    session.commit()
-    session.refresh(timeserie)
+    session.flush()
 
-    values = _active_timeserie_values(session, timeserie)
-    return to_timeserie_response(
-        timeserie,
-        values,
-        short_name_editable=not _is_timeserie_referenced(session, scenario, timeserie),
-    )
+    return timeserie
 
 
 def soft_delete_timeserie(
@@ -1705,6 +1816,13 @@ def _ensure_timeserie_short_name_available(
             status_code=status.HTTP_409_CONFLICT,
             detail="An active timeserie with this short name already exists.",
         )
+
+
+def _timeserie_conflict_exception() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail="An active timeserie with this id, name, or short name already exists.",
+    )
 
 
 def _ensure_scenario_allows_destructive_action(scenario: Scenario) -> None:

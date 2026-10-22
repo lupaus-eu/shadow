@@ -94,6 +94,16 @@ references, logical lifetime dates, positions and dynamic attributes. Graph
 node primary and secondary timeseries references are remapped to the matching
 copied scenario-owned timeseries.
 
+## Service Transaction Boundaries
+
+REST service functions own their transaction and commit once.
+`create_graph_node`, `patch_graph_node` and `create_graph_edge` delegate to
+`<name>_in_transaction` cores that take an explicit `actor_user_id`, set the
+same audit columns, return the ORM entity and flush but never commit, so a
+later core in the same transaction sees earlier rows, for example an edge
+between two nodes created earlier. Callers that compose cores, such as AI
+change-set dry-run and apply under ADR-015, own the commit or rollback.
+
 ---
 
 # Database Ownership

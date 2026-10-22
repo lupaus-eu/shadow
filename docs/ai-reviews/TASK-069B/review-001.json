@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-069B/review-001",
+  "task": {
+    "id": "TASK-069B",
+    "path": "tasks/TASK-069B-domain-service-transaction-cores.md"
+  },
+  "round": 1,
+  "reviewed_at": "2026-10-22T14:03:53Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "2a727b05c93757c6be7e8b5d2b9ecf353c531322",
+    "head_sha": "48d0bfb78d05342aa6edc59cb830ce76532572dd",
+    "comparison": "2a727b05c93757c6be7e8b5d2b9ecf353c531322...48d0bfb78d05342aa6edc59cb830ce76532572dd",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Round 1 reviews the TASK-069B refactor. All ten required in_transaction cores exist in the org states and org twin structure services. Each takes the existing key arguments plus an explicit actor_user_id, keeps the audit columns, returns the ORM entity and flushes without committing or rolling back. The public functions keep their signatures and their only callers are the REST routers, so route and response behaviour is unchanged. The create_derived_metric wrapper now re-reads the active equation and the replace_timeserie_values wrapper gets the scenario from the identity map, both with the same result as before. Derived-metric materialisation and dependent recalculation stay inside the core. No SAVEPOINT, migration, dependency, route or schema change was found, and out-of-scope cores were not added. The new test composes every core in one session under a before_commit listener that raises: a node on a scenario and org state created in the same transaction, an edge between two nodes created earlier, derived recalculation, and a scenario copy. It then checks that rollback restores the row counts of all eight business tables. A mutation that makes the edge core commit fails this test. Ruff, pyright and the full backend suite pass; the PostgreSQL integration tests were skipped without a database. The domain documents describe the new transaction boundaries accurately. Three non-blocking findings remain: one low and two info.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "missing_test",
+        "severity": "low",
+        "summary": "Composed-core behaviour is tested only on SQLite, so PostgreSQL row locks, foreign keys and partial unique indexes are not exercised.",
+        "rationale": "The new tests use the in-memory SQLite engine, where FOR UPDATE is ignored, foreign keys are not enforced and the migration-defined partial unique indexes on timeseries, graph nodes and graph edges do not exist. The flush-time IntegrityError path of the create_timeserie core is covered only with a monkeypatched flush. A real uniqueness violation in the middle of a composed transaction, and the rollback the caller must then perform, are therefore not verified against PostgreSQL. This matches the task's required test location and does not block this task, but the change-set engine relies on it.",
+        "recommendation": "In TASK-069I, add a PostgreSQL integration test that composes cores in one transaction, triggers a real unique-index conflict mid-transaction, and confirms that the conflict maps to 409 and that rollback leaves no rows.",
+        "locations": [
+          {
+            "path": "backend/tests/test_service_transaction_cores.py",
+            "line": 92
+          },
+          {
+            "path": "backend/app/api/v1/org_states/org_states_service.py",
+            "line": 895
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "scope",
+        "severity": "info",
+        "summary": "The public create_timeserie wrapper now rolls back on every HTTPException, not only on the uniqueness conflict.",
+        "rationale": "Because the core turns the flush IntegrityError into an HTTPException, the wrapper rolls back on HTTPException so that the conflict path keeps its explicit rollback. This also rolls back validation 404 and 409 errors that previously relied on the request session closing. The routers are the only callers and the request-scoped session is closed and rolled back anyway, so the REST behaviour does not change. The wrapper's remaining except IntegrityError branch now covers only commit-time errors and is not tested.",
+        "recommendation": "Accept as is, or narrow the rollback to the conflict case if a direct service caller ever appears.",
+        "locations": [
+          {
+            "path": "backend/app/api/v1/org_states/org_states_service.py",
+            "line": 854
+          }
+        ]
+      },
+      {
+        "id": "F-003",
+        "category": "documentation",
+        "severity": "info",
+        "summary": "Project status text still says TASK-069B through TASK-069O are pending.",
+        "rationale": "AGENTS.md, ARCHITECTURE.md and the ADR-015 status line say implementation is pending TASK-069B through TASK-069O. After this branch merges, the TASK-069B cores exist, although they add no MCP runtime behaviour. The task's documentation section requires only the domain documents, which were updated, so this is not a gap against the task.",
+        "recommendation": "The developer decides whether to mark TASK-069B as implemented in the status text now or in a later ADR-015 task.",
+        "locations": [
+          {
+            "path": "AGENTS.md"
+          },
+          {
+            "path": "ARCHITECTURE.md",
+            "line": 59
+          },
+          {
+            "path": "docs/decisions/ADR-015-ai-via-mcp.md",
+            "line": 3
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": []
+  }
+}

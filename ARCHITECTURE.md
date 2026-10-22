@@ -56,8 +56,9 @@ Päätetty tekninen perusrakenne:
 - AI via MCP: ADR-015 accepts read and write MCP services in the backend,
   Schatten as OAuth 2.1 authorization server for MCP clients over the existing
   Entra login, and AI change sets that only a human applies in Schatten. This
-  is an accepted design; implementation is pending TASK-069B through
-  TASK-069O and none of it is runtime behaviour yet (see
+  is an accepted design. TASK-069B's flush-only domain service transaction
+  cores are implemented; the rest is pending TASK-069C through TASK-069O and
+  none of the MCP feature is runtime behaviour yet (see
   [AI Via MCP](#ai-via-mcp))
 
 Tarkemmat toteutusyksityiskohdat täsmentyvät taskien ja tarvittaessa uusien ADR:ien kautta.
@@ -537,9 +538,10 @@ pystyviivoina. Filters- ja Rows-valikot ovat toisensa poissulkevia.
 # AI Via MCP
 
 Status: accepted design in
-[ADR-015](docs/decisions/ADR-015-ai-via-mcp.md); implementation pending
-TASK-069B through TASK-069O. Nothing below is implemented or enabled yet, and
-the feature stays behind `MCP_ENABLED=false` until TASK-069O's separately
+[ADR-015](docs/decisions/ADR-015-ai-via-mcp.md). TASK-069B (flush-only
+`*_in_transaction` domain service cores) is implemented; the rest is pending
+TASK-069C through TASK-069O. Nothing else below is implemented or enabled yet,
+and the feature stays behind `MCP_ENABLED=false` until TASK-069O's separately
 approved production enablement.
 
 Users chat in their own MCP-capable AI client (Claude Desktop, claude.ai,
@@ -874,7 +876,7 @@ ADR-004 Authentication, Identity And Session Architecture: accepted
 ADR-005 Production-Only Deployment Environments: accepted
 ADR-006 Local Authentik TLS And Optional Entra Federation: target superseded by ADR-013
 ADR-013 Shared Entra Registration And Local HTTPS Deployment: accepted; source delivery H1-H3 implemented, rollout pending
-ADR-015 AI Via MCP With Human-Applied Change Sets: accepted design; implementation pending TASK-069B..TASK-069O
+ADR-015 AI Via MCP With Human-Applied Change Sets: accepted design; TASK-069B implemented, TASK-069C..TASK-069O pending
 ```
 
 ---

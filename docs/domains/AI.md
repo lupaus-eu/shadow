@@ -1,7 +1,8 @@
 # AI Domain
 
-Status: accepted design in ADR-015; implementation pending TASK-069B through
-TASK-069O. Nothing in this document is runtime behaviour yet.
+Status: accepted design in ADR-015; TASK-069B (the domain service transaction
+cores this domain will use) is implemented and the rest is pending TASK-069C
+through TASK-069O. Nothing in this document is runtime behaviour yet.
 
 ## Purpose
 

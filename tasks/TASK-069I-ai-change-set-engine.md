@@ -202,7 +202,13 @@ from TASK-069B.
           `submitted`;
         - a lock timeout during execution, while a REST transaction holds a
           target business row, is an operation failure and marks the change
-          set `failed`.
+          set `failed`;
+        - TASK-069B's `*_in_transaction` cores composed directly in one
+          transaction on the migrated schema, with foreign keys and the
+          partial unique indexes in force: a real unique-index conflict in a
+          later core (for example a duplicate active timeserie key) raises
+          that core's `409`, and rolling back leaves no rows from the earlier
+          cores (TASK-069B review F-001).
       - a statement timeout during the fingerprint recomputation returns the
         generic retryable error and leaves the change set `submitted`. On
         SQLite, which has no statement timeout, this test injects the timeout
@@ -259,8 +265,9 @@ through their services' transaction cores.
 Required:
 
 - [ ] Backend tests (`backend/tests/test_ai_change_set_engine.py`)
-- [ ] PostgreSQL integration tests (migrations, concurrent apply, and the
-      lock-timeout classification in
+- [ ] PostgreSQL integration tests (migrations, concurrent apply, the
+      lock-timeout classification, and the composed TASK-069B cores with a
+      real unique-index conflict in
       `backend/tests/test_ai_change_sets_postgresql_integration.py`, skipped
       without `MIGRATION_TEST_DATABASE_URL`, always run in CI)
 - [ ] Lint

@@ -55,6 +55,22 @@ Updates, value replacement, cleanup and other domain mutation actions set
 `deleted_by`, including propagated child rows. Historical nullable audit values
 are not backfilled.
 
+## Service Transaction Boundaries
+
+REST service functions own their transaction and commit once. The
+`create_scenario`, `copy_scenario`, `create_org_state`, `create_event`,
+`create_timeserie`, `replace_timeserie_values` and `create_derived_metric`
+services delegate to `<name>_in_transaction` cores that take an explicit
+`actor_user_id`, set the same audit columns, return the ORM entity and flush
+but never commit or roll back. The public functions commit, refresh and map the
+response. The `create_timeserie` core raises the same `409` when its flush hits
+a uniqueness `IntegrityError`; the public function rolls back. Derived-metric
+materialisation and recalculation run inside the core's transaction.
+
+Callers that compose several cores, such as AI change-set dry-run and apply
+under ADR-015, own the single transaction and its commit or rollback. Cores do
+not use SAVEPOINTs.
+
 ## Organisation State Naming
 
 Every organisation state has:

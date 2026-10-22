@@ -192,6 +192,28 @@ def create_graph_node(
     payload: GraphNodeCreateRequest,
     actor_user_id: int,
 ) -> GraphNodeResponse:
+    node = create_graph_node_in_transaction(
+        session,
+        organisation_key,
+        scenario_key,
+        org_state_key,
+        payload,
+        actor_user_id,
+    )
+    session.commit()
+    session.refresh(node)
+
+    return to_graph_node_response(session, node)
+
+
+def create_graph_node_in_transaction(
+    session: Session,
+    organisation_key: str,
+    scenario_key: str,
+    org_state_key: str,
+    payload: GraphNodeCreateRequest,
+    actor_user_id: int,
+) -> GraphNode:
     organisation, scenario, org_state = _get_active_context(
         session,
         organisation_key,
@@ -215,10 +237,9 @@ def create_graph_node(
         created_by=actor_user_id,
     )
     session.add(node)
-    session.commit()
-    session.refresh(node)
+    session.flush()
 
-    return to_graph_node_response(session, node)
+    return node
 
 
 def patch_graph_node(
@@ -230,6 +251,30 @@ def patch_graph_node(
     payload: GraphNodePatchRequest,
     actor_user_id: int,
 ) -> GraphNodeResponse:
+    node = patch_graph_node_in_transaction(
+        session,
+        organisation_key,
+        scenario_key,
+        org_state_key,
+        node_key,
+        payload,
+        actor_user_id,
+    )
+    session.commit()
+    session.refresh(node)
+
+    return to_graph_node_response(session, node)
+
+
+def patch_graph_node_in_transaction(
+    session: Session,
+    organisation_key: str,
+    scenario_key: str,
+    org_state_key: str,
+    node_key: str,
+    payload: GraphNodePatchRequest,
+    actor_user_id: int,
+) -> GraphNode:
     organisation, scenario, org_state = _get_active_context(
         session,
         organisation_key,
@@ -273,10 +318,9 @@ def patch_graph_node(
 
     node.modified_time = datetime.now(UTC)
     node.modified_by = actor_user_id
-    session.commit()
-    session.refresh(node)
+    session.flush()
 
-    return to_graph_node_response(session, node)
+    return node
 
 
 def soft_delete_graph_node(
@@ -362,6 +406,28 @@ def create_graph_edge(
     payload: GraphEdgeCreateRequest,
     actor_user_id: int,
 ) -> GraphEdgeResponse:
+    edge = create_graph_edge_in_transaction(
+        session,
+        organisation_key,
+        scenario_key,
+        org_state_key,
+        payload,
+        actor_user_id,
+    )
+    session.commit()
+    session.refresh(edge)
+
+    return to_graph_edge_response(session, edge)
+
+
+def create_graph_edge_in_transaction(
+    session: Session,
+    organisation_key: str,
+    scenario_key: str,
+    org_state_key: str,
+    payload: GraphEdgeCreateRequest,
+    actor_user_id: int,
+) -> GraphEdge:
     organisation, scenario, org_state = _get_active_context(
         session,
         organisation_key,
@@ -410,10 +476,9 @@ def create_graph_edge(
         target_node,
     )
     session.add(edge)
-    session.commit()
-    session.refresh(edge)
+    session.flush()
 
-    return to_graph_edge_response(session, edge)
+    return edge
 
 
 def patch_graph_edge(
