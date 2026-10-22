@@ -117,7 +117,12 @@ Production:  https://schatten.lupaus.eu -> Caddy (React) -> FastAPI -> Entra
 ```
 
 Local Caddy routes `/api` and `/api/*` directly to FastAPI and other traffic,
-including Vite HMR WebSockets, to Vite. Retain strict Host/forwarded headers,
+including Vite HMR WebSockets, to Vite. (ADR-015's accepted AI via MCP design
+additively routes `/.well-known/oauth-authorization-server*` and
+`/.well-known/oauth-protected-resource*` to FastAPI in both environments when
+TASK-069E is implemented, and extends both Caddyfiles' access-log filters to
+redact the pending request id, `return_to`, `Location` and `Authorization`;
+the rest of this routing is unchanged.) Retain strict Host/forwarded headers,
 callback-log redaction, browser security headers and secure host-only cookies.
 Bind development ingress and any exposed development ports to loopback. Reuse
 valid local CA material where possible and separate application TLS tooling

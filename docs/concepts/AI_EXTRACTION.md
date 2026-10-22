@@ -1,6 +1,11 @@
 # AI Extraction Concept
 
-Status: initial candidate concept
+Status: unplanned candidate concept outside ADR-015's scope
+
+This document-AI candidate is retained but has no plan or task. ADR-015
+decides that Schatten itself does not call an LLM; AI use goes through the
+user's own MCP client. Implementing AI Extraction would need its own plan and
+ADR. The accepted AI concept is `docs/concepts/AI_CHANGE_SET.md`.
 
 ## Purpose
 

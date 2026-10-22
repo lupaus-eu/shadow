@@ -1,0 +1,555 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-069A/review-001",
+  "task": {
+    "id": "TASK-069A",
+    "path": "tasks/TASK-069A-ai-mcp-architecture.md"
+  },
+  "round": 1,
+  "reviewed_at": "2026-10-22T07:49:03Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "cb8832380131e18a4b83b3dc691917035a95d14d",
+    "head_sha": "1b7b33fb215816d514691d3125e338dba7ac19e2",
+    "comparison": "cb8832380131e18a4b83b3dc691917035a95d14d...1b7b33fb215816d514691d3125e338dba7ac19e2",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Round 1 reviews the documentation-only TASK-069A branch: ADR-015, the rewritten AI domain, the AI change-set concept, data-model, domain, architecture and AGENTS updates, the LikeC4 model and exports, and task specifications TASK-069B to TASK-069O. Scope is respected: no application code, migration, dependency, Compose service or Caddyfile changed. likec4@1.60.0 validate passes, all seven required views exist with the right kinds, the re-exported PNGs are byte-identical to the committed ones, every model element has exactly one correct new or existing tag, and the production and development deployments show the required nodes. Relative links resolve. ADR-015 accurately summarises ADR-004, ADR-012 and ADR-013 and keeps the single prediction worker, no Entra change, no offline access and no stored provider tokens. The documents state clearly that no MCP tool applies changes and that a human applies in the Metrics tab, and they label the feature as accepted design rather than runtime behaviour. Factual claims about existing code were checked: the app factory, authentication rate limiter, return_to validation accepting a query, SameSite Strict cookies, the unsafe-request guard, CSP, roles, soft-deleted Users, timeserie date alignment, numpy already locked, and free migration numbers 017 and 018. The main problems are in the OAuth design that later tasks will implement verbatim: lazy deletion of replaced refresh tokens defeats reuse detection, the loopback redirect allowlist wildcard is undefined, audience binding is missing from task contracts, the request-id logging claim is not backed by the specified redaction, and the 30-day grant lifetime relaxes ADR-004 session bounds without being recorded. The developer must also confirm the fastmcp and direct numpy dependency approvals. Change-set findings cover dry-run without SAVEPOINTs, a possible failed-status race, lost updates and a scenario filter with no field. Remaining findings are documentation consistency and diagram legibility. Twenty-seven findings: two high, nine medium, fifteen low and one info.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "security",
+        "severity": "high",
+        "summary": "Lazy cleanup of replaced refresh tokens removes the rows that refresh-token reuse detection depends on.",
+        "rationale": "ADR-015 and TASK-069F require that reusing an already-rotated refresh token revokes the whole grant, which needs the replaced token row to still exist. The same documents say expired or replaced tokens are deleted lazily during token operations, possibly on the very next refresh. A replayed stolen refresh token would then be an unknown token, rejected with invalid_grant while the grant stays alive, which defeats the stated control.",
+        "recommendation": "Keep replaced refresh-token hashes until their grant expires or is revoked, and lazily delete only expired access tokens and rows of expired or revoked grants. Add a TASK-069F test that replays a rotated refresh token after a cleanup pass and expects grant revocation.",
+        "locations": [
+          {
+            "path": "docs/decisions/ADR-015-ai-via-mcp.md",
+            "line": 367
+          },
+          {
+            "path": "tasks/TASK-069F-mcp-oauth-tokens-connections.md",
+            "line": 34
+          },
+          {
+            "path": "docs/data/DATA-MODEL.md",
+            "line": 219
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "security",
+        "severity": "high",
+        "summary": "The loopback redirect URI allowlist uses an undefined wildcard while the text requires an exact match.",
+        "rationale": "The allowlist contains http://127.0.0.1:* and http://localhost:*, but neither ADR-015 nor TASK-069E defines how the wildcard matches. A naive prefix or glob match can accept a URL whose authority contains userinfo and points to another host, so authorization codes could be delivered off the machine. This allowlist is the main control on open Dynamic Client Registration. The RFC 8252 handling of a varying loopback port, [::1], and the RFC 8252 advice against localhost are also unspecified.",
+        "recommendation": "Specify structured matching: exact string match for vendor callbacks; for loopback, scheme http, host exactly 127.0.0.1 or [::1] (and localhost only if deliberately kept), numeric port, no userinfo or fragment, and an explicit path rule. Decide whether the authorize request may change the loopback port. Add negative tests for userinfo and fragment tricks to TASK-069E.",
+        "locations": [
+          {
+            "path": "docs/decisions/ADR-015-ai-via-mcp.md",
+            "line": 147
+          },
+          {
+            "path": "tasks/TASK-069E-mcp-oauth-authorize-consent.md",
+            "line": 28
+          }
+        ]
+      },
+      {
+        "id": "F-003",
+        "category": "security",
+        "severity": "medium",
+        "summary": "Token audience binding to the MCP resource is required by ADR-015 but missing from the implementation task contracts.",
+        "rationale": "ADR-015 binds each grant to one resource and accepts a token only at that MCP endpoint. TASK-069F defines verify_access_token with only a required scope, TASK-069G checks only scope, and TASK-069E does not require the requested scopes to equal the resource's single scope. Implementers following the task acceptance criteria could ship tokens without an audience check, and a request for both scopes against the read resource is not explicitly rejected.",
+        "recommendation": "Add the required resource to the verify_access_token contract with a 401 invalid_token on mismatch, require at authorize time that scopes equal the resource's own scope, define resource canonicalisation and a default when scope is omitted, and add mismatch tests to TASK-069E, TASK-069F and TASK-069G.",
+        "locations": [
+          {
+            "path": "tasks/TASK-069F-mcp-oauth-tokens-connections.md",
+            "line": 28
+          },
+          {
+            "path": "tasks/TASK-069G-mcp-read-server-foundation.md",
+            "line": 33
+          },
+          {
+            "path": "tasks/TASK-069E-mcp-oauth-authorize-consent.md",
+            "line": 32
+          },
+          {
+            "path": "docs/decisions/ADR-015-ai-via-mcp.md",
+            "line": 155
+          }
+        ]
+      },
+      {
+        "id": "F-004",
+        "category": "security",
+        "severity": "medium",
+        "summary": "The claim that the pending authorization request id is never logged is not backed by the specified redaction.",
+        "rationale": "TASK-069E only adds Caddy redaction of the Authorization header and the top-level request query parameter. In the designed flow the id also appears in the consent API URL path, URL-encoded inside the return_to query parameter of the existing login endpoint, and in redirect Location headers. The current Caddy filter redacts only code, state, error and error_description, and the backend access-log filter matches the same keys.",
+        "recommendation": "Either relax the statement, since ADR-015 calls the id a lookup handle rather than a credential, or specify every mechanism: path redaction or moving the id out of the path, return_to redaction, Location header filtering and an extended backend access-log filter. Add a matching TASK-069O QA check.",
+        "locations": [
+          {
+            "path": "docs/decisions/ADR-015-ai-via-mcp.md",
+            "line": 196
+          },
+          {
+            "path": "tasks/TASK-069E-mcp-oauth-authorize-consent.md",
+            "line": 57
+          }
+        ]
+      },
+      {
+        "id": "F-005",
+        "category": "security",
+        "severity": "medium",
+        "summary": "The 30-day MCP grant lifetime relaxes ADR-004's session bounds without being recorded as a trade-off against ADR-004.",
+        "rationale": "ADR-004 accepts the lack of provider-side revocation because browser sessions have a 30-minute idle timeout and an eight-hour absolute lifetime. An MCP grant renews by rotation for 30 days with no idle timeout and no Entra re-check, so a user disabled in Entra but not soft-deleted in Schatten keeps MCP access. ADR-004's admin session revocation does not affect grants. The acceptance criterion requires referencing ADR-004 without weakening it.",
+        "recommendation": "Record this explicitly as an accepted trade-off, state that offboarding must soft-delete the Schatten User, and consider a refresh idle timeout and an admin-only revoke-all-grants-for-user operation.",
+        "locations": [
+          {
+            "path": "docs/decisions/ADR-015-ai-via-mcp.md",
+            "line": 163
+          },
+          {
+            "path": "docs/decisions/ADR-015-ai-via-mcp.md",
+            "line": 257
+          }
+        ]
+      },
+      {
+        "id": "F-006",
+        "category": "scope",
+        "severity": "medium",
+        "summary": "Approval of the fastmcp dependency is stated inconsistently, and ADR-015 also approves a direct numpy declaration that TASK-069A does not list.",
+        "rationale": "TASK-069A says approval is requested in the ADR, and TASK-069G says not to start until fastmcp is approved, while ADR-015 and AGENTS.md state that the developer already approved it with the plan. AGENTS.md forbids new dependencies without approval, so the recorded status must be unambiguous. numpy is already locked transitively, so the direct declaration adds no package.",
+        "recommendation": "The developer should confirm both approvals. Then align TASK-069A, TASK-069G, ADR-015 and AGENTS.md on one status.",
+        "locations": [
+          {
+            "path": "tasks/TASK-069A-ai-mcp-architecture.md",
+            "line": 47
+          },
+          {
+            "path": "tasks/TASK-069G-mcp-read-server-foundation.md",
+            "line": 121
+          },
+          {
+            "path": "docs/decisions/ADR-015-ai-via-mcp.md",
+            "line": 116
+          },
+          {
+            "path": "AGENTS.md",
+            "line": 123
+          }
+        ]
+      },
+      {
+        "id": "F-007",
+        "category": "documentation",
+        "severity": "medium",
+        "summary": "Grant reuse and the grant's absolute lifetime are underspecified, and the reuse key differs between ADR-015 and TASK-069F.",
+        "rationale": "ADR-015 reuses a grant for the same client, scopes and resource; TASK-069F omits resource. Neither says that only active, unexpired grants are reused, whether the 30-day lifetime restarts, or whether older refresh chains on a reused grant stay valid; a stale chain's reuse detection would revoke the fresh authorization. The TASK-069D schema has no grant expiry field, and TASK-069F still calls the lifetimes proposed.",
+        "recommendation": "Reuse only an active, unexpired grant matching user, client, resource and scopes; define the lifetime anchor and add an expiry column or derivation; decide whether re-authorization revokes earlier tokens; make TASK-069F's lifetimes match ADR-015.",
+        "locations": [
+          {
+            "path": "docs/decisions/ADR-015-ai-via-mcp.md",
+            "line": 167
+          },
+          {
+            "path": "tasks/TASK-069F-mcp-oauth-tokens-connections.md",
+            "line": 20
+          },
+          {
+            "path": "tasks/TASK-069D-mcp-oauth-schema.md",
+            "line": 37
+          }
+        ]
+      },
+      {
+        "id": "F-008",
+        "category": "bug",
+        "severity": "medium",
+        "summary": "A per-operation dry-run result cannot be produced after a database error when SAVEPOINTs are excluded.",
+        "rationale": "After a constraint violation on flush PostgreSQL aborts the transaction, so later operations cannot be validated without a rollback that discards earlier ones. A non-database validation error inside a core can also leave pending objects that the next operation's flush writes.",
+        "recommendation": "State that dry-run stops at the first failing operation and reports the rest as not run, clear the session state before reporting, and add a PostgreSQL test with a unique violation in the middle of the list.",
+        "locations": [
+          {
+            "path": "docs/decisions/ADR-015-ai-via-mcp.md",
+            "line": 293
+          },
+          {
+            "path": "tasks/TASK-069I-ai-change-set-engine.md",
+            "line": 56
+          }
+        ]
+      },
+      {
+        "id": "F-009",
+        "category": "bug",
+        "severity": "medium",
+        "summary": "Speculative race: writing the failed status after rollback could overwrite an applied change set.",
+        "rationale": "After an apply rolls back, the row lock is released and failed must be written in a new transaction. A concurrent apply waiting on the lock can see submitted and succeed if the first failure was transient, such as a statement timeout. An unconditional status update would then mark committed business rows as failed.",
+        "recommendation": "Write failed only conditionally on the status still being submitted, or re-lock and re-check, and cover the case in TASK-069I's concurrent-apply test.",
+        "locations": [
+          {
+            "path": "tasks/TASK-069I-ai-change-set-engine.md",
+            "line": 62
+          },
+          {
+            "path": "docs/decisions/ADR-015-ai-via-mcp.md",
+            "line": 305
+          }
+        ]
+      },
+      {
+        "id": "F-010",
+        "category": "documentation",
+        "severity": "medium",
+        "summary": "Apply re-validation does not detect data changed by humans after submit, although the concept says stale change sets fail safely.",
+        "rationale": "patch_node and the timeserie value operations replace existing data. Re-validation checks validity, not whether the target changed since submit, so a REST edit made between submit and apply is silently overwritten while the reviewer sees only the frozen proposal.",
+        "recommendation": "Either record target versions or modified times at submit and fail apply on change, or reword the claim and have the review UI flag operations that replace existing values.",
+        "locations": [
+          {
+            "path": "docs/concepts/AI_CHANGE_SET.md",
+            "line": 178
+          },
+          {
+            "path": "docs/decisions/ADR-015-ai-via-mcp.md",
+            "line": 305
+          }
+        ]
+      },
+      {
+        "id": "F-011",
+        "category": "documentation",
+        "severity": "medium",
+        "summary": "Change-set lists are to be filtered by scenario, but a change set has no scenario field.",
+        "rationale": "TASK-069K filters the review list by status and scenario and TASK-069M filters to the selected scenario by default, while ADR-015, the concept, the data model and TASK-069I define change sets as organisation-scoped without a scenario reference. A change set can also create its own scenarios.",
+        "recommendation": "Add an optional scenario reference to TASK-069I and the concept, derive the filter from operations, or drop scenario filtering.",
+        "locations": [
+          {
+            "path": "tasks/TASK-069K-change-set-review-api.md",
+            "line": 19
+          },
+          {
+            "path": "tasks/TASK-069M-metrics-ai-panel.md",
+            "line": 33
+          }
+        ]
+      },
+      {
+        "id": "F-012",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "Behaviour with MCP_ENABLED=false is not specified for several routes and UI parts.",
+        "rationale": "ADR-015 says no MCP or MCP OAuth route is registered when disabled, but the token, revoke and connections endpoints, the review API, the skill zips and the UI panels have no matching requirement or acceptance criterion.",
+        "recommendation": "List once in ADR-015 or AI.md which routes stay registered when disabled, and add per-task acceptance criteria.",
+        "locations": [
+          {
+            "path": "docs/decisions/ADR-015-ai-via-mcp.md",
+            "line": 101
+          },
+          {
+            "path": "docs/domains/AI.md",
+            "line": 190
+          }
+        ]
+      },
+      {
+        "id": "F-013",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "Ten new task files run the review-record validator from the backend directory, where the script does not exist.",
+        "rationale": "TASK-069B through TASK-069K list the validate command directly after the backend checks; the script lives in the repository-root scripts directory. TASK-069L to TASK-069O use the correct relative path.",
+        "recommendation": "Change to the repository root first or use the relative path in those ten task files.",
+        "locations": [
+          {
+            "path": "tasks/TASK-069B-domain-service-transaction-cores.md",
+            "line": 93
+          },
+          {
+            "path": "tasks/TASK-069I-ai-change-set-engine.md",
+            "line": 125
+          }
+        ]
+      },
+      {
+        "id": "F-014",
+        "category": "security",
+        "severity": "low",
+        "summary": "Incident revocation of all grants is an operator procedure with no repository-owned tooling.",
+        "rationale": "Without a command or admin API, the TASK-069O runbook could imply a manual SQL update in production, which AGENTS.md forbids.",
+        "recommendation": "Specify a repository-owned CLI or admin API, or define disabling MCP plus per-user revocation as the incident procedure.",
+        "locations": [
+          {
+            "path": "docs/decisions/ADR-015-ai-via-mcp.md",
+            "line": 259
+          },
+          {
+            "path": "tasks/TASK-069O-ai-mcp-qa-rollout.md",
+            "line": 41
+          }
+        ]
+      },
+      {
+        "id": "F-015",
+        "category": "security",
+        "severity": "low",
+        "summary": "Anonymous client registration and authorization requests can grow without bound, and limiter keying may not fit vendor connectors.",
+        "rationale": "Register and authorize create rows limited only by the shared per-IP authentication limiter, and lazy cleanup covers requests and tokens but not clients. The limiter keys on client IP, so all vendor-cloud users share vendor egress addresses, and using the same bounded limiter for per-grant MCP limits could crowd out login entries.",
+        "recommendation": "Define per-endpoint limits, clean up clients without grants, cap live pending requests, use a separate limiter for per-grant MCP limits, and verify behaviour with real clients in TASK-069O.",
+        "locations": [
+          {
+            "path": "docs/decisions/ADR-015-ai-via-mcp.md",
+            "line": 140
+          },
+          {
+            "path": "docs/decisions/ADR-015-ai-via-mcp.md",
+            "line": 361
+          }
+        ]
+      },
+      {
+        "id": "F-016",
+        "category": "security",
+        "severity": "low",
+        "summary": "The consent redirect contract leaves details open that are easy to implement unsafely.",
+        "rationale": "The flow reads as if the SPA builds the redirect URL itself, whereas TASK-069E correctly returns it from the server. ADR-015 does not require merging code and state into an existing query, the RFC 9207 iss parameter, revoking tokens on a second code redemption, or showing the redirect host and the self-asserted client name on the consent page.",
+        "recommendation": "State that the SPA navigates only to the server-returned URL and add these rules to ADR-015 and TASK-069E or TASK-069F.",
+        "locations": [
+          {
+            "path": "docs/decisions/ADR-015-ai-via-mcp.md",
+            "line": 181
+          },
+          {
+            "path": "docs/decisions/ADR-015-ai-via-mcp.md",
+            "line": 190
+          }
+        ]
+      },
+      {
+        "id": "F-017",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "AI.md and DATA-MODEL.md say request ids are stored only as hashes, but ADR-015 allows the plaintext id inside the login transaction's return_to.",
+        "rationale": "ADR-015 explicitly permits the id in the existing login transaction for up to ten minutes; the domain and data documents state an unconditional hash-only rule.",
+        "recommendation": "Narrow both statements to the MCP tables or mention the return_to exception.",
+        "locations": [
+          {
+            "path": "docs/domains/AI.md",
+            "line": 119
+          },
+          {
+            "path": "docs/data/DATA-MODEL.md",
+            "line": 205
+          }
+        ]
+      },
+      {
+        "id": "F-018",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "The mcp_oauth_* ownership shorthand does not cover mcp_grants and mcp_tokens.",
+        "rationale": "TASK-069A and the LikeC4 database edge label use the mcp_oauth_* prefix, while the schema names grants and tokens without it. ADR-015, AI.md and DOMAIN.md list all tables explicitly.",
+        "recommendation": "Either rename the tables to the shared prefix in TASK-069D, or fix the view label and wording.",
+        "locations": [
+          {
+            "path": "docs/diagrams/likec4/schatten-ai-mcp/views.c4",
+            "line": 36
+          },
+          {
+            "path": "tasks/TASK-069D-mcp-oauth-schema.md",
+            "line": 37
+          }
+        ]
+      },
+      {
+        "id": "F-019",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "Stale document-AI references remain in documents outside the diff.",
+        "rationale": "DATABASE.md still lists AI classification, summary and extraction tables as AI Domain planned work, and the Customer and Document domain and concept documents still list the AI Domain as a dependent, while the new AI.md marks the document-AI candidate as unplanned.",
+        "recommendation": "Mark those references as the unplanned document-AI candidate, as DATA-MODEL.md now does.",
+        "locations": [
+          {
+            "path": "docs/data/DATABASE.md",
+            "line": 250
+          },
+          {
+            "path": "docs/domains/CUSTOMER.md",
+            "line": 149
+          },
+          {
+            "path": "docs/domains/DOCUMENT.md",
+            "line": 91
+          },
+          {
+            "path": "docs/concepts/DOCUMENT.md",
+            "line": 96
+          }
+        ]
+      },
+      {
+        "id": "F-020",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "TASK-069K hedges on a reviewer rule that ADR-015 already decided.",
+        "rationale": "ADR-015 decides that both roles may review, including the creator; TASK-069K still allows a different decision.",
+        "recommendation": "State the rule firmly in TASK-069K.",
+        "locations": [
+          {
+            "path": "tasks/TASK-069K-change-set-review-api.md",
+            "line": 30
+          }
+        ]
+      },
+      {
+        "id": "F-021",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "TASK-069A's LikeC4 export and browser setup commands contradict the README procedure.",
+        "rationale": "Exporting directly into the generated directory writes view PNGs without the likec4- prefix, and the generic playwright install may not match the version bundled with LikeC4. The README uses a temporary directory, renames the files and installs the bundled browser.",
+        "recommendation": "Point the task's testing section at the README procedure.",
+        "locations": [
+          {
+            "path": "tasks/TASK-069A-ai-mcp-architecture.md",
+            "line": 184
+          },
+          {
+            "path": "tasks/TASK-069A-ai-mcp-architecture.md",
+            "line": 171
+          },
+          {
+            "path": "docs/diagrams/likec4/README.md",
+            "line": 62
+          }
+        ]
+      },
+      {
+        "id": "F-022",
+        "category": "scope",
+        "severity": "low",
+        "summary": "TASK-069M and TASK-069N depend on each other.",
+        "rationale": "TASK-069N starts after TASK-069J but its connect instructions need TASK-069M, while TASK-069M hides skill links until TASK-069N is merged.",
+        "recommendation": "Make TASK-069N depend on TASK-069M explicitly.",
+        "locations": [
+          {
+            "path": "tasks/TASK-069N-ai-skills-plugin-bundle.md",
+            "line": 112
+          },
+          {
+            "path": "tasks/TASK-069M-metrics-ai-panel.md",
+            "line": 31
+          }
+        ]
+      },
+      {
+        "id": "F-023",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "The $ref description does not match which keys are server-generated today.",
+        "rationale": "Graph node, graph edge and timeserie create requests take client-supplied keys; only scenarios, organisation states and events get server-generated keys. The example of an edge between two new nodes therefore needs no $ref.",
+        "recommendation": "Clarify which operation keys use $ref and which are taken verbatim, and adjust the example.",
+        "locations": [
+          {
+            "path": "docs/decisions/ADR-015-ai-via-mcp.md",
+            "line": 280
+          },
+          {
+            "path": "docs/concepts/AI_CHANGE_SET.md",
+            "line": 90
+          }
+        ]
+      },
+      {
+        "id": "F-024",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "Three LikeC4 elements tagged existing describe planned ADR-015 behaviour in the present tense.",
+        "rationale": "The Schatten system, Caddy and backend descriptions say they host OAuth and MCP and route the well-known OAuth paths, but the current Caddyfiles do not. Other existing elements mark their new parts explicitly, and the task requires distinguishing design from runtime behaviour.",
+        "recommendation": "Prefix the planned parts with a New (ADR-015) marker, as the SPA description does, and re-export.",
+        "locations": [
+          {
+            "path": "docs/diagrams/likec4/schatten-ai-mcp/model.c4",
+            "line": 74
+          },
+          {
+            "path": "docs/diagrams/likec4/schatten-ai-mcp/model.c4",
+            "line": 86
+          },
+          {
+            "path": "docs/diagrams/likec4/schatten-ai-mcp/model.c4",
+            "line": 92
+          }
+        ]
+      },
+      {
+        "id": "F-025",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "The exported PNGs carry no title or description, so the inline production diagram does not show that it is a design.",
+        "rationale": "ARCHITECTURE.md embeds the production deployment PNG, whose new elements are marked only by colour explained elsewhere. Deployment node descriptions, the localhost note and routing labels are not rendered; merged edges show only an ellipsis label, and local Caddy inherits the production public-ingress description.",
+        "recommendation": "Export with view descriptions, add explicit titled includes for the merged deployment edges and override the local Caddy instance description.",
+        "locations": [
+          {
+            "path": "docs/diagrams/likec4/README.md",
+            "line": 62
+          },
+          {
+            "path": "docs/diagrams/likec4/schatten-ai-mcp/views.c4",
+            "line": 47
+          },
+          {
+            "path": "docs/diagrams/likec4/schatten-ai-mcp/deployment.c4",
+            "line": 66
+          }
+        ]
+      },
+      {
+        "id": "F-026",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "The model omits the skill zip download relation and the persistence of submitted change sets in the generate flow.",
+        "rationale": "ADR-015 serves skill zips over the business session, but skills is reached only from the read service. The generate flow shows the database only at the final commit, so drafts and frozen values appear not to be stored before apply.",
+        "recommendation": "Add a session relation to skills and a step that stores the submitted change set with frozen values.",
+        "locations": [
+          {
+            "path": "docs/diagrams/likec4/schatten-ai-mcp/model.c4",
+            "line": 173
+          },
+          {
+            "path": "docs/diagrams/likec4/schatten-ai-mcp/views.c4",
+            "line": 85
+          }
+        ]
+      },
+      {
+        "id": "F-027",
+        "category": "documentation",
+        "severity": "info",
+        "summary": "Minor gaps: the Structure tab AI Assistant placeholder is not addressed, ADR-013 is not cross-referenced for the Caddy matcher change, and the consent GET is not covered by no-store.",
+        "rationale": "No document says whether the existing placeholder stays, goes or links to the new panel. ADR-013 still describes the local Caddy routing only as /api. The existing no-store middleware covers only the authentication routes, while TASK-069E extends it to the OAuth paths but not to the consent API.",
+        "recommendation": "Decide the placeholder's fate in TASK-069M, add a forward note to ADR-013 if desired, and extend no-store to the consent API in TASK-069E.",
+        "locations": [
+          {
+            "path": "frontend/src/features/structure/GraphEditorToolbar.tsx",
+            "line": 12
+          },
+          {
+            "path": "tasks/TASK-069E-mcp-oauth-authorize-consent.md",
+            "line": 53
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": []
+  }
+}

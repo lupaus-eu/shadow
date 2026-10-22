@@ -1,0 +1,292 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-069A/review-004",
+  "task": {
+    "id": "TASK-069A",
+    "path": "tasks/TASK-069A-ai-mcp-architecture.md"
+  },
+  "round": 4,
+  "reviewed_at": "2026-10-22T11:04:14Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "cb8832380131e18a4b83b3dc691917035a95d14d",
+    "head_sha": "a6266d1ed27c50eb858c5443d41df84e4cc90615",
+    "comparison": "cb8832380131e18a4b83b3dc691917035a95d14d...a6266d1ed27c50eb858c5443d41df84e4cc90615",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Round 4 reviews the whole TASK-069A branch at the round-3 fix commit. All twelve round-3 findings are verified fixed, following the developer's instructions for client hard deletion once unreferenced, the narrowed review_stale claim with per-target value checksums, the last-used update on authorize and consistent New (ADR-015) markers with the relabelled apply step, and the recommendations for the rest: an ordered apply with pre-execution rejections that never write failed, the ARCHITECTURE.md summary, informational validate flags, foreign-key-enforcing cleanup tests, copied client_id with bounded client names and aligned log fields, the second-redemption wording, the review-read timeout and missing targets, and the TASK-069A $ref summary. Scope is still documentation-only. likec4@1.60.0 validate passes and the committed PNGs are byte-identical to a fresh export with the README command; all seven views were inspected; all 27 model elements have one tag; 76 relative links and anchors resolve. Seven new findings, all low or info: errors in apply's first three steps not classified, client growth bounded only by registration rate with last-used updated before validation, client name format characters and missing names, a broken ADR list, leftover client_id and timeout wording, UI tasks missing the self-declared label and missing-target display, and migration coverage of the change set's set-null rule.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "bug",
+        "severity": "low",
+        "summary": "Errors in apply's first three steps are not classified, so a lock-wait or recomputation timeout could still write failed.",
+        "rationale": "ADR-015 says only failures in re-validation, execution and commit mark failed, but TASK-069I, AI.md and the concept say a statement timeout marks failed without limiting it to those steps. The timeout now also covers the fingerprint recomputation and lock waits on the change-set row, so an apply that times out waiting for the lock after another apply ended review_stale could make a never-executed change set permanently failed.",
+        "recommendation": "State in all four places that any error in the lock, status check or recomputation, including a statement timeout, rolls back without writing failed and returns a retryable error, limit timeout to execution, and add a TASK-069I test for a timeout during recomputation.",
+        "locations": [
+          {
+            "path": "tasks/TASK-069I-ai-change-set-engine.md",
+            "line": 123
+          },
+          {
+            "path": "docs/domains/AI.md",
+            "line": 106
+          },
+          {
+            "path": "docs/concepts/AI_CHANGE_SET.md",
+            "line": 144
+          },
+          {
+            "path": "docs/decisions/ADR-015-ai-via-mcp.md",
+            "line": 529
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "security",
+        "severity": "low",
+        "summary": "Client rows are bounded only by the registration rate, and failing authorize calls can keep clients alive.",
+        "rationale": "A new client is kept for at least 30 days, registration is in the higher rate tier, and authorize updates the last-used time before validating the redirect URI, scope and resource, so periodic failing authorize calls keep registered clients alive indefinitely. Speculatively, a concurrent cleanup could hard-delete a client between authorize's client check and its insert and hit the restricting foreign key.",
+        "recommendation": "Reword the ADR claim to growth bounded by the registration rate over the 30-day window, update the last-used time only after authorize has validated and stored the pending request, conditionally on the client not being soft-deleted, and optionally add a configurable total-client cap.",
+        "locations": [
+          {
+            "path": "docs/decisions/ADR-015-ai-via-mcp.md",
+            "line": 648
+          },
+          {
+            "path": "tasks/TASK-069E-mcp-oauth-authorize-consent.md",
+            "line": 69
+          }
+        ]
+      },
+      {
+        "id": "F-003",
+        "category": "security",
+        "severity": "low",
+        "summary": "Client name rules do not reject Unicode format characters, and a missing client name is unspecified.",
+        "rationale": "Only control characters and line breaks are rejected, so bidirectional overrides and zero-width characters could spoof or reorder the name and its self-declared label on the consent page. RFC 7591 makes the name optional, but the 1-to-100-character rule implicitly rejects a missing name and the column nullability is open.",
+        "recommendation": "Reject Unicode format characters as well as control characters, render the name isolated in TASK-069L, state whether a missing name is rejected or defaulted with a matching non-null column, and have TASK-069O confirm the real clients send one.",
+        "locations": [
+          {
+            "path": "docs/decisions/ADR-015-ai-via-mcp.md",
+            "line": 161
+          },
+          {
+            "path": "tasks/TASK-069E-mcp-oauth-authorize-consent.md",
+            "line": 44
+          },
+          {
+            "path": "tasks/TASK-069D-mcp-oauth-schema.md",
+            "line": 25
+          }
+        ]
+      },
+      {
+        "id": "F-004",
+        "category": "documentation",
+        "severity": "info",
+        "summary": "The ADR-015 registration rules have a broken list structure.",
+        "rationale": "The redirect URI allowlist sentence continues the last metadata-bounds sub-item, so the URI matching bullets render as siblings of the metadata bounds.",
+        "recommendation": "End the bounds sub-list and put the allowlist sentence back as its own paragraph under Registration.",
+        "locations": [
+          {
+            "path": "docs/decisions/ADR-015-ai-via-mcp.md",
+            "line": 165
+          }
+        ]
+      },
+      {
+        "id": "F-005",
+        "category": "documentation",
+        "severity": "info",
+        "summary": "Some summaries still omit the copied client_id, the review-read timeout or the refined client cleanup criterion.",
+        "rationale": "The DATA-MODEL.md change-set row, ADR-015's change-set introduction and TASK-069O's cleanup check list creator and client name without client_id; TASK-069I's limits bullet sets the timeout only for dry-run and apply; and TASK-069D describes client cleanup as clients without grants for 30 days instead of no active grant and last use older than 30 days.",
+        "recommendation": "Add client_id to those summaries, add the review read to TASK-069I's limits bullet, and align TASK-069D's cleanup wording.",
+        "locations": [
+          {
+            "path": "docs/data/DATA-MODEL.md",
+            "line": 192
+          },
+          {
+            "path": "docs/decisions/ADR-015-ai-via-mcp.md",
+            "line": 453
+          },
+          {
+            "path": "tasks/TASK-069O-ai-mcp-qa-rollout.md",
+            "line": 55
+          },
+          {
+            "path": "tasks/TASK-069I-ai-change-set-engine.md",
+            "line": 131
+          },
+          {
+            "path": "tasks/TASK-069D-mcp-oauth-schema.md",
+            "line": 31
+          }
+        ]
+      },
+      {
+        "id": "F-006",
+        "category": "documentation",
+        "severity": "info",
+        "summary": "The UI tasks do not require the self-declared label, client_id or a missing-target display.",
+        "rationale": "ADR-015 says the client name is always shown as a self-declared label and the review API reports deleted targets as missing, but TASK-069L's connections list and TASK-069M's review panel show the client without the label or client_id, and TASK-069M does not render missing targets.",
+        "recommendation": "Require the self-declared label and client_id in TASK-069L and TASK-069M, and a missing-target display with a Vitest case in TASK-069M.",
+        "locations": [
+          {
+            "path": "tasks/TASK-069L-mcp-consent-connections-ui.md",
+            "line": 38
+          },
+          {
+            "path": "tasks/TASK-069M-metrics-ai-panel.md",
+            "line": 50
+          }
+        ]
+      },
+      {
+        "id": "F-007",
+        "category": "missing_test",
+        "severity": "info",
+        "summary": "With the SQLite option, the migration's set-null rule for the change set's grant reference is never tested.",
+        "rationale": "A SQLite run builds tables from the models, so it exercises the model's delete rule rather than migration 018, and TASK-069D's PostgreSQL test covers only the authorization request reference.",
+        "recommendation": "Have the migration 018 up and down PostgreSQL test also check the change set's grant reference becomes null, or require PostgreSQL for the cleanup test.",
+        "locations": [
+          {
+            "path": "tasks/TASK-069I-ai-change-set-engine.md",
+            "line": 159
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-069A/review-003",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "ADR-015 now lists the apply steps in order with the fingerprint check before execution, states that a not-submitted 409 and review_stale never write failed and that only re-validation, execution and commit failures do, and AI.md, the concept lifecycle and TASK-069I agree; a remaining classification gap for errors in the first three steps is recorded as a new finding.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-004",
+          "commit": "a6266d1ed27c50eb858c5443d41df84e4cc90615"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-003",
+        "finding_id": "F-002",
+        "disposition": "fixed",
+        "rationale": "As the developer instructed, soft-deleted clients are hard-deleted once no authorization request or grant references them, with restricting client foreign keys, consistently in ADR-015, AI.md, DATA-MODEL.md and TASK-069D, E and F; a remaining growth and ordering issue is recorded as a new finding.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-004",
+          "commit": "a6266d1ed27c50eb858c5443d41df84e4cc90615"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-003",
+        "finding_id": "F-003",
+        "disposition": "fixed",
+        "rationale": "As instructed, the claim now covers changes to the flagged summaries, each flagged summary carries a per-target SHA-256 value checksum included in the fingerprint, the remaining in-transaction window is explicitly accepted, and TASK-069I adds a single-value-edit test.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-004",
+          "commit": "a6266d1ed27c50eb858c5443d41df84e4cc90615"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-003",
+        "finding_id": "F-004",
+        "disposition": "fixed",
+        "rationale": "ARCHITECTURE.md now summarises recomputed flags with per-target checksums and the 409 review_stale failure, matching ADR-015.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-004",
+          "commit": "a6266d1ed27c50eb858c5443d41df84e4cc90615"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-003",
+        "finding_id": "F-005",
+        "disposition": "fixed",
+        "rationale": "TASK-069J now returns the replacement computation from validate for information only, never stores it, and states that review and apply recompute it.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-004",
+          "commit": "a6266d1ed27c50eb858c5443d41df84e4cc90615"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-003",
+        "finding_id": "F-006",
+        "disposition": "fixed",
+        "rationale": "The TASK-069F and TASK-069I cleanup tests must run on PostgreSQL or on SQLite with foreign-key enforcement, following the existing customer model test pattern; a migration coverage gap is recorded as a new finding.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-004",
+          "commit": "a6266d1ed27c50eb858c5443d41df84e4cc90615"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-003",
+        "finding_id": "F-007",
+        "disposition": "fixed",
+        "rationale": "Change sets copy client_id as a plain value, client_name is bounded and sanitised and always labelled self-declared, and the revocation log fields are aligned between ADR-015 and TASK-069F; leftover summaries are recorded as a new finding.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-004",
+          "commit": "a6266d1ed27c50eb858c5443d41df84e4cc90615"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-003",
+        "finding_id": "F-008",
+        "disposition": "fixed",
+        "rationale": "As instructed, authorize now updates the client's last-used time, with a TASK-069E test that a client starting a consent flow is not cleaned up before the code exchange.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-004",
+          "commit": "a6266d1ed27c50eb858c5443d41df84e4cc90615"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-003",
+        "finding_id": "F-009",
+        "disposition": "fixed",
+        "rationale": "ADR-015 now distinguishes a second redemption after only the grant is gone (already consumed, nothing to revoke) from one after the request row is gone (unknown code).",
+        "validated_by": {
+          "review_id": "TASK-069A/review-004",
+          "commit": "a6266d1ed27c50eb858c5443d41df84e4cc90615"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-003",
+        "finding_id": "F-010",
+        "disposition": "fixed",
+        "rationale": "The statement timeout now covers the review detail recomputation, and a target deleted after submit is reported as missing rather than raising, in ADR-015, TASK-069I and TASK-069K.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-004",
+          "commit": "a6266d1ed27c50eb858c5443d41df84e4cc90615"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-003",
+        "finding_id": "F-011",
+        "disposition": "fixed",
+        "rationale": "As instructed, every existing LikeC4 element that describes planned behaviour uses New (ADR-015), the generate flow apply step includes the fingerprint check, and all seven views were re-exported and match a fresh export byte for byte.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-004",
+          "commit": "a6266d1ed27c50eb858c5443d41df84e4cc90615"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-003",
+        "finding_id": "F-012",
+        "disposition": "fixed",
+        "rationale": "TASK-069A's decision summary now limits $ref to server-generated keys and uses client keys verbatim.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-004",
+          "commit": "a6266d1ed27c50eb858c5443d41df84e4cc90615"
+        }
+      }
+    ]
+  }
+}

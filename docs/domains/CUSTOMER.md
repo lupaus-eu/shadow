@@ -146,7 +146,8 @@ Referenced By:
 
 - Billing Domain
 - Document Domain
-- AI Domain
+- AI Domain (only the unplanned document-AI candidate in `docs/domains/AI.md`;
+  the accepted MCP design in ADR-015 does not reference customers)
 
 ---
 

@@ -1,0 +1,202 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-069A/review-007",
+  "task": {
+    "id": "TASK-069A",
+    "path": "tasks/TASK-069A-ai-mcp-architecture.md"
+  },
+  "round": 7,
+  "reviewed_at": "2026-10-22T11:57:09Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "cb8832380131e18a4b83b3dc691917035a95d14d",
+    "head_sha": "d2edd3d9c3df6dd4c2451e1988aee7789dab4f52",
+    "comparison": "cb8832380131e18a4b83b3dc691917035a95d14d...d2edd3d9c3df6dd4c2451e1988aee7789dab4f52",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Round 7 reviews the whole TASK-069A branch at the round-6 fix commit. All five round-6 findings are verified fixed, following the developer's instruction to classify apply errors by step rather than error type and the recommendations for the rest: PostgreSQL integration modules for the lock tests, the client cap remedy, defined trimming with a fixed blank code-point list, and the weaker client row lock with a vendor registration check. Scope is still documentation-only. likec4@1.60.0 validate passes and the committed PNGs are byte-identical to a fresh export with the README command; relative links and anchors resolve; the review records validate; Unicode categories were checked with Python and lock conflicts against PostgreSQL's documented conflict table. Seven new findings, three low and four info, all implementation-level detail for TASK-069E, F, I and K: an overclaimed lock benefit, trimming versus category check order, remaining SQLite placement of timeout tests, cleanup lock strength, possible further blank code points, one remedy word and two unstated timeout consequences.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "The claim that token exchanges never wait for an in-flight authorize is not true.",
+        "rationale": "Token issuance also updates the client's last-used time, and an update of a non-key column takes a lock that conflicts with authorize's no-key-update lock, so a code exchange or refresh for that client waits briefly until authorize commits; only the grant insert's foreign-key lock is free of the conflict. The rest of the lock reasoning holds.",
+        "recommendation": "Narrow the claim to grant inserts, or throttle or move the token-time client update, and align TASK-069E, TASK-069F and TASK-069O.",
+        "locations": [
+          {
+            "path": "docs/decisions/ADR-015-ai-via-mcp.md",
+            "line": 689
+          },
+          {
+            "path": "tasks/TASK-069E-mcp-oauth-authorize-consent.md",
+            "line": 83
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "The order of trimming and the character-category checks for client names is undefined.",
+        "rationale": "Standard whitespace stripping also removes some control characters and the line and paragraph separators, so a trailing newline or leading separator is accepted if trimming runs first and rejected if the checks run on the raw input. The TASK-069E tests do not say where in the name those characters sit.",
+        "recommendation": "State whether the category checks apply before or after trimming, and fix the position of those characters in the test cases.",
+        "locations": [
+          {
+            "path": "docs/decisions/ADR-015-ai-via-mcp.md",
+            "line": 163
+          },
+          {
+            "path": "tasks/TASK-069E-mcp-oauth-authorize-consent.md",
+            "line": 44
+          }
+        ]
+      },
+      {
+        "id": "F-003",
+        "category": "missing_test",
+        "severity": "low",
+        "summary": "Some timeout and lock tests remain in suites that run on SQLite, which has neither statement timeouts nor row locks.",
+        "rationale": "TASK-069I's statement-timeout-during-recomputation test sits outside the PostgreSQL module, and TASK-069K's API tests cover the lock-held 409 and the timeout 503 without saying how they are produced.",
+        "recommendation": "State that SQLite tests inject the error at the step boundary, or move them to the PostgreSQL integration modules.",
+        "locations": [
+          {
+            "path": "tasks/TASK-069I-ai-change-set-engine.md",
+            "line": 193
+          },
+          {
+            "path": "tasks/TASK-069K-change-set-review-api.md",
+            "line": 65
+          }
+        ]
+      },
+      {
+        "id": "F-004",
+        "category": "documentation",
+        "severity": "info",
+        "summary": "The lock strength cleanup uses with skip-locked is not stated.",
+        "rationale": "The no-key-update lock conflicts with cleanup only if cleanup uses a strong enough lock; a key-share skip-locked lock would not skip the locked client.",
+        "recommendation": "Specify that cleanup locks candidates with an update-strength skip-locked lock, since it may delete the row.",
+        "locations": [
+          {
+            "path": "docs/decisions/ADR-015-ai-via-mcp.md",
+            "line": 684
+          },
+          {
+            "path": "tasks/TASK-069E-mcp-oauth-authorize-consent.md",
+            "line": 73
+          }
+        ]
+      },
+      {
+        "id": "F-005",
+        "category": "security",
+        "severity": "info",
+        "summary": "Speculative: the blank code-point list may miss some blank-rendering letters or symbols.",
+        "rationale": "The listed code points are confirmed letters or symbols and the other default-ignorables are format, mark or unassigned in the runtime's Unicode version, but a few font-dependent blank-looking symbols and hieroglyph blanks are not listed.",
+        "recommendation": "Optionally add them and note that the list is a best-effort heuristic tied to the runtime's Unicode version.",
+        "locations": [
+          {
+            "path": "docs/decisions/ADR-015-ai-via-mcp.md",
+            "line": 173
+          },
+          {
+            "path": "tasks/TASK-069E-mcp-oauth-authorize-consent.md",
+            "line": 52
+          }
+        ]
+      },
+      {
+        "id": "F-006",
+        "category": "documentation",
+        "severity": "info",
+        "summary": "ADR-015's consequences say a lower registration rate only prevents refilling, while the lifecycle and TASK-069O say it only slows refilling.",
+        "rationale": "A lower rate does not prevent refilling, so the consequences sentence contradicts the corrected wording elsewhere.",
+        "recommendation": "Use slows in the consequences too.",
+        "locations": [
+          {
+            "path": "docs/decisions/ADR-015-ai-via-mcp.md",
+            "line": 834
+          }
+        ]
+      },
+      {
+        "id": "F-007",
+        "category": "documentation",
+        "severity": "info",
+        "summary": "Two consequences of the step-based classification are not stated.",
+        "rationale": "A transaction-local lock timeout stays in force through execution, so a business-row wait longer than five seconds makes the change set permanently failed and the AI must stage it again. The statement timeout has no documented default and nothing requires it to exceed the lock timeout, which the step-1 classification relies on.",
+        "recommendation": "State that the lock timeout covers the whole apply transaction with its terminal-failure consequence, and require the statement timeout to be longer than the lock timeout.",
+        "locations": [
+          {
+            "path": "docs/decisions/ADR-015-ai-via-mcp.md",
+            "line": 531
+          },
+          {
+            "path": "tasks/TASK-069I-ai-change-set-engine.md",
+            "line": 108
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-069A/review-006",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "As the developer instructed, apply errors are classified by step rather than error type in ADR-015, AI.md, the concept and TASK-069I, so a lock or statement timeout in re-validation or execution marks failed, and the timeout interaction sentence is reworded accurately.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-007",
+          "commit": "d2edd3d9c3df6dd4c2451e1988aee7789dab4f52"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-006",
+        "finding_id": "F-002",
+        "disposition": "fixed",
+        "rationale": "TASK-069E and TASK-069I now place the row-lock and lock-timeout tests in PostgreSQL integration modules with run commands, skipped without the database URL and always run in CI, matching the repository's existing pattern.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-007",
+          "commit": "d2edd3d9c3df6dd4c2451e1988aee7789dab4f52"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-006",
+        "finding_id": "F-003",
+        "disposition": "fixed",
+        "rationale": "ADR-015's client lifecycle and TASK-069O now name raising the cap as the immediate remedy and state that a lower rate does not unblock a full cap; one leftover wording is recorded as a new finding.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-007",
+          "commit": "d2edd3d9c3df6dd4c2451e1988aee7789dab4f52"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-006",
+        "finding_id": "F-004",
+        "disposition": "fixed",
+        "rationale": "Trimming is defined as standard whitespace stripping, the stored name is trimmed, the length is checked after trimming, and a fixed blank code-point list replaces the unavailable default-ignorable property, consistently in ADR-015, TASK-069E and TASK-069D; check ordering is recorded as a new finding.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-007",
+          "commit": "d2edd3d9c3df6dd4c2451e1988aee7789dab4f52"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-006",
+        "finding_id": "F-005",
+        "disposition": "fixed",
+        "rationale": "Authorize now takes the weaker no-key-update lock on the client row, and TASK-069O records whether vendor connectors share one client registration; an overclaimed benefit is recorded as a new finding.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-007",
+          "commit": "d2edd3d9c3df6dd4c2451e1988aee7789dab4f52"
+        }
+      }
+    ]
+  }
+}

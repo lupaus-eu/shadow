@@ -1,0 +1,158 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-069A/review-009",
+  "task": {
+    "id": "TASK-069A",
+    "path": "tasks/TASK-069A-ai-mcp-architecture.md"
+  },
+  "round": 9,
+  "reviewed_at": "2026-10-22T12:59:36Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "cb8832380131e18a4b83b3dc691917035a95d14d",
+    "head_sha": "7a32b729ae2fa1795d238a35ee6d568993d1ecd5",
+    "comparison": "cb8832380131e18a4b83b3dc691917035a95d14d...7a32b729ae2fa1795d238a35ee6d568993d1ecd5",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Round 9 reviews the whole TASK-069A branch at the round-8 fix commit. All five round-8 findings are verified fixed: the narrowed allowlist claim, the step-decides-status wording with the lock-error selection in ADR-015 and TASK-069I, TASK-069F tests for the throttled token-time client update, the stated punctuation trade-off, and rewrapped lines. A word-level diff and a rendered HTML comparison confirm the rewrap changed no words or rendering. Scope is still documentation-only. likec4@1.60.0 validate passes and the committed PNGs are byte-identical to a fresh export with the README command; relative links and anchors resolve; the review records validate. Five new findings, four low and one info, all wording or test placement: an accidental numbered list in ADR-015, leftover classification wording in AI.md and the concept, an over-broad 503 sentence, an overstatement of what the redirect host proves for loopback clients, and the placement of TASK-069F's PostgreSQL case.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "A wrapped line in ADR-015 starts with a number and a period, so Markdown renders a numbered list in the middle of a sentence.",
+        "rationale": "The lock timeout bullet wraps before the step number, and CommonMark lets an ordered list starting at one interrupt a paragraph, cutting the sentence in two. This came in with the round-7 fix.",
+        "recommendation": "Rewrap so no continuation line starts with a number followed by a period.",
+        "locations": [
+          {
+            "path": "docs/decisions/ADR-015-ai-via-mcp.md",
+            "line": 574
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "AI.md and the concept still say apply errors are classified by step, not by error type.",
+        "rationale": "That is the claim the previous round narrowed in ADR-015 and TASK-069I: the step alone decides the status, but the retryable response in the first steps depends on recognising the lock error.",
+        "recommendation": "Use ADR-015's wording in both files.",
+        "locations": [
+          {
+            "path": "docs/domains/AI.md",
+            "line": 114
+          },
+          {
+            "path": "docs/concepts/AI_CHANGE_SET.md",
+            "line": 144
+          }
+        ]
+      },
+      {
+        "id": "F-003",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "ADR-015 says any other error in the first steps is 503, although those steps also produce the not-submitted 409 and review_stale.",
+        "rationale": "Read literally, the new bullet contradicts the bullets around it, and the same rule is now stated several times in that section.",
+        "recommendation": "Say any other unexpected error, and optionally merge the duplicated bullets.",
+        "locations": [
+          {
+            "path": "docs/decisions/ADR-015-ai-via-mcp.md",
+            "line": 570
+          }
+        ]
+      },
+      {
+        "id": "F-004",
+        "category": "security",
+        "severity": "low",
+        "summary": "ADR-015 overstates what showing the redirect host verifies, especially for loopback redirect URIs.",
+        "rationale": "The consent page only displays the host; the server checks it against the allowlist. For loopback redirect URIs the host identifies no client, so any local program can register with a known client's name and look identical on the consent page, and this limitation is not stated.",
+        "recommendation": "Say the server verifies the host against the allowlist, and state that for loopback URIs the host only shows the code goes to a program on the user's own machine, so local clients cannot be told apart by name or host.",
+        "locations": [
+          {
+            "path": "docs/decisions/ADR-015-ai-via-mcp.md",
+            "line": 186
+          }
+        ]
+      },
+      {
+        "id": "F-005",
+        "category": "missing_test",
+        "severity": "info",
+        "summary": "TASK-069F's PostgreSQL wait case is listed only under testing, lacks its run command, and overlaps with TASK-069E's lock test.",
+        "rationale": "The module exists from TASK-069E, so the placement is coherent, but TASK-069F does not make the case an acceptance criterion or include the database-URL command and CI note, and TASK-069E still mentions the token-time wait that only TASK-069F can test.",
+        "recommendation": "Add the case to TASK-069F's acceptance criteria with the command and CI note, and limit TASK-069E's lock test to authorize against cleanup and a raw grant insert.",
+        "locations": [
+          {
+            "path": "tasks/TASK-069F-mcp-oauth-tokens-connections.md",
+            "line": 169
+          },
+          {
+            "path": "tasks/TASK-069E-mcp-oauth-authorize-consent.md",
+            "line": 186
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-069A/review-008",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "ADR-015 now limits the allowlist claim to look-alike letters from other scripts and states that a client can still copy a known client's name, which is why the name is labelled self-declared; a leftover overclaim about the redirect host is recorded as a new finding.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-009",
+          "commit": "7a32b729ae2fa1795d238a35ee6d568993d1ecd5"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-008",
+        "finding_id": "F-002",
+        "disposition": "fixed",
+        "rationale": "ADR-015 and TASK-069I now say the step alone decides whether the status changes and that the lock-not-available error in the lock step selects apply_in_progress, with TASK-069K and M consistent; leftovers in AI.md and the concept are recorded as a new finding.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-009",
+          "commit": "7a32b729ae2fa1795d238a35ee6d568993d1ecd5"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-008",
+        "finding_id": "F-003",
+        "disposition": "fixed",
+        "rationale": "TASK-069F now tests that code exchange and refresh update the client's last-used time and that a second issuance within five minutes does not, and adds a PostgreSQL wait case; placement details are recorded as a new finding.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-009",
+          "commit": "7a32b729ae2fa1795d238a35ee6d568993d1ecd5"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-008",
+        "finding_id": "F-004",
+        "disposition": "fixed",
+        "rationale": "ADR-015 and TASK-069O now state that ASCII punctuation outside the set is also rejected, with examples of rejected names; the allowlist itself is unchanged, as the optional widening was not taken.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-009",
+          "commit": "7a32b729ae2fa1795d238a35ee6d568993d1ecd5"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-008",
+        "finding_id": "F-005",
+        "disposition": "fixed",
+        "rationale": "The affected lines are rewrapped; a word-level diff and rendered HTML comparison show no changed words or rendering apart from intended content edits.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-009",
+          "commit": "7a32b729ae2fa1795d238a35ee6d568993d1ecd5"
+        }
+      }
+    ]
+  }
+}

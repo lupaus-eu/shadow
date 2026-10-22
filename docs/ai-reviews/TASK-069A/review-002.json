@@ -1,0 +1,570 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-069A/review-002",
+  "task": {
+    "id": "TASK-069A",
+    "path": "tasks/TASK-069A-ai-mcp-architecture.md"
+  },
+  "round": 2,
+  "reviewed_at": "2026-10-22T09:37:54Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "cb8832380131e18a4b83b3dc691917035a95d14d",
+    "head_sha": "61b7d71c96ff874d88d23b36c54057f387915d16",
+    "comparison": "cb8832380131e18a4b83b3dc691917035a95d14d...61b7d71c96ff874d88d23b36c54057f387915d16",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Round 2 reviews the whole TASK-069A branch at the fix commit, which addresses all 27 round-1 findings following the developer's instructions. Every round-1 finding is verified fixed: refresh-token retention for reuse detection, structured redirect URI matching, audience binding, named request-id log controls with the id moved out of URL paths, the recorded ADR-004 trade-off with offboarding, admin per-user revocation and an incident procedure without manual database changes, confirmed dependency approvals, grant lifetime and reuse rules, dry-run stop-at-first-failure, the conditional failed status, the reworded staleness claim with a review flag, the derived scenario reference, feature-flag route behaviour, separate rate limiters, the redirect contract, the table rename, documentation consistency and the LikeC4 fixes. Scope is still documentation-only. likec4@1.60.0 validate passes and the committed PNGs are byte-identical to a fresh export with the README command; all seven views were inspected; every model element has one tag; 75 relative links and anchors resolve; claims about existing code were checked. Thirteen new findings, all from the fixes: two medium (lazy cleanup deleting grants that change sets reference, and the replacement flag computed before post-submit edits), nine low (refresh check order, the admin route using a non-existent user key, the authorization sweep with MCP disabled, redirected error format, the registration rate-limit bucket, TASK-069N plugin instructions and $ref wording, the model's admin endpoint, and one leftover plaintext statement) and two info (wording leftovers, and a speculative concurrent-session effect of grant reuse).",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "bug",
+        "severity": "medium",
+        "summary": "Lazy cleanup now hard-deletes revoked or expired grants that change sets and authorization requests reference by foreign key.",
+        "rationale": "The round-1 fix makes cleanup delete revoked or expired grants with their tokens, but ai_change_sets has a grant foreign key and the authorization request records the grant a code was redeemed for, with no delete rule specified. A restricting key would make a token request fail during cleanup once any change set references such a grant; a cascading key would delete change-set history, including applied change sets. Deleting grants also discards the revoked_by audit data that the admin revocation and incident procedure record.",
+        "recommendation": "Keep grant rows and delete only their tokens, or specify a set-null delete rule on the change set's grant reference with creator and client name as the audit record. State the interaction with authorization requests and whether client cleanup is the existing soft delete, and add a test running cleanup with a change set that references a revoked grant.",
+        "locations": [
+          {
+            "path": "docs/decisions/ADR-015-ai-via-mcp.md",
+            "line": 548
+          },
+          {
+            "path": "tasks/TASK-069I-ai-change-set-engine.md",
+            "line": 32
+          },
+          {
+            "path": "tasks/TASK-069D-mcp-oauth-schema.md",
+            "line": 38
+          },
+          {
+            "path": "docs/data/DATA-MODEL.md",
+            "line": 228
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "documentation",
+        "severity": "medium",
+        "summary": "The replaces_existing flag is computed at dry-run and submit, so it misses exactly the post-submit human edits it was added to expose.",
+        "rationale": "TASK-069I records the flag and its summary at dry-run and submit, and the review API returns that stored result. A timeserie without values at submit that gains values later is not flagged and is silently overwritten, and patch_node summaries show submit-time values. The baseline is also undefined: operations on rows the same change set creates could be flagged as replacing.",
+        "recommendation": "Define the baseline as data that existed before the change set, so operations on rows created by the change set are never flagged. Recompute the flags and summaries against current data when the review detail is read and at apply, or fail apply when they differ from what was reviewed, and add tests for data changed after submit.",
+        "locations": [
+          {
+            "path": "tasks/TASK-069I-ai-change-set-engine.md",
+            "line": 80
+          },
+          {
+            "path": "tasks/TASK-069K-change-set-review-api.md",
+            "line": 29
+          },
+          {
+            "path": "docs/concepts/AI_CHANGE_SET.md",
+            "line": 57
+          },
+          {
+            "path": "docs/decisions/ADR-015-ai-via-mcp.md",
+            "line": 468
+          }
+        ]
+      },
+      {
+        "id": "F-003",
+        "category": "security",
+        "severity": "low",
+        "summary": "The order of refresh-token checks is ambiguous, and rotation could disable reuse detection.",
+        "rationale": "TASK-069F says a replaced token revokes the grant, and that a revoked or expired token fails without further effect. If rotation also marks the replaced row revoked, or the replaced token has passed its own idle expiry, reuse detection never fires, which makes the retention rule pointless. Grant reuse depends on revoked tokens winning over replaced ones.",
+        "recommendation": "State that rotation sets only the replacement link, and give the order: grant revoked or expired, then token revoked (no effect), then token replaced (revoke the grant, regardless of the token's own expiry), then token expired. Add a test that a rotated, non-revoked token triggers revocation.",
+        "locations": [
+          {
+            "path": "tasks/TASK-069F-mcp-oauth-tokens-connections.md",
+            "line": 39
+          },
+          {
+            "path": "docs/decisions/ADR-015-ai-via-mcp.md",
+            "line": 206
+          }
+        ]
+      },
+      {
+        "id": "F-004",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "The admin revocation route uses a user key that does not exist; Users are addressed by integer id.",
+        "rationale": "The existing Users API and ADR-004's session revocation use the integer user id in the path, and the users table has no key column. Implementers would have to invent a key or diverge from the documents.",
+        "recommendation": "Rename the route to use the user id everywhere it appears.",
+        "locations": [
+          {
+            "path": "docs/decisions/ADR-015-ai-via-mcp.md",
+            "line": 354
+          },
+          {
+            "path": "tasks/TASK-069F-mcp-oauth-tokens-connections.md",
+            "line": 73
+          },
+          {
+            "path": "tasks/TASK-069L-mcp-consent-connections-ui.md",
+            "line": 46
+          },
+          {
+            "path": "docs/domains/AI.md",
+            "line": 201
+          },
+          {
+            "path": "docs/domains/DOMAIN.md",
+            "line": 408
+          }
+        ]
+      },
+      {
+        "id": "F-005",
+        "category": "missing_test",
+        "severity": "low",
+        "summary": "The authorization sweep cannot cover MCP-gated routes because it builds the app with default settings, where MCP is disabled.",
+        "rationale": "The existing sweep test builds the application with default settings. With the feature flag off by default, the consent API and the skill zip route are not registered, so the claim that the sweep covers them automatically does not hold.",
+        "recommendation": "Have the sweep also build an app with MCP enabled, and say so in TASK-069E and TASK-069N.",
+        "locations": [
+          {
+            "path": "tasks/TASK-069E-mcp-oauth-authorize-consent.md",
+            "line": 67
+          },
+          {
+            "path": "tasks/TASK-069N-ai-skills-plugin-bundle.md",
+            "line": 60
+          },
+          {
+            "path": "backend/tests/test_api_authorization.py",
+            "line": 46
+          }
+        ]
+      },
+      {
+        "id": "F-006",
+        "category": "security",
+        "severity": "low",
+        "summary": "The format of redirected authorization errors is unspecified, including iss and state.",
+        "rationale": "Only client and redirect URI errors are excluded from redirection. Redirected errors such as invalid scope, missing PKCE, invalid target or temporarily unavailable have no stated format, and once iss support is advertised RFC 9207 expects iss on error responses too.",
+        "recommendation": "State that every redirected authorize error carries error, state when sent, and iss, built by the same server-side builder, and add a test in TASK-069E.",
+        "locations": [
+          {
+            "path": "docs/decisions/ADR-015-ai-via-mcp.md",
+            "line": 253
+          },
+          {
+            "path": "tasks/TASK-069E-mcp-oauth-authorize-consent.md",
+            "line": 65
+          }
+        ]
+      },
+      {
+        "id": "F-007",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "Client registration sits in the low per-IP rate-limit bucket although vendor brokers register from shared egress addresses.",
+        "rationale": "The documented connect flow registers through the vendor connector broker, the same shared-egress reason that puts token and revoke in a higher bucket. All vendor-cloud users would share one low registration bucket.",
+        "recommendation": "Move register to the higher, egress-aware tier or give it its own default, keep authorize low, and have TASK-069O verify it.",
+        "locations": [
+          {
+            "path": "docs/decisions/ADR-015-ai-via-mcp.md",
+            "line": 530
+          },
+          {
+            "path": "tasks/TASK-069E-mcp-oauth-authorize-consent.md",
+            "line": 25
+          }
+        ]
+      },
+      {
+        "id": "F-008",
+        "category": "scope",
+        "severity": "low",
+        "summary": "TASK-069N's notes promise Claude Code plugin instructions in the connect UI, but its requirements and acceptance criteria cover only the zip links.",
+        "rationale": "TASK-069M removed the plugin instructions and deferred them to TASK-069N, but TASK-069N's requirements and tests do not include them or their hiding when MCP is disabled.",
+        "recommendation": "Add the plugin-install instructions and a frontend test, including hiding when the feature flag is false, to TASK-069N's requirements and acceptance criteria.",
+        "locations": [
+          {
+            "path": "tasks/TASK-069N-ai-skills-plugin-bundle.md",
+            "line": 45
+          },
+          {
+            "path": "tasks/TASK-069N-ai-skills-plugin-bundle.md",
+            "line": 114
+          }
+        ]
+      },
+      {
+        "id": "F-009",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "TASK-069N's model-building skill still says to use $ref between operations, contrary to the narrowed $ref rule.",
+        "rationale": "Since the round-1 fix, $ref covers only server-generated keys and node, edge and timeserie keys are used verbatim. The skill text would teach the old rule.",
+        "recommendation": "Reword the skill bullet to match ADR-015 and TASK-069J.",
+        "locations": [
+          {
+            "path": "tasks/TASK-069N-ai-skills-plugin-bundle.md",
+            "line": 27
+          }
+        ]
+      },
+      {
+        "id": "F-010",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "The LikeC4 consent and connections API description omits the new admin per-user revocation endpoint.",
+        "rationale": "AI.md, DOMAIN.md, ADR-015 and TASK-069F list the admin endpoint, but the component description and technology in the model and the backend components view do not.",
+        "recommendation": "Add the admin per-user revocation to the component description and re-export.",
+        "locations": [
+          {
+            "path": "docs/diagrams/likec4/schatten-ai-mcp/model.c4",
+            "line": 117
+          }
+        ]
+      },
+      {
+        "id": "F-011",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "TASK-069D still states unconditionally that no plaintext request id is ever stored.",
+        "rationale": "The same task allows the plaintext copy in the login transaction's return_to, which is the inconsistency the round-1 fix removed from AI.md and DATA-MODEL.md.",
+        "recommendation": "Limit the sentence to the MCP OAuth tables.",
+        "locations": [
+          {
+            "path": "tasks/TASK-069D-mcp-oauth-schema.md",
+            "line": 73
+          }
+        ]
+      },
+      {
+        "id": "F-012",
+        "category": "documentation",
+        "severity": "info",
+        "summary": "Minor wording leftovers after the fixes.",
+        "rationale": "ADR-015's implementation rules list the shared table prefix and the renamed tables redundantly; AI.md's grants row still says scopes; the ADR-013 note says nothing else changes although ADR-015 also extends the Caddy log filters; the connect flow step still says the SPA navigates to the redirect URI with code and state rather than the server-built URL; and the existing domain-services element lacks a New (ADR-015) marker.",
+        "recommendation": "Tidy these wordings and re-export the affected views.",
+        "locations": [
+          {
+            "path": "docs/decisions/ADR-015-ai-via-mcp.md",
+            "line": 676
+          },
+          {
+            "path": "docs/domains/AI.md",
+            "line": 161
+          },
+          {
+            "path": "docs/decisions/ADR-013-shared-entra-local-https-deployment.md",
+            "line": 123
+          },
+          {
+            "path": "docs/diagrams/likec4/schatten-ai-mcp/views.c4",
+            "line": 86
+          },
+          {
+            "path": "docs/diagrams/likec4/schatten-ai-mcp/model.c4",
+            "line": 107
+          }
+        ]
+      },
+      {
+        "id": "F-013",
+        "category": "documentation",
+        "severity": "info",
+        "summary": "Speculative: grant reuse revokes the earlier tokens of every concurrent session of the same User, client and resource.",
+        "rationale": "If one registered client serves several concurrent sessions of the same User, for example a vendor connector used from several surfaces, each re-authorization would silently sign the others out.",
+        "recommendation": "Add a TASK-069O check with the real clients and accept or document the behaviour.",
+        "locations": [
+          {
+            "path": "docs/decisions/ADR-015-ai-via-mcp.md",
+            "line": 214
+          },
+          {
+            "path": "tasks/TASK-069F-mcp-oauth-tokens-connections.md",
+            "line": 27
+          },
+          {
+            "path": "tasks/TASK-069O-ai-mcp-qa-rollout.md",
+            "line": 47
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-069A/review-001",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "Replaced refresh-token rows are now kept until their grant expires or is revoked, lazy cleanup never deletes them earlier, and TASK-069F requires a replay-after-cleanup test; ADR-015, TASK-069D, TASK-069F and DATA-MODEL.md agree.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-002",
+          "commit": "61b7d71c96ff874d88d23b36c54057f387915d16"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-001",
+        "finding_id": "F-002",
+        "disposition": "fixed",
+        "rationale": "Redirect URIs are matched after URL parsing: exact entries by whole-string equality and loopback entries through an explicit port placeholder with exact scheme, host and path and no userinfo, query or fragment; port variation follows RFC 8252 and TASK-069E lists the negative tests.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-002",
+          "commit": "61b7d71c96ff874d88d23b36c54057f387915d16"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-001",
+        "finding_id": "F-003",
+        "disposition": "fixed",
+        "rationale": "ADR-015 and TASK-069E, TASK-069F and TASK-069G now require a canonical resource on authorize and token requests, scope equal to that resource's single scope, and a verify_access_token contract taking the required resource with 401 invalid_token on mismatch, with tests in each task.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-002",
+          "commit": "61b7d71c96ff874d88d23b36c54057f387915d16"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-001",
+        "finding_id": "F-004",
+        "disposition": "fixed",
+        "rationale": "The request id no longer appears in any URL path; ADR-015 names a control for every place it travels (request and return_to query redaction, Location header filtering, explicit Authorization redaction and an extended backend access-log filter), and TASK-069E and TASK-069O carry the implementation and QA checks.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-002",
+          "commit": "61b7d71c96ff874d88d23b36c54057f387915d16"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-001",
+        "finding_id": "F-005",
+        "disposition": "fixed",
+        "rationale": "ADR-015 records the longer MCP grant lifetime as an explicit accepted trade-off against ADR-004's session bounds, adds a 7-day refresh idle timeout, the offboarding rule and an admin per-user grant revocation; AI.md and ARCHITECTURE.md repeat the rule.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-002",
+          "commit": "61b7d71c96ff874d88d23b36c54057f387915d16"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-001",
+        "finding_id": "F-006",
+        "disposition": "fixed",
+        "rationale": "The developer confirmed both approvals, and ADR-015, TASK-069A, TASK-069G and AGENTS.md now state them consistently as approved and confirmed on 2026-10-22.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-002",
+          "commit": "61b7d71c96ff874d88d23b36c54057f387915d16"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-001",
+        "finding_id": "F-007",
+        "disposition": "fixed",
+        "rationale": "Grant reuse is limited to an active grant matching user, client and resource, the grant has a non-null expiry anchored at creation that is never extended, reuse revokes earlier tokens, and TASK-069F uses ADR-015's lifetimes.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-002",
+          "commit": "61b7d71c96ff874d88d23b36c54057f387915d16"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-001",
+        "finding_id": "F-008",
+        "disposition": "fixed",
+        "rationale": "Dry-run now stops at the first failing operation, reports earlier operations ok and later ones not_run, clears the session before storing the result, and TASK-069I requires a PostgreSQL test with a mid-list unique violation.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-002",
+          "commit": "61b7d71c96ff874d88d23b36c54057f387915d16"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-001",
+        "finding_id": "F-009",
+        "disposition": "fixed",
+        "rationale": "The failed status is now written through a conditional update from submitted, and TASK-069I adds a transient-failure concurrency test expecting the change set to end applied.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-002",
+          "commit": "61b7d71c96ff874d88d23b36c54057f387915d16"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-001",
+        "finding_id": "F-010",
+        "disposition": "fixed",
+        "rationale": "As the developer instructed, the claim is reworded to validity rather than staleness, and the review UI flags operations that replace existing values with a summary; a follow-up gap in when the flag is computed is recorded as a new finding in this round.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-002",
+          "commit": "61b7d71c96ff874d88d23b36c54057f387915d16"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-001",
+        "finding_id": "F-011",
+        "disposition": "fixed",
+        "rationale": "As instructed, an optional scenario reference is added to TASK-069I and the concept and is derived from the operations; TASK-069J, TASK-069K and TASK-069M filter on it, with an option to include change sets without a scenario reference.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-002",
+          "commit": "61b7d71c96ff874d88d23b36c54057f387915d16"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-001",
+        "finding_id": "F-012",
+        "disposition": "fixed",
+        "rationale": "ADR-015 and AI.md list which routes are unregistered and which stay registered with MCP disabled, the session response gains a feature flag for the SPA, and TASK-069E, F, G, K, L, M and N each carry matching requirements or criteria.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-002",
+          "commit": "61b7d71c96ff874d88d23b36c54057f387915d16"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-001",
+        "finding_id": "F-013",
+        "disposition": "fixed",
+        "rationale": "TASK-069B to TASK-069K now run the validator through the repository-root script path after changing into the backend directory.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-002",
+          "commit": "61b7d71c96ff874d88d23b36c54057f387915d16"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-001",
+        "finding_id": "F-014",
+        "disposition": "fixed",
+        "rationale": "As instructed, the incident procedure is disabling MCP followed by per-user revocation through a new admin endpoint and Users tab action, with no manual database change; ADR-015, TASK-069F, TASK-069L and TASK-069O agree.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-002",
+          "commit": "61b7d71c96ff874d88d23b36c54057f387915d16"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-001",
+        "finding_id": "F-015",
+        "disposition": "fixed",
+        "rationale": "Separate OAuth and MCP limiter instances with per-endpoint buckets, caps on live pending requests, lazy cleanup of clients without grants, and TASK-069O verification with real clients are specified; a remaining bucket placement issue is recorded as a new finding.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-002",
+          "commit": "61b7d71c96ff874d88d23b36c54057f387915d16"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-001",
+        "finding_id": "F-016",
+        "disposition": "fixed",
+        "rationale": "The server builds the redirect URL and the SPA navigates only to it, the iss parameter is added and advertised, state is omitted when absent, a second code redemption revokes the grant, and the consent page shows the redirect host and labels the client name as self-declared.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-002",
+          "commit": "61b7d71c96ff874d88d23b36c54057f387915d16"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-001",
+        "finding_id": "F-017",
+        "disposition": "fixed",
+        "rationale": "AI.md and DATA-MODEL.md now limit the hash-only statement to the MCP OAuth tables and mention the return_to exception; one leftover unconditional sentence in TASK-069D is recorded as a new finding.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-002",
+          "commit": "61b7d71c96ff874d88d23b36c54057f387915d16"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-001",
+        "finding_id": "F-018",
+        "disposition": "fixed",
+        "rationale": "As instructed, the grant and token tables are renamed to the shared mcp_oauth_ prefix in TASK-069D and everywhere else, and no old table name remains outside the review records.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-002",
+          "commit": "61b7d71c96ff874d88d23b36c54057f387915d16"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-001",
+        "finding_id": "F-019",
+        "disposition": "fixed",
+        "rationale": "DATABASE.md, the Customer and Document domain documents and the Document concept now mark the document-AI references as the unplanned candidate outside ADR-015's scope.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-002",
+          "commit": "61b7d71c96ff874d88d23b36c54057f387915d16"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-001",
+        "finding_id": "F-020",
+        "disposition": "fixed",
+        "rationale": "TASK-069K now states firmly that both roles, including the creator, may review, as ADR-015 decides.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-002",
+          "commit": "61b7d71c96ff874d88d23b36c54057f387915d16"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-001",
+        "finding_id": "F-021",
+        "disposition": "fixed",
+        "rationale": "TASK-069A's implementation notes and testing section now point to the LikeC4 README procedure instead of contradicting commands.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-002",
+          "commit": "61b7d71c96ff874d88d23b36c54057f387915d16"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-001",
+        "finding_id": "F-022",
+        "disposition": "fixed",
+        "rationale": "TASK-069N now depends on TASK-069M and adds its links to TASK-069M's component, and TASK-069M no longer waits for TASK-069N.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-002",
+          "commit": "61b7d71c96ff874d88d23b36c54057f387915d16"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-001",
+        "finding_id": "F-023",
+        "disposition": "fixed",
+        "rationale": "ADR-015 and the concept now limit $ref to server-generated scenario, organisation state, event and derived metric keys and reference client-supplied node, edge and timeserie keys verbatim, matching the existing request schemas.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-002",
+          "commit": "61b7d71c96ff874d88d23b36c54057f387915d16"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-001",
+        "finding_id": "F-024",
+        "disposition": "fixed",
+        "rationale": "The Schatten system, Caddy and backend descriptions in the LikeC4 model now separate existing behaviour from parts marked New (ADR-015), and the exports were regenerated.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-002",
+          "commit": "61b7d71c96ff874d88d23b36c54057f387915d16"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-001",
+        "finding_id": "F-025",
+        "disposition": "fixed",
+        "rationale": "Exports now include view titles and descriptions stating the design status, merged deployment edges carry explicit labels through a documented tagged-relation workaround, and the local Caddy instance has its own loopback description; committed PNGs are byte-identical to a fresh export.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-002",
+          "commit": "61b7d71c96ff874d88d23b36c54057f387915d16"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-001",
+        "finding_id": "F-026",
+        "disposition": "fixed",
+        "rationale": "The model adds the cookie-session skill zip relation, and the generate flow shows the submitted change set and frozen values being stored before review.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-002",
+          "commit": "61b7d71c96ff874d88d23b36c54057f387915d16"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-001",
+        "finding_id": "F-027",
+        "disposition": "fixed",
+        "rationale": "TASK-069M keeps the Structure tab placeholder unchanged as a separate decision, ADR-013 has a forward note on the routing extension, and the consent API is covered by no-store in ADR-015 and TASK-069E.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-002",
+          "commit": "61b7d71c96ff874d88d23b36c54057f387915d16"
+        }
+      }
+    ]
+  }
+}

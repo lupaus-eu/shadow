@@ -356,35 +356,60 @@ Related Documents:
 
 # AI Domain
 
+Status: accepted design in ADR-015; implementation pending TASK-069B through
+TASK-069O. The earlier document-AI candidate (classification, summaries,
+extraction) is retained in `docs/domains/AI.md` as an unplanned candidate
+outside this scope.
+
 Responsible for:
 
-- AI classifications
-- AI summaries
-- AI extractions
+- MCP access for the user's own AI client: read and write MCP services
+- Schatten as OAuth 2.1 authorization server for MCP clients, reusing the
+  existing Entra login, Users and roles
+- AI change sets staged through MCP and applied or rejected only by a human
+  in Schatten
+- the deterministic timeseries generator contract, skills and MCP prompts
 
 Owns:
 
-- ai_classifications
-- ai_summaries
-- ai_extractions
+- mcp_oauth_clients
+- mcp_oauth_authorization_requests
+- mcp_oauth_grants
+- mcp_oauth_tokens
+- ai_change_sets
+- ai_change_set_operations
+
+All six tables are accepted but not migrated yet (TASK-069D, TASK-069I).
 
 Does NOT Own:
 
-- customer data
-- document data
-- billing data
+- users, roles, identities or browser sessions
+- scenarios, org states, events, timeseries, values or derived metrics
+- metamodels, graph nodes or graph edges
+- prediction requests or versions
+- LLM inference or LLM credentials; Schatten never calls an LLM
 
 Depends On:
 
-- Customer Domain
-- Document Domain
+- Users Domain for Users, roles, the Entra login and the session/CSRF guard
+- Organisations Domain for change-set organisation ownership
+- Organisation States Domain service cores for scenario, org state, event,
+  timeserie, value and derived-metric operations
+- Organisation Twin Structure Domain service cores and type catalog for node
+  and edge operations
+
+Change sets call the owning domains' `*_in_transaction` service cores and
+never write their tables directly. No other domain depends on AI Domain.
 
 Primary APIs:
 
-- `/ai/classify`
-- `/ai/extract`
-- `/ai/summarize`
+- `/api/mcp/read` and `/api/mcp/write` (bearer token, no apply tool)
+- `/.well-known/oauth-*` and `/api/oauth/*`
+- `/api/v1/ai/oauth/consent`, `/api/v1/ai/connections`, `/api/v1/ai/users/{user_id}/connections/revoke`, `/api/v1/ai/skills`
+- `/api/v1/organisations/{organisation_key}/ai/change-sets`
 
 Related Documents:
 
+- `docs/decisions/ADR-015-ai-via-mcp.md`
 - `docs/domains/AI.md`
+- `docs/concepts/AI_CHANGE_SET.md`

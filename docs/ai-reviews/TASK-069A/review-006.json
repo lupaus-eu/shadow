@@ -1,0 +1,190 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-069A/review-006",
+  "task": {
+    "id": "TASK-069A",
+    "path": "tasks/TASK-069A-ai-mcp-architecture.md"
+  },
+  "round": 6,
+  "reviewed_at": "2026-10-22T11:40:22Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "cb8832380131e18a4b83b3dc691917035a95d14d",
+    "head_sha": "4100128dc7f57f0a0e6bbfc5bdb0f517c9700d6a",
+    "comparison": "cb8832380131e18a4b83b3dc691917035a95d14d...4100128dc7f57f0a0e6bbfc5bdb0f517c9700d6a",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Round 6 reviews the whole TASK-069A branch at the round-5 fix commit. All seven round-5 findings are verified fixed, following the developer's instructions for client names that also reject line and paragraph separators and require a visible non-space character, and for locking the client row at authorize's initial check, and the recommendations for the rest: pre-re-validation wording, a short apply lock timeout with a distinct retryable apply_in_progress error and UI retry handling, connections returning grant_key and client_id, cleanup before the client cap check with a warning and recorded trade-off, and AI.md leftovers. Scope is still documentation-only. likec4@1.60.0 validate passes and the committed PNGs are byte-identical to a fresh export with the README command; relative links and anchors resolve; the review records validate. Five new findings, four low and one info, all implementation-level detail: lock timeout scoping, PostgreSQL placement of the lock tests, the client cap remedy wording, implementability of the visible-character rule, and a speculative lock strength note.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "bug",
+        "severity": "low",
+        "summary": "The apply lock_timeout is not scoped to the lock step, so lock waits during re-validation or execution could be misclassified.",
+        "rationale": "A transaction-local lock timeout stays in force until commit, so a lock wait in re-validation or execution would also raise a lock timeout and, if mapped by error type, return apply_in_progress without writing failed, contrary to the step rule. The claim that the lock wait is not bounded by the statement timeout is also inaccurate; both apply and the shorter fires first.",
+        "recommendation": "Reset the lock timeout after acquiring the change-set lock, or classify errors by step rather than by error type, so a lock timeout in re-validation or execution is an operation failure; reword the timeout sentence.",
+        "locations": [
+          {
+            "path": "docs/decisions/ADR-015-ai-via-mcp.md",
+            "line": 526
+          },
+          {
+            "path": "tasks/TASK-069I-ai-change-set-engine.md",
+            "line": 108
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "missing_test",
+        "severity": "low",
+        "summary": "The new row-lock tests need PostgreSQL but are not placed in PostgreSQL integration tests.",
+        "rationale": "API and engine tests run on SQLite by default, where row locks, skip-locked and lock timeouts do not apply. TASK-069E's lock test says it runs on PostgreSQL but its testing section names no PostgreSQL test file or command, and TASK-069I's lock-timeout test is not marked as PostgreSQL.",
+        "recommendation": "Add a PostgreSQL integration test file and command to TASK-069E for the authorize and cleanup lock test, and mark TASK-069I's lock-timeout test as a PostgreSQL integration test.",
+        "locations": [
+          {
+            "path": "tasks/TASK-069E-mcp-oauth-authorize-consent.md",
+            "line": 182
+          },
+          {
+            "path": "tasks/TASK-069I-ai-change-set-engine.md",
+            "line": 179
+          }
+        ]
+      },
+      {
+        "id": "F-003",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "The documented remedy for a full client cap includes lowering the registration rate, which does not unblock a full cap.",
+        "rationale": "A lower rate only slows refilling. The immediate remedy without a manual database change is raising the cap, or waiting for stale clients to age out.",
+        "recommendation": "State that raising the cap is the immediate remedy and that lowering the registration rate only prevents refilling.",
+        "locations": [
+          {
+            "path": "docs/decisions/ADR-015-ai-via-mcp.md",
+            "line": 692
+          },
+          {
+            "path": "tasks/TASK-069O-ai-mcp-qa-rollout.md",
+            "line": 76
+          }
+        ]
+      },
+      {
+        "id": "F-004",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "The visible-character rule depends on a Unicode property the standard library does not provide, and trimming is undefined.",
+        "rationale": "Python's unicodedata module has no default-ignorable property and no new dependency is allowed. The documents also do not define trimming, whether the stored name is trimmed, or whether the length is checked before or after trimming. A blank braille pattern would still pass as visible; that part is speculative.",
+        "recommendation": "Specify a fixed code-point list for the relevant default-ignorable letters, define trimming as standard Unicode whitespace stripping, state whether the stored name is trimmed and which length is checked, and optionally list the blank braille pattern.",
+        "locations": [
+          {
+            "path": "docs/decisions/ADR-015-ai-via-mcp.md",
+            "line": 168
+          },
+          {
+            "path": "tasks/TASK-069E-mcp-oauth-authorize-consent.md",
+            "line": 49
+          }
+        ]
+      },
+      {
+        "id": "F-005",
+        "category": "bug",
+        "severity": "info",
+        "summary": "Speculative: the client row lock in authorize is stronger than needed and serialises some token operations for that client.",
+        "rationale": "An exclusive row lock conflicts with the key-share lock that a grant insert takes on the client, so code exchanges for that client wait for in-flight authorize calls; a no-key-update lock would give the same protection against cleanup. No deadlock ordering was found, and the impact depends on whether vendor connectors share one client registration across users.",
+        "recommendation": "Optionally specify the weaker no-key-update lock, and have TASK-069O record whether vendor connectors register one client per user or share one.",
+        "locations": [
+          {
+            "path": "docs/decisions/ADR-015-ai-via-mcp.md",
+            "line": 668
+          },
+          {
+            "path": "tasks/TASK-069E-mcp-oauth-authorize-consent.md",
+            "line": 80
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-069A/review-005",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "AI.md and the concept now say any error before re-validation, in the lock, status or fingerprint steps, never writes failed, and include status-check errors in the retryable case, matching ADR-015.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-006",
+          "commit": "4100128dc7f57f0a0e6bbfc5bdb0f517c9700d6a"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-005",
+        "finding_id": "F-002",
+        "disposition": "fixed",
+        "rationale": "Apply now locks under a short lock_timeout, returns a distinct retryable 409 apply_in_progress, a retryable 503 for other pre-re-validation errors, and TASK-069K tests and TASK-069M retry handling cover them; a lock-timeout scoping gap is recorded as a new finding.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-006",
+          "commit": "4100128dc7f57f0a0e6bbfc5bdb0f517c9700d6a"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-005",
+        "finding_id": "F-003",
+        "disposition": "fixed",
+        "rationale": "TASK-069F's connections list now returns grant_key and client_id with a test, matching TASK-069L.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-006",
+          "commit": "4100128dc7f57f0a0e6bbfc5bdb0f517c9700d6a"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-005",
+        "finding_id": "F-004",
+        "disposition": "fixed",
+        "rationale": "Registration runs cleanup before the cap check and logs a warning when the cap is hit, and ADR-015 and the TASK-069O runbook record the trade-off with verification; remedy wording is recorded as a new finding.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-006",
+          "commit": "4100128dc7f57f0a0e6bbfc5bdb0f517c9700d6a"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-005",
+        "finding_id": "F-005",
+        "disposition": "fixed",
+        "rationale": "As the developer instructed, client names now also reject line and paragraph separators and need at least one visible non-space character after trimming, with tests in TASK-069E; an implementability gap is recorded as a new finding.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-006",
+          "commit": "4100128dc7f57f0a0e6bbfc5bdb0f517c9700d6a"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-005",
+        "finding_id": "F-006",
+        "disposition": "fixed",
+        "rationale": "AI.md now lists the copied client_id in the change-set table row and qualifies the authorize last-used update.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-006",
+          "commit": "4100128dc7f57f0a0e6bbfc5bdb0f517c9700d6a"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-005",
+        "finding_id": "F-007",
+        "disposition": "fixed",
+        "rationale": "As instructed, authorize locks the client row at its initial check in the same transaction as the pending-request insert, and cleanup skips locked clients, consistently in ADR-015, TASK-069E, AI.md and DATA-MODEL.md; a missing PostgreSQL test vehicle is recorded as a new finding.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-006",
+          "commit": "4100128dc7f57f0a0e6bbfc5bdb0f517c9700d6a"
+        }
+      }
+    ]
+  }
+}

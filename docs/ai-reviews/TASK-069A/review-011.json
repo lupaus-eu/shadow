@@ -1,0 +1,132 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-069A/review-011",
+  "task": {
+    "id": "TASK-069A",
+    "path": "tasks/TASK-069A-ai-mcp-architecture.md"
+  },
+  "round": 11,
+  "reviewed_at": "2026-10-22T13:14:05Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "cb8832380131e18a4b83b3dc691917035a95d14d",
+    "head_sha": "94d13793d5d9afdb26f41e3feac8e6ea663c0aff",
+    "comparison": "cb8832380131e18a4b83b3dc691917035a95d14d...94d13793d5d9afdb26f41e3feac8e6ea663c0aff",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Round 11 reviews the whole TASK-069A branch at the round-10 fix commit. All three round-10 findings are verified fixed: the consent specification now requires the server-decided loopback notice with a loopback flag and URL-form host in the consent API, two lines are rewrapped, and apply_in_progress is attributed to another transaction holding the lock. A CommonMark render shows the changed paragraphs and lists as intended. Scope is still documentation-only. likec4@1.60.0 validate passes and the committed PNGs are byte-identical to a fresh export with the README command; relative links and anchors resolve; the review records validate. Four new findings, one low and three info: the redirect host field contract for loopback, one leftover sentence, three short-wrapped lines, and snake_case keys in the connections response.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "The consent API's redirect host field has an undefined contract for loopback redirects.",
+        "rationale": "TASK-069E says the host is shown only for exact entries, which is UI wording in an API field list, yet uses a loopback IPv6 host as its example and test, so implementers of the API and the page could build different response shapes.",
+        "recommendation": "State one contract in TASK-069E and mirror it in TASK-069L: either always return the host and show it only when the loopback flag is false, or return null for loopback and adjust the example and test.",
+        "locations": [
+          {
+            "path": "tasks/TASK-069E-mcp-oauth-authorize-consent.md",
+            "line": 116
+          },
+          {
+            "path": "tasks/TASK-069L-mcp-consent-connections-ui.md",
+            "line": 27
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "documentation",
+        "severity": "info",
+        "summary": "ADR-015 still says the host shows that a loopback code goes to a local program, although the page now shows a loopback notice instead.",
+        "rationale": "The sentence describes something the page no longer displays; the meaning is still clear from context.",
+        "recommendation": "Say the loopback notice, or the host, only identifies a program on the user's own machine.",
+        "locations": [
+          {
+            "path": "docs/decisions/ADR-015-ai-via-mcp.md",
+            "line": 191
+          }
+        ]
+      },
+      {
+        "id": "F-003",
+        "category": "documentation",
+        "severity": "info",
+        "summary": "Three lines from the last fix are wrapped short.",
+        "rationale": "Lines in ADR-015, TASK-069K and TASK-069M break early; rendering is unaffected.",
+        "recommendation": "Rewrap them.",
+        "locations": [
+          {
+            "path": "docs/decisions/ADR-015-ai-via-mcp.md",
+            "line": 189
+          },
+          {
+            "path": "tasks/TASK-069K-change-set-review-api.md",
+            "line": 44
+          },
+          {
+            "path": "tasks/TASK-069M-metrics-ai-panel.md",
+            "line": 61
+          }
+        ]
+      },
+      {
+        "id": "F-004",
+        "category": "documentation",
+        "severity": "info",
+        "summary": "The connections list response is specified with snake_case keys, while the API and this branch otherwise use camelCase JSON.",
+        "rationale": "The backend aliases JSON fields in camelCase and the branch's other new fields are camelCase, so grant_key and client_id may be read as JSON keys rather than column names.",
+        "recommendation": "State the JSON keys explicitly, for example grantKey and clientId, or record that client_id keeps its OAuth spelling on purpose.",
+        "locations": [
+          {
+            "path": "tasks/TASK-069F-mcp-oauth-tokens-connections.md",
+            "line": 90
+          },
+          {
+            "path": "tasks/TASK-069L-mcp-consent-connections-ui.md",
+            "line": 45
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-069A/review-010",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "ADR-015's consent bullet and client-name paragraph now require the loopback notice decided by the server from the matched allowlist entry, TASK-069E returns a loopback flag and a URL-form host, and TASK-069L uses and tests the flag; a gap in the host field contract is recorded as a new finding.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-011",
+          "commit": "94d13793d5d9afdb26f41e3feac8e6ea663c0aff"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-010",
+        "finding_id": "F-002",
+        "disposition": "fixed",
+        "rationale": "The two lines in TASK-069E and AI.md are rewrapped within the usual width.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-011",
+          "commit": "94d13793d5d9afdb26f41e3feac8e6ea663c0aff"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-010",
+        "finding_id": "F-003",
+        "disposition": "fixed",
+        "rationale": "ADR-015 now attributes apply_in_progress to another transaction holding the change-set lock, normally a concurrent apply or briefly grant cleanup, and TASK-069K and M use matching neutral wording.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-011",
+          "commit": "94d13793d5d9afdb26f41e3feac8e6ea663c0aff"
+        }
+      }
+    ]
+  }
+}

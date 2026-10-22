@@ -1,0 +1,117 @@
+// Schatten AI via MCP - views (ADR-015)
+// Green elements are #new (accepted in ADR-015, not implemented yet);
+// blue, gray and amber elements are #existing.
+
+views {
+
+  view index {
+    title 'Schatten AI via MCP - System Context (C4 L1)'
+    description 'Accepted ADR-015 design, not implemented yet. Green = new (planned); blue, gray and amber = existing. The user chats in their own AI client; the AI reads Schatten and stages change sets through MCP; a human applies them in Schatten.'
+
+    include
+      user,
+      aiClient,
+      aiVendor,
+      entra,
+      schatten
+    include aiClient -> aiVendor with {
+      title 'Prompts, tool calls and tool results'
+    }
+  }
+
+  view schattenContainers of schatten {
+    title 'Schatten AI via MCP - Containers (C4 L2)'
+    description 'Accepted ADR-015 design, not implemented yet. Green = new (planned); blue, gray and amber = existing. MCP adds no container: the read and write MCP services and the OAuth server run inside the existing backend.'
+
+    include
+      *,
+      user,
+      aiClient.*,
+      aiVendor.*,
+      entra
+    include schatten.caddy -> schatten.backend with {
+      title 'Proxies /api, /.well-known/oauth-*'
+    }
+    include schatten.backend -> schatten.db with {
+      title 'SQL: business, mcp_oauth_*, ai_change_sets*'
+    }
+  }
+
+  view backendComponents of schatten.backend {
+    title 'Schatten AI via MCP - Backend Components (C4 L3)'
+    description 'Accepted ADR-015 design, not implemented yet. Green = new (planned); blue, gray and amber = existing. No MCP tool applies changes. Only the cookie-session review API, used by a human, applies a change set.'
+
+    include *
+  }
+
+  deployment view productionMcp {
+    title 'Production MCP Deployment'
+    description 'Accepted ADR-015 design, not implemented yet. Green = new (planned); blue, gray and amber = existing. https://schatten.lupaus.eu on the UpCloud host. Vendor-cloud connectors and local clients reach the same Caddy ingress.'
+
+    include production.**
+    // Deployment views ignore `with { title }` (LikeC4 1.60.0); show the
+    // #edgeLabel deployment relations instead of the merged '[...]' edges.
+    exclude production.upcloud.frontend.caddy -> production.upcloud.backend.backend where not tag is #edgeLabel
+    exclude production.upcloud.backend.backend -> production.upcloud.database.db where not tag is #edgeLabel
+
+    autoLayout LeftRight
+  }
+
+  deployment view developmentMcp {
+    title 'Development MCP Deployment'
+    description 'Accepted ADR-015 design, not implemented yet. Green = new (planned); blue, gray and amber = existing. https://app.localhost on loopback. Vendor-cloud connectors cannot reach localhost; test locally with Claude Code.'
+
+    include development.**
+    exclude development.devWorkstation.compose.localCaddy.localCaddyInstance -> development.devWorkstation.compose.devBackend.backend where not tag is #edgeLabel
+    exclude development.devWorkstation.compose.devBackend.backend -> development.devWorkstation.compose.devDatabase.db where not tag is #edgeLabel
+    exclude development.devVendor.broker -> development.devWorkstation.**
+  }
+
+  dynamic view connectFlow {
+    title 'Connect An AI Client (OAuth 2.1 + Consent)'
+    description 'Accepted ADR-015 design, not implemented yet. Green = new (planned); blue, gray and amber = existing. Schatten is the authorization server; the user signs in with the existing Entra login and approves consent in the SPA. The Entra registration does not change.'
+
+    user -> aiClient.webChat 'Adds connector URL /api/mcp/read or /api/mcp/write'
+    aiClient.webChat -> aiVendor.broker 'Register connector'
+    aiVendor.broker -> schatten.backend.mcpAuth 'MCP request without token'
+    schatten.backend.mcpAuth -> aiVendor.broker '401 + WWW-Authenticate resource_metadata'
+    aiVendor.broker -> schatten.backend.oauthServer 'GET /.well-known/oauth-protected-resource and oauth-authorization-server'
+    aiVendor.broker -> schatten.backend.oauthServer 'POST /api/oauth/register (allowlisted redirect URI)'
+    user -> schatten.backend.oauthServer 'Browser: GET /api/oauth/authorize (PKCE S256, scope, resource)'
+    schatten.backend.oauthServer -> schatten.spa '303 to /ai/authorize?request=<id> (stored hashed, 10 min)'
+    schatten.spa -> schatten.backend.authSession 'If anonymous: existing login with return_to'
+    schatten.backend.authSession -> entra 'Existing OIDC login'
+    schatten.spa -> schatten.backend.consentApi 'GET request; POST approve with CSRF + Origin'
+    schatten.backend.consentApi -> schatten.backend.oauthServer 'Record User, issue 60 s one-time code (hashed)'
+    schatten.spa -> aiVendor.broker 'Navigate to server-built redirectUrl (code, state, iss)'
+    aiVendor.broker -> schatten.backend.oauthServer 'POST /api/oauth/token (code + PKCE verifier)'
+    schatten.backend.oauthServer -> aiVendor.broker 'Opaque access token (1 h) + rotating refresh token'
+    aiVendor.broker -> schatten.backend.mcpAuth 'MCP calls with Bearer token'
+  }
+
+  dynamic view generateFlow {
+    title 'Generate A Model And Timeseries (Human-Applied Change Set)'
+    description 'Accepted ADR-015 design, not implemented yet. Green = new (planned); blue, gray and amber = existing. The LLM picks generator parameters, never values. Write tools only stage; the human apply in the Metrics tab is the only path to business data.'
+
+    autoLayout TopBottom
+
+    user -> aiClient.webChat 'Asks for a model with monthly revenue for three years'
+    aiClient.webChat -> aiVendor.llm 'Prompt + MCP tool definitions'
+    aiVendor.llm -> aiVendor.broker 'Tool calls'
+    aiVendor.broker -> schatten.backend.mcpAuth 'Bearer token checked on every call'
+    schatten.backend.mcpAuth -> schatten.backend.mcpRead 'get_type_catalog, get_graph, list_timeseries'
+    schatten.backend.mcpRead -> schatten.backend.generator 'preview_generated_timeserie (persists nothing)'
+    schatten.backend.mcpAuth -> schatten.backend.mcpWrite 'create_change_set, add_operations with $ref'
+    schatten.backend.mcpWrite -> schatten.backend.changeSetEngine 'validate_change_set: dry-run'
+    schatten.backend.changeSetEngine -> schatten.backend.domainServices '*_in_transaction cores, always rolled back'
+    schatten.backend.mcpWrite -> schatten.backend.changeSetEngine 'submit_change_set: re-validate'
+    schatten.backend.changeSetEngine -> schatten.backend.generator 'Generate values from stored specs'
+    schatten.backend.changeSetEngine -> schatten.db 'Store submitted change set with frozen values (ai_change_sets*)'
+    aiClient.webChat -> user 'Review URL /schatten/<org>/metrics?changeSet=<key>'
+    user -> schatten.spa 'Reviews change set in the Metrics AI panel'
+    schatten.spa -> schatten.backend.reviewApi 'POST apply (session + CSRF + Origin)'
+    schatten.backend.reviewApi -> schatten.backend.changeSetEngine 'Lock, check reviewFingerprint, re-validate, apply'
+    schatten.backend.changeSetEngine -> schatten.backend.domainServices 'Same cores, one transaction'
+    schatten.backend.domainServices -> schatten.db 'Commit once'
+  }
+}

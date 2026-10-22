@@ -1,0 +1,80 @@
+// Schatten AI via MCP - C4 model specification (ADR-015)
+// Tags: #new = accepted in ADR-015, not implemented yet (TASK-069B..O)
+//       #existing = implemented before ADR-015
+//       #edgeLabel = deployment relation that labels a merged deployment edge
+
+specification {
+  element actor {
+    style {
+      shape person
+      color amber
+    }
+  }
+  element system {
+    style {
+      color primary
+    }
+  }
+  element externalSystem {
+    style {
+      color gray
+    }
+  }
+  element container {
+    style {
+      color primary
+    }
+  }
+  element externalContainer {
+    style {
+      color gray
+    }
+  }
+  element webapp {
+    style {
+      shape browser
+      color primary
+    }
+  }
+  element component {
+    style {
+      color sky
+    }
+  }
+  element database {
+    style {
+      shape storage
+      color primary
+    }
+  }
+
+  deploymentNode environment {
+    style {
+      color slate
+    }
+  }
+  deploymentNode zone {
+    style {
+      color slate
+    }
+  }
+  deploymentNode node {
+    style {
+      color slate
+    }
+  }
+  deploymentNode device {
+    style {
+      color slate
+    }
+  }
+  deploymentNode dockerContainer {
+    style {
+      color blue
+    }
+  }
+
+  tag new
+  tag existing
+  tag edgeLabel
+}

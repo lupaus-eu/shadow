@@ -247,9 +247,13 @@ The following candidate tables are retained as planned future work. They are not
 | subscriptions | Billing Domain | Subscription records |
 | documents | Document Domain | Document metadata |
 | document_versions | Document Domain | Document versions |
-| ai_classifications | AI Domain | AI classification outputs |
-| ai_summaries | AI Domain | AI summary outputs |
-| ai_extractions | AI Domain | AI extraction outputs |
+| ai_classifications | AI Domain (unplanned document-AI candidate) | AI classification outputs; outside ADR-015's scope, no task |
+| ai_summaries | AI Domain (unplanned document-AI candidate) | AI summary outputs; outside ADR-015's scope, no task |
+| ai_extractions | AI Domain (unplanned document-AI candidate) | AI extraction outputs; outside ADR-015's scope, no task |
+
+The AI Domain's accepted MCP tables (`mcp_oauth_*`, `ai_change_sets`,
+`ai_change_set_operations`) are described in `docs/data/DATA-MODEL.md` and
+ADR-015, and are added by TASK-069D and TASK-069I.
 
 ---
 

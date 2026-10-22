@@ -93,7 +93,8 @@ Related APIs:
 # Domain Rules
 
 - Document Domain owns document metadata and lifecycle.
-- AI Domain owns AI outputs derived from documents.
+- AI Domain would own AI outputs derived from documents. This is the unplanned
+  document-AI candidate in `docs/domains/AI.md`, outside ADR-015's scope.
 - Customer Domain owns customer profile data.
 
 ---

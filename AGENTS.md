@@ -111,6 +111,19 @@ The non-user metamodel seed is approved production reference data; development
 Users and example business data remain forbidden in production. First setup is
 migrations -> reference seed -> empty-users-table administrator bootstrap.
 
+AI via MCP is an accepted design in `docs/decisions/ADR-015-ai-via-mcp.md`
+(TASK-069A); implementation is pending TASK-069B through TASK-069O and none of
+it is runtime behaviour yet. Users chat in their own MCP client on their own
+AI subscription; Schatten never calls an LLM or stores LLM keys. FastAPI will
+host `/api/mcp/read` (`schatten.read`) and `/api/mcp/write` (`schatten.write`)
+and act as OAuth 2.1 authorization server over the existing Entra login,
+without changing the Entra registration. The write service only stages AI
+change sets; **no MCP tool may apply changes** and a human applies or rejects
+each change set in the Metrics tab. No worker, scheduler or container is added.
+ADR-015 approves the `fastmcp` backend dependency (fallback: the `mcp` SDK's
+bundled FastMCP) for TASK-069G. The feature's C4 model uses LikeC4
+(`docs/diagrams/likec4/`); PlantUML remains the default elsewhere.
+
 ---
 
 # Source Of Truth

@@ -1,0 +1,186 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-069A/review-008",
+  "task": {
+    "id": "TASK-069A",
+    "path": "tasks/TASK-069A-ai-mcp-architecture.md"
+  },
+  "round": 8,
+  "reviewed_at": "2026-10-22T12:47:59Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "cb8832380131e18a4b83b3dc691917035a95d14d",
+    "head_sha": "ac5035443736c594d9051d2ee457d699382e115c",
+    "comparison": "cb8832380131e18a4b83b3dc691917035a95d14d...ac5035443736c594d9051d2ee457d699382e115c",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Round 8 reviews the whole TASK-069A branch at the round-7 fix commit. All seven round-7 findings are verified fixed: the narrowed lock claim with a throttled token-time client update, the developer-chosen ASCII allowlist for client names that also resolves the trimming-order question and supersedes the blank list, step-boundary error injection for SQLite tests as instructed, the cleanup lock strength, the slows wording, and the stated lock-timeout consequence with a validated statement-timeout default. Scope is still documentation-only. likec4@1.60.0 validate passes and the committed PNGs are byte-identical to a fresh export with the README command; relative links and anchors resolve; the review records validate; sample client names were checked against the allowlist. Five new findings, three low and two info: an overclaimed imitation guarantee, the never-by-error-type wording, a missing test for the throttled token-time update, the understated punctuation trade-off, and line wrapping.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "security",
+        "severity": "low",
+        "summary": "ADR-015 overclaims that the allowlist stops a client from imitating a known client's name.",
+        "rationale": "The allowlist only blocks look-alike letters from other scripts; any client can still register an exact or ASCII look-alike copy of a known client's name, which is why the name is labelled self-declared and shown with the redirect host.",
+        "recommendation": "Narrow the sentence to look-alike letters from other scripts and state that the name can still copy a known client's name.",
+        "locations": [
+          {
+            "path": "docs/decisions/ADR-015-ai-via-mcp.md",
+            "line": 181
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "The claim that errors are never classified by error type is too strong: within the pre-re-validation steps the response depends on recognising the lock-not-available error.",
+        "rationale": "The step decides whether the status changes, but choosing between apply_in_progress and the generic retryable error in the first steps requires recognising the lock error, and the startup timeout validation relies on that.",
+        "recommendation": "State that the step alone decides the status, and that within the first steps the retryable response is chosen by recognising the lock-not-available error in the lock step.",
+        "locations": [
+          {
+            "path": "docs/decisions/ADR-015-ai-via-mcp.md",
+            "line": 557
+          },
+          {
+            "path": "tasks/TASK-069I-ai-change-set-engine.md",
+            "line": 112
+          }
+        ]
+      },
+      {
+        "id": "F-003",
+        "category": "missing_test",
+        "severity": "low",
+        "summary": "The throttled client last-used update at token issuance has no TASK-069F test.",
+        "rationale": "The 30-day client cleanup depends on this update, but no acceptance test checks that code exchange and refresh update it or that it is throttled.",
+        "recommendation": "Add TASK-069F tests that code exchange and refresh update the client's last-used time and that a second issuance within five minutes does not, optionally with a PostgreSQL case for the brief wait behind an authorize.",
+        "locations": [
+          {
+            "path": "tasks/TASK-069F-mcp-oauth-tokens-connections.md",
+            "line": 64
+          }
+        ]
+      },
+      {
+        "id": "F-004",
+        "category": "documentation",
+        "severity": "info",
+        "summary": "The allowlist trade-off mentions only non-ASCII names, but common ASCII punctuation outside the set is also rejected.",
+        "rationale": "Names with an apostrophe, ampersand, at sign, comma, hash, exclamation mark or square brackets fail, while typical client names pass; real client names are unverified until TASK-069O.",
+        "recommendation": "State that ASCII punctuation outside the set is also rejected, and optionally allow apostrophe, ampersand and comma, which are harmless once escaped.",
+        "locations": [
+          {
+            "path": "docs/decisions/ADR-015-ai-via-mcp.md",
+            "line": 184
+          },
+          {
+            "path": "tasks/TASK-069O-ai-mcp-qa-rollout.md",
+            "line": 66
+          }
+        ]
+      },
+      {
+        "id": "F-005",
+        "category": "documentation",
+        "severity": "info",
+        "summary": "Some lines edited in the round-7 fix are no longer wrapped like the surrounding text.",
+        "rationale": "A few lines in ADR-015, TASK-069D and TASK-069E run to about 100 columns; this is cosmetic.",
+        "recommendation": "Rewrap them.",
+        "locations": [
+          {
+            "path": "docs/decisions/ADR-015-ai-via-mcp.md",
+            "line": 691
+          },
+          {
+            "path": "tasks/TASK-069D-mcp-oauth-schema.md",
+            "line": 32
+          },
+          {
+            "path": "tasks/TASK-069E-mcp-oauth-authorize-consent.md",
+            "line": 189
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-069A/review-007",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "ADR-015 now says only grant inserts never wait for an in-flight authorize, states that the token-time client last-used update can wait briefly and throttles it to every five minutes, and TASK-069E, F and O match.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-008",
+          "commit": "ac5035443736c594d9051d2ee457d699382e115c"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-007",
+        "finding_id": "F-002",
+        "disposition": "fixed",
+        "rationale": "The ASCII allowlist trims only edge spaces, which are themselves allowed, so trimming and checking order cannot change the result, and TASK-069E tests disallowed characters at the start, end and middle.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-008",
+          "commit": "ac5035443736c594d9051d2ee457d699382e115c"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-007",
+        "finding_id": "F-003",
+        "disposition": "fixed",
+        "rationale": "As the developer instructed, TASK-069I and TASK-069K state that SQLite tests inject the lock-timeout and query-cancelled errors at the step boundaries, with real lock behaviour in the PostgreSQL module.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-008",
+          "commit": "ac5035443736c594d9051d2ee457d699382e115c"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-007",
+        "finding_id": "F-004",
+        "disposition": "fixed",
+        "rationale": "Cleanup now locks candidate clients with an update-strength skip-locked lock, in ADR-015 and TASK-069E.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-008",
+          "commit": "ac5035443736c594d9051d2ee457d699382e115c"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-007",
+        "finding_id": "F-005",
+        "disposition": "fixed",
+        "rationale": "Following the developer's instruction to prefer an ASCII allowlist if better, the client name now uses an allowlist of ASCII letters, digits, space and a few punctuation marks with at least one letter or digit, which removes the blank-list question entirely; ADR-015, TASK-069D, E and O agree.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-008",
+          "commit": "ac5035443736c594d9051d2ee457d699382e115c"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-007",
+        "finding_id": "F-006",
+        "disposition": "fixed",
+        "rationale": "ADR-015's consequences now say lowering the registration rate only slows refilling.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-008",
+          "commit": "ac5035443736c594d9051d2ee457d699382e115c"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-007",
+        "finding_id": "F-007",
+        "disposition": "fixed",
+        "rationale": "ADR-015 and TASK-069I state that the lock timeout covers the whole apply with its accepted failed consequence, and the statement timeout has a 30-second default validated at startup to exceed the lock timeout, with a test.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-008",
+          "commit": "ac5035443736c594d9051d2ee457d699382e115c"
+        }
+      }
+    ]
+  }
+}

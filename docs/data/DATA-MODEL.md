@@ -3,7 +3,8 @@
 Tämä dokumentti kuvaa järjestelmän loogisen datamallin.
 
 Status: core, customer and Forecasting durable-request/saved-version models
-defined. AI and billing remain TBD.
+defined. The AI Domain's MCP OAuth and change-set entities are accepted in
+ADR-015 but not migrated (TASK-069D, TASK-069I). Billing remains TBD.
 
 Looginen datamalli kuvaa:
 
@@ -175,6 +176,69 @@ Lue nämä yhdessä datamallin kanssa:
 
 ---
 
+# Accepted AI Domain Entities (Not Yet Migrated)
+
+ADR-015 accepts these logical entities. They are design, not schema: the
+tables are added by TASK-069D (`017_create_mcp_oauth_schema`) and TASK-069I
+(`018_create_ai_change_sets`), and `docs/data/DATABASE.md` and the physical
+diagram are updated then.
+
+| Entity | Table | Notes |
+| --- | --- | --- |
+| MCP OAuth Client | `mcp_oauth_clients` | Dynamically registered public client with a unique `client_id`, bounded self-declared name and allowlisted redirect URIs; soft-deleted when stale, then hard-deleted once unreferenced. |
+| MCP Authorization Request | `mcp_oauth_authorization_requests` | Ten-minute pending authorization request keyed by request-id hash, with PKCE challenge, scopes, resource, state and redirect URI; after approval it holds the deciding User and a 60-second single-use code hash. |
+| MCP Grant | `mcp_oauth_grants` | One User's consent for one client, one scope and its MCP resource, with a 30-day absolute expiry; revocable. |
+| MCP Token | `mcp_oauth_tokens` | Opaque access or refresh token keyed by SHA-256 hash, with expiry, rotation link and revocation. |
+| AI Change Set | `ai_change_sets` | Organisation-owned staged proposal with status, optional derived scenario reference, creator, grant, copied `client_id`, client name, validation and applied results, and review fields. |
+| AI Change Set Operation | `ai_change_set_operations` | Ordered typed operation with optional `$ref`, payload, frozen generated values and error. |
+
+Relationship rules:
+
+- An MCP OAuth Client has many Authorization Requests and Grants.
+- A Grant belongs to one User and one Client and has many Tokens. It holds
+  exactly one scope, `schatten.read` or `schatten.write`, and is bound to the
+  MCP resource of that scope (`/api/mcp/read` or `/api/mcp/write`). Its tokens
+  are accepted only by that resource.
+- A Grant's `expires_time` is 30 days after creation and is never extended. A
+  re-authorization reuses only an active Grant and revokes its earlier Tokens.
+  No Token expires after its Grant.
+- A Token's `kind` is `access` or `refresh`. A rotated refresh token
+  references its replacement. Reuse of a replaced refresh token revokes the
+  Grant and all its Tokens.
+- The `mcp_oauth_*` tables store no plaintext request id, code or token, only
+  SHA-256 hashes. (ADR-015 allows the pending request id inside the existing
+  login transaction's `return_to` for up to ten minutes.)
+- Grant revocation, User soft deletion or Token expiry ends MCP access on the
+  next request. The effective scopes are the Grant's scopes intersected
+  with the scopes allowed for the User's current role.
+- An AI Change Set belongs to one Organisation and one creating User, and
+  owns ordered Operations unique by position and by `ref`. Its reference to the
+  staging Grant is nullable (`ON DELETE SET NULL`). When lazy cleanup deletes
+  a revoked or expired Grant, the change set keeps `created_by`, a copied
+  `client_id` (a plain value, not a foreign key) and `client_name` as its audit
+  record. Change-set history is never deleted.
+  Its optional Scenario reference is derived from the Operations: it is set
+  only when all of them target the same existing Scenario.
+- An AI Change Set's status is one of `draft`, `submitted`, `applied`,
+  `rejected`, `failed` or `discarded`; only humans move `submitted` change
+  sets to `applied` or `rejected`.
+- An applied AI Change Set creates or patches Scenario, Organisation State,
+  Event, Timeserie, Timeserie Value, Derived Metric Equation, Graph Node and
+  Graph Edge rows only through the owning domains' services. Those rows have no
+  foreign key to the change set; the change set's `applied_result` records the
+  created keys.
+- Lazy cleanup during token and registration operations deletes expired
+  authorization requests, expired access tokens, and revoked or expired Grants
+  with their Tokens (cascade). It soft-deletes (`deleted_time`) Clients without
+  an active Grant and unused for 30 days, counting fully validated
+  authorization requests as use. It then hard-deletes soft-deleted Clients that
+  no Authorization Request or Grant references. Replaced refresh Tokens of an
+  active Grant are kept, because reuse detection depends on them. An
+  Authorization Request's reference to the Grant its code was redeemed for is
+  nullable (`ON DELETE SET NULL`).
+
+---
+
 # Stable Keys
 
 The physical model uses bigint primary keys internally and stable text keys for imported or externally meaningful identifiers.
@@ -192,6 +256,7 @@ Examples:
 - `timeserie_key`
 - `prediction_key`
 - `prediction_request_key`
+- `grant_key` and `change_set_key` (accepted in ADR-015, not migrated)
 
 These keys preserve Varjo-style identifiers while allowing relational foreign keys to use bigint primary keys.
 
@@ -208,7 +273,7 @@ The following candidate entities are retained as planned future work. They are n
 | Payment | Billing Domain | TBD | Payment record |
 | Document | Document Domain | `docs/concepts/DOCUMENT.md` | Uploaded document |
 | DocumentVersion | Document Domain | TBD | Versioned document content |
-| AIExtraction | AI Domain | `docs/concepts/AI_EXTRACTION.md` | Derived AI output |
+| AIExtraction | AI Domain | `docs/concepts/AI_EXTRACTION.md` | Unplanned document-AI candidate outside ADR-015's scope |
 
 Future relationship rules:
 

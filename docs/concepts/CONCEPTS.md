@@ -45,6 +45,7 @@ docs/concepts/ORGANISATION.md
 docs/concepts/SCENARIO.md
 docs/concepts/ORGANISATION_STATE.md
 docs/concepts/METAMODEL.md
+docs/concepts/AI_CHANGE_SET.md
 ```
 
 Uuden conceptin dokumentti luodaan mallista:
@@ -146,6 +147,24 @@ Related Document:
 
 - `docs/concepts/METAMODEL.md`
 
+## AI Change Set
+
+Status: accepted design in ADR-015; implementation pending TASK-069I through
+TASK-069M
+
+Meaning:
+
+- organisation-scoped, ordered list of typed operations staged by a user's AI
+  client through MCP, applied or rejected only by a human in Schatten
+
+Owned By:
+
+- AI Domain
+
+Related Document:
+
+- `docs/concepts/AI_CHANGE_SET.md`
+
 ---
 
 # Implemented Customer Domain Concepts
@@ -202,6 +221,8 @@ Related Document:
 - `docs/concepts/DOCUMENT.md`
 
 ## AI Extraction
+
+Status: unplanned candidate outside ADR-015's MCP scope
 
 Meaning:
 

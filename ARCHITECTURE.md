@@ -53,6 +53,12 @@ Päätetty tekninen perusrakenne:
   architecture, detached snapshot preparation, durable request persistence,
   request APIs, supervised worker calculation, atomic publication, current-tab
   UI and supported-runtime wiring are implemented
+- AI via MCP: ADR-015 accepts read and write MCP services in the backend,
+  Schatten as OAuth 2.1 authorization server for MCP clients over the existing
+  Entra login, and AI change sets that only a human applies in Schatten. This
+  is an accepted design; implementation is pending TASK-069B through
+  TASK-069O and none of it is runtime behaviour yet (see
+  [AI Via MCP](#ai-via-mcp))
 
 Tarkemmat toteutusyksityiskohdat täsmentyvät taskien ja tarvittaessa uusien ADR:ien kautta.
 
@@ -528,6 +534,80 @@ pystyviivoina. Filters- ja Rows-valikot ovat toisensa poissulkevia.
 
 ---
 
+# AI Via MCP
+
+Status: accepted design in
+[ADR-015](docs/decisions/ADR-015-ai-via-mcp.md); implementation pending
+TASK-069B through TASK-069O. Nothing below is implemented or enabled yet, and
+the feature stays behind `MCP_ENABLED=false` until TASK-069O's separately
+approved production enablement.
+
+Users chat in their own MCP-capable AI client (Claude Desktop, claude.ai,
+Claude Code or another) on their own AI subscription. Schatten never calls an
+LLM and never stores LLM keys.
+
+```text
+AI client / vendor connector --HTTPS Bearer--> Caddy --/api/mcp/read----> FastAPI MCP read service
+                                                     --/api/mcp/write---> FastAPI MCP write service (stages only)
+                                                     --/api/oauth, /.well-known/oauth-*--> FastAPI OAuth server
+Browser SPA --session + CSRF--> /api/v1/ai/... consent, connections, change-set review (human apply)
+```
+
+Accepted design:
+
+- Two FastMCP Streamable HTTP services run in the existing FastAPI process:
+  `/api/mcp/read` (scope `schatten.read`) and `/api/mcp/write` (scope
+  `schatten.write`), stateless with JSON responses. **No MCP tool applies
+  changes.**
+- Schatten is its own OAuth 2.1 authorization server: discovery, Dynamic
+  Client Registration limited by a redirect URI allowlist, mandatory PKCE
+  S256, opaque SHA-256-hashed tokens, rotating refresh tokens with reuse
+  detection. Authorization reuses the existing SPA login, Entra and
+  `return_to` flow plus a CSRF-protected consent page. The Entra registration
+  does not change.
+- Every MCP request re-reads the token, grant, User and role; effective scopes
+  are the grant's scopes intersected with the role's allowed scopes. Each
+  grant and its tokens are bound to one MCP resource and its single scope. MCP
+  endpoints accept only bearer tokens, and `/api/v1` accepts only the session
+  cookie.
+- Grants last at most 30 days (refresh tokens expire after 7 idle days)
+  without an Entra re-check. That is an accepted trade-off against ADR-004's
+  browser-session bounds, so offboarding must soft-delete the User or revoke
+  the User's grants. The incident procedure is to disable MCP and revoke
+  grants, with no manual database change.
+- The write service stages AI change sets. Dry-run always rolls back.
+  **A human reviews and applies or rejects each change set in the Metrics
+  tab**; apply is atomic through the domain services' `*_in_transaction`
+  cores. Generated values come from a deterministic, seeded generator and are
+  frozen at submit. Apply validates but does not detect general staleness. The
+  review UI flags operations that replace existing values, recomputed against
+  current data with per-target checksums, and apply fails with `409
+  review_stale` if those flagged summaries changed after the review was
+  loaded.
+- No container, port, worker or scheduler is added. ADR-012's single
+  prediction worker is not used or extended. Caddy's API matcher also routes
+  `/.well-known/oauth-*`. Concurrency, rate, statement-time and size limits
+  protect the shared host.
+- Business data read through MCP flows to the user's AI vendor; this is an
+  accepted product and security decision.
+
+Domain ownership is in `docs/domains/AI.md` and the change-set concept in
+`docs/concepts/AI_CHANGE_SET.md`.
+
+C4 model (LikeC4, `docs/diagrams/likec4/schatten-ai-mcp/`):
+
+- [System context (L1)](docs/diagrams/generated/likec4-index.png)
+- [Containers (L2)](docs/diagrams/generated/likec4-schattenContainers.png)
+- [Backend components (L3)](docs/diagrams/generated/likec4-backendComponents.png)
+- [Production MCP deployment](docs/diagrams/generated/likec4-productionMcp.png)
+- [Development MCP deployment](docs/diagrams/generated/likec4-developmentMcp.png)
+- [Connect flow](docs/diagrams/generated/likec4-connectFlow.png)
+- [Generate flow](docs/diagrams/generated/likec4-generateFlow.png)
+
+![AI via MCP production deployment](docs/diagrams/generated/likec4-productionMcp.png)
+
+---
+
 # Domain Architecture
 
 Status: initial candidate model
@@ -576,6 +656,11 @@ Rules:
 
 Generated SVG files are documentation artifacts. Do not edit them manually; update the `.puml` source and regenerate the SVG.
 
+Exception: ADR-015 accepts LikeC4 for the AI via MCP C4 model in
+`docs/diagrams/likec4/`, exported as `docs/diagrams/generated/likec4-<view>.png`
+(see `docs/diagrams/likec4/README.md`). Existing PlantUML diagrams remain, and
+PlantUML stays the default for other diagrams.
+
 ---
 
 # Integrations
@@ -583,6 +668,10 @@ Generated SVG files are documentation artifacts. Do not edit them manually; upda
 Status: TBD
 
 Ulkoiset integraatiot kirjataan tähän, kun niitä lisätään.
+
+Accepted, not implemented: MCP clients and AI vendor connectors call
+Schatten's MCP and OAuth endpoints (ADR-015). Schatten makes no outbound call
+to an AI vendor; see [AI Via MCP](#ai-via-mcp).
 
 ## Integration Principles
 
@@ -624,6 +713,10 @@ processing is accepted. ADR-014's Prophet model runs inside the same worker's
 calculation child process; it adds no service, queue or worker. ADR-014 runs
 each child in its own process group, stopped as a whole, with a private
 temporary directory removed after the child is reaped.
+
+ADR-015's accepted AI via MCP design adds no background execution: MCP tools,
+change-set dry-run and apply are short synchronous requests, and expired OAuth
+rows are cleaned up lazily without a scheduler.
 
 ![Forecasting request architecture](docs/diagrams/generated/component-forecasting-prediction-requests.svg)
 
@@ -781,6 +874,7 @@ ADR-004 Authentication, Identity And Session Architecture: accepted
 ADR-005 Production-Only Deployment Environments: accepted
 ADR-006 Local Authentik TLS And Optional Entra Federation: target superseded by ADR-013
 ADR-013 Shared Entra Registration And Local HTTPS Deployment: accepted; source delivery H1-H3 implemented, rollout pending
+ADR-015 AI Via MCP With Human-Applied Change Sets: accepted design; implementation pending TASK-069B..TASK-069O
 ```
 
 ---

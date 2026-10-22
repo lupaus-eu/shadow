@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-069A/review-012",
+  "task": {
+    "id": "TASK-069A",
+    "path": "tasks/TASK-069A-ai-mcp-architecture.md"
+  },
+  "round": 12,
+  "reviewed_at": "2026-10-22T13:24:27Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "cb8832380131e18a4b83b3dc691917035a95d14d",
+    "head_sha": "d25d4f9240eea481c5fcbd3a07aec040aa503e43",
+    "comparison": "cb8832380131e18a4b83b3dc691917035a95d14d...d25d4f9240eea481c5fcbd3a07aec040aa503e43",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Round 12 reviews the whole TASK-069A branch at the round-11 fix commit. All four round-11 findings are verified fixed: the redirect host is always returned and shown only for non-loopback redirects, consistently in ADR-015, TASK-069E and TASK-069L; the loopback sentence refers to the notice; short lines are rewrapped; and the connections response uses camelCase JSON keys matching existing schemas. A CommonMark render shows the changed paragraphs correctly. Scope is still documentation-only. likec4@1.60.0 validate passes and the committed PNGs are byte-identical to a fresh export with the README command; relative links and anchors resolve; the review records validate. One new info finding: TASK-069K and TASK-069M still spell the client identifier in snake_case.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "documentation",
+        "severity": "info",
+        "summary": "The change-set review detail and the Metrics AI panel still name the client identifier client_id, while the connections API and UI now use clientId.",
+        "rationale": "TASK-069K's detail response and TASK-069M's display and tests were not updated with the camelCase rename, so an implementer could emit a snake_case JSON key there.",
+        "recommendation": "Use clientId in TASK-069K and TASK-069M, or state once in TASK-069K that the detail's JSON keys are camelCase like the rest of /api/v1.",
+        "locations": [
+          {
+            "path": "tasks/TASK-069M-metrics-ai-panel.md",
+            "line": 50
+          },
+          {
+            "path": "tasks/TASK-069K-change-set-review-api.md",
+            "line": 37
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-069A/review-011",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "TASK-069E now always returns the redirect host in URL form and the page shows it only when the loopback flag is false, with matching tests in TASK-069E and TASK-069L and agreement with ADR-015.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-012",
+          "commit": "d25d4f9240eea481c5fcbd3a07aec040aa503e43"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-011",
+        "finding_id": "F-002",
+        "disposition": "fixed",
+        "rationale": "ADR-015 now says a loopback host only identifies a program on the user's own machine, so the page shows the loopback notice instead.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-012",
+          "commit": "d25d4f9240eea481c5fcbd3a07aec040aa503e43"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-011",
+        "finding_id": "F-003",
+        "disposition": "fixed",
+        "rationale": "The cited lines in ADR-015, TASK-069K and TASK-069M are rewrapped; rendering is correct.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-012",
+          "commit": "d25d4f9240eea481c5fcbd3a07aec040aa503e43"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-011",
+        "finding_id": "F-004",
+        "disposition": "fixed",
+        "rationale": "TASK-069F now lists camelCase JSON keys for the connections response, matching the existing time-field naming in the predictions schemas, keeps snake_case for columns and the path parameter, and TASK-069L uses the same keys.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-012",
+          "commit": "d25d4f9240eea481c5fcbd3a07aec040aa503e43"
+        }
+      }
+    ]
+  }
+}

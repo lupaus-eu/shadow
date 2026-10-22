@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-069A/review-013",
+  "task": {
+    "id": "TASK-069A",
+    "path": "tasks/TASK-069A-ai-mcp-architecture.md"
+  },
+  "round": 13,
+  "reviewed_at": "2026-10-22T13:28:27Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "cb8832380131e18a4b83b3dc691917035a95d14d",
+    "head_sha": "4a06455993dbbc1a668157160bebbf5cc3b9c4d0",
+    "comparison": "cb8832380131e18a4b83b3dc691917035a95d14d...4a06455993dbbc1a668157160bebbf5cc3b9c4d0",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "clean",
+    "summary": "Round 13 reviews the whole TASK-069A branch at the round-12 fix commit. The single round-12 finding is verified fixed: TASK-069K and TASK-069M use clientId and TASK-069K states the camelCase JSON key rule for its list and detail responses. Remaining snake_case concept names in task prose, the includeUnscoped query parameter and the separate MCP tool surface were checked and do not contradict the rule. No new material findings. Scope is still documentation-only. likec4@1.60.0 validate passes and the committed PNGs are byte-identical to a fresh export with the README command; relative links and anchors resolve; the changed task files render correctly; the review records validate. Noted for human judgement and not recorded as a finding: several pre-existing TASK-069 acceptance-criteria checkboxes followed by indented sub-items render as run-on paragraphs rather than nested lists.",
+    "findings": [],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-069A/review-012",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "TASK-069K and TASK-069M now use clientId, and TASK-069K states that its list and detail JSON keys are camelCase like the rest of /api/v1 while the engine, columns and path parameters stay snake_case.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-013",
+          "commit": "4a06455993dbbc1a668157160bebbf5cc3b9c4d0"
+        }
+      }
+    ]
+  }
+}

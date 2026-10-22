@@ -4,6 +4,10 @@ Tämä hakemisto sisältää projektin versionhallittavat diagrammilähteet.
 
 Diagrammien ensisijainen formaatti on PlantUML.
 
+Poikkeus: ADR-015 hyväksyy LikeC4:n AI via MCP -ominaisuuden C4-mallin
+työkaluksi. Sen lähteet ovat hakemistossa `docs/diagrams/likec4/` ja ohjeet
+tiedostossa `docs/diagrams/likec4/README.md`.
+
 Generoidut kuvat tallennetaan hakemistoon:
 
 ```text
@@ -26,6 +30,16 @@ Käytä C4-tasoja:
 - C4 Level 4: Code, vain jos siitä on selkeä hyöty
 
 Pidä C4-kuvat synkassa `ARCHITECTURE.md`:n ja ADR-dokumenttien kanssa.
+
+## LikeC4
+
+LikeC4 on sallittu vain AI via MCP -ominaisuuden C4-mallille (ADR-015):
+`docs/diagrams/likec4/schatten-ai-mcp/`. Yksi malli tuottaa context-, container-,
+component-, deployment- ja dynamic-näkymät. LikeC4 ajetaan `npx`:llä
+versioon `likec4@1.60.0` pinnattuna, eikä se ole projektin riippuvuus.
+
+Olemassa olevat PlantUML-kuvat pysyvät ennallaan, ja muut uudet diagrammit
+tehdään edelleen PlantUML:llä, ellei uusi ADR toisin päätä.
 
 ## Domain And Concept Diagrams
 
@@ -51,6 +65,9 @@ Tällä hetkellä Mermaid `gitGraph` on sallittu Git-branchien visualisointiin, 
 ```text
 docs/diagrams/
 ├── README.md
+├── likec4/
+│   ├── README.md
+│   └── schatten-ai-mcp/*.c4
 ├── c4-l1-system-context-<scope>.puml
 ├── c4-l2-container-<scope>.puml
 ├── c4-l3-component-<scope>.puml
@@ -65,7 +82,8 @@ docs/diagrams/
     ├── data-logical-model.svg
     ├── db-physical-schema.svg
     ├── state-<domain>-<concept>.svg
-    └── sequence-<workflow>.svg
+    ├── sequence-<workflow>.svg
+    └── likec4-<view>.png
 ```
 
 ---
@@ -137,6 +155,19 @@ docs/diagrams/generated/c4-l1-system-context-schatten.svg
 ```
 
 Älä muokkaa generoituja SVG-tiedostoja käsin. Muokkaa `.puml`-lähdettä ja renderöi SVG uudelleen.
+
+## LikeC4 Exports
+
+LikeC4-näkymät exportataan PNG:ksi nimellä `likec4-<view>.png`, jossa
+`<view>` on näkymän id:
+
+```text
+docs/diagrams/likec4/schatten-ai-mcp/views.c4   (view productionMcp)
+docs/diagrams/generated/likec4-productionMcp.png
+```
+
+Älä muokkaa PNG:itä käsin. Komennot ovat tiedostossa
+`docs/diagrams/likec4/README.md`.
 
 ---
 

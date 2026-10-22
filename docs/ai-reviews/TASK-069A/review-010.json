@@ -1,0 +1,142 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-069A/review-010",
+  "task": {
+    "id": "TASK-069A",
+    "path": "tasks/TASK-069A-ai-mcp-architecture.md"
+  },
+  "round": 10,
+  "reviewed_at": "2026-10-22T13:07:50Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "cb8832380131e18a4b83b3dc691917035a95d14d",
+    "head_sha": "180962f4fa32b07580a62a0d5f3cd6c8215daf8d",
+    "comparison": "cb8832380131e18a4b83b3dc691917035a95d14d...180962f4fa32b07580a62a0d5f3cd6c8215daf8d",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Round 10 reviews the whole TASK-069A branch at the round-9 fix commit. All five round-9 findings are verified fixed: the accidental numbered list, the step-decides-status wording in AI.md and the concept, the consolidated first-step error list with nothing lost, the corrected statement of what the redirect host proves with loopback wording in TASK-069L, and TASK-069F's PostgreSQL case as an acceptance criterion. A CommonMark render confirms the list structure. Scope is still documentation-only. likec4@1.60.0 validate passes and the committed PNGs are byte-identical to a fresh export with the README command; relative links and anchors resolve; the review records validate. Three new findings, one low and two info: the consent-page specification in ADR-015 missing the loopback wording, two wrapping nits, and a speculative wording point about the source of apply_in_progress.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "ADR-015's consent-page specification does not require the loopback wording that its new limitation paragraph relies on.",
+        "rationale": "The new paragraph says the consent page states the loopback limitation, and TASK-069L shows that wording instead of the host for loopback redirects, but ADR-015's consent bullet and the client-name paragraph still say only that the host is shown. TASK-069E's consent API returns the host without a defined format, and an IPv6 loopback host may be returned without brackets.",
+        "recommendation": "Add the loopback wording to ADR-015's consent bullet and align the client-name paragraph, and optionally have TASK-069E return the host in URL form or an explicit loopback flag.",
+        "locations": [
+          {
+            "path": "docs/decisions/ADR-015-ai-via-mcp.md",
+            "line": 186
+          },
+          {
+            "path": "docs/decisions/ADR-015-ai-via-mcp.md",
+            "line": 349
+          },
+          {
+            "path": "tasks/TASK-069E-mcp-oauth-authorize-consent.md",
+            "line": 114
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "documentation",
+        "severity": "info",
+        "summary": "Two lines from the last fix are wrapped inconsistently.",
+        "rationale": "One TASK-069E prose line is over 80 characters and an AI.md sentence breaks early; rendering is unaffected.",
+        "recommendation": "Rewrap both.",
+        "locations": [
+          {
+            "path": "tasks/TASK-069E-mcp-oauth-authorize-consent.md",
+            "line": 190
+          },
+          {
+            "path": "docs/domains/AI.md",
+            "line": 117
+          }
+        ]
+      },
+      {
+        "id": "F-003",
+        "category": "documentation",
+        "severity": "info",
+        "summary": "Speculative: apply_in_progress is attributed only to a concurrent apply, although grant cleanup can also lock change-set rows.",
+        "rationale": "Setting a change set's grant reference to null during cleanup locks that row, so a lock-not-available error could come from cleanup and the UI would still say another apply is running.",
+        "recommendation": "Optionally say another transaction, for example a concurrent apply, or accept as is.",
+        "locations": [
+          {
+            "path": "docs/decisions/ADR-015-ai-via-mcp.md",
+            "line": 577
+          },
+          {
+            "path": "tasks/TASK-069K-change-set-review-api.md",
+            "line": 42
+          },
+          {
+            "path": "tasks/TASK-069M-metrics-ai-panel.md",
+            "line": 59
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-069A/review-009",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "The lock timeout bullet was moved and rewrapped so no continuation line starts a list, and a CommonMark render shows the intended list structure with no stray numbered list.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-010",
+          "commit": "180962f4fa32b07580a62a0d5f3cd6c8215daf8d"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-009",
+        "finding_id": "F-002",
+        "disposition": "fixed",
+        "rationale": "AI.md and the concept now say the step alone decides whether the status changes, matching ADR-015 and TASK-069I, K and M.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-010",
+          "commit": "180962f4fa32b07580a62a0d5f3cd6c8215daf8d"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-009",
+        "finding_id": "F-003",
+        "disposition": "fixed",
+        "rationale": "ADR-015 now calls the 503 case any other unexpected error and merges the duplicated bullets into one list of the first-step errors, with nothing lost from the previous text.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-010",
+          "commit": "180962f4fa32b07580a62a0d5f3cd6c8215daf8d"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-009",
+        "finding_id": "F-004",
+        "disposition": "fixed",
+        "rationale": "ADR-015 now says the server verifies the redirect URI against the allowlist and the consent page only displays the host, that a vendor callback identifies the vendor while loopback hosts identify no client, and accepts that limitation; TASK-069L adds loopback wording with a test, and its right-to-left name test was correctly removed. A remaining consent-specification gap is recorded as a new finding.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-010",
+          "commit": "180962f4fa32b07580a62a0d5f3cd6c8215daf8d"
+        }
+      },
+      {
+        "record_id": "TASK-069A/review-009",
+        "finding_id": "F-005",
+        "disposition": "fixed",
+        "rationale": "TASK-069F's PostgreSQL wait case is now an acceptance criterion with its command and CI note, and TASK-069E's lock test is limited to a raw grant insert and authorize against cleanup.",
+        "validated_by": {
+          "review_id": "TASK-069A/review-010",
+          "commit": "180962f4fa32b07580a62a0d5f3cd6c8215daf8d"
+        }
+      }
+    ]
+  }
+}
