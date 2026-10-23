@@ -99,3 +99,12 @@ Update `docs/domains/AI.md` with the generator specification and version.
 - Do not start until TASK-069A and ADR-015 are accepted.
 - Save each Step 13 review record under `docs/ai-reviews/TASK-069C/`.
 - Report all changed files and every verification command run.
+- Developer-accepted additions (2026-10-23, AI review
+  `TASK-069C/review-001` F-006): the optional seasonality `peakOffset`
+  (default 0), at most 10 seasonality components, at most 100 level shifts,
+  `decimals` 0 to 10 (default 2), `seed` 0 to 2^32 - 1 and the
+  `TimeserieGenerationError` type. They are part of the generator version 1
+  spec contract.
+- Developer decision (2026-10-23, AI review `TASK-069C/review-001` F-007):
+  numeric spec fields are strict, so strings and booleans are not coerced and
+  integer fields reject floats.

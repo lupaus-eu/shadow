@@ -1,8 +1,10 @@
 # AI Domain
 
 Status: accepted design in ADR-015; TASK-069B (the domain service transaction
-cores this domain will use) is implemented and the rest is pending TASK-069C
-through TASK-069O. Nothing in this document is runtime behaviour yet.
+cores this domain will use) and TASK-069C (the deterministic timeseries
+generator) are implemented and the rest is pending TASK-069D through
+TASK-069O. Nothing in this document is runtime behaviour yet; the generator is
+library code that no route or tool calls yet.
 
 ## Purpose
 
@@ -297,23 +299,70 @@ There is no apply tool.
 
 # Timeserie Generation Specification
 
-`TimeserieGenerationSpec` (TASK-069C) is numeric-only and validated:
+`TimeserieGenerationSpec` (TASK-069C,
+`backend/app/api/v1/timeserie_generation/schemas.py`) is numeric-only and
+validated. It is a `StrictBaseModel`: unknown fields are rejected, every
+number must be finite, and JSON uses the camelCase aliases below (the
+snake_case names are also accepted). Numeric fields are strict, because specs
+come from AI clients: strings and booleans are never coerced to numbers, and
+integer fields (`periods`, `decimals`, `seed`) also reject floats such as
+`12.0`. Number fields accept integers. Dates should be given as ISO
+`YYYY-MM-DD` strings. Date fields are not strict, so pydantic also parses some
+other forms, such as Unix timestamps, but the alignment rules still apply.
 
-- `start_date`, and exactly one of `periods` or `end_date`
-- `time_unit`: `day|week|month|year`; the start date must be aligned (Monday,
-  first of month, 1 January)
-- `base_level`
-- `trend`: `none|linear|percent|logistic` with its parameters
-- `seasonality[]`: period, amplitude, `additive|multiplicative`
-- `noise`: `std` or `relative_std`, optional `ar1`
-- `level_shifts[]`: date and delta
-- optional `clamp_min`, `clamp_max`
-- `decimals`
-- `seed`
+| Field | Default | Rules |
+| --- | --- | --- |
+| `startDate` | required | Aligned to `timeUnit`: any day, a Monday, the 1st of a month or 1 January. An unaligned date is rejected with a validation error naming the rule. |
+| `periods` | — | 1 to 20,000. Exactly one of `periods` or `endDate`. |
+| `endDate` | — | Inclusive, not before `startDate`, need not be aligned. The last point is the last period start on or before it, and at most 20,000 points may result. |
+| `timeUnit` | required | `day`, `week`, `month` or `year` (the existing timeserie literal). |
+| `baseLevel` | required | Starting level of the trend, before level shifts, seasonality and noise. It is the `t = 0` value for the `none`, `linear` and `percent` trends; a `logistic` trend leaves it asymptotically, so its `t = 0` value depends on `midpoint`. |
+| `trend` | `{"type": "none"}` | Tagged by `type`, see below. |
+| `seasonality[]` | `[]` | At most 10 cosine cycles: `period` (periods per cycle, at least 2), `amplitude` (at least 0), `mode` (`additive` or `multiplicative`) and optional `peakOffset` (period index of the peak, default 0). A multiplicative amplitude is relative and at most 1. |
+| `noise` | none | Gaussian noise with exactly one of `std` (absolute) or `relativeStd` (fraction of the noiseless value), and optional `ar1` in (-1, 1). |
+| `levelShifts[]` | `[]` | At most 100 permanent steps: an aligned `date` and a `delta` added from that period onwards. |
+| `clampMin`, `clampMax` | none | Optional bounds applied before rounding; `clampMin` must not exceed `clampMax`. Use bounds with at most `decimals` decimals. |
+| `decimals` | 2 | 0 to 10. |
+| `seed` | required | 0 to 2^32 - 1. |
 
-The generator uses `numpy.random.default_rng(seed)`, produces at most 20,000
-points and records `GENERATOR_VERSION`. TASK-069C documents the exact version
-here when implemented.
+Trends, with `t` the period index from 0:
+
+| `type` | Parameters | Level |
+| --- | --- | --- |
+| `none` | — | `baseLevel` |
+| `linear` | `slope` | `baseLevel + slope * t` |
+| `percent` | `percentPerPeriod` (above -100) | `baseLevel * (1 + percentPerPeriod / 100) ** t`; a zero `baseLevel` stays zero |
+| `logistic` | `capacity`, `growthRate` (above 0), `midpoint` | `baseLevel + (capacity - baseLevel) / (1 + exp(-growthRate * (t - midpoint)))` |
+
+`generate(spec)` in `generator.py` returns `GeneratedPoint(date, value)` items,
+one per aligned period start, computed as:
+
+```text
+level(t)   = trend(t) + sum of level shift deltas whose date <= date(t)
+wave_i(t)  = cos(2 * pi * (t - peakOffset_i) / period_i)
+value(t)   = level(t) * product(1 + amplitude_i * wave_i(t), multiplicative)
+             + sum(amplitude_i * wave_i(t), additive)
+             + noise(t)
+result(t)  = round_half_to_even(clamp(value(t)), decimals)
+```
+
+Rounding is NumPy's round half to even, so `0.125` with two decimals becomes
+`0.12` and `2.5` with no decimals becomes `2.0`.
+
+Noise draws `numpy.random.default_rng(seed).standard_normal(n)` and, with
+`ar1`, filters it into a stationary unit-variance AR(1) process, so `std`
+remains the marginal standard deviation. `relativeStd` scales it by the
+absolute noiseless value. The seed only affects noise. A rounded `-0.0` is
+returned as `0.0`. A valid spec whose values overflow to non-finite numbers,
+either before clamping or when rounding scales a value near the float limit by
+`10 ** decimals`, raises `TimeserieGenerationError`. Generated dates and values pass the
+existing timeserie value validation for `valueUnit` `number`.
+
+Identical specs give identical output with the same generator version and
+NumPy release. **`GENERATOR_VERSION` is `1`.** It is bumped whenever the same
+spec can produce different values. NumPy's random streams are not guaranteed
+across NumPy releases, which is why change sets freeze generated values with
+the version at submit rather than regenerating at apply.
 
 ---
 

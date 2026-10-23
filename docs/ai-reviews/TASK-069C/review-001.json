@@ -1,0 +1,151 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-069C/review-001",
+  "task": {
+    "id": "TASK-069C",
+    "path": "tasks/TASK-069C-timeseries-generator.md"
+  },
+  "round": 1,
+  "reviewed_at": "2026-10-23T08:11:18Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "5f7b21d69eb926afe000746c853f772a0dc63565",
+    "head_sha": "6bd9f86a101e0cc699b20edd76109c3e79c9d77a",
+    "comparison": "5f7b21d69eb926afe000746c853f772a0dc63565...6bd9f86a101e0cc699b20edd76109c3e79c9d77a",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Round 1 reviews the TASK-069C generator package, its tests, the direct numpy declaration and the documentation updates. The package, generate, GENERATOR_VERSION and the StrictBaseModel spec with camelCase aliases match the task, and no route or migration is added. numpy 2.5.2 was already locked at the base commit, so uv.lock changes only the project's own dependency metadata and adds no package. Date alignment matches the existing timeserie value date rule exactly. A brute-force comparison of period counting against period stepping for all four time units found no mismatch, and dates past the largest supported date are rejected for every unit. The tagged trend union rejects missing parameters, extra fields and unknown types. AR(1) noise is correctly scaled to unit variance, negative zero is normalised and the 20,000-point limit holds for both periods and endDate. An integration test stores generated series for all four units through the existing replace-values core. Ruff, ruff format on the new files, pyright and the new tests pass. Seven non-blocking findings remain: three low bugs or gaps, one low documentation inaccuracy and three info notes.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "bug",
+        "severity": "low",
+        "summary": "Rounding can overflow a large finite value to infinity, which then fails as a GeneratedPoint ValidationError instead of the documented TimeserieGenerationError.",
+        "rationale": "The finiteness check runs before clamping and rounding. NumPy rounds by scaling with ten to the power of decimals, so a value near the float maximum with many decimals overflows to infinity. Rounding also runs outside the errstate block and emits an overflow RuntimeWarning. Reproduced with a base level of 1e300 and 10 decimals. The AI domain document promises TimeserieGenerationError for non-finite output, so TASK-069H and TASK-069I callers that catch only that error would see a different exception.",
+        "recommendation": "Check finiteness again after clamping and rounding, keep rounding inside the errstate block, and add a test for this case.",
+        "locations": [
+          {
+            "path": "backend/app/api/v1/timeserie_generation/generator.py",
+            "line": 62
+          },
+          {
+            "path": "backend/app/api/v1/timeserie_generation/generator.py",
+            "line": 71
+          },
+          {
+            "path": "docs/domains/AI.md",
+            "line": 349
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "bug",
+        "severity": "low",
+        "summary": "A percent trend with a zero base level is rejected as non-finite although every value is mathematically zero.",
+        "rationale": "For long or steep percent trends the growth factor overflows to infinity, and zero times infinity is NaN, so a series of zeros raises TimeserieGenerationError. Reproduced with base level 0, 1000 percent per period and 20,000 daily periods. An LLM may plausibly choose a zero base level.",
+        "recommendation": "Return the base level directly for a zero base level in the percent trend, or document the behaviour and accept it.",
+        "locations": [
+          {
+            "path": "backend/app/api/v1/timeserie_generation/generator.py",
+            "line": 87
+          }
+        ]
+      },
+      {
+        "id": "F-003",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "baseLevel is described as the level at period index 0, which is not true for the logistic trend.",
+        "rationale": "The logistic level at index 0 depends on the midpoint; with midpoint 0 the first value is halfway between the base level and the capacity (reproduced: 300 instead of 100). The schema field descriptions become part of the LLM-facing tool schema in later tasks, so the wording can mislead parameter choice.",
+        "recommendation": "Reword the schema description and the AI domain table row, for example as the starting level of the trend and, for logistic, its lower asymptote.",
+        "locations": [
+          {
+            "path": "backend/app/api/v1/timeserie_generation/schemas.py",
+            "line": 168
+          },
+          {
+            "path": "docs/domains/AI.md",
+            "line": 314
+          }
+        ]
+      },
+      {
+        "id": "F-004",
+        "category": "missing_test",
+        "severity": "low",
+        "summary": "endDate counting is tested only for the month unit, and the largest-date rejection only for the year unit.",
+        "rationale": "The task's periods-versus-end_date criterion is only partly covered. There is no test for day, week or year end dates, for an end date in the middle of a week or year, or for exactly 20,000 points reached through endDate. A brute-force check found the code correct, so this is a regression-protection gap rather than a defect.",
+        "recommendation": "Parametrise the end-date test over all four time units with unaligned end dates, and add day and week cases for the largest-date rejection.",
+        "locations": [
+          {
+            "path": "backend/tests/test_timeserie_generation.py",
+            "line": 342
+          },
+          {
+            "path": "backend/tests/test_timeserie_generation.py",
+            "line": 337
+          }
+        ]
+      },
+      {
+        "id": "F-005",
+        "category": "documentation",
+        "severity": "info",
+        "summary": "Rounding is round-half-to-even, but the AI domain document only says round.",
+        "rationale": "NumPy rounding sends halves to the even neighbour, so 0.125 with two decimals becomes 0.12. A reviewer comparing generated values by hand could be surprised.",
+        "recommendation": "State in the formula description that rounding is NumPy round half to even.",
+        "locations": [
+          {
+            "path": "docs/domains/AI.md",
+            "line": 341
+          }
+        ]
+      },
+      {
+        "id": "F-006",
+        "category": "scope",
+        "severity": "info",
+        "summary": "The optional seasonality peakOffset field and several input bounds go beyond the task's literal field list.",
+        "rationale": "The task lists period, amplitude and mode for seasonality. The spec also adds an optional peakOffset with default 0, at most 10 seasonality components, at most 100 level shifts, a decimals range of 0 to 10, a seed range and the TimeserieGenerationError type. They are small natural parameters of the listed features, are documented in the AI domain document and change nothing when omitted, but they now belong to the stored spec contract for generator version 1 while the task and ADR-015 do not mention them.",
+        "recommendation": "The developer decides whether to accept these additions, and if so records the acceptance in the PR or the task notes.",
+        "locations": [
+          {
+            "path": "backend/app/api/v1/timeserie_generation/schemas.py",
+            "line": 80
+          },
+          {
+            "path": "backend/app/api/v1/timeserie_generation/schemas.py",
+            "line": 178
+          },
+          {
+            "path": "backend/app/api/v1/timeserie_generation/schemas.py",
+            "line": 201
+          }
+        ]
+      },
+      {
+        "id": "F-007",
+        "category": "bug",
+        "severity": "info",
+        "summary": "Pydantic lax mode coerces booleans and numeric strings into numeric spec fields.",
+        "rationale": "StrictBaseModel forbids extra fields but does not enable pydantic strict mode, so a boolean seed or decimals value and numeric strings for periods or baseLevel are accepted. This matches the other project models and causes no harm, but specs will come from LLM clients.",
+        "recommendation": "Optionally enable strict numeric fields for the generation spec, or accept the current project-wide behaviour.",
+        "locations": [
+          {
+            "path": "backend/app/api/v1/timeserie_generation/schemas.py",
+            "line": 150
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": []
+  }
+}

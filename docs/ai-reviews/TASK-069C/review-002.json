@@ -1,0 +1,126 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-069C/review-002",
+  "task": {
+    "id": "TASK-069C",
+    "path": "tasks/TASK-069C-timeseries-generator.md"
+  },
+  "round": 2,
+  "reviewed_at": "2026-10-23T08:41:48Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "5f7b21d69eb926afe000746c853f772a0dc63565",
+    "head_sha": "554e92bb8be54f5b3eb5d96ab54bea6f3c6b07b8",
+    "comparison": "5f7b21d69eb926afe000746c853f772a0dc63565...554e92bb8be54f5b3eb5d96ab54bea6f3c6b07b8",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Round 2 re-reviews the whole TASK-069C branch with a focus on the fix commit for the seven round 1 findings, all of which are resolved. The second finiteness check is correct: clipping to finite bounds cannot create a non-finite value, and rounding overflow yields an infinity that the check now catches. The zero-base percent shortcut matches the previous output for every spec that succeeded before. Strict numeric fields still accept JSON integers for number fields, including nested trend, noise, seasonality and level-shift fields, and Python-mode input with string dates and snake_case names still works. The alias JSON schema is unchanged apart from the baseLevel description. GENERATOR_VERSION 1 stays justified because no previously successful spec produces different values. Run against the round 1 sources, the new tests fail in 12 cases (rounding overflow, zero-base percent and all coercion cases), while the new end-date and largest-date tests act as regression guards. The AI domain document, schema descriptions and task notes match the code. Ruff, pyright, the new tests with warnings as errors and the full backend suite pass. One new info-level documentation finding remains.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "documentation",
+        "severity": "info",
+        "summary": "The AI domain document says dates are ISO YYYY-MM-DD strings, but the spec date fields still parse other forms leniently.",
+        "rationale": "The start date, end date and level-shift date fields are plain pydantic dates outside the strict-numeric decision. They also accept integer Unix timestamps at midnight, numeric-string timestamps and datetime strings with a zero time (reproduced: an integer timestamp became 2026-01-01). Alignment validation still applies, so the behaviour is harmless, but the sentence overstates the contract that later MCP tool documentation may copy. Pydantic's strict marker is not a drop-in fix, because it rejects string dates in Python mode.",
+        "recommendation": "Reword the sentence to say dates should be given as ISO YYYY-MM-DD strings, or add an explicit ISO-format validator to the three date fields with a test.",
+        "locations": [
+          {
+            "path": "docs/domains/AI.md",
+            "line": 309
+          },
+          {
+            "path": "backend/app/api/v1/timeserie_generation/schemas.py",
+            "line": 128
+          },
+          {
+            "path": "backend/app/api/v1/timeserie_generation/schemas.py",
+            "line": 151
+          },
+          {
+            "path": "backend/app/api/v1/timeserie_generation/schemas.py",
+            "line": 161
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-069C/review-001",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "Clamping and rounding now run inside the errstate block and are followed by a second finiteness check. Near-limit values with many decimals, clamped values and negative values raise TimeserieGenerationError without a RuntimeWarning, and the new test fails on the round 1 code.",
+        "validated_by": {
+          "review_id": "TASK-069C/review-002",
+          "commit": "554e92bb8be54f5b3eb5d96ab54bea6f3c6b07b8"
+        }
+      },
+      {
+        "record_id": "TASK-069C/review-001",
+        "finding_id": "F-002",
+        "disposition": "fixed",
+        "rationale": "A percent trend with a zero base level returns the base level directly, so 20,000 daily periods at 1000 percent give all zeros, negative zero normalises to 0.0 and level shifts still apply. The new test fails on the round 1 code.",
+        "validated_by": {
+          "review_id": "TASK-069C/review-002",
+          "commit": "554e92bb8be54f5b3eb5d96ab54bea6f3c6b07b8"
+        }
+      },
+      {
+        "record_id": "TASK-069C/review-001",
+        "finding_id": "F-003",
+        "disposition": "fixed",
+        "rationale": "The schema description and the AI domain table now say that baseLevel is the t=0 value only for the none, linear and percent trends, and that a logistic trend's t=0 value depends on midpoint.",
+        "validated_by": {
+          "review_id": "TASK-069C/review-002",
+          "commit": "554e92bb8be54f5b3eb5d96ab54bea6f3c6b07b8"
+        }
+      },
+      {
+        "record_id": "TASK-069C/review-001",
+        "finding_id": "F-004",
+        "disposition": "fixed",
+        "rationale": "The end-date test is parametrised over all four time units with unaligned end dates, a new test reaches exactly 20,000 points through endDate, and the largest-date rejection is tested for every unit.",
+        "validated_by": {
+          "review_id": "TASK-069C/review-002",
+          "commit": "554e92bb8be54f5b3eb5d96ab54bea6f3c6b07b8"
+        }
+      },
+      {
+        "record_id": "TASK-069C/review-001",
+        "finding_id": "F-005",
+        "disposition": "fixed",
+        "rationale": "The AI domain document names round half to even in the formula and gives two examples, both confirmed against the generator.",
+        "validated_by": {
+          "review_id": "TASK-069C/review-002",
+          "commit": "554e92bb8be54f5b3eb5d96ab54bea6f3c6b07b8"
+        }
+      },
+      {
+        "record_id": "TASK-069C/review-001",
+        "finding_id": "F-006",
+        "disposition": "accepted_risk",
+        "rationale": "The developer accepted the optional peakOffset field, the component, level-shift, decimals and seed bounds and the TimeserieGenerationError type on 2026-10-23. The acceptance is recorded in the task notes as part of the generator version 1 spec contract.",
+        "validated_by": {
+          "review_id": "TASK-069C/review-002",
+          "commit": "554e92bb8be54f5b3eb5d96ab54bea6f3c6b07b8"
+        }
+      },
+      {
+        "record_id": "TASK-069C/review-001",
+        "finding_id": "F-007",
+        "disposition": "fixed",
+        "rationale": "By developer decision every numeric spec field is now a strict float or strict integer. Booleans and numeric strings are rejected and integer fields reject floats in both Python and JSON mode, while JSON integers remain valid for number fields. The decision is documented in the task notes and the AI domain document.",
+        "validated_by": {
+          "review_id": "TASK-069C/review-002",
+          "commit": "554e92bb8be54f5b3eb5d96ab54bea6f3c6b07b8"
+        }
+      }
+    ]
+  }
+}
