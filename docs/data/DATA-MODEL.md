@@ -3,8 +3,9 @@
 Tämä dokumentti kuvaa järjestelmän loogisen datamallin.
 
 Status: core, customer and Forecasting durable-request/saved-version models
-defined. The AI Domain's MCP OAuth and change-set entities are accepted in
-ADR-015 but not migrated (TASK-069D, TASK-069I). Billing remains TBD.
+defined. The AI Domain's MCP OAuth entities are migrated (TASK-069D, migration
+017); its change-set entities are accepted in ADR-015 but not migrated
+(TASK-069I). Billing remains TBD.
 
 Looginen datamalli kuvaa:
 
@@ -176,12 +177,12 @@ Lue nämä yhdessä datamallin kanssa:
 
 ---
 
-# Accepted AI Domain Entities (Not Yet Migrated)
+# AI Domain Entities
 
-ADR-015 accepts these logical entities. They are design, not schema: the
-tables are added by TASK-069D (`017_create_mcp_oauth_schema`) and TASK-069I
-(`018_create_ai_change_sets`), and `docs/data/DATABASE.md` and the physical
-diagram are updated then.
+ADR-015 accepts these logical entities. The four MCP OAuth tables are created
+by TASK-069D (`017_create_mcp_oauth_schema`) and described in
+`docs/data/DATABASE.md` and the physical diagram. The change-set entities are
+design, not schema, until TASK-069I (`018_create_ai_change_sets`).
 
 | Entity | Table | Notes |
 | --- | --- | --- |
@@ -256,7 +257,8 @@ Examples:
 - `timeserie_key`
 - `prediction_key`
 - `prediction_request_key`
-- `grant_key` and `change_set_key` (accepted in ADR-015, not migrated)
+- `grant_key` (migration 017) and `change_set_key` (accepted in ADR-015, not
+  migrated)
 
 These keys preserve Varjo-style identifiers while allowing relational foreign keys to use bigint primary keys.
 

@@ -94,6 +94,7 @@ The current ordered migration chain is:
 014_add_prediction_intervals.sql
 015_create_prediction_requests.sql
 016_add_prophet_result_kind.sql
+017_create_mcp_oauth_schema.sql
 ```
 
 Jokaisella yllä olevalla tiedostolla on vastaava `.down.sql`-tiedosto.
@@ -162,6 +163,13 @@ deletes every `prophet` result and its prediction points, then restores the
 five-kind CHECK; other results and their versions are kept. Run it only with
 the prediction worker stopped and no queued or running requests that select
 Prophet, because a release before ADR-014 cannot calculate them.
+
+Migration 017 creates the AI Domain's MCP OAuth tables (`mcp_oauth_clients`,
+`mcp_oauth_authorization_requests`, `mcp_oauth_grants`, `mcp_oauth_tokens`,
+ADR-015) and changes no existing table. They store only SHA-256 hashes of
+request ids, codes and tokens. Its down migration drops the four tables and
+deletes every MCP client registration, grant and token; MCP clients must
+register and authorize again afterwards.
 
 ## Deployment Compatibility
 

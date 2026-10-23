@@ -112,10 +112,10 @@ Users and example business data remain forbidden in production. First setup is
 migrations -> reference seed -> empty-users-table administrator bootstrap.
 
 AI via MCP is an accepted design in `docs/decisions/ADR-015-ai-via-mcp.md`
-(TASK-069A). TASK-069B's flush-only domain service transaction cores and
-TASK-069C's deterministic timeseries generator are implemented; the rest is
-pending TASK-069D through TASK-069O, and none of the MCP feature is runtime
-behaviour yet. Users chat in their own MCP client on
+(TASK-069A). TASK-069B's flush-only domain service transaction cores,
+TASK-069C's deterministic timeseries generator and TASK-069D's MCP OAuth schema
+(migration 017, `mcp_oauth_*`) are implemented; the rest is pending TASK-069E
+through TASK-069O, and none of the MCP feature is runtime behaviour yet. Users chat in their own MCP client on
 their own AI subscription; Schatten never calls an LLM or stores LLM keys.
 FastAPI will host `/api/mcp/read` (`schatten.read`) and `/api/mcp/write`
 (`schatten.write`) and act as OAuth 2.1 authorization server over the existing

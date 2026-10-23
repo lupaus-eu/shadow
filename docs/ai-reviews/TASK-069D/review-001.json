@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-069D/review-001",
+  "task": {
+    "id": "TASK-069D",
+    "path": "tasks/TASK-069D-mcp-oauth-schema.md"
+  },
+  "round": 1,
+  "reviewed_at": "2026-10-23T10:48:11Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "146b28384781bdba2316dad3c94c544af4bbc57b",
+    "head_sha": "2645abd89cac294c646bc01d848ed1f334907615",
+    "comparison": "146b28384781bdba2316dad3c94c544af4bbc57b...2645abd89cac294c646bc01d848ed1f334907615",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Round 1 reviews the whole TASK-069D branch: migration 017 and its down migration, the mcp_oauth SQLAlchemy models, the SQLite model tests, the PostgreSQL integration tests, the six edited pre-existing migration tests and the documentation. No bugs, regressions, security problems or scope violations were found. A script that migrated a fresh PostgreSQL 18 schema and compared it with the SQLAlchemy metadata found no difference in columns, nullability, named constraints, indexes or foreign-key delete rules. The down migration fully reverses the up migration, every secret column is a 32-byte hash, no route or dependency is added, and the indexes and constraints support the grant reuse, refresh rotation, reuse detection, double redemption, lazy cleanup and connections needs of TASK-069E and TASK-069F. The documentation matches the implementation. Ruff, pyright, the full backend suite and the PostgreSQL integration suites on postgres:18.6 pass. Two low-severity test gaps remain.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "missing_test",
+        "severity": "low",
+        "summary": "The PostgreSQL RESTRICT test never deletes a client that only a grant references, so the grant-to-client RESTRICT rule is not covered on its own.",
+        "rationale": "The first client delete attempt runs while both a grant and an authorization request reference the client, and the second runs after the grant is gone. A mutant that changed the grant's client foreign key to ON DELETE CASCADE still passed, because the authorization request's RESTRICT foreign key raised the same error. The real schema is correct, but the acceptance criterion that a client referenced by a grant cannot be hard-deleted is not independently tested.",
+        "recommendation": "Add a case where only a grant references the client and assert that deleting the client raises a RestrictViolation.",
+        "locations": [
+          {
+            "path": "backend/tests/test_migrations_integration.py",
+            "line": 1271
+          },
+          {
+            "path": "db/migrations/017_create_mcp_oauth_schema.sql",
+            "line": 38
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "missing_test",
+        "severity": "low",
+        "summary": "Several CHECK constraints added by migration 017 and the models have no rejection test on either database backend.",
+        "rationale": "No test rejects a consumed time without a code, a code hash without a code expiry, a token or authorization request expiry that is not after creation, an empty or over-long redirect URI, or a blank client_id, grant_key or created_ip. The task's required constraint list is covered, but these extra constraints, which TASK-069E and TASK-069F will rely on, could regress unnoticed. The non-blank checks also differ between PostgreSQL and SQLite.",
+        "recommendation": "Add parametrised rejection cases to the SQLite model tests and, for the dialect-specific checks, to the PostgreSQL constraint test.",
+        "locations": [
+          {
+            "path": "backend/tests/test_mcp_oauth_models.py"
+          },
+          {
+            "path": "db/migrations/017_create_mcp_oauth_schema.sql",
+            "line": 109
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": []
+  }
+}

@@ -356,8 +356,8 @@ Related Documents:
 
 # AI Domain
 
-Status: accepted design in ADR-015; TASK-069B and TASK-069C are implemented
-and the rest is pending TASK-069D through TASK-069O. The earlier document-AI candidate
+Status: accepted design in ADR-015; TASK-069B through TASK-069D are
+implemented and the rest is pending TASK-069E through TASK-069O. The earlier document-AI candidate
 (classification, summaries, extraction) is retained in `docs/domains/AI.md` as
 an unplanned candidate outside this scope.
 
@@ -379,7 +379,8 @@ Owns:
 - ai_change_sets
 - ai_change_set_operations
 
-All six tables are accepted but not migrated yet (TASK-069D, TASK-069I).
+The four `mcp_oauth_*` tables are migrated (TASK-069D, migration 017); the
+two change-set tables are accepted but not migrated yet (TASK-069I).
 
 Does NOT Own:
 

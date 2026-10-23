@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-069D/review-002",
+  "task": {
+    "id": "TASK-069D",
+    "path": "tasks/TASK-069D-mcp-oauth-schema.md"
+  },
+  "round": 2,
+  "reviewed_at": "2026-10-23T10:53:22Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "146b28384781bdba2316dad3c94c544af4bbc57b",
+    "head_sha": "dbfdd62c2ea34687630d30d658faf1d99e9b3e9d",
+    "comparison": "146b28384781bdba2316dad3c94c544af4bbc57b...dbfdd62c2ea34687630d30d658faf1d99e9b3e9d",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "clean",
+    "summary": "Round 2 re-reviews the whole TASK-069D branch with a focus on the fix commit for the two round 1 findings, both of which are resolved. The fix commit changes only the two test modules; migrations, models and documentation are unchanged since round 1. The PostgreSQL test now rejects deleting a client that only a grant references, and a mutant with a cascading grant-to-client foreign key now fails that assertion, while the real schema passes. A new parametrised SQLite test rejects ten invalid rows, each on its intended constraint, and the PostgreSQL constraint test adds blank client_id, blank grant_key and token expiry cases that fail on their intended constraints. Ruff, pyright, the model tests, the PostgreSQL migration integration tests on postgres:18.6 and the full backend suite pass. No new findings.",
+    "findings": [],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-069D/review-001",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "The cascade test commits the grant and its tokens before any authorization request exists and asserts that deleting the client raises a RestrictViolation. A mutant that changes only the grant's client foreign key to ON DELETE CASCADE now fails at that assertion, while the real migration passes.",
+        "validated_by": {
+          "review_id": "TASK-069D/review-002",
+          "commit": "dbfdd62c2ea34687630d30d658faf1d99e9b3e9d"
+        }
+      },
+      {
+        "record_id": "TASK-069D/review-001",
+        "finding_id": "F-002",
+        "disposition": "fixed",
+        "rationale": "A parametrised SQLite test covers the blank client_id, created_ip and grant_key checks, token and authorization request expiry, empty and over-long redirect URIs, both halves of the code consistency check and consumed time without a code, each rejected by its intended constraint; a separate test accepts the 2,048-character boundary. The PostgreSQL constraint test adds the dialect-specific non-blank checks and token expiry.",
+        "validated_by": {
+          "review_id": "TASK-069D/review-002",
+          "commit": "dbfdd62c2ea34687630d30d658faf1d99e9b3e9d"
+        }
+      }
+    ]
+  }
+}

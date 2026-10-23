@@ -1,10 +1,11 @@
 # AI Domain
 
 Status: accepted design in ADR-015; TASK-069B (the domain service transaction
-cores this domain will use) and TASK-069C (the deterministic timeseries
-generator) are implemented and the rest is pending TASK-069D through
-TASK-069O. Nothing in this document is runtime behaviour yet; the generator is
-library code that no route or tool calls yet.
+cores this domain will use), TASK-069C (the deterministic timeseries
+generator) and TASK-069D (the MCP OAuth schema) are implemented and the rest
+is pending TASK-069E through TASK-069O. Nothing in this document is runtime
+behaviour yet; the generator is library code and the `mcp_oauth_*` tables are
+schema that no route or tool uses yet.
 
 ## Purpose
 
@@ -182,7 +183,10 @@ must say so, and users can grant read only and revoke grants.
 
 # Database Ownership
 
-Planned tables (not migrated yet):
+The `mcp_oauth_*` tables are created by migration
+`017_create_mcp_oauth_schema` (TASK-069D); their SQLAlchemy models are in
+`backend/app/api/v1/mcp_oauth/models.py`. The change-set tables are planned
+and not migrated yet.
 
 | Table | Task | Purpose |
 | --- | --- | --- |

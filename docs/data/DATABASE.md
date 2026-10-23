@@ -2,8 +2,9 @@
 
 Tämä dokumentti kuvaa järjestelmän fyysisen tietokantamallin ja tietokantakäytännöt.
 
-Status: core, customer, authentication and Forecasting durable-request and
-saved-version persistence schema defined. AI and billing still TBD.
+Status: core, customer, authentication, Forecasting durable-request and
+saved-version, and AI Domain MCP OAuth persistence schema defined. AI change
+sets and billing still TBD.
 
 Tietokantateknologia ja ORM on päätetty ADR-001:ssä:
 
@@ -66,6 +67,7 @@ db/migrations/013_create_derived_metrics.sql
 db/migrations/014_add_prediction_intervals.sql
 db/migrations/015_create_prediction_requests.sql
 db/migrations/016_add_prophet_result_kind.sql
+db/migrations/017_create_mcp_oauth_schema.sql
 ```
 
 | Table | Purpose | Notes |
@@ -96,6 +98,10 @@ db/migrations/016_add_prophet_result_kind.sql
 | `customers` | Application-wide customer profiles | Status is `active`, `archived` or `deleted`; status and `deleted_time` must agree. |
 | `contacts` | Customer-owned contacts | Name is required; email, phone and job title are optional. |
 | `customer_addresses` | Customer-owned labelled addresses | Label, first address line and two-letter uppercase country code are required. |
+| `mcp_oauth_clients` | Dynamically registered public MCP OAuth clients (ADR-015) | Unique `client_id`, trimmed self-declared `client_name` (1--100 characters), `redirect_uris` as a JSONB array of 1--10 URIs, created time and IP, throttled `last_used_time`, and `deleted_time` for stale-client soft deletion. |
+| `mcp_oauth_authorization_requests` | Ten-minute pending authorization requests | Primary key is the SHA-256 request-id hash; holds client, redirect URI, `state`, S256 `code_challenge`, one scope and its resource. After consent it holds the deciding User, the 60-second code hash and expiry, the consumed time and the redeemed `grant_id`. |
+| `mcp_oauth_grants` | One User's consent for one client, scope and MCP resource | Unique `grant_key`; exactly one scope (`schatten.read` or `schatten.write`) bound to the matching resource; non-null 30-day absolute `expires_time`; last used, revoked time and `revoked_by`. |
+| `mcp_oauth_tokens` | Opaque MCP access and refresh tokens | Primary key is the SHA-256 token hash; `kind` is `access` or `refresh`; expiry, `replaced_by_hash` rotation link and `revoked_time`. |
 
 # Common Columns
 
@@ -194,6 +200,42 @@ back.
   letters.
 - `contacts.customer_id` and `customer_addresses.customer_id` use
   `ON DELETE CASCADE` for physical hard-delete cleanup/safety behavior.
+- The `mcp_oauth_*` tables store no plaintext pending request id,
+  authorization code or token. `request_id_hash`, `code_hash`, `token_hash` and
+  `replaced_by_hash` are exactly 32 bytes (SHA-256). ADR-015 allows the
+  plaintext pending request id only in the login transaction's `return_to`.
+- `mcp_oauth_clients.client_id` is unique and non-blank. `client_name` is
+  `NOT NULL` and 1 to 100 characters; trimming and ADR-015's ASCII allowlist
+  are enforced by the registration service (TASK-069E). `redirect_uris` is a
+  JSON array of 1 to 10 entries, stored exactly as validated.
+- Grants and authorization requests hold exactly one scope:
+  `scopes` is `schatten.read` or `schatten.write`, and the `resource` ends in
+  the matching `/api/mcp/read` or `/api/mcp/write`. The exact canonical
+  resource URI is validated by the application.
+- `mcp_oauth_grants.expires_time` is non-null and after creation. It is the
+  30-day absolute lifetime and is never extended, also not on grant reuse.
+  `revoked_by` requires `revoked_time`.
+- An authorization request's code hash and code expiry are set together and
+  require the deciding `user_id`; `consumed_time` requires a code, and
+  `grant_id` requires `consumed_time`. `code_challenge` is a 43-character
+  base64url S256 challenge. Code hashes are unique.
+- `mcp_oauth_tokens.kind` is `access` or `refresh`; only refresh tokens have a
+  `replaced_by_hash`. A refresh token's `expires_time` is its 7-day idle
+  timeout capped at the grant's `expires_time`; the cap is enforced by the
+  token service because it spans tables.
+- Foreign keys to `users` are plain audit references without a delete rule,
+  as for other audit columns; Users are soft-deleted.
+- `mcp_oauth_tokens.grant_id` is `ON DELETE CASCADE`, and
+  `mcp_oauth_authorization_requests.grant_id` is `ON DELETE SET NULL`, so lazy
+  cleanup of a revoked or expired grant removes its tokens and never fails on a
+  redeemed request. The client foreign keys of authorization requests and
+  grants are `ON DELETE RESTRICT`: cleanup hard-deletes a soft-deleted client
+  only after no authorization request or grant references it.
+- **Refresh-token retention.** Replaced refresh-token rows (hash,
+  `replaced_by_hash` and expiry) are kept until their grant expires or is
+  revoked and the grant row is deleted, which cascades to them. Lazy cleanup
+  deletes expired access tokens but never a refresh token of an active grant,
+  because ADR-015's refresh-token reuse detection depends on these rows.
 
 Soft-delete propagation is not automatic in PostgreSQL. Application or service
 logic must set `deleted_time` on scenario-owned rows when a scenario is
@@ -232,6 +274,13 @@ The migration defines:
   case-insensitive active-name indexes; cancelled/failed history is excluded
   from active-name uniqueness
 - prediction target version and prediction point result/date lookup indexes
+- MCP OAuth lookups: unique `client_id`, `grant_key` and code hash; hash
+  primary keys for pending requests and tokens; grants by User and by
+  `(client, user, resource)` for grant reuse; tokens by grant; authorization
+  requests by client and by redeemed grant
+- MCP OAuth lazy-cleanup indexes: authorization request, grant and access-token
+  `expires_time`; revoked grants; non-deleted clients by
+  `COALESCE(last_used_time, created_time)`; soft-deleted clients
 
 ---
 
@@ -251,9 +300,10 @@ The following candidate tables are retained as planned future work. They are not
 | ai_summaries | AI Domain (unplanned document-AI candidate) | AI summary outputs; outside ADR-015's scope, no task |
 | ai_extractions | AI Domain (unplanned document-AI candidate) | AI extraction outputs; outside ADR-015's scope, no task |
 
-The AI Domain's accepted MCP tables (`mcp_oauth_*`, `ai_change_sets`,
-`ai_change_set_operations`) are described in `docs/data/DATA-MODEL.md` and
-ADR-015, and are added by TASK-069D and TASK-069I.
+The AI Domain's MCP OAuth tables (`mcp_oauth_*`) are created by migration 017
+(TASK-069D) and listed under Core Tables. The accepted change-set tables
+(`ai_change_sets`, `ai_change_set_operations`) are described in
+`docs/data/DATA-MODEL.md` and ADR-015, and are added by TASK-069I.
 
 ---
 

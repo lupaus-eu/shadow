@@ -301,6 +301,62 @@ entity "prediction_points" as prediction_points {
   created_by : BIGINT
 }
 
+entity "mcp_oauth_clients" as mcp_oauth_clients {
+  * mcp_oauth_client_id : BIGINT
+  --
+  client_id : TEXT
+  client_name : TEXT
+  redirect_uris : JSONB
+  created_time : TIMESTAMPTZ
+  created_ip : TEXT
+  last_used_time : TIMESTAMPTZ
+  deleted_time : TIMESTAMPTZ
+}
+
+entity "mcp_oauth_authorization_requests" as mcp_oauth_authorization_requests {
+  * request_id_hash : BYTEA
+  --
+  mcp_oauth_client_id : BIGINT
+  redirect_uri : TEXT
+  state : TEXT
+  code_challenge : TEXT
+  scopes : TEXT
+  resource : TEXT
+  created_time : TIMESTAMPTZ
+  expires_time : TIMESTAMPTZ
+  user_id : BIGINT
+  code_hash : BYTEA
+  code_expires_time : TIMESTAMPTZ
+  consumed_time : TIMESTAMPTZ
+  grant_id : BIGINT
+}
+
+entity "mcp_oauth_grants" as mcp_oauth_grants {
+  * grant_id : BIGINT
+  --
+  grant_key : TEXT
+  mcp_oauth_client_id : BIGINT
+  user_id : BIGINT
+  scopes : TEXT
+  resource : TEXT
+  created_time : TIMESTAMPTZ
+  expires_time : TIMESTAMPTZ
+  last_used_time : TIMESTAMPTZ
+  revoked_time : TIMESTAMPTZ
+  revoked_by : BIGINT
+}
+
+entity "mcp_oauth_tokens" as mcp_oauth_tokens {
+  * token_hash : BYTEA
+  --
+  grant_id : BIGINT
+  kind : TEXT
+  created_time : TIMESTAMPTZ
+  expires_time : TIMESTAMPTZ
+  replaced_by_hash : BYTEA
+  revoked_time : TIMESTAMPTZ
+}
+
 organisations ||--o{ scenarios
 users ||--o{ user_identities
 users ||--o{ auth_sessions
@@ -339,5 +395,11 @@ prediction_targets ||--o{ prediction_model_results
 prediction_model_results ||--o{ prediction_points
 timeseries ||--o{ graph_nodes : primary
 timeseries ||--o{ graph_nodes : secondary
+mcp_oauth_clients ||--o{ mcp_oauth_authorization_requests : restrict
+mcp_oauth_clients ||--o{ mcp_oauth_grants : restrict
+users ||--o{ mcp_oauth_grants : owns / revokes
+users |o--o{ mcp_oauth_authorization_requests : decides
+mcp_oauth_grants ||--o{ mcp_oauth_tokens : cascade
+mcp_oauth_grants |o--o{ mcp_oauth_authorization_requests : redeemed (set null)
 
 @enduml
