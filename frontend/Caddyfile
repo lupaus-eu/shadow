@@ -43,12 +43,18 @@ http:// {
 		output stdout
 		format filter {
 			request>headers>X-Csrf-Token replace REDACTED
+			request>headers>Authorization replace REDACTED
 			request>uri query {
 				replace code REDACTED
 				replace state REDACTED
 				replace error REDACTED
 				replace error_description REDACTED
+				# ADR-015: MCP OAuth pending request ids.
+				replace request REDACTED
+				replace return_to REDACTED
 			}
+			# Authorization redirects carry request ids, codes and Entra state.
+			resp_headers>Location replace REDACTED
 			wrap json
 		}
 	}
@@ -70,7 +76,7 @@ http:// {
 
 		# Caddy is the TLS edge; the TCP peer is the client. Replace every
 		# browser-supplied forwarding header with fixed values.
-		@api path /api /api/*
+		@api path /api /api/* /.well-known/oauth-authorization-server* /.well-known/oauth-protected-resource*
 		request_header @api -Forwarded
 		request_header @api -X-Forwarded-*
 		request_header @api -X-Schatten-Client-IP

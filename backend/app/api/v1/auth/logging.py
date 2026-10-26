@@ -2,12 +2,13 @@ import logging
 import re
 
 _SENSITIVE_QUERY_VALUE = re.compile(
-    r"(?i)(?P<prefix>(?:^|[?&])(?:code|state|error|error_description)=)[^&\s]*"
+    r"(?i)(?P<prefix>(?:^|[?&])"
+    r"(?:code|state|error|error_description|request|return_to)=)[^&\s]*"
 )
 
 
 class SensitiveQueryFilter(logging.Filter):
-    """Redact callback secrets from Uvicorn-style access-log arguments."""
+    """Redact callback secrets and MCP OAuth request ids from access logs."""
 
     def filter(self, record: logging.LogRecord) -> bool:
         arguments = record.args

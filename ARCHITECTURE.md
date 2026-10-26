@@ -57,10 +57,11 @@ Päätetty tekninen perusrakenne:
   Schatten as OAuth 2.1 authorization server for MCP clients over the existing
   Entra login, and AI change sets that only a human applies in Schatten. This
   is an accepted design. TASK-069B's flush-only domain service transaction
-  cores, TASK-069C's deterministic timeseries generator and TASK-069D's MCP
-  OAuth schema are implemented; the rest is pending TASK-069E through
-  TASK-069O and none of the MCP feature is runtime behaviour yet (see
-  [AI Via MCP](#ai-via-mcp))
+  cores, TASK-069C's deterministic timeseries generator, TASK-069D's MCP
+  OAuth schema and TASK-069E's OAuth discovery, registration, authorization
+  request and consent API (behind `MCP_ENABLED=false`) are implemented; the
+  rest is pending TASK-069F through TASK-069O and no MCP client can connect
+  yet (see [AI Via MCP](#ai-via-mcp))
 
 Tarkemmat toteutusyksityiskohdat täsmentyvät taskien ja tarvittaessa uusien ADR:ien kautta.
 
@@ -84,7 +85,7 @@ Kun tuotesuunta täsmentyy, lisää tähän lyhyt kuvaus:
 
 ```text
 Development: Browser --HTTPS--> local Caddy --> Vite / FastAPI --> Entra
-Production:  Browser --HTTPS--> Caddy (React) --/api--> FastAPI --> Entra
+Production:  Browser --HTTPS--> Caddy (React) --/api, /.well-known/oauth-*--> FastAPI --> Entra
                                                        |--> PostgreSQL 18
 Prediction worker ------------------------------------> PostgreSQL 18
 Migration job ----------------------------------------> PostgreSQL 18
@@ -128,7 +129,9 @@ Teknologiat:
 
 Frontend kutsuu backendin APIa saman originin `/api`-polulla. Tuotantoimage
 rakentaa Vite SPA:n ja palvelee sen pinnatulla virallisella Caddy-imagella.
-Caddy tarjoaa history fallbackin, proxyaa `/api`:n, hylkää väärän Hostin,
+Caddy tarjoaa history fallbackin, proxyaa `/api`:n ja ADR-015:n OAuth
+discovery -polut (`/.well-known/oauth-authorization-server*`,
+`/.well-known/oauth-protected-resource*`), hylkää väärän Hostin,
 ylikirjoittaa luotetut proxy-headerit, redaktoi sensitiiviset query-arvot ja
 asettaa CSP- sekä muut selainsecurity-headerit. Frontend ei tee suoria
 tietokantakutsuja eikä sisällä luotettavaa authorization-logiikkaa.
@@ -543,8 +546,11 @@ Status: accepted design in
 `*_in_transaction` domain service cores) and TASK-069C (the deterministic
 timeseries generator in `backend/app/api/v1/timeserie_generation/`) and
 TASK-069D (the `mcp_oauth_*` tables of migration 017 and their models in
-`backend/app/api/v1/mcp_oauth/models.py`, with no route) are implemented; the
-rest is pending TASK-069E through TASK-069O. Nothing else below is implemented or enabled yet,
+`backend/app/api/v1/mcp_oauth/models.py`) and TASK-069E (OAuth discovery,
+Dynamic Client Registration, the authorization request, the cookie-session
+consent API, the `features.mcp` session flag and the Caddy routing and log
+redaction, in `backend/app/api/v1/mcp_oauth/`) are implemented; the rest is
+pending TASK-069F through TASK-069O. Nothing else below is implemented yet,
 and the feature stays behind `MCP_ENABLED=false` until TASK-069O's separately
 approved production enablement.
 
@@ -880,7 +886,7 @@ ADR-004 Authentication, Identity And Session Architecture: accepted
 ADR-005 Production-Only Deployment Environments: accepted
 ADR-006 Local Authentik TLS And Optional Entra Federation: target superseded by ADR-013
 ADR-013 Shared Entra Registration And Local HTTPS Deployment: accepted; source delivery H1-H3 implemented, rollout pending
-ADR-015 AI Via MCP With Human-Applied Change Sets: accepted design; TASK-069B..TASK-069D implemented, TASK-069E..TASK-069O pending
+ADR-015 AI Via MCP With Human-Applied Change Sets: accepted design; TASK-069B..TASK-069E implemented, TASK-069F..TASK-069O pending
 ```
 
 ---

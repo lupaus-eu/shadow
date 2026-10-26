@@ -1,6 +1,6 @@
 # ADR-015: AI Via MCP With Human-Applied Change Sets
 
-Status: Accepted design; TASK-069B through TASK-069D implemented, TASK-069E through TASK-069O pending
+Status: Accepted design; TASK-069B through TASK-069E implemented, TASK-069F through TASK-069O pending
 
 Date: 2026-10-21
 
@@ -52,12 +52,13 @@ Constraints from accepted decisions:
 
 ## Scope And Status
 
-This ADR is an accepted design. **None of the MCP feature is runtime
-behaviour yet.** The implementation is delivered by TASK-069B through
-TASK-069O; TASK-069B (the domain service transaction cores, which change no
-REST behaviour), TASK-069C (the deterministic timeseries generator, which
-adds no route) and TASK-069D (the MCP OAuth schema, which adds no route) are
-implemented and the rest is pending. The feature
+This ADR is an accepted design. **No MCP client can use Schatten yet.** The
+implementation is delivered by TASK-069B through TASK-069O; TASK-069B (the
+domain service transaction cores, which change no REST behaviour), TASK-069C
+(the deterministic timeseries generator, which adds no route), TASK-069D (the
+MCP OAuth schema, which adds no route) and TASK-069E (discovery, registration,
+authorization request and consent API, registered only with
+`MCP_ENABLED=true`) are implemented and the rest is pending. The feature
 stays disabled (`MCP_ENABLED=false`) until TASK-069O's separately approved
 production enablement.
 
@@ -66,7 +67,7 @@ production enablement.
 | TASK-069B | Flush-only `*_in_transaction` cores for the domain services change sets need (implemented) |
 | TASK-069C | Deterministic timeseries generator (implemented) |
 | TASK-069D | MCP OAuth schema (`mcp_oauth_*`: clients, authorization requests, grants, tokens) (implemented) |
-| TASK-069E | OAuth discovery, client registration, authorization request, consent API and Caddy routing |
+| TASK-069E | OAuth discovery, client registration, authorization request, consent API and Caddy routing (implemented) |
 | TASK-069F | Token, refresh, revoke, `verify_access_token` and connections API |
 | TASK-069G | FastMCP foundation, bearer authentication, resource protection, first read tools |
 | TASK-069H | Remaining read tools and generator preview |

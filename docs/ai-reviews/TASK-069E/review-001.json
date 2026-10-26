@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-069E/review-001",
+  "task": {
+    "id": "TASK-069E",
+    "path": "tasks/TASK-069E-mcp-oauth-authorize-consent.md"
+  },
+  "round": 1,
+  "reviewed_at": "2026-10-26T09:00:43Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "9aafecb27e7da31af30765022bdd823ddea79c49",
+    "head_sha": "12b62f53b91b6c2c839b98d5372e7bf486cfedb4",
+    "comparison": "9aafecb27e7da31af30765022bdd823ddea79c49...12b62f53b91b6c2c839b98d5372e7bf486cfedb4",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Round 1 reviews the whole TASK-069E branch: the mcp_oauth service, public router, consent router and schemas, the MCP settings and their validation, the MCP_ENABLED router gating and features.mcp session flag, the no-store prefixes, the backend access-log filter, both Caddyfiles, the Compose and env examples, the CI Caddy verification scripts, the new SQLite and PostgreSQL test modules, the dual-configuration authorization sweep and the documentation. The implementation matches the task and ADR-015: discovery documents, public-client registration with the ASCII client_name allowlist and structured exact/loopback redirect matching, cleanup before the advisory-locked client cap, authorize with the FOR NO KEY UPDATE client lock, shown versus redirected errors with exactly error, state and iss, hashed request ids and codes, single decision, server-built redirect URLs and a separate oauth_rate_limiter. Every acceptance criterion has a corresponding test. No regression, security problem or scope violation was found, and the documentation and LikeC4 model match the implementation. Ruff, pyright and the full backend suite pass (884 passed, 52 skipped); the migration and MCP PostgreSQL integration suites pass on postgres:18.6 (24 passed); caddy validate passes for the production Caddyfile in acme and internal TLS modes and for the local Caddyfile inside the running local Caddy; a local probe showed request and return_to redacted in the Caddy access log; Compose resolves the redirect allowlist default with its literal port placeholders. The production frontend image CI script was read but not run. One low-severity robustness bug and one informational cap note remain.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "bug",
+        "severity": "low",
+        "summary": "On PostgreSQL, a NUL byte in the authorize client_id or state parameter raises an unhandled DataError and answers HTTP 500 instead of a shown invalid_client or a redirected invalid_request.",
+        "rationale": "The client_id is only length-checked before it is used in the client lookup, and state is stored as given, while PostgreSQL text values cannot contain NUL. A scratch probe against a migrated postgres:18.6 schema confirmed an unhandled DataError for both parameters. The transaction rolls back and nothing is stored, and the error carries no request id or code, but a public unauthenticated endpoint produces a server error and an exception log entry for a malformed request. The SQLite-based test module cannot show this because SQLite accepts NUL.",
+        "recommendation": "Reject a client_id containing NUL as invalid_client (or restrict it to the issued token_urlsafe alphabet) and a state containing NUL as a redirected invalid_request before any database access, and add a test that does not depend on the SQLite backend.",
+        "locations": [
+          {
+            "path": "backend/app/api/v1/mcp_oauth/service.py",
+            "line": 284
+          },
+          {
+            "path": "backend/app/api/v1/mcp_oauth/service.py",
+            "line": 305
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "bug",
+        "severity": "info",
+        "summary": "The total live pending-request cap is checked without serialisation, so concurrent authorizes for different clients can exceed it slightly.",
+        "rationale": "The per-client cap is exact because concurrent authorizes for one client serialise on the FOR NO KEY UPDATE client row lock, and the client cap is exact because registration takes a transaction-scoped advisory lock. The total count takes no lock, so transactions for different clients that count concurrently can each pass at the boundary. The overshoot is bounded by the number of concurrent authorize transactions and the authorize rate limit, so the resource-protection goal still holds, but ADR-015 describes the total as an upper bound.",
+        "recommendation": "Accept and document the total as a soft bound, or take a transaction-scoped advisory lock before the total count as registration does for the client cap.",
+        "locations": [
+          {
+            "path": "backend/app/api/v1/mcp_oauth/service.py",
+            "line": 524
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": []
+  }
+}

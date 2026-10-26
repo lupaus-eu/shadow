@@ -4,8 +4,18 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
+        if self.path.startswith("/api/redirect"):
+            # Authorization redirects carry codes and request ids in Location.
+            self.send_response(303)
+            self.send_header(
+                "Location", "https://client.example/cb?code=location-secret"
+            )
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
         body = json.dumps(
             {
+                "path": self.path.split("?", 1)[0],
                 "host": self.headers.get("Host"),
                 "forwarded": self.headers.get("Forwarded"),
                 "forwardedHost": self.headers.get("X-Forwarded-Host"),

@@ -217,7 +217,9 @@ back.
   `revoked_by` requires `revoked_time`.
 - An authorization request's code hash and code expiry are set together and
   require the deciding `user_id`; `consumed_time` requires a code, and
-  `grant_id` requires `consumed_time`. `code_challenge` is a 43-character
+  `grant_id` requires `consumed_time`. A request is undecided while `user_id`
+  is null; approval sets `user_id` with the code, and denial sets only
+  `user_id` (TASK-069E). `code_challenge` is a 43-character
   base64url S256 challenge. Code hashes are unique.
 - `mcp_oauth_tokens.kind` is `access` or `refresh`; only refresh tokens have a
   `replaced_by_hash`. A refresh token's `expires_time` is its 7-day idle

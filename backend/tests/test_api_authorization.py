@@ -35,44 +35,57 @@ from app.api.v1.org_twin_structure.models import (
 )
 from app.api.v1.organisations.models import Organisation
 from app.api.v1.users.models import AuthSession, User
+from app.core.config import Settings
 from app.core.database import get_db_session
 from app.core.models import Base
 from app.main import create_app
 
-BusinessRoute = tuple[str, str]
+# (app configuration, method, sample path)
+BusinessRoute = tuple[str, str, str]
+
+# The sweep builds the app with default settings and with the MCP-gated
+# routes (`/api/v1/ai/*`) registered.
+APP_CONFIGURATIONS = {
+    "default": Settings(),
+    "mcp-enabled": Settings.model_validate({"MCP_ENABLED": True}),
+}
 
 
 def _registered_business_routes() -> tuple[BusinessRoute, ...]:
-    paths = cast(dict[str, dict[str, object]], create_app().openapi()["paths"])
     routes: list[BusinessRoute] = []
-    for path, operations in paths.items():
-        if not path.startswith("/api/v1/") or path.startswith("/api/v1/auth"):
-            continue
-        sample_path = re.sub(
-            r"\{([^}]+)\}",
-            lambda match: (
-                "999"
-                if match.group(1)
-                in {"user_id", "customer_id", "contact_id", "address_id"}
-                else "missing"
-            ),
-            path,
+    for configuration, settings in APP_CONFIGURATIONS.items():
+        paths = cast(
+            dict[str, dict[str, object]],
+            create_app(settings=settings).openapi()["paths"],
         )
-        routes.extend(
-            (method.upper(), sample_path)
-            for method in operations
-            if method.upper() in {"GET", "POST", "PUT", "PATCH", "DELETE"}
-        )
+        for path, operations in paths.items():
+            if not path.startswith("/api/v1/") or path.startswith("/api/v1/auth"):
+                continue
+            sample_path = re.sub(
+                r"\{([^}]+)\}",
+                lambda match: (
+                    "999"
+                    if match.group(1)
+                    in {"user_id", "customer_id", "contact_id", "address_id"}
+                    else "missing"
+                ),
+                path,
+            )
+            routes.extend(
+                (configuration, method.upper(), sample_path)
+                for method in operations
+                if method.upper() in {"GET", "POST", "PUT", "PATCH", "DELETE"}
+            )
     return tuple(routes)
 
 
 BUSINESS_ROUTES = _registered_business_routes()
 
 UNSAFE_BUSINESS_ROUTES = tuple(
-    route for route in BUSINESS_ROUTES if route[0] in {"POST", "PUT", "PATCH", "DELETE"}
+    route for route in BUSINESS_ROUTES if route[1] in {"POST", "PUT", "PATCH", "DELETE"}
 )
 USERS_ROUTES = tuple(
-    route for route in BUSINESS_ROUTES if route[1].startswith("/api/v1/users")
+    route for route in BUSINESS_ROUTES if route[2].startswith("/api/v1/users")
 )
 
 
@@ -95,8 +108,9 @@ def _client(
     session_factory: sessionmaker[Session],
     *,
     role: str | None = None,
+    configuration: str = "default",
 ) -> Generator[TestClient, None, None]:
-    app = create_app()
+    app = create_app(settings=APP_CONFIGURATIONS[configuration])
 
     def override_get_db_session() -> Iterator[Session]:
         with session_factory() as session:
@@ -110,11 +124,21 @@ def _client(
     app.dependency_overrides.clear()
 
 
-@pytest.mark.parametrize(("method", "path"), BUSINESS_ROUTES)
+def test_sweep_covers_mcp_gated_routes_only_when_enabled() -> None:
+    consent_routes = {
+        (configuration, method)
+        for configuration, method, path in BUSINESS_ROUTES
+        if path.startswith("/api/v1/ai/oauth/consent")
+    }
+
+    assert consent_routes == {("mcp-enabled", "GET"), ("mcp-enabled", "POST")}
+
+
+@pytest.mark.parametrize(("configuration", "method", "path"), BUSINESS_ROUTES)
 def test_every_business_route_rejects_anonymous_requests(
-    session_factory: sessionmaker[Session], method: str, path: str
+    session_factory: sessionmaker[Session], configuration: str, method: str, path: str
 ) -> None:
-    with _client(session_factory) as client:
+    with _client(session_factory, configuration=configuration) as client:
         response = client.request(method, path, json={})
 
     assert response.status_code == 401
@@ -126,11 +150,13 @@ def test_every_business_route_rejects_anonymous_requests(
     }
 
 
-@pytest.mark.parametrize(("method", "path"), UNSAFE_BUSINESS_ROUTES)
+@pytest.mark.parametrize(("configuration", "method", "path"), UNSAFE_BUSINESS_ROUTES)
 def test_every_unsafe_business_route_rejects_mismatched_origin(
-    session_factory: sessionmaker[Session], method: str, path: str
+    session_factory: sessionmaker[Session], configuration: str, method: str, path: str
 ) -> None:
-    with _client(session_factory, role="admin") as client:
+    with _client(
+        session_factory, role="admin", configuration=configuration
+    ) as client:
         response = client.request(
             method,
             path,
@@ -175,11 +201,13 @@ def test_business_unsafe_guard_rejects_missing_null_duplicate_or_invalid_data(
     assert response.json()["error"]["code"] == "FORBIDDEN"
 
 
-@pytest.mark.parametrize(("method", "path"), USERS_ROUTES)
+@pytest.mark.parametrize(("configuration", "method", "path"), USERS_ROUTES)
 def test_consultants_cannot_administer_users(
-    session_factory: sessionmaker[Session], method: str, path: str
+    session_factory: sessionmaker[Session], configuration: str, method: str, path: str
 ) -> None:
-    with _client(session_factory, role="consultant") as client:
+    with _client(
+        session_factory, role="consultant", configuration=configuration
+    ) as client:
         response = client.request(method, path, json={})
 
     assert response.status_code == 403

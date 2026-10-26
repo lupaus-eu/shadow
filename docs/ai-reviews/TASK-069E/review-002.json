@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-069E/review-002",
+  "task": {
+    "id": "TASK-069E",
+    "path": "tasks/TASK-069E-mcp-oauth-authorize-consent.md"
+  },
+  "round": 2,
+  "reviewed_at": "2026-10-26T09:24:53Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "9aafecb27e7da31af30765022bdd823ddea79c49",
+    "head_sha": "416b6ce75efea40fbbe72e38de334d1bf985a5ff",
+    "comparison": "9aafecb27e7da31af30765022bdd823ddea79c49...416b6ce75efea40fbbe72e38de334d1bf985a5ff",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "clean",
+    "summary": "Round 2 re-reviews the whole TASK-069E branch with a focus on the fix commit for the two round 1 findings, both of which are resolved. The fix commit changes only the mcp_oauth service, the two MCP OAuth test modules, docs/domains/AI.md and docs/TESTING.md; everything else is unchanged since round 1. Authorize rejects a NUL client_id as a shown invalid_client before the client lookup and a NUL state as a redirected invalid_request that does not echo the state, and a check of every other authorize, register and consent input found no other path for a NUL or unencodable value to reach PostgreSQL. The total pending-request count now runs under a transaction-scoped advisory lock; authorize takes the client row lock before it, no other path takes them in the opposite order, cleanup only uses SKIP LOCKED and registration uses a different key, so no deadlock is introduced, and the lock is released on every commit and rollback path. The registration lock helper was generalised without changing its key. The new tests fail against the round 1 service and pass on the fix. Ruff, pyright and the full backend suite pass (886 passed, 54 skipped); the migration and MCP PostgreSQL integration suites pass on postgres:18.6 (26 passed); the MCP OAuth and authorization sweep modules pass again at this head with PostgreSQL enabled (437 passed). No new findings.",
+    "findings": [],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-069E/review-001",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "Authorize rejects a client_id containing NUL as invalid_client before any query and treats a state containing NUL like a repeated state: a redirected invalid_request without state, with nothing stored and last_used_time untouched. A new PostgreSQL integration test sends both values to a migrated postgres:18.6 schema and expects these errors; against the round 1 service it fails with the unhandled DataError. A new SQLite API test covers the NUL state redirect and fails against the round 1 service, and the invalid-client parametrisation gains a NUL case.",
+        "validated_by": {
+          "review_id": "TASK-069E/review-002",
+          "commit": "416b6ce75efea40fbbe72e38de334d1bf985a5ff"
+        }
+      },
+      {
+        "record_id": "TASK-069E/review-001",
+        "finding_id": "F-002",
+        "disposition": "fixed",
+        "rationale": "Before the total count, authorize takes a transaction-scoped PostgreSQL advisory lock with its own key, held until authorize commits or rolls back, as registration does for the client cap. A new PostgreSQL test with both caps set to 1 pauses one client's authorize after its cap check and shows that another client's authorize waits on the lock and then answers temporarily_unavailable, leaving exactly one stored request. Against the round 1 service the second authorize never waits and the test fails.",
+        "validated_by": {
+          "review_id": "TASK-069E/review-002",
+          "commit": "416b6ce75efea40fbbe72e38de334d1bf985a5ff"
+        }
+      }
+    ]
+  }
+}

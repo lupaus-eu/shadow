@@ -223,6 +223,30 @@ and ACME account state persist in the `schatten_caddy_data` volume.
 Production retains secure cookies, `APP_ENV=production`, disabled CORS, the
 existing RS256/session/transaction limits and same-origin API behavior.
 
+### AI Via MCP Settings (TASK-069E)
+
+ADR-015's MCP OAuth settings are fixed in `docker-compose.production.yml`, not
+in the env file. They contain no secret.
+
+| Setting | Production value | Contract |
+| --- | --- | --- |
+| `MCP_ENABLED` | `false` | Feature flag. With `false` the discovery, registration, authorization and consent endpoints are not registered and return 404, and the session response reports `features.mcp=false`. Enabling it needs TASK-069O's separate human approval; `verify-production-compose.sh` asserts `false` |
+| `MCP_OAUTH_REDIRECT_URIS` | claude.ai and claude.com callbacks, `http://127.0.0.1:{port}/callback`, `http://[::1]:{port}/callback`, `http://localhost:{port}/callback` | Space- or comma-separated allowlist. Exact entries must be HTTPS without userinfo, query, fragment or wildcard. Loopback entries keep the literal `{port}` placeholder. Startup fails on any other entry. TASK-069O trims the loopback entries to those real clients use |
+| `MCP_OAUTH_AUTHORIZATION_REQUEST_LIFETIME_SECONDS` | `600` | Pending authorization request lifetime (1 to 3600) |
+| `MCP_OAUTH_AUTHORIZATION_CODE_LIFETIME_SECONDS` | `60` | Single-use authorization code lifetime (1 to 600) |
+| `MCP_OAUTH_REGISTER_RATE_LIMIT_PER_MINUTE` | `30` | `oauth_rate_limiter` `register` bucket per client IP |
+| `MCP_OAUTH_AUTHORIZE_RATE_LIMIT_PER_MINUTE` | `20` | `authorize` bucket per client IP (the user's browser) |
+| `MCP_OAUTH_TOKEN_RATE_LIMIT_PER_MINUTE` | `300` | `token` bucket per client IP, used by TASK-069F |
+| `MCP_OAUTH_REVOKE_RATE_LIMIT_PER_MINUTE` | `60` | `revoke` bucket per client IP, used by TASK-069F |
+| `MCP_OAUTH_MAX_PENDING_REQUESTS_PER_CLIENT` | `20` | Live undecided authorization requests per client; may not exceed the total |
+| `MCP_OAUTH_MAX_PENDING_REQUESTS` | `1000` | Live undecided authorization requests in total |
+| `MCP_OAUTH_MAX_CLIENTS` | `10000` | Non-deleted registered clients; beyond it `register` answers 503 and logs a warning. Raising it is the operator remedy (ADR-015) |
+
+The `register`, `token` and `revoke` buckets are higher than `authorize`
+because vendor connector brokers call them from shared egress addresses.
+The OAuth limiter is separate from the login limiter, and both assume one
+backend replica. TASK-069O verifies the defaults with real clients.
+
 ## Host Setup And Build/Release Contract
 
 ### Existing Cloud-Init Baseline (Operator-Reported)
@@ -779,9 +803,20 @@ backup safeguards are not permission to auto-baseline or overwrite existing data
 ## Ingress Response And Logging Policy
 
 Caddy access logs retain useful method, path, query, status, client and timing
-metadata. Its query filter replaces every value for `code`, `state`, `error`
-and `error_description` with `REDACTED` on every path. Default Caddy
-credential-header redaction remains enabled; do not enable `log_credentials`.
+metadata. Its query filter replaces every value for `code`, `state`, `error`,
+`error_description`, and ADR-015's pending request id carriers `request` and
+`return_to`, with `REDACTED` on every path. The log filter also replaces the
+`Location` response header (authorization redirects carry request ids, codes
+and the Entra `state`), the `X-Csrf-Token` request header and, explicitly, the
+`Authorization` request header. Default Caddy credential-header redaction
+remains enabled; do not enable `log_credentials`. The backend access-log
+filter redacts the same query keys.
+
+Caddy's API matcher is `@api path /api /api/*
+/.well-known/oauth-authorization-server* /.well-known/oauth-protected-resource*`,
+so the OAuth discovery documents reach FastAPI with the same fixed Host and
+forwarding headers as `/api`. FastAPI answers `Cache-Control: no-store` on
+`/api/v1/auth`, `/api/v1/ai/oauth`, `/api/oauth` and `/.well-known/oauth-`.
 
 The repository Caddyfile enforces:
 

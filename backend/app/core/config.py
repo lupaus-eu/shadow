@@ -18,6 +18,18 @@ ORIGIN_HOST_LABEL = re.compile(
 )
 LEGACY_IPV4_LABEL = re.compile(r"^(?:0[xX][0-9A-Fa-f]+|[0-9]+)$")
 LOCAL_CADDY_PEER_CIDRS = (ip_network("172.28.59.2/32"),)
+# ADR-015: loopback redirect URI allowlist entries carry a literal "{port}".
+MCP_LOOPBACK_REDIRECT_ENTRY = re.compile(
+    r"^http://(?P<host>127\.0\.0\.1|\[::1\]|localhost):\{port\}"
+    r"(?P<path>/[^?#{}\s\\%]*)$"
+)
+DEFAULT_MCP_OAUTH_REDIRECT_URIS = (
+    "https://claude.ai/api/mcp/auth_callback",
+    "https://claude.com/api/mcp/auth_callback",
+    "http://127.0.0.1:{port}/callback",
+    "http://[::1]:{port}/callback",
+    "http://localhost:{port}/callback",
+)
 
 
 class Settings(StrictBaseModel):
@@ -71,8 +83,50 @@ class Settings(StrictBaseModel):
     oidc_transaction_lifetime_seconds: int = Field(
         default=600, alias="OIDC_TRANSACTION_LIFETIME_SECONDS", ge=1
     )
+    mcp_enabled: bool = Field(default=False, alias="MCP_ENABLED")
+    mcp_oauth_redirect_uris: tuple[str, ...] = Field(
+        default=DEFAULT_MCP_OAUTH_REDIRECT_URIS, alias="MCP_OAUTH_REDIRECT_URIS"
+    )
+    mcp_oauth_authorization_request_lifetime_seconds: int = Field(
+        default=600,
+        alias="MCP_OAUTH_AUTHORIZATION_REQUEST_LIFETIME_SECONDS",
+        ge=1,
+        le=3600,
+    )
+    mcp_oauth_authorization_code_lifetime_seconds: int = Field(
+        default=60,
+        alias="MCP_OAUTH_AUTHORIZATION_CODE_LIFETIME_SECONDS",
+        ge=1,
+        le=600,
+    )
+    mcp_oauth_register_rate_limit_per_minute: int = Field(
+        default=30, alias="MCP_OAUTH_REGISTER_RATE_LIMIT_PER_MINUTE", ge=1
+    )
+    mcp_oauth_authorize_rate_limit_per_minute: int = Field(
+        default=20, alias="MCP_OAUTH_AUTHORIZE_RATE_LIMIT_PER_MINUTE", ge=1
+    )
+    mcp_oauth_token_rate_limit_per_minute: int = Field(
+        default=300, alias="MCP_OAUTH_TOKEN_RATE_LIMIT_PER_MINUTE", ge=1
+    )
+    mcp_oauth_revoke_rate_limit_per_minute: int = Field(
+        default=60, alias="MCP_OAUTH_REVOKE_RATE_LIMIT_PER_MINUTE", ge=1
+    )
+    mcp_oauth_max_pending_requests_per_client: int = Field(
+        default=20, alias="MCP_OAUTH_MAX_PENDING_REQUESTS_PER_CLIENT", ge=1
+    )
+    mcp_oauth_max_pending_requests: int = Field(
+        default=1000, alias="MCP_OAUTH_MAX_PENDING_REQUESTS", ge=1
+    )
+    mcp_oauth_max_clients: int = Field(
+        default=10_000, alias="MCP_OAUTH_MAX_CLIENTS", ge=1
+    )
 
-    @field_validator("oidc_scopes", "oidc_allowed_signing_algorithms", mode="before")
+    @field_validator(
+        "oidc_scopes",
+        "oidc_allowed_signing_algorithms",
+        "mcp_oauth_redirect_uris",
+        mode="before",
+    )
     @classmethod
     def parse_space_or_comma_separated_tuple(cls, value: object) -> object:
         if not isinstance(value, str):
@@ -125,6 +179,18 @@ class Settings(StrictBaseModel):
         ):
             raise ValueError(
                 "The session idle timeout cannot exceed its absolute lifetime"
+            )
+        if not self.mcp_oauth_redirect_uris:
+            raise ValueError("MCP_OAUTH_REDIRECT_URIS must not be empty")
+        for entry in self.mcp_oauth_redirect_uris:
+            _validate_mcp_redirect_allowlist_entry(entry)
+        if (
+            self.mcp_oauth_max_pending_requests_per_client
+            > self.mcp_oauth_max_pending_requests
+        ):
+            raise ValueError(
+                "MCP_OAUTH_MAX_PENDING_REQUESTS_PER_CLIENT cannot exceed "
+                "MCP_OAUTH_MAX_PENDING_REQUESTS"
             )
         if self.app_environment == "production":
             if public.scheme != "https" or allowed.scheme != "https":
@@ -264,6 +330,17 @@ def get_settings() -> Settings:
         "AUTH_SESSION_ABSOLUTE_LIFETIME_SECONDS",
         "AUTH_SESSION_ACTIVITY_WRITE_SECONDS",
         "OIDC_TRANSACTION_LIFETIME_SECONDS",
+        "MCP_ENABLED",
+        "MCP_OAUTH_REDIRECT_URIS",
+        "MCP_OAUTH_AUTHORIZATION_REQUEST_LIFETIME_SECONDS",
+        "MCP_OAUTH_AUTHORIZATION_CODE_LIFETIME_SECONDS",
+        "MCP_OAUTH_REGISTER_RATE_LIMIT_PER_MINUTE",
+        "MCP_OAUTH_AUTHORIZE_RATE_LIMIT_PER_MINUTE",
+        "MCP_OAUTH_TOKEN_RATE_LIMIT_PER_MINUTE",
+        "MCP_OAUTH_REVOKE_RATE_LIMIT_PER_MINUTE",
+        "MCP_OAUTH_MAX_PENDING_REQUESTS_PER_CLIENT",
+        "MCP_OAUTH_MAX_PENDING_REQUESTS",
+        "MCP_OAUTH_MAX_CLIENTS",
     )
     environment = os.getenv("APP_ENV", "development")
     required_auth_names = (
@@ -359,6 +436,32 @@ def _validated_origin(value: str, name: str) -> SplitResult:
         )
 
     return parsed
+
+
+def _validate_mcp_redirect_allowlist_entry(entry: str) -> None:
+    if "{port}" in entry:
+        if MCP_LOOPBACK_REDIRECT_ENTRY.fullmatch(entry) is None:
+            raise ValueError(
+                "MCP_OAUTH_REDIRECT_URIS loopback entries must be "
+                "http://<127.0.0.1|[::1]|localhost>:{port}/<path>"
+            )
+        return
+    error_message = (
+        "MCP_OAUTH_REDIRECT_URIS exact entries must be HTTPS URIs without "
+        "userinfo, query, fragment or wildcard"
+    )
+    if any(
+        character.isspace() or ord(character) < 32 or ord(character) >= 127
+        for character in entry
+    ) or any(character in entry for character in "{}*\\?#@"):
+        raise ValueError(error_message)
+    try:
+        parsed = urlsplit(entry)
+        _ = parsed.port
+    except ValueError as error:
+        raise ValueError(error_message) from error
+    if parsed.scheme != "https" or not parsed.hostname or not parsed.path:
+        raise ValueError(error_message)
 
 
 def _is_literal_origin_host(hostname: str) -> bool:

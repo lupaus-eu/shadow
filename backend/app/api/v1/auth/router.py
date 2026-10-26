@@ -10,7 +10,11 @@ from app.api.v1.auth.dependencies import (
     UnsafeRequestDependency,
 )
 from app.api.v1.auth.provider import OidcProviderError
-from app.api.v1.auth.schemas import LogoutResponse, SessionResponse
+from app.api.v1.auth.schemas import (
+    LogoutResponse,
+    SessionFeatures,
+    SessionResponse,
+)
 from app.api.v1.auth.service import (
     GENERIC_ERROR_PATH,
     AuthenticationError,
@@ -137,10 +141,14 @@ def callback(
 
 
 @router.get("/session", response_model=SessionResponse)
-def session_status(active: AuthenticatedSessionDependency) -> SessionResponse:
+def session_status(
+    active: AuthenticatedSessionDependency,
+    settings: SettingsDependency,
+) -> SessionResponse:
     return SessionResponse(
         user=to_user_response(active.user),
         csrfToken=active.auth_session.csrf_token,
+        features=SessionFeatures(mcp=settings.mcp_enabled),
     )
 
 

@@ -1,6 +1,6 @@
 # Local Development
 
-Local development is `https://app.localhost`: loopback-only Caddy terminates a locally trusted certificate, proxies `/api` to FastAPI and proxies the Vite application (including HMR WebSockets) on every other path. Authentik is no longer part of the active runtime. This does not delete old Authentik Docker volumes, existing application data, or existing `(issuer, subject)` rows.
+Local development is `https://app.localhost`: loopback-only Caddy terminates a locally trusted certificate, proxies `/api` and the OAuth discovery paths `/.well-known/oauth-authorization-server*` and `/.well-known/oauth-protected-resource*` to FastAPI and proxies the Vite application (including HMR WebSockets) on every other path. Authentik is no longer part of the active runtime. This does not delete old Authentik Docker volumes, existing application data, or existing `(issuer, subject)` rows.
 
 ## Initial setup
 
@@ -47,7 +47,7 @@ All local Compose commands load `.env` followed by `.env.entra.local`, including
 database-only, preview and diagram commands: Compose validates the required
 OIDC variables for the whole model. Run `make dev-init` once before these targets.
 
-Open `https://app.localhost`. Caddy permits only the exact Host, discards browser-supplied forwarding headers and sends FastAPI a fixed HTTPS/Host plus a client IP only from its fixed peer address. FastAPI accepts that header only from the Caddy `/32` peer. The backend and Caddy both redact callback `code`, `state`, `error` and `error_description` values from access logs. Cookies are Secure, HttpOnly, host-only and preserve the existing SameSite and Path policy; unsafe requests still require exact Origin and CSRF checks.
+Open `https://app.localhost`. Caddy permits only the exact Host, discards browser-supplied forwarding headers and sends FastAPI a fixed HTTPS/Host plus a client IP only from its fixed peer address. FastAPI accepts that header only from the Caddy `/32` peer. The backend and Caddy both redact callback `code`, `state`, `error` and `error_description` values, and ADR-015's MCP OAuth request id carriers `request` and `return_to`, from access logs. Caddy also replaces the `Location` response header and the `Authorization` and `X-Csrf-Token` request headers in its access log. Cookies are Secure, HttpOnly, host-only and preserve the existing SameSite and Path policy; unsafe requests still require exact Origin and CSRF checks.
 
 The Vite HMR client uses `wss://app.localhost` port 443. Do not browse the internal Vite service directly: it is intentionally unexposed.
 
@@ -62,6 +62,24 @@ Caddy after changing its policy:
 docker compose --env-file .env --env-file .env.entra.local exec -T local-caddy \
   caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
 ```
+
+## AI via MCP settings (TASK-069E)
+
+MCP is off by default. `docker-compose.yml` passes these backend settings with
+the defaults shown in `.env.example`; override them in `.env` (no secrets):
+
+| Setting | Default | Meaning |
+| --- | --- | --- |
+| `MCP_ENABLED` | `false` | With `false`, OAuth discovery, `/api/oauth/register`, `/api/oauth/authorize` and the `/api/v1/ai/oauth/consent` API return 404 and `GET /api/v1/auth/session` reports `features.mcp=false` |
+| `MCP_OAUTH_REDIRECT_URIS` | claude.ai and claude.com callbacks plus `http://127.0.0.1:{port}/callback`, `http://[::1]:{port}/callback`, `http://localhost:{port}/callback` | Redirect URI allowlist; `{port}` is literal |
+| `MCP_OAUTH_AUTHORIZATION_REQUEST_LIFETIME_SECONDS`, `MCP_OAUTH_AUTHORIZATION_CODE_LIFETIME_SECONDS` | `600`, `60` | Pending request and code lifetimes |
+| `MCP_OAUTH_REGISTER_RATE_LIMIT_PER_MINUTE`, `..._AUTHORIZE_...`, `..._TOKEN_...`, `..._REVOKE_...` | `30`, `20`, `300`, `60` | Per-IP buckets of the separate `oauth_rate_limiter` |
+| `MCP_OAUTH_MAX_PENDING_REQUESTS_PER_CLIENT`, `MCP_OAUTH_MAX_PENDING_REQUESTS`, `MCP_OAUTH_MAX_CLIENTS` | `20`, `1000`, `10000` | Pending request and client caps |
+
+To try the endpoints locally, set `MCP_ENABLED=true` in `.env` and recreate the
+backend (`make dev-up`). Vendor-cloud connectors cannot reach `app.localhost`;
+use a local client such as Claude Code with `NODE_EXTRA_CA_CERTS` trusting the
+local Caddy CA (ADR-015). The token endpoint arrives with TASK-069F.
 
 ## Designated local Entra administrator
 

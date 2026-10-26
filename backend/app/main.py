@@ -12,9 +12,18 @@ from app.api.v1.auth.dependencies import AuthHttpError
 from app.api.v1.auth.logging import install_sensitive_query_filter
 from app.api.v1.auth.provider import AuthlibOidcProvider, OidcProvider
 from app.api.v1.auth.rate_limit import FixedWindowRateLimiter
+from app.api.v1.mcp_oauth.consent_router import router as mcp_oauth_consent_router
+from app.api.v1.mcp_oauth.router import router as mcp_oauth_router
 from app.api.v1.router import router as api_v1_router
 from app.core.config import Settings, get_settings
 from app.health.router import router as health_router
+
+NO_STORE_PATH_PREFIXES = (
+    "/api/v1/auth",
+    "/api/v1/ai/oauth",
+    "/api/oauth",
+    "/.well-known/oauth-",
+)
 
 
 def create_app(
@@ -40,6 +49,8 @@ def create_app(
     app.state.settings = resolved_settings
     app.state.oidc_provider = resolved_provider
     app.state.auth_rate_limiter = FixedWindowRateLimiter()
+    # ADR-015: OAuth traffic never consumes the login limiter's entries.
+    app.state.oauth_rate_limiter = FixedWindowRateLimiter()
 
     async def auth_error_handler(request: Request, exc: Exception) -> JSONResponse:
         auth_error = cast(AuthHttpError, exc)
@@ -102,7 +113,7 @@ def create_app(
                     forwarded_values[0] if forwarded_values else peer
                 )
                 response = await call_next(request)
-        if request.url.path.startswith("/api/v1/auth"):
+        if request.url.path.startswith(NO_STORE_PATH_PREFIXES):
             response.headers["Cache-Control"] = "no-store"
         return response
 
@@ -117,6 +128,9 @@ def create_app(
     app.middleware("http")(authentication_boundary)
     app.include_router(health_router)
     app.include_router(api_v1_router)
+    if resolved_settings.mcp_enabled:
+        app.include_router(mcp_oauth_router)
+        app.include_router(mcp_oauth_consent_router)
     return app
 
 

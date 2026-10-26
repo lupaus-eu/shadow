@@ -624,6 +624,36 @@ cd backend
 uv run pytest tests/test_auth_api.py tests/test_auth_provider.py -v
 ```
 
+## MCP OAuth Authorization Harness (TASK-069E)
+
+`tests/test_mcp_oauth_authorize.py` builds the app with `MCP_ENABLED=true`
+over SQLite and covers the discovery documents, registration (redirect URI
+allowlist, `client_name` ASCII allowlist, metadata bounds, public clients
+only, cleanup before the client cap), authorize validation and its shown or
+redirected errors, pending request caps, consent lookup, approve and deny
+with CSRF/Origin, single decision, expiry, the separate `oauth_rate_limiter`,
+the `MCP_ENABLED=false` 404s and `features.mcp`, and log redaction.
+`tests/test_api_authorization.py` builds the app with default settings and
+with `MCP_ENABLED=true`, so the sweep covers the MCP-gated `/api/v1/ai/*`
+routes.
+
+Row locks need PostgreSQL. `tests/test_mcp_oauth_postgresql_integration.py`
+pauses a real authorize after its `FOR NO KEY UPDATE` client lock and checks
+that `SKIP LOCKED` cleanup skips the client without waiting, that a grant
+insert for the same client does not wait, and that authorize waiting behind a
+cleanup soft delete fails as an invalid client and stores nothing. It also
+pauses an authorize after its pending caps to check that the total cap's
+advisory lock makes another client's authorize wait and then refuse, and that
+a NUL `client_id` or `state` is rejected before it reaches PostgreSQL. It is
+skipped without `MIGRATION_TEST_DATABASE_URL` and always runs in CI:
+
+```bash
+cd backend
+uv run pytest tests/test_mcp_oauth_authorize.py -v
+MIGRATION_TEST_DATABASE_URL=postgresql://schatten:schatten_dev_password@localhost:5432/schatten \
+  uv run pytest tests/test_mcp_oauth_postgresql_integration.py -v
+```
+
 ## Local Direct-Entra Integration
 
 Use the local Caddy/direct-Entra configuration rather than the historical

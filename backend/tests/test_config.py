@@ -254,3 +254,77 @@ def test_secure_cookie_uses_host_prefix() -> None:
     )
 
     assert settings.session_cookie_name == "__Host-schatten-session"
+
+
+def test_mcp_is_disabled_by_default_with_the_adr_015_allowlist() -> None:
+    settings = Settings()
+
+    assert settings.mcp_enabled is False
+    assert settings.mcp_oauth_redirect_uris == (
+        "https://claude.ai/api/mcp/auth_callback",
+        "https://claude.com/api/mcp/auth_callback",
+        "http://127.0.0.1:{port}/callback",
+        "http://[::1]:{port}/callback",
+        "http://localhost:{port}/callback",
+    )
+    assert settings.mcp_oauth_authorization_request_lifetime_seconds == 600
+    assert settings.mcp_oauth_authorization_code_lifetime_seconds == 60
+    assert settings.mcp_oauth_max_pending_requests_per_client == 20
+    assert settings.mcp_oauth_max_pending_requests == 1000
+    assert settings.mcp_oauth_max_clients == 10_000
+
+
+def test_mcp_settings_are_read_from_the_environment(monkeypatch: MonkeyPatch) -> None:
+    get_settings.cache_clear()
+    monkeypatch.setenv("MCP_ENABLED", "true")
+    monkeypatch.setenv(
+        "MCP_OAUTH_REDIRECT_URIS",
+        "https://claude.ai/api/mcp/auth_callback http://[::1]:{port}/callback",
+    )
+    monkeypatch.setenv("MCP_OAUTH_MAX_CLIENTS", "5")
+
+    settings = get_settings()
+
+    assert settings.mcp_enabled is True
+    assert settings.mcp_oauth_redirect_uris == (
+        "https://claude.ai/api/mcp/auth_callback",
+        "http://[::1]:{port}/callback",
+    )
+    assert settings.mcp_oauth_max_clients == 5
+    get_settings.cache_clear()
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        "http://claude.ai/api/mcp/auth_callback",
+        "https://claude.ai/api/mcp/auth_callback?x=1",
+        "https://claude.ai/api/mcp/auth_callback#x",
+        "https://user@claude.ai/api/mcp/auth_callback",
+        "https://claude.ai",
+        "https://claude.ai:99999/callback",
+        "https://claude.ai/*",
+        "http://evil.example:{port}/callback",
+        "https://127.0.0.1:{port}/callback",
+        "http://127.0.0.1:{port}",
+        "http://127.0.0.1:{port}/callback?x=1",
+        "http://127.0.0.1:{port}/call%62ack",
+        "http://localhost.:{port}/callback",
+        "http://127.0.0.1:8080{port}/callback",
+    ],
+)
+def test_mcp_redirect_allowlist_rejects_unsafe_entries(entry: str) -> None:
+    with pytest.raises(ValidationError, match="MCP_OAUTH_REDIRECT_URIS"):
+        Settings.model_validate({"MCP_OAUTH_REDIRECT_URIS": entry})
+
+
+def test_mcp_pending_request_caps_must_be_consistent() -> None:
+    with pytest.raises(ValidationError, match="PER_CLIENT cannot exceed"):
+        Settings.model_validate(
+            {
+                "MCP_OAUTH_MAX_PENDING_REQUESTS_PER_CLIENT": 30,
+                "MCP_OAUTH_MAX_PENDING_REQUESTS": 20,
+            }
+        )
+    with pytest.raises(ValidationError):
+        Settings.model_validate({"MCP_OAUTH_AUTHORIZATION_CODE_LIFETIME_SECONDS": 0})

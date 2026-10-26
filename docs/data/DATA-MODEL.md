@@ -187,7 +187,7 @@ design, not schema, until TASK-069I (`018_create_ai_change_sets`).
 | Entity | Table | Notes |
 | --- | --- | --- |
 | MCP OAuth Client | `mcp_oauth_clients` | Dynamically registered public client with a unique `client_id`, bounded self-declared name and allowlisted redirect URIs; soft-deleted when stale, then hard-deleted once unreferenced. |
-| MCP Authorization Request | `mcp_oauth_authorization_requests` | Ten-minute pending authorization request keyed by request-id hash, with PKCE challenge, scopes, resource, state and redirect URI; after approval it holds the deciding User and a 60-second single-use code hash. |
+| MCP Authorization Request | `mcp_oauth_authorization_requests` | Ten-minute pending authorization request keyed by request-id hash, with PKCE challenge, scopes, resource, state and redirect URI; after approval it holds the deciding User and a 60-second single-use code hash; after denial it holds only the deciding User. |
 | MCP Grant | `mcp_oauth_grants` | One User's consent for one client, one scope and its MCP resource, with a 30-day absolute expiry; revocable. |
 | MCP Token | `mcp_oauth_tokens` | Opaque access or refresh token keyed by SHA-256 hash, with expiry, rotation link and revocation. |
 | AI Change Set | `ai_change_sets` | Organisation-owned staged proposal with status, optional derived scenario reference, creator, grant, copied `client_id`, client name, validation and applied results, and review fields. |

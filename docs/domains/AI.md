@@ -2,10 +2,13 @@
 
 Status: accepted design in ADR-015; TASK-069B (the domain service transaction
 cores this domain will use), TASK-069C (the deterministic timeseries
-generator) and TASK-069D (the MCP OAuth schema) are implemented and the rest
-is pending TASK-069E through TASK-069O. Nothing in this document is runtime
-behaviour yet; the generator is library code and the `mcp_oauth_*` tables are
-schema that no route or tool uses yet.
+generator), TASK-069D (the MCP OAuth schema) and TASK-069E (OAuth discovery,
+client registration, the authorization request and the consent API, see
+[MCP OAuth Authorization](#mcp-oauth-authorization-task-069e)) are implemented
+and the rest is pending TASK-069F through TASK-069O. The TASK-069E endpoints
+are registered only with `MCP_ENABLED=true`, which is off by default and in
+production. No token can be issued yet (TASK-069F), so no MCP client can use
+Schatten yet; the generator is library code.
 
 ## Purpose
 
@@ -257,9 +260,118 @@ With `MCP_ENABLED=false` (the default):
 - the connections API, the admin per-user revocation and the change-set
   review API stay registered, so grants can be revoked and staged change sets
   reviewed while MCP is disabled (TASK-069F, TASK-069K); and
-- the session response's `features.mcp` is `false`, and the SPA hides the
-  consent page, connect instructions and skill links (TASK-069L, TASK-069M,
-  TASK-069N).
+- the session response's `features.mcp` is `false` (TASK-069E), and the SPA
+  hides the consent page, connect instructions and skill links (TASK-069L,
+  TASK-069M, TASK-069N).
+
+## MCP OAuth Authorization (TASK-069E)
+
+The code is in `backend/app/api/v1/mcp_oauth/`: `service.py`, `router.py`
+(public endpoints), `consent_router.py` (cookie-session consent API) and
+`schemas.py`. `create_app()` includes both routers only when `MCP_ENABLED` is
+true. Settings are in `backend/app/core/config.py` and documented in
+`docs/DEPLOYMENT.md` and `docs/LOCAL-DEVELOPMENT.md`.
+
+Public endpoints return RFC 6749 JSON errors
+(`{"error": ..., "error_description": ...}`) and `Cache-Control: no-store`:
+
+- `GET /.well-known/oauth-authorization-server` (RFC 8414): issuer
+  `PUBLIC_ORIGIN`, the authorize, token, registration and revocation
+  endpoints, scopes `schatten.read` and `schatten.write`, response type
+  `code`, grant types `authorization_code` and `refresh_token`, auth method
+  `none`, code challenge method `S256` and
+  `authorization_response_iss_parameter_supported: true`. The token and
+  revocation endpoints are implemented by TASK-069F.
+- `GET /.well-known/oauth-protected-resource/api/mcp/{read,write}` (RFC 9728):
+  resource `<PUBLIC_ORIGIN>/api/mcp/<server>` with no trailing slash, the
+  authorization server `PUBLIC_ORIGIN`, the server's single scope and bearer
+  method `header`.
+- `POST /api/oauth/register` (RFC 7591) answers `201` with `client_id` (a
+  random 256-bit value), `client_id_issued_at`, the trimmed `client_name`,
+  the de-duplicated `redirect_uris`, the grant and response types and
+  `token_endpoint_auth_method: none`. The body is at most 64 KiB of JSON.
+  Errors:
+  - `invalid_client_metadata`: a body that is not a JSON object, an auth
+    method other than `none`, a missing or disallowed `client_name` (ADR-015's
+    ASCII allowlist after trimming edge spaces), or `redirect_uris` that is
+    missing, empty, longer than 10 entries or has a non-string entry or one
+    longer than 2,048 characters;
+  - `invalid_redirect_uri`: a URI that matches no allowlist entry;
+  - `503 temporarily_unavailable` with a warning log entry when the
+    non-deleted client cap is reached after cleanup.
+
+  Other metadata is ignored. The registration log entry carries the
+  `client_id` and the name as `self_declared_client_name`.
+- `GET /api/oauth/authorize` locks the client row (`FOR NO KEY UPDATE`) and
+  then checks, in this order:
+  1. a single `client_id` without a NUL character, of a registered,
+     non-deleted client, otherwise `400 invalid_client`, shown and never
+     redirected;
+  2. a single `redirect_uri` that matches the current allowlist and repeats a
+     registered URI exactly, or for a loopback URI differs only in the port,
+     otherwise `400 invalid_request` ("Invalid redirect_uri"), shown and never
+     redirected;
+  3. at most one `state`, without a NUL character (PostgreSQL text cannot
+     hold one), `response_type=code` (`unsupported_response_type`
+     for another value), a 43-character `code_challenge` with
+     `code_challenge_method=S256`, exactly one canonical `resource`
+     (`invalid_target`), and `scope` omitted or exactly the resource's scope
+     (`invalid_scope`); every repeated parameter is `invalid_request`;
+  4. the live undecided request caps per client and in total
+     (`temporarily_unavailable`). The client row lock serialises the
+     per-client count; a transaction-scoped PostgreSQL advisory lock, held
+     until authorize commits or rolls back, serialises the total count across
+     clients, so both caps are exact.
+
+  Errors from step 3 onwards are a `303` to the validated redirect URI with
+  exactly `error`, `state` (when the client sent exactly one valid state) and
+  `iss`. On
+  success it stores the hashed request, then updates the locked client's
+  `last_used_time`, commits and answers `303` to
+  `<PUBLIC_ORIGIN>/ai/authorize?request=<id>`. A failing authorize stores
+  nothing and does not touch `last_used_time`.
+
+All public endpoints except discovery use the per-IP buckets of
+`app.state.oauth_rate_limiter`, a separate `FixedWindowRateLimiter` that never
+touches the login `auth_rate_limiter`: `register`, `authorize`, and `token`
+and `revoke` for TASK-069F (`oauth_rate_limit_allows()` in `router.py`). A
+limited request gets `429 temporarily_unavailable` and is never redirected.
+
+Registration runs `cleanup_stale_clients()` before its cap check. It locks
+candidates `FOR UPDATE SKIP LOCKED`, at most 1,000 per step:
+
+1. it soft-deletes clients whose `last_used_time` (or creation time) is older
+   than 30 days and that have no active grant (not revoked, not expired);
+2. it hard-deletes soft-deleted clients that no authorization request and no
+   grant references.
+
+A client locked by an in-flight authorize is skipped. TASK-069F also calls
+this cleanup during token operations.
+
+Consent API (business session; approve and deny need the CSRF token and exact
+Origin; `Cache-Control: no-store`):
+
+- `GET /api/v1/ai/oauth/consent?request=<id>` returns `clientName`,
+  `clientNameSelfDeclared: true`, `redirectIsLoopback` (from the allowlist
+  entry the redirect URI matches), `redirectHost` (the host in URL form, for
+  example `claude.ai`, `127.0.0.1`, `[::1]` or `localhost`), `scope`,
+  `resource` and `expiresTime`.
+- `POST /api/v1/ai/oauth/consent/approve` with `{"request": "<id>"}` locks the
+  request, records the deciding User, stores the SHA-256 hash of a new 256-bit
+  code that expires after 60 seconds and returns `{"redirectUrl"}`: the stored
+  redirect URI with `code`, `state` (omitted when the client sent none) and
+  `iss`.
+- `POST /api/v1/ai/oauth/consent/deny` records the deciding User without a
+  code and returns an `access_denied` `redirectUrl` built the same way.
+- Errors use the `/api/v1` error body: `404 AUTHORIZATION_REQUEST_NOT_FOUND`
+  for a missing, malformed or unknown id, a deleted client or a redirect URI
+  no longer on the allowlist; `409 AUTHORIZATION_REQUEST_DECIDED`; and
+  `410 AUTHORIZATION_REQUEST_EXPIRED`.
+
+A request is undecided while its `user_id` is null. Approval sets `user_id`,
+`code_hash` and `code_expires_time`; denial sets only `user_id`. A decided
+request cannot be decided again, and denied requests have no code to exchange.
+Only undecided, unexpired requests count towards the pending caps.
 
 The incident procedure (disable MCP, then revoke affected Users' grants) and
 the offboarding rule (soft-delete the User or revoke the User's grants) are in

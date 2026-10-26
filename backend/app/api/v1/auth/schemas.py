@@ -4,9 +4,14 @@ from app.api.v1.users.schemas import UserResponse
 from app.core.schemas import StrictBaseModel
 
 
+class SessionFeatures(StrictBaseModel):
+    mcp: bool
+
+
 class SessionResponse(StrictBaseModel):
     user: UserResponse
     csrfToken: str
+    features: SessionFeatures
 
 
 class LogoutResponse(StrictBaseModel):

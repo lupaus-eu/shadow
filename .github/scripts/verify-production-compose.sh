@@ -91,6 +91,8 @@ assert backend["environment"]["APP_ALLOWED_ORIGIN"] == "https://app.example.test
 assert backend["environment"]["SESSION_COOKIE_SECURE"] == "true"
 assert backend["environment"]["OIDC_SCOPES"] == "openid profile email"
 assert backend["environment"]["OIDC_REQUIRE_VERIFIED_EMAIL"] == "false"
+# ADR-015: production MCP enablement needs separate TASK-069O approval.
+assert backend["environment"]["MCP_ENABLED"] == "false"
 caddy_ip = services["frontend"]["networks"]["edge"]["ipv4_address"]
 assert backend["environment"]["TRUSTED_CADDY_PEER_CIDRS"] == f"{caddy_ip}/32"
 import ipaddress

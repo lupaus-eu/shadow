@@ -40,6 +40,7 @@ response, body = request(
 assert response.status == 200, response.status
 forwarded = json.loads(body)
 assert forwarded == {
+    "path": "/api/headers",
     "host": HOST,
     "forwarded": None,
     "forwardedHost": HOST,
@@ -57,6 +58,29 @@ assert "Alt-Svc" not in response.headers
 response, body = request("/workspace/deep-link")
 assert response.status == 200
 assert b'<div id="root"></div>' in body
+
+# ADR-015: only the OAuth discovery documents under /.well-known reach FastAPI.
+for path in (
+    "/.well-known/oauth-authorization-server",
+    "/.well-known/oauth-protected-resource/api/mcp/read",
+    "/.well-known/oauth-protected-resource/api/mcp/write",
+):
+    response, body = request(path)
+    assert response.status == 200, (path, response.status)
+    assert json.loads(body)["path"] == path, body
+response, body = request("/.well-known/security.txt")
+assert b'<div id="root"></div>' in body
+
+# Pending request ids travel in `request`, `return_to` and Location.
+response, body = request("/ai/authorize?request=request-secret")
+assert b'<div id="root"></div>' in body
+response, _ = request(
+    "/api/v1/auth/login?return_to=%2Fai%2Fauthorize%3Frequest%3Dreturn-secret"
+)
+assert response.status == 200
+response, _ = request("/api/redirect")
+assert response.status == 303
+assert response.headers["Location"].endswith("code=location-secret")
 
 response, _ = request("/", host="evil.test")
 assert response.status == 400

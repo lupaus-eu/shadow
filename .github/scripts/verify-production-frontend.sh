@@ -98,18 +98,22 @@ docker run --rm \
 
 logs="$(docker logs "${frontend_name}" 2>&1)"
 for secret in secret-code secret-state secret-error secret-description \
-  credential-secret credential-cookie csrf-header-secret; do
+  credential-secret credential-cookie csrf-header-secret request-secret \
+  return-secret location-secret; do
   if grep --fixed-strings --quiet "${secret}" <<<"${logs}"; then
     echo "Caddy access logs exposed ${secret}." >&2
     exit 1
   fi
 done
-if ! grep --fixed-strings --quiet '"X-Csrf-Token":"REDACTED"' <<<"${logs}"; then
-  echo "Caddy access logs did not retain the redacted CSRF header marker." >&2
-  exit 1
-fi
+for header in X-Csrf-Token Authorization Location; do
+  if ! grep --fixed-strings --quiet "\"${header}\":\"REDACTED\"" <<<"${logs}"; then
+    echo "Caddy access logs did not retain the redacted ${header} header marker." >&2
+    exit 1
+  fi
+done
 for expected in 'code=REDACTED' 'state=REDACTED' 'error=REDACTED' \
-  'error_description=REDACTED' 'visible=kept'; do
+  'error_description=REDACTED' 'request=REDACTED' 'return_to=REDACTED' \
+  'visible=kept'; do
   if ! grep --fixed-strings --quiet "${expected}" <<<"${logs}"; then
     echo "Caddy access logs did not preserve the expected redacted URI metadata: ${expected}" >&2
     exit 1
