@@ -1,0 +1,73 @@
+@startuml
+title Schatten - MCP OAuth Tokens, Rotation And Revocation (TASK-069F, behind MCP_ENABLED)
+
+participant "MCP client\nvendor broker or local client" as Client
+participant "FastAPI\n/api/oauth/token, /api/oauth/revoke" as Token
+participant "SPA\nconnections list (TASK-069L)" as SPA
+participant "FastAPI\n/api/v1/ai/connections" as Connections
+database PostgreSQL as DB
+
+note over Client, Token
+  Public endpoints, form-encoded, rate-limited per client IP
+  (token and revoke buckets), Cache-Control: no-store, RFC 6749 errors.
+  Tokens are opaque 256-bit values; only SHA-256 hashes are stored or compared.
+  No token, code or request id is ever logged.
+end note
+
+== Code exchange ==
+Client -> Token : POST token: authorization_code, code, client_id,\nredirect_uri, code_verifier, resource
+Token -> DB : Best-effort lazy cleanup (SKIP LOCKED, one commit per step,\n500 ms lock_timeout): expired requests, expired access tokens,\nrevoked or expired grants (tokens cascade, references set null),\nthen stale clients
+Token -> DB : Lock request by code hash
+alt code already consumed
+  Token -> DB : Revoke the request's active grant and all its tokens
+  Token --> Client : 400 invalid_grant
+else valid client, unexpired code, same redirect URI,\nPKCE S256 verifier, same canonical resource
+  Token -> DB : Advisory lock per client + User + resource, then reuse\nthe User's active grant (revoke its earlier tokens, keep expires_time)\nor create a grant expiring in 30 days
+  Token -> DB : Insert access (1 h) and refresh (7 d idle) token hashes,\ncapped at the grant's expires_time
+  Token -> DB : Throttled client last_used_time (may wait for an\nin-flight authorize's client row lock)
+  Token --> Client : access_token, refresh_token, expires_in, scope
+end
+
+== Refresh ==
+Client -> Token : POST token: refresh_token, client_id, resource
+Token -> DB : Lazy cleanup, then lock grant, then token
+alt grant revoked or expired
+  Token --> Client : 400 invalid_grant (no further effect)
+else token revoked (for example after re-authorization)
+  Token --> Client : 400 invalid_grant (no further effect)
+else token already replaced: reuse detected
+  Token -> DB : Revoke the grant and all its tokens
+  Token --> Client : 400 invalid_grant
+else token past its idle expiry
+  Token --> Client : 400 invalid_grant
+else
+  Token -> DB : Insert new pair; set only old row's replaced_by_hash
+  Token --> Client : New access and refresh token
+end
+
+== MCP request (TASK-069G) ==
+Client -> Token : Bearer access token
+note right of Token
+  verify_access_token(token, resource, scope):
+  token unexpired and unrevoked, grant active and bound to
+  this resource, User not soft-deleted, current role re-read,
+  effective scopes = grant scopes intersected with role scopes.
+  Grant last_used_time at most every 5 minutes.
+end note
+
+== Revocation ==
+Client -> Token : POST revoke: token, client_id (RFC 7009)
+Token -> DB : Refresh token: revoke grant and its tokens.\nAccess token: revoke only that token.
+Token --> Client : 200 (also for unknown or foreign tokens)
+SPA -> Connections : GET connections; DELETE connections/{grant_key}\n(session, CSRF, exact Origin; own grants only)
+Connections -> DB : Revoke grant and its tokens (revoked_by = User)
+SPA -> Connections : POST users/{user_id}/connections/revoke (admin only)
+Connections -> DB : Revoke every active grant of that User
+note over Token, Connections
+  Every grant revocation is logged at INFO to stderr (own handler) with actor,
+  User id, grant key, client_id, self-declared client name, reason and revoked
+  token count, never a token.
+  The connections API stays registered with MCP_ENABLED=false.
+end note
+
+@enduml

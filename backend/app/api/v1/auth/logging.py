@@ -3,12 +3,13 @@ import re
 
 _SENSITIVE_QUERY_VALUE = re.compile(
     r"(?i)(?P<prefix>(?:^|[?&])"
-    r"(?:code|state|error|error_description|request|return_to)=)[^&\s]*"
+    r"(?:code|state|error|error_description|request|return_to|token|"
+    r"access_token|refresh_token|code_verifier)=)[^&\s]*"
 )
 
 
 class SensitiveQueryFilter(logging.Filter):
-    """Redact callback secrets and MCP OAuth request ids from access logs."""
+    """Redact callback secrets, MCP OAuth request ids and tokens from access logs."""
 
     def filter(self, record: logging.LogRecord) -> bool:
         arguments = record.args

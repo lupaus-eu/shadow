@@ -223,24 +223,33 @@ and ACME account state persist in the `schatten_caddy_data` volume.
 Production retains secure cookies, `APP_ENV=production`, disabled CORS, the
 existing RS256/session/transaction limits and same-origin API behavior.
 
-### AI Via MCP Settings (TASK-069E)
+### AI Via MCP Settings (TASK-069E, TASK-069F)
 
 ADR-015's MCP OAuth settings are fixed in `docker-compose.production.yml`, not
 in the env file. They contain no secret.
 
 | Setting | Production value | Contract |
 | --- | --- | --- |
-| `MCP_ENABLED` | `false` | Feature flag. With `false` the discovery, registration, authorization and consent endpoints are not registered and return 404, and the session response reports `features.mcp=false`. Enabling it needs TASK-069O's separate human approval; `verify-production-compose.sh` asserts `false` |
+| `MCP_ENABLED` | `false` | Feature flag. With `false` the discovery, registration, authorization, consent, token and revoke endpoints are not registered and return 404, and the session response reports `features.mcp=false`. The `/api/v1/ai/connections` API and the admin per-user revocation stay registered for ADR-015's incident procedure. Enabling it needs TASK-069O's separate human approval; `verify-production-compose.sh` asserts `false` |
 | `MCP_OAUTH_REDIRECT_URIS` | claude.ai and claude.com callbacks, `http://127.0.0.1:{port}/callback`, `http://[::1]:{port}/callback`, `http://localhost:{port}/callback` | Space- or comma-separated allowlist. Exact entries must be HTTPS without userinfo, query, fragment or wildcard. Loopback entries keep the literal `{port}` placeholder. Startup fails on any other entry. TASK-069O trims the loopback entries to those real clients use |
 | `MCP_OAUTH_AUTHORIZATION_REQUEST_LIFETIME_SECONDS` | `600` | Pending authorization request lifetime (1 to 3600) |
 | `MCP_OAUTH_AUTHORIZATION_CODE_LIFETIME_SECONDS` | `60` | Single-use authorization code lifetime (1 to 600) |
+| `MCP_OAUTH_ACCESS_TOKEN_LIFETIME_SECONDS` | `3600` | Opaque access token lifetime (1 to 86400), capped at the grant's expiry |
+| `MCP_OAUTH_REFRESH_TOKEN_IDLE_LIFETIME_SECONDS` | `604800` | Refresh token idle timeout (7 days, 1 to 31536000); every rotation starts a new one, capped at the grant's expiry |
+| `MCP_OAUTH_GRANT_LIFETIME_SECONDS` | `2592000` | Absolute grant lifetime (30 days, 1 to 31536000), never extended, also not on re-authorization. Startup fails if either token lifetime exceeds it |
 | `MCP_OAUTH_REGISTER_RATE_LIMIT_PER_MINUTE` | `30` | `oauth_rate_limiter` `register` bucket per client IP |
 | `MCP_OAUTH_AUTHORIZE_RATE_LIMIT_PER_MINUTE` | `20` | `authorize` bucket per client IP (the user's browser) |
-| `MCP_OAUTH_TOKEN_RATE_LIMIT_PER_MINUTE` | `300` | `token` bucket per client IP, used by TASK-069F |
-| `MCP_OAUTH_REVOKE_RATE_LIMIT_PER_MINUTE` | `60` | `revoke` bucket per client IP, used by TASK-069F |
+| `MCP_OAUTH_TOKEN_RATE_LIMIT_PER_MINUTE` | `300` | `token` bucket per client IP (`/api/oauth/token`) |
+| `MCP_OAUTH_REVOKE_RATE_LIMIT_PER_MINUTE` | `60` | `revoke` bucket per client IP (`/api/oauth/revoke`) |
 | `MCP_OAUTH_MAX_PENDING_REQUESTS_PER_CLIENT` | `20` | Live undecided authorization requests per client; may not exceed the total |
 | `MCP_OAUTH_MAX_PENDING_REQUESTS` | `1000` | Live undecided authorization requests in total |
 | `MCP_OAUTH_MAX_CLIENTS` | `10000` | Non-deleted registered clients; beyond it `register` answers 503 and logs a warning. Raising it is the operator remedy (ADR-015) |
+
+The backend writes ADR-015's MCP OAuth audit entries (client registrations and
+every grant revocation with actor, User id, grant key, `client_id`,
+self-declared client name, reason and revoked token count, never a token) at
+`INFO` to standard error, so they appear in the backend container log even
+though `fastapi run` configures only the uvicorn loggers.
 
 The `register`, `token` and `revoke` buckets are higher than `authorize`
 because vendor connector brokers call them from shared egress addresses.
@@ -804,8 +813,10 @@ backup safeguards are not permission to auto-baseline or overwrite existing data
 
 Caddy access logs retain useful method, path, query, status, client and timing
 metadata. Its query filter replaces every value for `code`, `state`, `error`,
-`error_description`, and ADR-015's pending request id carriers `request` and
-`return_to`, with `REDACTED` on every path. The log filter also replaces the
+`error_description`, ADR-015's pending request id carriers `request` and
+`return_to`, and OAuth token parameters a client might misplace in a query
+string (`token`, `access_token`, `refresh_token`, `code_verifier`), with
+`REDACTED` on every path. The log filter also replaces the
 `Location` response header (authorization redirects carry request ids, codes
 and the Entra `state`), the `X-Csrf-Token` request header and, explicitly, the
 `Authorization` request header. Default Caddy credential-header redaction

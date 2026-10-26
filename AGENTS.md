@@ -114,10 +114,11 @@ migrations -> reference seed -> empty-users-table administrator bootstrap.
 AI via MCP is an accepted design in `docs/decisions/ADR-015-ai-via-mcp.md`
 (TASK-069A). TASK-069B's flush-only domain service transaction cores,
 TASK-069C's deterministic timeseries generator, TASK-069D's MCP OAuth schema
-(migration 017, `mcp_oauth_*`) and TASK-069E's OAuth discovery, registration,
-authorization request and consent API (registered only with
-`MCP_ENABLED=true`, off by default) are implemented; the rest is pending
-TASK-069F through TASK-069O, and no MCP client can connect yet. Users chat in their own MCP client on
+(migration 017, `mcp_oauth_*`), TASK-069E's OAuth discovery, registration,
+authorization request and consent API and TASK-069F's token, refresh and
+revoke endpoints (registered only with `MCP_ENABLED=true`, off by default),
+token verification and connections API are implemented; the rest is pending
+TASK-069G through TASK-069O, and no MCP client can connect yet. Users chat in their own MCP client on
 their own AI subscription; Schatten never calls an LLM or stores LLM keys.
 FastAPI will host `/api/mcp/read` (`schatten.read`) and `/api/mcp/write`
 (`schatten.write`) and act as OAuth 2.1 authorization server over the existing

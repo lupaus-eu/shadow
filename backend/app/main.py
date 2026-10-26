@@ -12,6 +12,7 @@ from app.api.v1.auth.dependencies import AuthHttpError
 from app.api.v1.auth.logging import install_sensitive_query_filter
 from app.api.v1.auth.provider import AuthlibOidcProvider, OidcProvider
 from app.api.v1.auth.rate_limit import FixedWindowRateLimiter
+from app.api.v1.mcp_oauth.audit_log import install_mcp_oauth_audit_log
 from app.api.v1.mcp_oauth.consent_router import router as mcp_oauth_consent_router
 from app.api.v1.mcp_oauth.router import router as mcp_oauth_router
 from app.api.v1.router import router as api_v1_router
@@ -34,6 +35,8 @@ def create_app(
     resolved_settings = settings or get_settings()
     resolved_settings.validate_auth_configuration()
     install_sensitive_query_filter()
+    # The connections API revokes grants even with MCP_ENABLED=false.
+    install_mcp_oauth_audit_log()
     resolved_provider = oidc_provider or AuthlibOidcProvider(resolved_settings)
 
     @asynccontextmanager

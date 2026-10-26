@@ -1,0 +1,159 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-069F/review-002",
+  "task": {
+    "id": "TASK-069F",
+    "path": "tasks/TASK-069F-mcp-oauth-tokens-connections.md"
+  },
+  "round": 2,
+  "reviewed_at": "2026-10-26T14:10:30Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": {
+    "number": 113,
+    "url": "https://github.com/reflector-oy/schatten/pull/113"
+  },
+  "source": {
+    "base_sha": "887dd90341481e9712c907038deba99559e83e9b",
+    "head_sha": "590686ea6c000fecfaa93c057febdc70268f57ae",
+    "comparison": "887dd90341481e9712c907038deba99559e83e9b...590686ea6c000fecfaa93c057febdc70268f57ae",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Round 2 re-reviews the whole TASK-069F branch, focusing on the fix commit for the nine round 1 findings, all of which are resolved. The fix commit adds the MCP OAuth audit handler, splits lazy cleanup into separately committed best-effort steps with a 500 ms PostgreSQL lock_timeout, serialises first-time exchanges with an advisory lock per client, User and resource, extends the backend and Caddy log redaction to token parameters, bounds the lifetimes and the admin user_id, and adds tests. An independent pass ran real fastapi run and fastapi dev servers and saw each audit line exactly once. After a cleanup give-way, the same session completed a code exchange with lock_timeout reset to 0; only lock_not_available and deadlock_detected are swallowed. Lock-order analysis found no new cycle through the advisory lock. Each new test fails against the round 1 head or under a mutation of the fixed code. Ruff, pyright and the full backend suite pass: 993 passed and 61 skipped without PostgreSQL, 1054 passed with it. The MCP OAuth and sweep modules pass with PostgreSQL enabled (544 passed). The production frontend check passed with the new Caddyfile, local/Caddyfile validates with caddy 2.11.4, and the production Compose check passes. Two new low-impact findings remain. Out of scope and recorded only here: other INFO logs outside the MCP OAuth logger are also dropped under fastapi run; this predates this branch.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "documentation",
+        "severity": "info",
+        "summary": "The audit handler documentation claims the entries appear once under any server log configuration, but a configuration that also gives the root logger a handler prints each entry twice.",
+        "rationale": "The handler keeps propagation so that pytest's log capture still sees the entries, so a root handler, for example from logging.basicConfig, also writes them. A probe with basicConfig and create_app printed one audit entry twice. fastapi run and fastapi dev configure no root handler and print each entry once, so only the wording is inaccurate.",
+        "recommendation": "Reword AI.md and the module docstring: the entries are emitted under fastapi run's log configuration, and a configuration with a root handler prints them twice.",
+        "locations": [
+          {
+            "path": "backend/app/api/v1/mcp_oauth/audit_log.py",
+            "line": 1
+          },
+          {
+            "path": "docs/domains/AI.md",
+            "line": 520
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "bug",
+        "severity": "low",
+        "summary": "A single inactive grant whose cascade rows stay locked for a long time makes the whole grant-cleanup batch give way on every token request, so no inactive grant is deleted while it lasts.",
+        "rationale": "The grant step deletes up to 1,000 candidates in grant_id order in one statement and rolls back entirely on a lock conflict. If one row of a candidate's cascade stays locked, for example by a hung idle-in-transaction connection, the same lowest-id grant blocks the batch each time. Every token request then pays about 500 ms extra and logs a warning. Correctness is unaffected, because inactive grants are rejected everywhere, and the condition ends when the lock holder ends. Verified by reasoning; the give-way itself is covered by a PostgreSQL test.",
+        "recommendation": "Either accept and document this as a limit of best-effort cleanup, or make a give-way skip only the blocked grant, for example by deleting candidates in small chunks.",
+        "locations": [
+          {
+            "path": "backend/app/api/v1/mcp_oauth/token_service.py",
+            "line": 391
+          },
+          {
+            "path": "backend/app/api/v1/mcp_oauth/token_service.py",
+            "line": 465
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-069F/review-001",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "create_app installs install_mcp_oauth_audit_log, which sets the app.api.v1.mcp_oauth logger to INFO with its own standard-error handler. Real fastapi run and fastapi dev servers printed the registration and revocation entries once each. A new test with the root logger at WARNING sees both entries on the handler, and fails when the install is mutated away.",
+        "validated_by": {
+          "review_id": "TASK-069F/review-002",
+          "commit": "590686ea6c000fecfaa93c057febdc70268f57ae"
+        }
+      },
+      {
+        "record_id": "TASK-069F/review-001",
+        "finding_id": "F-002",
+        "disposition": "fixed",
+        "rationale": "The three cleanup steps commit separately, so no step keeps another step's locks, and each runs with a 500 ms lock_timeout, below the default deadlock_timeout. Only lock_not_available and deadlock_detected are rolled back and logged; other errors are raised. The round 1 deadlock probe now completes on both sides. A new PostgreSQL test of that scenario fails against the round 1 head with DeadlockDetected. Another new test shows the give-way on a held cascade row, which hangs against the round 1 head. The session stays usable afterwards, and the docstring and AI.md wording are corrected.",
+        "validated_by": {
+          "review_id": "TASK-069F/review-002",
+          "commit": "590686ea6c000fecfaa93c057febdc70268f57ae"
+        }
+      },
+      {
+        "record_id": "TASK-069F/review-001",
+        "finding_id": "F-003",
+        "disposition": "fixed",
+        "rationale": "The reusable-grant lookup first takes a transaction-scoped advisory lock keyed on client, User and resource. A new PostgreSQL test shows that a second concurrent exchange waits, then reuses the first grant and revokes its tokens, leaving one active grant; against the round 1 head it never waits. Lock-order analysis found no cycle with refresh, revocation, authorize or cleanup.",
+        "validated_by": {
+          "review_id": "TASK-069F/review-002",
+          "commit": "590686ea6c000fecfaa93c057febdc70268f57ae"
+        }
+      },
+      {
+        "record_id": "TASK-069F/review-001",
+        "finding_id": "F-004",
+        "disposition": "fixed",
+        "rationale": "The test disables lazy cleanup, keeps the inactive grant and expects a second, new grant. The round 1 mutation that removes the revoked and expiry filters now fails both cases.",
+        "validated_by": {
+          "review_id": "TASK-069F/review-002",
+          "commit": "590686ea6c000fecfaa93c057febdc70268f57ae"
+        }
+      },
+      {
+        "record_id": "TASK-069F/review-001",
+        "finding_id": "F-005",
+        "disposition": "fixed",
+        "rationale": "The backend filter and both Caddyfiles also redact token, access_token, refresh_token and code_verifier. A new test covers the backend filter. The production frontend check sends these parameters and requires their redaction, and it passed with the new Caddyfile. local/Caddyfile validates with caddy 2.11.4.",
+        "validated_by": {
+          "review_id": "TASK-069F/review-002",
+          "commit": "590686ea6c000fecfaa93c057febdc70268f57ae"
+        }
+      },
+      {
+        "record_id": "TASK-069F/review-001",
+        "finding_id": "F-006",
+        "disposition": "fixed",
+        "rationale": "A user_id outside the BIGINT range is treated as an unknown User and answers 404 USER_NOT_FOUND. A new test covers it and fails when the guard is mutated away. The pre-existing Users and Customers routes keep their behaviour, outside this task.",
+        "validated_by": {
+          "review_id": "TASK-069F/review-002",
+          "commit": "590686ea6c000fecfaa93c057febdc70268f57ae"
+        }
+      },
+      {
+        "record_id": "TASK-069F/review-001",
+        "finding_id": "F-007",
+        "disposition": "fixed",
+        "rationale": "The refresh idle and grant lifetimes are bounded to 365 days, well inside the datetime range. New configuration tests reject the overflowing values and the bound plus one.",
+        "validated_by": {
+          "review_id": "TASK-069F/review-002",
+          "commit": "590686ea6c000fecfaa93c057febdc70268f57ae"
+        }
+      },
+      {
+        "record_id": "TASK-069F/review-001",
+        "finding_id": "F-008",
+        "disposition": "fixed",
+        "rationale": "AI.md now names resource as the exception to the invalid_request rule.",
+        "validated_by": {
+          "review_id": "TASK-069F/review-002",
+          "commit": "590686ea6c000fecfaa93c057febdc70268f57ae"
+        }
+      },
+      {
+        "record_id": "TASK-069F/review-001",
+        "finding_id": "F-009",
+        "disposition": "fixed",
+        "rationale": "New PostgreSQL tests pause the first request after its row locks and show that a concurrent double redemption and a concurrent refresh with one token each wait, then fail with invalid_grant and leave the grant revoked. Both fail when the row locks are mutated away.",
+        "validated_by": {
+          "review_id": "TASK-069F/review-002",
+          "commit": "590686ea6c000fecfaa93c057febdc70268f57ae"
+        }
+      }
+    ]
+  }
+}

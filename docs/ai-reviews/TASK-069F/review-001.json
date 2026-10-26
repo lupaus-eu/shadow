@@ -1,0 +1,194 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-069F/review-001",
+  "task": {
+    "id": "TASK-069F",
+    "path": "tasks/TASK-069F-mcp-oauth-tokens-connections.md"
+  },
+  "round": 1,
+  "reviewed_at": "2026-10-26T13:40:05Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": {
+    "number": 113,
+    "url": "https://github.com/reflector-oy/schatten/pull/113"
+  },
+  "source": {
+    "base_sha": "887dd90341481e9712c907038deba99559e83e9b",
+    "head_sha": "29c3c7e365eee99308d604f20c85c086c70e5fa9",
+    "comparison": "887dd90341481e9712c907038deba99559e83e9b...29c3c7e365eee99308d604f20c85c086c70e5fa9",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Round 1 reviews the whole TASK-069F branch: token_service.py, the token and revoke routes and form parsing in router.py, connections_router.py, the schemas, the three lifetime settings, the always-on connections router registration, the new SQLite token module with foreign keys enabled, the PostgreSQL integration additions, the extended authorization sweep, the auth_helpers change, the env and Compose files and the documentation and sequence diagram. An independent review pass was cross-checked, and every finding below was reproduced against this head with a probe, a mutation run or a reading of the code. The OAuth logic matches the task and ADR-015: PKCE S256 with a constant-time compare, exact redirect URI and client binding, single-use codes whose second redemption revokes the recorded grant, grant reuse without extending expires_time, tokens capped at the grant's expiry, the five-step refresh check order with reuse detection independent of idle expiry, RFC 7009 revocation, verify_access_token's rejection paths and role re-read, the grant-before-token lock order, own-grant-only and admin-only connections routes, and SHA-256-only storage of 256-bit tokens. Malformed, NUL, non-UTF-8 and oversized form input answers clean 4xx on PostgreSQL. No regression or scope violation was found. Ruff, pyright and the full backend suite pass (983 passed, 56 skipped), the MCP PostgreSQL integration module passes (8 passed) and the production Compose verification passes. One medium finding: the revocation audit entries are dropped under the production log configuration. The rest are low or informational.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "bug",
+        "severity": "medium",
+        "summary": "The grant revocation audit entries required by the task are never written in production, because the MCP OAuth loggers stay at WARNING with no handler under the production log configuration.",
+        "rationale": "The production image starts the backend with fastapi run, whose uvicorn log configuration configures only the uvicorn loggers. The root logger stays at WARNING with no handler, so the INFO revocation entries are discarded. This covers user, admin, client, refresh-token reuse, code reuse and re-authorization revocations, and also TASK-069E's INFO registration entry. A probe that applied that log configuration showed the effective level WARNING and no output for an INFO entry. Lazy cleanup then deletes the revoked grant with its revoked_by on the next token request, so no audit trail remains. The tests do not notice because pytest's caplog raises the level.",
+        "recommendation": "Make the MCP OAuth audit loggers emit INFO under any server log configuration, for example with an idempotent handler installed by create_app. Add a test that applies the production log configuration and checks that a revocation entry is emitted.",
+        "locations": [
+          {
+            "path": "backend/app/api/v1/mcp_oauth/token_service.py",
+            "line": 758
+          },
+          {
+            "path": "backend/app/api/v1/mcp_oauth/service.py",
+            "line": 211
+          },
+          {
+            "path": "backend/Dockerfile",
+            "line": 44
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "bug",
+        "severity": "low",
+        "summary": "Two concurrent lazy cleanups can deadlock, and one token request then fails with HTTP 500; the documentation claims cleanup never waits.",
+        "rationale": "SKIP LOCKED covers only the candidate rows. Cleanup keeps its step-2 locks on expired access tokens while step 3 deletes grants, whose ON DELETE CASCADE and SET NULL must lock other rows. Two token requests with slightly different times can each lock the other grant's expired access token and then delete their own grant, and PostgreSQL aborts one with DeadlockDetected, which is uncaught. A probe that called the real cleanup twice concurrently reproduced the deadlock. A rarer inversion exists between a code double redemption, which holds the request row and wants the grant, and a cleanup deleting a grant that has just expired at its own time.",
+        "recommendation": "Commit each cleanup step separately, so no access-token lock is held during grant deletion. Run the cleanup steps with a short PostgreSQL lock_timeout and treat a lock failure as best-effort: roll back, log without secrets and continue the token request. Correct the never-waits wording in the docstring and AI.md.",
+        "locations": [
+          {
+            "path": "backend/app/api/v1/mcp_oauth/token_service.py",
+            "line": 375
+          },
+          {
+            "path": "backend/app/api/v1/mcp_oauth/token_service.py",
+            "line": 383
+          },
+          {
+            "path": "docs/domains/AI.md",
+            "line": 467
+          }
+        ]
+      },
+      {
+        "id": "F-003",
+        "category": "bug",
+        "severity": "low",
+        "summary": "Two concurrent first-time code exchanges for the same User, client and resource both create an active grant.",
+        "rationale": "The reusable-grant lookup locks only existing rows, so two transactions that find no active grant both insert one. Later re-authorizations reuse only the newest grant, so the older grant's tokens are never revoked by re-authorization, which contradicts the single reused grant model of ADR-015. A probe that paused the first exchange after the lookup produced two active grants. The impact is limited to the same User and client.",
+        "recommendation": "Serialise the lookup and insert per client, User and resource, for example with a transaction-scoped PostgreSQL advisory lock taken before the lookup, and add a PostgreSQL test.",
+        "locations": [
+          {
+            "path": "backend/app/api/v1/mcp_oauth/token_service.py",
+            "line": 477
+          },
+          {
+            "path": "backend/app/api/v1/mcp_oauth/token_service.py",
+            "line": 593
+          }
+        ]
+      },
+      {
+        "id": "F-004",
+        "category": "missing_test",
+        "severity": "low",
+        "summary": "The test that a revoked or expired grant is not reused passes even when the reuse lookup ignores revocation and expiry.",
+        "rationale": "Every token request runs lazy cleanup first, and cleanup deletes the revoked or expired grant before the reuse lookup runs. A mutation that removed the revoked_time and expires_time filters from the lookup left all token tests and the PostgreSQL module passing. Without the filter, an expired grant would make the token insert fail its check constraint and a revoked grant would hand out dead tokens.",
+        "recommendation": "Disable lazy cleanup in that test, as the grant absolute expiry test already does, so the lookup itself must skip the inactive grant.",
+        "locations": [
+          {
+            "path": "backend/tests/test_mcp_oauth_tokens.py",
+            "line": 659
+          }
+        ]
+      },
+      {
+        "id": "F-005",
+        "category": "security",
+        "severity": "low",
+        "summary": "The backend and Caddy access-log filters do not redact token, refresh_token, access_token or code_verifier query parameters.",
+        "rationale": "The token and revoke endpoints read only the form body, but a misbehaving client that puts a refresh token or token in the query string gets it written in clear to the uvicorn and Caddy access logs, although the request is rejected. The same applies to an RFC 6750 access_token query parameter once the MCP endpoints exist. A filter check showed code redacted and refresh_token, token and access_token in clear. The task requires that token values never appear in logs.",
+        "recommendation": "Add token, access_token, refresh_token and code_verifier to the backend sensitive-query filter and to the query replacements in both Caddyfiles, validate both Caddyfiles and extend the filter test.",
+        "locations": [
+          {
+            "path": "backend/app/api/v1/auth/logging.py",
+            "line": 4
+          },
+          {
+            "path": "frontend/Caddyfile",
+            "line": 47
+          },
+          {
+            "path": "local/Caddyfile",
+            "line": 13
+          }
+        ]
+      },
+      {
+        "id": "F-006",
+        "category": "bug",
+        "severity": "low",
+        "summary": "The admin per-user revocation answers HTTP 500 for a user_id outside the BIGINT range.",
+        "rationale": "The path parameter is an unbounded integer, and the User lookup fails in the database driver for a value outside the BIGINT range instead of answering 404. The route is admin-only and the existing Users routes behave the same way, so this is an existing project-wide pattern rather than a regression, but the new route repeats it.",
+        "recommendation": "Treat a user_id outside the BIGINT range as an unknown User in the new route.",
+        "locations": [
+          {
+            "path": "backend/app/api/v1/mcp_oauth/connections_router.py",
+            "line": 71
+          },
+          {
+            "path": "backend/app/api/v1/mcp_oauth/token_service.py",
+            "line": 332
+          }
+        ]
+      },
+      {
+        "id": "F-007",
+        "category": "bug",
+        "severity": "info",
+        "summary": "The refresh idle and grant lifetime settings have no upper bound, so a very large value passes validation and every token exchange then fails with HTTP 500.",
+        "rationale": "Adding a lifetime such as 10**12 seconds to the current time overflows the datetime range. Startup validation accepts the value, and the failure only appears at the first exchange.",
+        "recommendation": "Add an upper bound to both settings and a configuration test.",
+        "locations": [
+          {
+            "path": "backend/app/core/config.py",
+            "line": 108
+          },
+          {
+            "path": "backend/app/core/config.py",
+            "line": 113
+          }
+        ]
+      },
+      {
+        "id": "F-008",
+        "category": "documentation",
+        "severity": "info",
+        "summary": "AI.md says a repeated parameter or a NUL character is always invalid_request, but a repeated resource, or one with NUL, answers invalid_target.",
+        "rationale": "The code checks resource with its own rule, which the next bullet in AI.md describes correctly, so the general sentence is inaccurate.",
+        "recommendation": "Name resource as the exception in that sentence.",
+        "locations": [
+          {
+            "path": "docs/domains/AI.md",
+            "line": 400
+          }
+        ]
+      },
+      {
+        "id": "F-009",
+        "category": "missing_test",
+        "severity": "info",
+        "summary": "No PostgreSQL test covers a concurrent double redemption of one code or a concurrent refresh with one refresh token.",
+        "rationale": "Both races behave correctly in a probe: the second request waits for the row lock, fails with invalid_grant and the grant is revoked. Nothing would catch a regression such as dropping the row lock on the authorization request lookup. This is not required by the acceptance criteria.",
+        "recommendation": "Add PostgreSQL tests that pause the first request after its row lock and show that the second waits and then fails with the grant revoked.",
+        "locations": [
+          {
+            "path": "backend/tests/test_mcp_oauth_postgresql_integration.py",
+            "line": 526
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": []
+  }
+}

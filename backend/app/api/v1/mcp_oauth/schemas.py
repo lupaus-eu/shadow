@@ -50,6 +50,33 @@ class ClientRegistrationResponse(StrictBaseModel):
     token_endpoint_auth_method: Literal["none"]
 
 
+class TokenResponse(StrictBaseModel):
+    """OAuth 2.1 token response with an opaque access and refresh token."""
+
+    access_token: str
+    token_type: Literal["Bearer"]
+    expires_in: int
+    refresh_token: str
+    scope: str
+
+
+class ConnectionResponse(StrictBaseModel):
+    """An active grant; `clientName` is a label the client declared itself."""
+
+    grantKey: str
+    clientId: str
+    clientName: str
+    scope: str
+    resource: str
+    createdTime: datetime
+    lastUsedTime: datetime | None
+    expiresTime: datetime
+
+
+class UserConnectionsRevokeResponse(StrictBaseModel):
+    revokedCount: int
+
+
 class ConsentRequestResponse(StrictBaseModel):
     clientName: str
     clientNameSelfDeclared: Literal[True] = True

@@ -30,6 +30,8 @@ def authenticate_test_client(
             role=role,
         )
         session.add(user)
+        # Insert the User first for test databases that enforce foreign keys.
+        session.flush()
         session.add(
             AuthSession(
                 session_id_hash=hashlib.sha256(raw_session_id.encode()).digest(),

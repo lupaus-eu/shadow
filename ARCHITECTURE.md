@@ -58,10 +58,11 @@ Päätetty tekninen perusrakenne:
   Entra login, and AI change sets that only a human applies in Schatten. This
   is an accepted design. TASK-069B's flush-only domain service transaction
   cores, TASK-069C's deterministic timeseries generator, TASK-069D's MCP
-  OAuth schema and TASK-069E's OAuth discovery, registration, authorization
-  request and consent API (behind `MCP_ENABLED=false`) are implemented; the
-  rest is pending TASK-069F through TASK-069O and no MCP client can connect
-  yet (see [AI Via MCP](#ai-via-mcp))
+  OAuth schema, TASK-069E's OAuth discovery, registration, authorization
+  request and consent API and TASK-069F's token, refresh and revoke endpoints
+  (all behind `MCP_ENABLED=false`), token verification and connections API
+  are implemented; the rest is pending TASK-069G through TASK-069O and no MCP
+  client can connect yet (see [AI Via MCP](#ai-via-mcp))
 
 Tarkemmat toteutusyksityiskohdat täsmentyvät taskien ja tarvittaessa uusien ADR:ien kautta.
 
@@ -549,10 +550,14 @@ TASK-069D (the `mcp_oauth_*` tables of migration 017 and their models in
 `backend/app/api/v1/mcp_oauth/models.py`) and TASK-069E (OAuth discovery,
 Dynamic Client Registration, the authorization request, the cookie-session
 consent API, the `features.mcp` session flag and the Caddy routing and log
-redaction, in `backend/app/api/v1/mcp_oauth/`) are implemented; the rest is
-pending TASK-069F through TASK-069O. Nothing else below is implemented yet,
-and the feature stays behind `MCP_ENABLED=false` until TASK-069O's separately
-approved production enablement.
+redaction, in `backend/app/api/v1/mcp_oauth/`) and TASK-069F (token exchange,
+rotating refresh tokens with reuse detection, RFC 7009 revocation, lazy
+cleanup, `verify_access_token` and the always-registered
+`/api/v1/ai/connections` API, in the same package; see the
+[MCP OAuth token sequence](docs/diagrams/generated/sequence-mcp-oauth-tokens.svg))
+are implemented; the rest is pending TASK-069G through TASK-069O. Nothing else
+below is implemented yet, and the feature stays behind `MCP_ENABLED=false`
+until TASK-069O's separately approved production enablement.
 
 Users chat in their own MCP-capable AI client (Claude Desktop, claude.ai,
 Claude Code or another) on their own AI subscription. Schatten never calls an

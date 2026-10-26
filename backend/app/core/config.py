@@ -99,6 +99,24 @@ class Settings(StrictBaseModel):
         ge=1,
         le=600,
     )
+    mcp_oauth_access_token_lifetime_seconds: int = Field(
+        default=3600,
+        alias="MCP_OAUTH_ACCESS_TOKEN_LIFETIME_SECONDS",
+        ge=1,
+        le=86400,
+    )
+    mcp_oauth_refresh_token_idle_lifetime_seconds: int = Field(
+        default=7 * 86400,
+        alias="MCP_OAUTH_REFRESH_TOKEN_IDLE_LIFETIME_SECONDS",
+        ge=1,
+        le=365 * 86400,
+    )
+    mcp_oauth_grant_lifetime_seconds: int = Field(
+        default=30 * 86400,
+        alias="MCP_OAUTH_GRANT_LIFETIME_SECONDS",
+        ge=1,
+        le=365 * 86400,
+    )
     mcp_oauth_register_rate_limit_per_minute: int = Field(
         default=30, alias="MCP_OAUTH_REGISTER_RATE_LIMIT_PER_MINUTE", ge=1
     )
@@ -191,6 +209,17 @@ class Settings(StrictBaseModel):
             raise ValueError(
                 "MCP_OAUTH_MAX_PENDING_REQUESTS_PER_CLIENT cannot exceed "
                 "MCP_OAUTH_MAX_PENDING_REQUESTS"
+            )
+        if (
+            max(
+                self.mcp_oauth_access_token_lifetime_seconds,
+                self.mcp_oauth_refresh_token_idle_lifetime_seconds,
+            )
+            > self.mcp_oauth_grant_lifetime_seconds
+        ):
+            raise ValueError(
+                "MCP OAuth token lifetimes cannot exceed "
+                "MCP_OAUTH_GRANT_LIFETIME_SECONDS"
             )
         if self.app_environment == "production":
             if public.scheme != "https" or allowed.scheme != "https":
@@ -334,6 +363,9 @@ def get_settings() -> Settings:
         "MCP_OAUTH_REDIRECT_URIS",
         "MCP_OAUTH_AUTHORIZATION_REQUEST_LIFETIME_SECONDS",
         "MCP_OAUTH_AUTHORIZATION_CODE_LIFETIME_SECONDS",
+        "MCP_OAUTH_ACCESS_TOKEN_LIFETIME_SECONDS",
+        "MCP_OAUTH_REFRESH_TOKEN_IDLE_LIFETIME_SECONDS",
+        "MCP_OAUTH_GRANT_LIFETIME_SECONDS",
         "MCP_OAUTH_REGISTER_RATE_LIMIT_PER_MINUTE",
         "MCP_OAUTH_AUTHORIZE_RATE_LIMIT_PER_MINUTE",
         "MCP_OAUTH_TOKEN_RATE_LIMIT_PER_MINUTE",

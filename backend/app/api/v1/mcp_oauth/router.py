@@ -6,6 +6,7 @@ by the separate `oauth_rate_limiter`, never the login `auth_rate_limiter`.
 
 import json
 from typing import Literal, cast
+from urllib.parse import parse_qsl
 
 from fastapi import APIRouter, Request, Response, status
 from fastapi.concurrency import run_in_threadpool
@@ -18,6 +19,7 @@ from app.api.v1.mcp_oauth.schemas import (
     ClientRegistrationResponse,
     OAuthErrorResponse,
     ProtectedResourceMetadata,
+    TokenResponse,
 )
 from app.api.v1.mcp_oauth.service import (
     MCP_SERVER_SCOPES,
@@ -26,10 +28,14 @@ from app.api.v1.mcp_oauth.service import (
     register_client,
     start_authorization,
 )
+from app.api.v1.mcp_oauth.token_service import issue_tokens, revoke_token
 from app.core.config import Settings
 
 OAuthBucket = Literal["register", "authorize", "token", "revoke"]
 MAX_REGISTRATION_BODY_BYTES = 64 * 1024
+MAX_FORM_BODY_BYTES = 16 * 1024
+MAX_FORM_FIELDS = 20
+FORM_CONTENT_TYPE = "application/x-www-form-urlencoded"
 
 router = APIRouter(tags=["mcp-oauth"])
 _ERROR_RESPONSES: dict[int | str, dict[str, object]] = {
@@ -140,6 +146,50 @@ def authorize(
     return RedirectResponse(location, status_code=status.HTTP_303_SEE_OTHER)
 
 
+@router.post(
+    "/api/oauth/token",
+    response_model=TokenResponse,
+    responses=_ERROR_RESPONSES,
+)
+async def token(
+    request: Request,
+    session: SessionDependency,
+    settings: SettingsDependency,
+) -> Response:
+    if not oauth_rate_limit_allows(request, settings, "token"):
+        return rate_limited_response()
+    try:
+        parameters = await _read_form_body(request)
+        issued = await run_in_threadpool(issue_tokens, session, settings, parameters)
+    except OAuthError as exc:
+        return oauth_error_response(exc)
+    body = TokenResponse(
+        access_token=issued.access_token,
+        token_type="Bearer",
+        expires_in=issued.expires_in,
+        refresh_token=issued.refresh_token,
+        scope=issued.scope,
+    )
+    return JSONResponse(content=body.model_dump())
+
+
+@router.post("/api/oauth/revoke", responses=_ERROR_RESPONSES)
+async def revoke(
+    request: Request,
+    session: SessionDependency,
+    settings: SettingsDependency,
+) -> Response:
+    """RFC 7009: an unknown or foreign token also answers 200."""
+    if not oauth_rate_limit_allows(request, settings, "revoke"):
+        return rate_limited_response()
+    try:
+        parameters = await _read_form_body(request)
+        await run_in_threadpool(revoke_token, session, parameters)
+    except OAuthError as exc:
+        return oauth_error_response(exc)
+    return Response(status_code=status.HTTP_200_OK)
+
+
 def oauth_rate_limit_allows(
     request: Request, settings: Settings, bucket: OAuthBucket
 ) -> bool:
@@ -189,3 +239,27 @@ async def _read_json_body(request: Request) -> object:
             "invalid_client_metadata", "Client metadata must be JSON"
         ) from exc
     return metadata
+
+
+async def _read_form_body(request: Request) -> dict[str, list[str]]:
+    """Parse a bounded form body; empty values count as omitted (RFC 6749)."""
+    content_type = request.headers.get("content-type", "")
+    if content_type.split(";", 1)[0].strip().lower() != FORM_CONTENT_TYPE:
+        raise OAuthError("invalid_request", f"The body must be {FORM_CONTENT_TYPE}")
+    body = bytearray()
+    async for chunk in request.stream():
+        body.extend(chunk)
+        if len(body) > MAX_FORM_BODY_BYTES:
+            raise OAuthError("invalid_request", "The request body is too large")
+    try:
+        pairs = parse_qsl(
+            body.decode("utf-8"),
+            errors="strict",
+            max_num_fields=MAX_FORM_FIELDS,
+        )
+    except ValueError as exc:
+        raise OAuthError("invalid_request", "Malformed request body") from exc
+    parameters: dict[str, list[str]] = {}
+    for name, value in pairs:
+        parameters.setdefault(name, []).append(value)
+    return parameters

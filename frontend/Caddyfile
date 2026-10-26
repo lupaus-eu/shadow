@@ -52,6 +52,11 @@ http:// {
 				# ADR-015: MCP OAuth pending request ids.
 				replace request REDACTED
 				replace return_to REDACTED
+				# ADR-015: OAuth tokens and PKCE verifiers misplaced in a query.
+				replace token REDACTED
+				replace access_token REDACTED
+				replace refresh_token REDACTED
+				replace code_verifier REDACTED
 			}
 			# Authorization redirects carry request ids, codes and Entra state.
 			resp_headers>Location replace REDACTED

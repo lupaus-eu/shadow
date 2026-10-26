@@ -2,13 +2,17 @@
 
 Status: accepted design in ADR-015; TASK-069B (the domain service transaction
 cores this domain will use), TASK-069C (the deterministic timeseries
-generator), TASK-069D (the MCP OAuth schema) and TASK-069E (OAuth discovery,
+generator), TASK-069D (the MCP OAuth schema), TASK-069E (OAuth discovery,
 client registration, the authorization request and the consent API, see
-[MCP OAuth Authorization](#mcp-oauth-authorization-task-069e)) are implemented
-and the rest is pending TASK-069F through TASK-069O. The TASK-069E endpoints
-are registered only with `MCP_ENABLED=true`, which is off by default and in
-production. No token can be issued yet (TASK-069F), so no MCP client can use
-Schatten yet; the generator is library code.
+[MCP OAuth Authorization](#mcp-oauth-authorization-task-069e)) and TASK-069F
+(tokens, refresh rotation, revocation, `verify_access_token` and the
+connections API, see
+[MCP OAuth Tokens And Connections](#mcp-oauth-tokens-and-connections-task-069f))
+are implemented and the rest is pending TASK-069G through TASK-069O. The public
+OAuth endpoints and the consent API are registered only with
+`MCP_ENABLED=true`, which is off by default and in production; the connections
+API is always registered. No MCP endpoint exists yet (TASK-069G), so no MCP
+client can use Schatten yet; the generator is library code.
 
 ## Purpose
 
@@ -281,7 +285,8 @@ Public endpoints return RFC 6749 JSON errors
   `code`, grant types `authorization_code` and `refresh_token`, auth method
   `none`, code challenge method `S256` and
   `authorization_response_iss_parameter_supported: true`. The token and
-  revocation endpoints are implemented by TASK-069F.
+  revocation endpoints are implemented by TASK-069F (see
+  [below](#mcp-oauth-tokens-and-connections-task-069f)).
 - `GET /.well-known/oauth-protected-resource/api/mcp/{read,write}` (RFC 9728):
   resource `<PUBLIC_ORIGIN>/api/mcp/<server>` with no trailing slash, the
   authorization server `PUBLIC_ORIGIN`, the server's single scope and bearer
@@ -345,8 +350,8 @@ candidates `FOR UPDATE SKIP LOCKED`, at most 1,000 per step:
 2. it hard-deletes soft-deleted clients that no authorization request and no
    grant references.
 
-A client locked by an in-flight authorize is skipped. TASK-069F also calls
-this cleanup during token operations.
+A client locked by an in-flight authorize is skipped. Token requests also run
+this cleanup, after TASK-069F's request, token and grant cleanup.
 
 Consent API (business session; approve and deny need the CSRF token and exact
 Origin; `Cache-Control: no-store`):
@@ -376,6 +381,183 @@ Only undecided, unexpired requests count towards the pending caps.
 The incident procedure (disable MCP, then revoke affected Users' grants) and
 the offboarding rule (soft-delete the User or revoke the User's grants) are in
 ADR-015.
+
+## MCP OAuth Tokens And Connections (TASK-069F)
+
+The code is in `backend/app/api/v1/mcp_oauth/token_service.py`, with the token
+and revoke routes in `router.py` and the cookie-session connections API in
+`connections_router.py`. The sequence is drawn in
+[MCP OAuth tokens](../diagrams/generated/sequence-mcp-oauth-tokens.svg)
+(`docs/diagrams/sequence-mcp-oauth-tokens.puml`). The lifetimes are the
+settings `MCP_OAUTH_ACCESS_TOKEN_LIFETIME_SECONDS` (default 1 hour),
+`MCP_OAUTH_REFRESH_TOKEN_IDLE_LIFETIME_SECONDS` (7 days) and
+`MCP_OAUTH_GRANT_LIFETIME_SECONDS` (30 days); startup fails if a token
+lifetime exceeds the grant lifetime.
+
+`POST /api/oauth/token` (registered only with `MCP_ENABLED=true`, `token`
+bucket, `Cache-Control: no-store`, RFC 6749 JSON errors) takes an
+`application/x-www-form-urlencoded` body of at most 16 KiB and 20 fields.
+Empty values count as omitted, and a repeated parameter or a NUL character is
+`invalid_request`, except for `resource`, which is checked as described below.
+An unknown `grant_type` is `unsupported_grant_type`. Every
+`authorization_code` or `refresh_token` request first runs lazy cleanup (below)
+in its own transactions.
+
+- `authorization_code` requires `code`, `redirect_uri` and `code_verifier`
+  (otherwise `invalid_request`), exactly one `resource` (otherwise
+  `invalid_target`) and the `client_id` of a registered, non-deleted client
+  (otherwise `invalid_client`). It locks the request by code hash and then
+  checks, in this order:
+  1. a code that was already redeemed: the second redemption revokes the
+     still-active grant recorded on the request and all its tokens
+     (`code_reuse`) and fails with `invalid_grant`. If lazy cleanup already
+     deleted that grant, nothing is left to revoke;
+  2. the code was issued to this client, has not expired (60 seconds), the
+     `redirect_uri` equals the request's exactly (including a loopback port)
+     and the RFC 7636 `code_verifier` matches the S256 challenge; otherwise
+     `invalid_grant`;
+  3. `resource` equals the request's canonical resource; otherwise
+     `invalid_target`;
+  4. the approving User is not soft-deleted; otherwise `invalid_grant`.
+
+  A failed exchange changes nothing, so the code stays redeemable until it
+  expires. A successful exchange marks the request consumed and records its
+  grant. It locks and reuses the User's active grant (not revoked, not
+  expired) for the same client and resource, keeping its `expires_time` and
+  revoking all its earlier access and refresh tokens (`reauthorization`).
+  Without an active grant it creates one (`grant_<uuid>`) that expires after
+  the grant lifetime. A transaction-scoped PostgreSQL advisory lock per
+  client, User and resource, taken before the lookup, makes a concurrent
+  exchange wait and then reuse that grant, so concurrent first authorizations
+  never create two active grants.
+- `refresh_token` requires `refresh_token`, `client_id` and `resource`; an
+  optional `scope` must equal the grant's scope (otherwise `invalid_scope`).
+  It locks the grant and then the token, the same order as every revocation.
+  An unknown token, an access token or another client's token is
+  `invalid_grant`, and a resource other than the grant's is `invalid_target`,
+  both without effect. Then ADR-015's order decides, first match wins:
+  1. grant revoked or past its `expires_time`: `invalid_grant`, no effect;
+  2. token `revoked_time` set (for example after a re-authorization):
+     `invalid_grant`, no effect;
+  3. token has `replaced_by_hash`: reuse detected, whatever the token's own
+     expiry. The grant and all its tokens are revoked
+     (`refresh_token_reuse`) and the answer is `invalid_grant`;
+  4. token past its idle expiry: `invalid_grant`;
+  5. otherwise, unless the User is soft-deleted (`invalid_grant`), the token
+     is rotated: a new pair is stored and only the old row's
+     `replaced_by_hash` is set, never its `revoked_time`.
+- Both grant types store a new access token and refresh token, each expiring
+  after its lifetime but never after the grant's `expires_time`, and answer
+  `{"access_token", "token_type": "Bearer", "expires_in", "refresh_token",
+  "scope"}`. Tokens are `secrets.token_urlsafe(32)` values (256 bits) and only
+  their SHA-256 hashes are stored.
+- The last write before commit is the client's `last_used_time`, a
+  conditional update that writes only when the value is missing or at least
+  five minutes old. It conflicts with an in-flight authorize's
+  `FOR NO KEY UPDATE` client row lock and can wait until that authorize
+  commits; the grant and token inserts before it take only key-share locks and
+  never wait.
+
+`POST /api/oauth/revoke` (RFC 7009, registered only with `MCP_ENABLED=true`,
+`revoke` bucket, the same form body rules) requires `token` (otherwise
+`invalid_request`) and the `client_id` of a registered, non-deleted client
+(otherwise `invalid_client`); `token_type_hint` is ignored. Revoking a refresh
+token revokes its grant and all the grant's tokens (`client_revoke`); revoking
+an access token revokes only that token. An unknown token, or a token issued to
+another client, answers 200 without effect.
+
+Lazy cleanup (`cleanup_expired_oauth_rows()`) runs during token requests, with
+no scheduler or worker. It locks candidates `FOR UPDATE SKIP LOCKED`, at most
+1,000 per kind, and deletes, in three steps that each commit on their own:
+
+- authorization requests past their expiry whose code has also expired, so a
+  code approved late in the ten-minute window can still be redeemed;
+- expired access tokens;
+- revoked or expired grants. The database deletes their tokens
+  (`ON DELETE CASCADE`) and sets `mcp_oauth_authorization_requests.grant_id`
+  (and later TASK-069I's `ai_change_sets.grant_id`) to null.
+
+Refresh tokens of an active grant, including replaced ones, are never deleted,
+so reuse detection works for the grant's whole lifetime. The cleanup then runs
+TASK-069E's client cleanup, which hard-deletes a soft-deleted client once its
+last authorization request and grant are gone.
+
+`SKIP LOCKED` only skips locked candidates: a grant deletion's cascades can
+still wait for a token or request row that another operation holds. Because
+each step commits before the next, no step keeps another step's locks, so two
+concurrent cleanups cannot deadlock on each other's expired access tokens.
+Each step also runs with a PostgreSQL `lock_timeout` of 500 ms, below the
+default 1 s `deadlock_timeout`, so cleanup gives way first. Cleanup is best
+effort: a step that hits the timeout or a deadlock is rolled back, logged as a
+warning without secrets and left to a later token request, and the token
+request itself continues.
+
+`verify_access_token(session, token, required_resource, required_scope)` is
+the verification TASK-069G's `McpBearerAuth` will use. It re-reads the token,
+grant, client and User on every call and returns an `McpPrincipal` (`user_id`,
+`role`, `grant_id`, `grant_key`, `client_id`, `client_name`, `scopes`), or
+raises `TokenVerificationError` with:
+
+- `invalid_token` for a missing, malformed, unknown, expired or revoked access
+  token, a revoked or expired grant, a grant bound to another resource than
+  `required_resource`, or a soft-deleted User;
+- `insufficient_scope` when `required_scope` is not in the effective scopes,
+  `grant.scopes` intersected with `allowed_scopes_for_role(user.role)`. Both
+  current roles have both scopes (`ROLE_SCOPES`).
+
+A role change, User soft deletion or revocation therefore acts on the next
+call. A successful verification writes the grant's `last_used_time` at most
+every five minutes.
+
+Every grant revocation, and the token revocation on re-authorization, writes
+one `INFO` entry on the `app.api.v1.mcp_oauth.token_service` logger after its
+transaction commits, so the audit survives the grant row's later deletion.
+`fastapi run` configures only the uvicorn loggers and leaves the root logger at
+`WARNING` without a handler, so `create_app()` installs
+`install_mcp_oauth_audit_log()` (`audit_log.py`): the `app.api.v1.mcp_oauth`
+logger is set to `INFO` with its own standard-error handler. These revocation
+entries and TASK-069E's registration entries therefore appear once in the
+backend container log under `fastapi run` (production) and `fastapi dev`. The
+entries still propagate so that test log capture sees them; a log
+configuration that also gives the root logger a handler would print them
+twice:
+
+```text
+MCP OAuth grant revoked: reason=<reason> actor=<actor> user_id=<User id> grant_key=<key> client_id=<client_id> self_declared_client_name='<name>' revoked_tokens=<count>
+```
+
+| Reason | Actor | `revoked_by` |
+| --- | --- | --- |
+| `user_revoke` | `user:<id>` | the User |
+| `admin_revoke` | `user:<admin id>` | the admin |
+| `client_revoke` | `client` | null |
+| `refresh_token_reuse` | `system` | null |
+| `code_reuse` | `system` | null |
+| `reauthorization` | `user:<id>` | the grant stays active; the message is `MCP OAuth grant tokens revoked` |
+
+`revoked_tokens` counts the tokens revoked by that entry. No entry contains a
+token, code or request id.
+
+Connections API (`/api/v1/ai`, business session, always registered so grants
+stay revocable while `MCP_ENABLED=false`):
+
+- `GET /api/v1/ai/connections` lists the current User's active grants, newest
+  first, with `grantKey`, `clientId`, `clientName` (a label the client declared
+  itself), `scope`, `resource`, `createdTime`, `lastUsedTime` and
+  `expiresTime`.
+- `DELETE /api/v1/ai/connections/{grant_key}` (session CSRF token and exact
+  Origin) revokes one of the User's own active grants and all its tokens,
+  records `revoked_by` and answers 204. Another User's grant, an unknown key or
+  an inactive grant is `404 CONNECTION_NOT_FOUND`.
+- `POST /api/v1/ai/users/{user_id}/connections/revoke` (`admin` only, CSRF and
+  exact Origin) revokes every active grant of that User, also of a
+  soft-deleted User, records `revoked_by` and answers `{"revokedCount": n}`.
+  An unknown User, including a `user_id` outside the `BIGINT` range, is
+  `404 USER_NOT_FOUND`. It serves ADR-015's offboarding rule and incident
+  procedure.
+
+`tests/test_api_authorization.py` sweeps these routes in both app
+configurations.
 
 ## MCP Tools
 

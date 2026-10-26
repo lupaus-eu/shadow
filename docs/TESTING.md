@@ -654,6 +654,59 @@ MIGRATION_TEST_DATABASE_URL=postgresql://schatten:schatten_dev_password@localhos
   uv run pytest tests/test_mcp_oauth_postgresql_integration.py -v
 ```
 
+## MCP OAuth Token Harness (TASK-069F)
+
+`tests/test_mcp_oauth_tokens.py` runs the real register, authorize and approve
+flow over SQLite with `PRAGMA foreign_keys=ON`, so lazy cleanup exercises the
+database's `ON DELETE CASCADE` and `SET NULL` rules rather than application
+code. It covers the code exchange (hashed 256-bit tokens, a wrong or missing
+verifier, redirect URI, resource or client, expiry, another client's code and
+second redemption revoking the grant), grant reuse without extending
+`expires_time`, refresh rotation, the idle and absolute expiries, the token cap
+at the grant's expiry, ADR-015's refresh check order and reuse detection
+(including after a cleanup pass), cleanup of a revoked grant that a request
+still references and client hard deletion, the throttled client and grant
+`last_used_time`, RFC 7009 revocation, every `verify_access_token` rejection
+including the other resource and an immediate role change, the connections
+and admin revocation APIs with CSRF/Origin, the revocation log entries without
+tokens, their emission through the MCP OAuth audit handler while the root
+logger is at `WARNING` (as under `fastapi run`), the access-log redaction of
+misplaced token parameters, the `token` and `revoke` rate-limit buckets and the
+`MCP_ENABLED=false` behaviour. The grant-reuse and absolute-expiry tests
+disable lazy cleanup, so the lookups themselves must skip inactive grants. `tests/test_api_authorization.py` sweeps the
+connections routes in both app configurations and treats
+`/api/v1/ai/users/{user_id}/connections/revoke` as admin-only.
+
+`tests/test_mcp_oauth_postgresql_integration.py` adds PostgreSQL cases for:
+
+- a code exchange whose grant and token inserts complete while an authorize
+  holds the client's `FOR NO KEY UPDATE` lock, and whose throttled client
+  `last_used_time` update waits until that authorize commits;
+- a token lifecycle: exchange, verification, rotation, reuse detection, then
+  cleanup cascading the revoked grant's tokens and nulling the request
+  reference;
+- two concurrent cleanups with different times that, before each step
+  committed on its own, deadlocked on each other's expired access tokens;
+- a cleanup whose grant cascade would wait for a held token row: it gives way
+  after the 500 ms `lock_timeout`, logs a warning and deletes the grant on a
+  later run;
+- two concurrent first-time exchanges for the same User, client and resource,
+  where the advisory lock makes the second wait and reuse the first's grant;
+- a concurrent double redemption of one code and a concurrent refresh with one
+  refresh token, where the second request waits for the row lock and the grant
+  is revoked.
+
+The production frontend check (`verify-production-frontend.sh`) also requires
+that Caddy redacts `token`, `access_token`, `refresh_token` and
+`code_verifier` query values.
+
+```bash
+cd backend
+uv run pytest tests/test_mcp_oauth_tokens.py -v
+MIGRATION_TEST_DATABASE_URL=postgresql://schatten:schatten_dev_password@localhost:5432/schatten \
+  uv run pytest tests/test_mcp_oauth_postgresql_integration.py -v
+```
+
 ## Local Direct-Entra Integration
 
 Use the local Caddy/direct-Entra configuration rather than the historical

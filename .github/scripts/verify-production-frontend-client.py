@@ -78,6 +78,12 @@ response, _ = request(
     "/api/v1/auth/login?return_to=%2Fai%2Fauthorize%3Frequest%3Dreturn-secret"
 )
 assert response.status == 200
+# OAuth tokens and PKCE verifiers misplaced in a query string.
+response, _ = request(
+    "/api/headers?token=token-secret&access_token=access-secret&"
+    "refresh_token=refresh-secret&code_verifier=verifier-secret"
+)
+assert response.status == 200
 response, _ = request("/api/redirect")
 assert response.status == 303
 assert response.headers["Location"].endswith("code=location-secret")

@@ -269,6 +269,9 @@ def test_mcp_is_disabled_by_default_with_the_adr_015_allowlist() -> None:
     )
     assert settings.mcp_oauth_authorization_request_lifetime_seconds == 600
     assert settings.mcp_oauth_authorization_code_lifetime_seconds == 60
+    assert settings.mcp_oauth_access_token_lifetime_seconds == 3600
+    assert settings.mcp_oauth_refresh_token_idle_lifetime_seconds == 7 * 86400
+    assert settings.mcp_oauth_grant_lifetime_seconds == 30 * 86400
     assert settings.mcp_oauth_max_pending_requests_per_client == 20
     assert settings.mcp_oauth_max_pending_requests == 1000
     assert settings.mcp_oauth_max_clients == 10_000
@@ -282,6 +285,9 @@ def test_mcp_settings_are_read_from_the_environment(monkeypatch: MonkeyPatch) ->
         "https://claude.ai/api/mcp/auth_callback http://[::1]:{port}/callback",
     )
     monkeypatch.setenv("MCP_OAUTH_MAX_CLIENTS", "5")
+    monkeypatch.setenv("MCP_OAUTH_ACCESS_TOKEN_LIFETIME_SECONDS", "600")
+    monkeypatch.setenv("MCP_OAUTH_REFRESH_TOKEN_IDLE_LIFETIME_SECONDS", "3600")
+    monkeypatch.setenv("MCP_OAUTH_GRANT_LIFETIME_SECONDS", "86400")
 
     settings = get_settings()
 
@@ -291,6 +297,9 @@ def test_mcp_settings_are_read_from_the_environment(monkeypatch: MonkeyPatch) ->
         "http://[::1]:{port}/callback",
     )
     assert settings.mcp_oauth_max_clients == 5
+    assert settings.mcp_oauth_access_token_lifetime_seconds == 600
+    assert settings.mcp_oauth_refresh_token_idle_lifetime_seconds == 3600
+    assert settings.mcp_oauth_grant_lifetime_seconds == 86400
     get_settings.cache_clear()
 
 
@@ -328,3 +337,29 @@ def test_mcp_pending_request_caps_must_be_consistent() -> None:
         )
     with pytest.raises(ValidationError):
         Settings.model_validate({"MCP_OAUTH_AUTHORIZATION_CODE_LIFETIME_SECONDS": 0})
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {
+            "MCP_OAUTH_ACCESS_TOKEN_LIFETIME_SECONDS": 7200,
+            "MCP_OAUTH_GRANT_LIFETIME_SECONDS": 3600,
+        },
+        {"MCP_OAUTH_REFRESH_TOKEN_IDLE_LIFETIME_SECONDS": 31 * 86400},
+        {"MCP_OAUTH_ACCESS_TOKEN_LIFETIME_SECONDS": 86401},
+        {"MCP_OAUTH_GRANT_LIFETIME_SECONDS": 0},
+        # Values beyond a year would overflow the datetime range at issuance.
+        {"MCP_OAUTH_GRANT_LIFETIME_SECONDS": 10**12},
+        {
+            "MCP_OAUTH_REFRESH_TOKEN_IDLE_LIFETIME_SECONDS": 10**12,
+            "MCP_OAUTH_GRANT_LIFETIME_SECONDS": 10**12,
+        },
+        {"MCP_OAUTH_GRANT_LIFETIME_SECONDS": 365 * 86400 + 1},
+    ],
+)
+def test_mcp_token_lifetimes_cannot_outlive_the_grant(
+    overrides: dict[str, int],
+) -> None:
+    with pytest.raises(ValidationError):
+        Settings.model_validate(overrides)

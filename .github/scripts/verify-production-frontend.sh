@@ -99,7 +99,8 @@ docker run --rm \
 logs="$(docker logs "${frontend_name}" 2>&1)"
 for secret in secret-code secret-state secret-error secret-description \
   credential-secret credential-cookie csrf-header-secret request-secret \
-  return-secret location-secret; do
+  return-secret location-secret token-secret access-secret refresh-secret \
+  verifier-secret; do
   if grep --fixed-strings --quiet "${secret}" <<<"${logs}"; then
     echo "Caddy access logs exposed ${secret}." >&2
     exit 1
@@ -113,7 +114,8 @@ for header in X-Csrf-Token Authorization Location; do
 done
 for expected in 'code=REDACTED' 'state=REDACTED' 'error=REDACTED' \
   'error_description=REDACTED' 'request=REDACTED' 'return_to=REDACTED' \
-  'visible=kept'; do
+  'token=REDACTED' 'access_token=REDACTED' 'refresh_token=REDACTED' \
+  'code_verifier=REDACTED' 'visible=kept'; do
   if ! grep --fixed-strings --quiet "${expected}" <<<"${logs}"; then
     echo "Caddy access logs did not preserve the expected redacted URI metadata: ${expected}" >&2
     exit 1

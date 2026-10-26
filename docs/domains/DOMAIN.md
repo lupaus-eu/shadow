@@ -380,9 +380,10 @@ Owns:
 - ai_change_set_operations
 
 The four `mcp_oauth_*` tables are migrated (TASK-069D, migration 017) and
-used by TASK-069E's registration, authorization and consent endpoints, which
-are registered only with `MCP_ENABLED=true`; the two change-set tables are
-accepted but not migrated yet (TASK-069I).
+used by TASK-069E's registration, authorization and consent endpoints and
+TASK-069F's token and revoke endpoints, which are registered only with
+`MCP_ENABLED=true`, and by TASK-069F's always-registered connections API; the
+two change-set tables are accepted but not migrated yet (TASK-069I).
 
 Does NOT Own:
 

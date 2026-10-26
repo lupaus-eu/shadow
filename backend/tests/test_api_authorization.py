@@ -84,8 +84,10 @@ BUSINESS_ROUTES = _registered_business_routes()
 UNSAFE_BUSINESS_ROUTES = tuple(
     route for route in BUSINESS_ROUTES if route[1] in {"POST", "PUT", "PATCH", "DELETE"}
 )
-USERS_ROUTES = tuple(
-    route for route in BUSINESS_ROUTES if route[2].startswith("/api/v1/users")
+ADMIN_ROUTES = tuple(
+    route
+    for route in BUSINESS_ROUTES
+    if route[2].startswith(("/api/v1/users", "/api/v1/ai/users/"))
 )
 
 
@@ -132,6 +134,29 @@ def test_sweep_covers_mcp_gated_routes_only_when_enabled() -> None:
     }
 
     assert consent_routes == {("mcp-enabled", "GET"), ("mcp-enabled", "POST")}
+
+
+def test_sweep_covers_connections_routes_in_both_configurations() -> None:
+    connection_routes = {
+        route
+        for route in BUSINESS_ROUTES
+        if route[2].startswith(("/api/v1/ai/connections", "/api/v1/ai/users/"))
+    }
+
+    assert connection_routes == {
+        (configuration, method, path)
+        for configuration in APP_CONFIGURATIONS
+        for method, path in (
+            ("GET", "/api/v1/ai/connections"),
+            ("DELETE", "/api/v1/ai/connections/missing"),
+            ("POST", "/api/v1/ai/users/999/connections/revoke"),
+        )
+    }
+    assert {
+        (configuration, method)
+        for configuration, method, path in ADMIN_ROUTES
+        if path.startswith("/api/v1/ai/users/")
+    } == {("default", "POST"), ("mcp-enabled", "POST")}
 
 
 @pytest.mark.parametrize(("configuration", "method", "path"), BUSINESS_ROUTES)
@@ -201,7 +226,7 @@ def test_business_unsafe_guard_rejects_missing_null_duplicate_or_invalid_data(
     assert response.json()["error"]["code"] == "FORBIDDEN"
 
 
-@pytest.mark.parametrize(("configuration", "method", "path"), USERS_ROUTES)
+@pytest.mark.parametrize(("configuration", "method", "path"), ADMIN_ROUTES)
 def test_consultants_cannot_administer_users(
     session_factory: sessionmaker[Session], configuration: str, method: str, path: str
 ) -> None:

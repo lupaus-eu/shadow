@@ -181,7 +181,7 @@ def register_client(
 
     current = now or datetime.now(UTC)
     cleanup_stale_clients(session, now=current)
-    _advisory_transaction_lock(session, _REGISTRATION_LOCK_KEY)
+    advisory_transaction_lock(session, _REGISTRATION_LOCK_KEY)
     client_count = session.scalar(
         select(func.count())
         .select_from(McpOauthClient)
@@ -537,7 +537,7 @@ def _enforce_pending_request_caps(
         raise _RedirectedError("temporarily_unavailable")
     # The client row lock serialises the per-client cap; this lock, held until
     # authorize commits or rolls back, serialises the total across clients.
-    _advisory_transaction_lock(session, _PENDING_REQUESTS_LOCK_KEY)
+    advisory_transaction_lock(session, _PENDING_REQUESTS_LOCK_KEY)
     total_count = session.scalar(
         select(func.count()).select_from(McpOauthAuthorizationRequest).where(live)
     )
@@ -614,7 +614,7 @@ def _url_form_host(uri: str) -> str:
     return f"[{hostname}]" if ":" in hostname else hostname
 
 
-def _advisory_transaction_lock(session: Session, lock_key: int) -> None:
+def advisory_transaction_lock(session: Session, lock_key: int) -> None:
     if session.get_bind().dialect.name != "postgresql":
         return
     session.execute(

@@ -1,6 +1,6 @@
 # ADR-015: AI Via MCP With Human-Applied Change Sets
 
-Status: Accepted design; TASK-069B through TASK-069E implemented, TASK-069F through TASK-069O pending
+Status: Accepted design; TASK-069B through TASK-069F implemented, TASK-069G through TASK-069O pending
 
 Date: 2026-10-21
 
@@ -56,11 +56,13 @@ This ADR is an accepted design. **No MCP client can use Schatten yet.** The
 implementation is delivered by TASK-069B through TASK-069O; TASK-069B (the
 domain service transaction cores, which change no REST behaviour), TASK-069C
 (the deterministic timeseries generator, which adds no route), TASK-069D (the
-MCP OAuth schema, which adds no route) and TASK-069E (discovery, registration,
+MCP OAuth schema, which adds no route), TASK-069E (discovery, registration,
 authorization request and consent API, registered only with
-`MCP_ENABLED=true`) are implemented and the rest is pending. The feature
-stays disabled (`MCP_ENABLED=false`) until TASK-069O's separately approved
-production enablement.
+`MCP_ENABLED=true`) and TASK-069F (token, refresh and revoke endpoints,
+registered only with `MCP_ENABLED=true`, `verify_access_token` and the
+always-registered connections API) are implemented and the rest is pending.
+The feature stays disabled (`MCP_ENABLED=false`) until TASK-069O's separately
+approved production enablement.
 
 | Task | Delivers |
 | --- | --- |
@@ -68,7 +70,7 @@ production enablement.
 | TASK-069C | Deterministic timeseries generator (implemented) |
 | TASK-069D | MCP OAuth schema (`mcp_oauth_*`: clients, authorization requests, grants, tokens) (implemented) |
 | TASK-069E | OAuth discovery, client registration, authorization request, consent API and Caddy routing (implemented) |
-| TASK-069F | Token, refresh, revoke, `verify_access_token` and connections API |
+| TASK-069F | Token, refresh, revoke, `verify_access_token` and connections API (implemented) |
 | TASK-069G | FastMCP foundation, bearer authentication, resource protection, first read tools |
 | TASK-069H | Remaining read tools and generator preview |
 | TASK-069I | Change-set schema and engine (dry-run and atomic apply) |
