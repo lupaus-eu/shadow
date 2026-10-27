@@ -104,6 +104,12 @@ later core in the same transaction sees earlier rows, for example an edge
 between two nodes created earlier. Callers that compose cores, such as AI
 change-set dry-run and apply under ADR-015, own the commit or rollback.
 
+`get_graph_node_visible_at(session, organisation_key, scenario_key, node_key,
+target_date)` is a read-only service function that returns a node as the
+graph of an org state with `target_date` shows it. The date need not belong to
+an existing org state; TASK-069I's replacement flags use it for a node patched
+in an org state that the change set itself creates.
+
 ---
 
 # Database Ownership

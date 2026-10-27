@@ -1,7 +1,8 @@
 # AI Change Set Concept
 
-Status: accepted design in ADR-015; implementation pending TASK-069I through
-TASK-069M
+Status: accepted design in ADR-015; schema (migration 018) and engine
+implemented by TASK-069I (see [Engine](#engine-task-069i)); MCP write tools,
+review API and UI pending TASK-069J through TASK-069M
 
 ## Purpose
 
@@ -103,6 +104,39 @@ and timeseries take client-supplied keys (`id`), as in REST, so an edge between
 two new nodes refers to their keys verbatim. A client-supplied key starting
 with `$`, and a `$` symbol no earlier operation declares, are rejected.
 
+An operation is a JSON object tagged by `type`. The REST request body is its
+`payload` (camelCase keys as in REST; `generate_timeserie_values` has a `spec`
+instead), and snake_case fields address the target:
+
+```json
+{"type": "create_scenario", "ref": "$plan", "payload": {"name": "AI plan"}}
+{"type": "create_org_state", "ref": "$start", "scenario_key": "$plan",
+ "payload": {"name": "Plan start", "targetDate": "2026-01-01"}}
+{"type": "create_node", "scenario_key": "$plan", "org_state_key": "$start",
+ "payload": {"id": "team_a", "name": "Team A", "nodeTypeId": "nt_person"}}
+{"type": "create_edge", "scenario_key": "$plan", "org_state_key": "$start",
+ "payload": {"id": "a_to_b", "name": "Reports to", "edgeTypeId": "et_reports_to",
+             "sourceNodeId": "team_a", "targetNodeId": "team_b"}}
+{"type": "generate_timeserie_values", "scenario_key": "$plan",
+ "timeserie_key": "headcount", "spec": {"startDate": "2026-01-01", "...": "..."}}
+{"type": "patch_node", "scenario_key": "reality", "org_state_key": "initial_state",
+ "node_key": "hq", "payload": {"timeserieId": "$cost_per_head"}}
+```
+
+| Field | Takes | `$ref` kinds |
+| --- | --- | --- |
+| `scenario_key` (every operation except `create_scenario` and `copy_scenario`) | existing scenario key or ref | scenario |
+| `org_state_key` (`create_node`, `create_edge`, `patch_node`) | existing org state key or ref | organisation state of the same scenario |
+| `copy_scenario` `payload.sourceScenarioId`, `payload.sourceOrgStateId` | existing key or ref | scenario; organisation state of that scenario |
+| `patch_node` `payload.timeserieId`, `payload.timeserieSecondaryId` | timeserie key or ref | derived metric of the same scenario |
+| `node_key`, `timeserie_key`, node, edge and timeserie `id`, edge `sourceNodeId` and `targetNodeId` | client-supplied key, never `$` | none |
+
+A `ref` matches `$` followed by a letter and up to 63 letters, digits or
+underscores. A `$` symbol is rejected when no earlier operation declares it,
+when it names another kind of key, when it belongs to another scenario and when
+an operation redeclares it; the error names the operation position, the field
+and the symbol.
+
 ---
 
 # Scenario Reference
@@ -117,6 +151,98 @@ scenario. The engine recomputes it whenever operations change:
 
 The review list filters by it and can include change sets without a scenario
 reference.
+
+---
+
+# Engine (TASK-069I)
+
+Code: `backend/app/api/v1/ai_change_sets/` (`models.py`, `schemas.py`,
+`engine.py`). TASK-069J's MCP write tools and TASK-069K's review API call the
+engine; it adds no tool, route or UI itself.
+
+- **Staging.** `create_change_set`, `add_operations` and `remove_operation`
+  edit only `draft` change sets and lock the change-set row, so concurrent
+  edits of one draft serialise. Adding appends at the next position; removing
+  keeps the other positions unchanged and is refused (`409`) while a later
+  operation uses the removed operation's `ref`. Every edit enforces the
+  limits, checks all references, recomputes the scenario reference and clears
+  the stored validation result. The caller commits.
+- **Execution.** `execute_operations(session, organisation, ops,
+  actor_user_id)` resolves refs in order, calls the owning domains'
+  `*_in_transaction` cores and returns an `ExecutionResult`: per operation
+  `ok` (with the scenario key and the key it created or changed), `error` or
+  `not_run`, and the `$ref` to real key map. It stops at the first failing
+  operation. Domain `HTTPException`s become `domain_error` with their status
+  and message; reference problems `invalid_reference`; generator overflow
+  `generation_error`; a request-schema validation error `invalid_operation`
+  (field locations and messages, never the inputs); a database integrity
+  error `conflict`; PostgreSQL's lock-not-available (`55P03`) `lock_timeout`
+  and query-cancelled (`57014`) `statement_timeout`. Database messages are
+  never repeated, because they can contain SQL parameters. Any other
+  exception propagates.
+- **Dry-run.** `dry_run` (used by `validate_change_set` and
+  `submit_change_set`) runs in a fresh session with a raising `before_commit`
+  guard under the change-set `statement_timeout`, then always rolls back and
+  `expunge_all()`s before returning. `validate_change_set` stores the result
+  in `validation_result` and each operation's error in its `error`. Because
+  the dry-run uses its own connection, `validate_change_set` and
+  `submit_change_set` refuse (`RuntimeError`) a session whose transaction has
+  written or locked rows (on PostgreSQL, has a transaction id) or holds
+  unflushed changes: the dry-run would otherwise wait, until the statement
+  timeout, for a lock the caller holds, such as the key-share lock a
+  change-set edit holds on its scenario row. Callers commit change-set edits
+  first and check ownership without row locks. The server-generated keys in a
+  dry-run result (`refs` and each operation's `key`) are provisional: those
+  rows were rolled back, and apply generates new keys.
+- **Submit.** `submit_change_set` locks the draft, generates every
+  `generate_timeserie_values` operation once, dry-runs with exactly those
+  values and, only when every operation is `ok`, stores them as
+  `frozen_values` `{"generatorVersion": 1, "values": [{"date", "value"}]}` and
+  sets `submitted`. Otherwise the change set stays a draft with the result.
+- **Replacement flags.** `compute_replacements(session, change_set)` returns
+  each operation's `replaces_existing` and summary and the
+  `review_fingerprint`, a SHA-256 over all of them. Flagged are `patch_node`
+  on a node, and `set_timeserie_values` or `generate_timeserie_values` on a
+  timeserie with values, that existed before the change set. Summaries are
+  `{"kind": "node", "scenario_key", "org_state_key", "node_key", "fields",
+  "checksum"}` with the patched fields' current values, and `{"kind":
+  "timeserie", "scenario_key", "timeserie_key", "value_count", "first_date",
+  "last_date", "checksum"}`. A checksum is a SHA-256 over canonical JSON: the
+  fields ordered by name, or all `[date, value]` pairs ordered by date. A
+  missing target is flagged with `"missing": true` and the domain message. A
+  node in an organisation state the change set creates is read at that state's
+  target date (`get_graph_node_visible_at`).
+- **Apply.** `apply_change_set(session, organisation_key, change_set_key,
+  review_fingerprint, actor_user_id)` runs the steps `lock`, `status`,
+  `fingerprint`, `revalidate` (stored operations, frozen values, limits and
+  references), `execute` and `commit` in one transaction under the
+  `lock_timeout` and `statement_timeout`. Its `ChangeSetApplyError` carries
+  the step, a code and the status afterwards:
+
+  | Code | Step | HTTP status (TASK-069K) | Status change |
+  | --- | --- | --- | --- |
+  | `apply_in_progress` | `lock`, lock not available | 409, retryable | none |
+  | `apply_unavailable` | any other error in `lock`, `status` or `fingerprint` | 503, retryable | none |
+  | `not_submitted` | `status` | 409 | none |
+  | `review_stale` | `fingerprint` | 409, reload and confirm | none |
+  | `apply_failed` | `revalidate`, `execute`, `commit` | 409 | `failed`, only if still `submitted` |
+
+  An unknown organisation or change set is a `404` `HTTPException`. A
+  successful apply stores `applied_result` `{"status": "applied",
+  "operations", "refs"}`; a failed one `{"status": "failed", "step", "error",
+  "operations", "refs": {}}` without created keys, and the failing operation's
+  `error`. A failure outside an operation that matches no other code is
+  `unexpected_error`.
+- **Settings.** `AI_CHANGE_SET_STATEMENT_TIMEOUT_MS` (default 30,000) bounds
+  each statement of dry-run, apply and `compute_replacements`, not their total
+  duration; `AI_CHANGE_SET_LOCK_TIMEOUT_MS`
+  (default 5,000) bounds apply's lock waits. Startup rejects a statement
+  timeout that is not longer than the lock timeout. Both are set with
+  `SET LOCAL` semantics (`set_config(..., true)`) on PostgreSQL only.
+
+The lifecycle is drawn in
+[AI change-set lifecycle](../diagrams/generated/state-ai-change-set.svg)
+(`docs/diagrams/state-ai-change-set.puml`).
 
 ---
 
@@ -161,7 +287,9 @@ reference.
 - `scenario_key` is derived from the operations and never set by a client.
 - Execution goes through the owning domains' `*_in_transaction` service cores;
   a change set never writes another domain's tables directly.
-- Limits: at most 500 operations and 20,000 values per change set.
+- Limits: at most 500 operations and 20,000 values per change set. The value
+  limit counts set and generated values; the rows a `copy_scenario` copies
+  from its source are not counted.
 
 ---
 
@@ -269,3 +397,16 @@ Avoid:
 
 - Retention of terminal change sets and frozen values.
 - Additional operation types such as edge and event patches or deletions.
+- A `$ref` for the initial organisation state that `copy_scenario` creates.
+  Today a change set cannot add nodes to that state, because its key is
+  server-generated and not named by the copy's `ref`.
+- Compatibility of stored operations with later request-schema changes. An
+  operation that no longer parses makes the review read fail and apply return
+  the retryable `apply_unavailable` in its fingerprint step; such a change set
+  can only be rejected.
+- An overall time bound for a dry-run or apply. The statement timeout bounds
+  each statement, so a change set of up to 500 operations can run much longer
+  than the setting while it holds a database connection.
+- Input bounds at the MCP tool boundary (TASK-069J): change-set title and
+  rationale lengths, payload size and NUL characters, which PostgreSQL
+  rejects in text and JSONB.

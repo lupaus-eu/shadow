@@ -1,0 +1,183 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-069I/review-002",
+  "task": {
+    "id": "TASK-069I",
+    "path": "tasks/TASK-069I-ai-change-set-engine.md"
+  },
+  "round": 2,
+  "reviewed_at": "2026-10-27T17:10:25Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": {
+    "number": 116,
+    "url": "https://github.com/reflector-oy/schatten/pull/116"
+  },
+  "source": {
+    "base_sha": "c4477d773a54a127d68018390df65c1245b2e834",
+    "head_sha": "46623151f73ff97b74b499ea7c356beb505368a5",
+    "comparison": "c4477d773a54a127d68018390df65c1245b2e834...46623151f73ff97b74b499ea7c356beb505368a5",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Round 2 reviews the round 1 fixes. The full backend suite passes on PostgreSQL 18 (1166 passed), the PostgreSQL module passed five repeated runs, and ruff and pyright are clean on the changed files. Mutation probes show that each new test fails when its fix is removed: the guard against dry-runs after earlier writes, the copy and derivation cases, both statement-timeout checks and the fingerprint-step classification case. The narrowed lock-waiter query detects only a waiter on the test's own schema. The status lines, error codes, provisional dry-run keys and the deployment row now match the code. The accepted risks are recorded as open questions. There are three new low findings: the guard's wording is narrower than its check, its pending-change branch is untested and over-broad, and the missing overall dry-run time bound from round 1 is not yet documented.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "The guard refuses any transaction with a transaction id, but its message and the docs say only a transaction that has written.",
+        "rationale": "A probe showed the guard also refuses after a row lock on the change set, after a key-share lock on an unrelated row and after a write in a rolled-back savepoint. A TASK-069J tool that locks the change set to check ownership before validating would get a misleading instruction to commit its edits. The docstring mentions locked rows, but the concept and domain docs and the error message do not.",
+        "recommendation": "State the precondition as a transaction that has not written or locked rows, in the message and in both docs.",
+        "locations": [
+          {
+            "path": "backend/app/api/v1/ai_change_sets/engine.py",
+            "line": 1420
+          },
+          {
+            "path": "docs/concepts/AI_CHANGE_SET.md",
+            "line": 189
+          },
+          {
+            "path": "docs/domains/AI.md",
+            "line": 718
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "missing_test",
+        "severity": "low",
+        "summary": "The guard's branch for pending ORM changes is untested and refuses an attribute set to its own value.",
+        "rationale": "Replacing the pending-change check with false leaves every test passing, because add_operations flushes and the PostgreSQL test reaches only the transaction-id check. The session's dirty collection is optimistic, so an attribute assigned its current value is refused although nothing would be written.",
+        "recommendation": "Test an unflushed change that the guard refuses, and count only objects whose attributes actually changed.",
+        "locations": [
+          {
+            "path": "backend/app/api/v1/ai_change_sets/engine.py",
+            "line": 1415
+          }
+        ]
+      },
+      {
+        "id": "F-003",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "The missing overall time bound for a dry-run, half of round 1 finding F-007, is still undocumented, and the settings text says the statement timeout bounds the dry-run.",
+        "rationale": "The statement timeout bounds each statement, so a dry-run of up to 500 operations can run much longer than the setting while it holds a connection. The concept doc records only the uncounted copy volume.",
+        "recommendation": "Say the timeout bounds each statement and record the missing overall bound as an open question.",
+        "locations": [
+          {
+            "path": "docs/concepts/AI_CHANGE_SET.md",
+            "line": 234
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-069I/review-001",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "validate_change_set and submit_change_set now refuse a session whose transaction already has a transaction id or pending changes, before taking the lock. A new PostgreSQL test edits and then validates and submits in one transaction, expects the refusal within half a second and then submits successfully after a commit. Removing the guard or only its transaction-id check makes the test fail.",
+        "validated_by": {
+          "review_id": "TASK-069I/review-002",
+          "commit": "46623151f73ff97b74b499ea7c356beb505368a5"
+        }
+      },
+      {
+        "record_id": "TASK-069I/review-001",
+        "finding_id": "F-002",
+        "disposition": "fixed",
+        "rationale": "The ADR-015 status line, implemented-task paragraph and task table, the DOMAIN.md status and table-ownership sentences and the CONCEPTS.md status now describe TASK-069I as implemented.",
+        "validated_by": {
+          "review_id": "TASK-069I/review-002",
+          "commit": "46623151f73ff97b74b499ea7c356beb505368a5"
+        }
+      },
+      {
+        "record_id": "TASK-069I/review-001",
+        "finding_id": "F-003",
+        "disposition": "fixed",
+        "rationale": "A new test validates, submits and applies copy_scenario from an existing and from a ref source and rejects a source org state of another scenario. A new derivation case creates a scenario next to an operation on an existing one. A mutation that skips create and copy operations in the derivation fails both tests.",
+        "validated_by": {
+          "review_id": "TASK-069I/review-002",
+          "commit": "46623151f73ff97b74b499ea7c356beb505368a5"
+        }
+      },
+      {
+        "record_id": "TASK-069I/review-001",
+        "finding_id": "F-004",
+        "disposition": "fixed",
+        "rationale": "A PostgreSQL test checks that a dry-run reports statement_timeout under a short timeout and that a stand-alone compute_replacements sets the timeout, and a new case injects the lock-not-available error in the fingerprint step and expects apply_unavailable. Each of the three mutations fails exactly one new test.",
+        "validated_by": {
+          "review_id": "TASK-069I/review-002",
+          "commit": "46623151f73ff97b74b499ea7c356beb505368a5"
+        }
+      },
+      {
+        "record_id": "TASK-069I/review-001",
+        "finding_id": "F-005",
+        "disposition": "accepted_risk",
+        "rationale": "The task's step rule classifies every fingerprint-step error as the generic retryable error, and a deterministic outcome would need a schema-evolution policy for stored operations, which is a human design decision. The concept doc's open questions now state that an unparseable stored operation makes apply return apply_unavailable and that such a change set can only be rejected.",
+        "validated_by": {
+          "review_id": "TASK-069I/review-002",
+          "commit": "46623151f73ff97b74b499ea7c356beb505368a5"
+        }
+      },
+      {
+        "record_id": "TASK-069I/review-001",
+        "finding_id": "F-006",
+        "disposition": "accepted_risk",
+        "rationale": "No route or tool reaches the engine yet, and the REST schemas share the NUL behaviour. The concept doc's open questions assign the title and rationale lengths, payload size and NUL characters to TASK-069J's tool input boundary. The TASK-069J task file does not mention them yet, so the PR risk notes call this out for the human reviewer.",
+        "validated_by": {
+          "review_id": "TASK-069I/review-002",
+          "commit": "46623151f73ff97b74b499ea7c356beb505368a5"
+        }
+      },
+      {
+        "record_id": "TASK-069I/review-001",
+        "finding_id": "F-007",
+        "disposition": "accepted_risk",
+        "rationale": "The limits match ADR-015, and changing them is a design decision. The concept doc now says that rows copied by copy_scenario are not counted toward the value limit. The undocumented missing overall dry-run time bound is tracked as F-003 of this record.",
+        "validated_by": {
+          "review_id": "TASK-069I/review-002",
+          "commit": "46623151f73ff97b74b499ea7c356beb505368a5"
+        }
+      },
+      {
+        "record_id": "TASK-069I/review-001",
+        "finding_id": "F-008",
+        "disposition": "fixed",
+        "rationale": "The concept doc now states that the server-generated keys and refs in a dry-run result are provisional, because those rows were rolled back and apply generates new keys.",
+        "validated_by": {
+          "review_id": "TASK-069I/review-002",
+          "commit": "46623151f73ff97b74b499ea7c356beb505368a5"
+        }
+      },
+      {
+        "record_id": "TASK-069I/review-001",
+        "finding_id": "F-009",
+        "disposition": "fixed",
+        "rationale": "The concept doc lists invalid_operation and unexpected_error and the empty refs map of a failed outcome, matching the schema. The DEPLOYMENT.md row says a business-row wait longer than the lock timeout during execution marks the change set failed.",
+        "validated_by": {
+          "review_id": "TASK-069I/review-002",
+          "commit": "46623151f73ff97b74b499ea7c356beb505368a5"
+        }
+      },
+      {
+        "record_id": "TASK-069I/review-001",
+        "finding_id": "F-010",
+        "disposition": "fixed",
+        "rationale": "The lock-waiter check now counts only tuple locks on the test schema's ai_change_sets table, which only a row-lock waiter takes. A probe showed it ignores a lone lock holder and a waiter in another schema. All three paused-thread releases are in finally blocks.",
+        "validated_by": {
+          "review_id": "TASK-069I/review-002",
+          "commit": "46623151f73ff97b74b499ea7c356beb505368a5"
+        }
+      }
+    ]
+  }
+}

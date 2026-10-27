@@ -10,10 +10,12 @@ connections API, see
 [MCP OAuth Tokens And Connections](#mcp-oauth-tokens-and-connections-task-069f)),
 TASK-069G (the MCP read and write endpoints, bearer authentication,
 resource protection and the first read tools, see
-[MCP Servers (TASK-069G)](#mcp-servers-task-069g)) and TASK-069H (the
+[MCP Servers (TASK-069G)](#mcp-servers-task-069g)), TASK-069H (the
 remaining read tools and the generator preview, see
-[MCP Read Tools (TASK-069H)](#mcp-read-tools-task-069h)) are implemented and
-the rest is pending TASK-069I through TASK-069O. The MCP endpoints, the public OAuth
+[MCP Read Tools (TASK-069H)](#mcp-read-tools-task-069h)) and TASK-069I (the
+change-set schema and engine, see
+[AI Change-Set Engine (TASK-069I)](#ai-change-set-engine-task-069i)) are
+implemented and the rest is pending TASK-069J through TASK-069O. The MCP endpoints, the public OAuth
 endpoints and the consent API are registered only with `MCP_ENABLED=true`,
 which is off by default and in production; the connections API is always
 registered. The write server has no tools yet (TASK-069J); the generator is
@@ -197,8 +199,9 @@ must say so, and users can grant read only and revoke grants.
 
 The `mcp_oauth_*` tables are created by migration
 `017_create_mcp_oauth_schema` (TASK-069D); their SQLAlchemy models are in
-`backend/app/api/v1/mcp_oauth/models.py`. The change-set tables are planned
-and not migrated yet.
+`backend/app/api/v1/mcp_oauth/models.py`. The change-set tables are created by
+migration `018_create_ai_change_sets` (TASK-069I); their models are in
+`backend/app/api/v1/ai_change_sets/models.py`.
 
 | Table | Task | Purpose |
 | --- | --- | --- |
@@ -480,7 +483,7 @@ no scheduler or worker. It locks candidates `FOR UPDATE SKIP LOCKED`, at most
 - expired access tokens;
 - revoked or expired grants. The database deletes their tokens
   (`ON DELETE CASCADE`) and sets `mcp_oauth_authorization_requests.grant_id`
-  (and later TASK-069I's `ai_change_sets.grant_id`) to null.
+  and `ai_change_sets.grant_id` to null.
 
 Refresh tokens of an active grant, including replaced ones, are never deleted,
 so reuse detection works for the grant's whole lifetime. The cleanup then runs
@@ -702,6 +705,33 @@ the model itself and are not truncated. Only `list_timeseries` with
 `include_values=true` still reads every value of the scenario's timeseries
 before cutting them to 2,000, so that opt-in call bounds the response, not the
 database read (accepted in ADR-015's resource protection).
+
+## AI Change-Set Engine (TASK-069I)
+
+`backend/app/api/v1/ai_change_sets/engine.py` stages, validates, freezes and
+applies change sets; `schemas.py` holds the `ChangeSetOperation` union, results
+and replacement summaries. The engine adds no MCP tool, REST route or UI:
+TASK-069J's write tools call `create_change_set`, `add_operations`,
+`remove_operation`, `validate_change_set` and `submit_change_set`, and
+TASK-069K's review API calls `compute_replacements` and `apply_change_set`.
+A tool commits its change-set edits before it validates or submits, because
+the dry-run runs on its own connection and the engine refuses a transaction
+that has written or locked rows. The operation JSON, `$ref` rules, results,
+replacement summaries, apply error codes and the settings
+`AI_CHANGE_SET_STATEMENT_TIMEOUT_MS` and `AI_CHANGE_SET_LOCK_TIMEOUT_MS` are
+described in
+[AI Change Set](../concepts/AI_CHANGE_SET.md#engine-task-069i), and the
+lifecycle is drawn in
+[AI change-set lifecycle](../diagrams/generated/state-ai-change-set.svg).
+
+Execution goes only through the `*_in_transaction` cores of Organisation
+States and Organisation Twin Structure. The replacement flags read through
+their public service functions: `get_org_state`, `get_timeserie` and the
+read-only `get_graph_node_visible_at`, which returns a node as an org state
+with a given target date would show it, also for an org state the change set
+creates. The engine reads `scenarios` and `organisations` rows directly only
+to map between keys and ids: the derived scenario reference and a change set's
+organisation key.
 
 ## MCP Tools
 

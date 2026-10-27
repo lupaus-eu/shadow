@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-069I/review-004",
+  "task": {
+    "id": "TASK-069I",
+    "path": "tasks/TASK-069I-ai-change-set-engine.md"
+  },
+  "round": 4,
+  "reviewed_at": "2026-10-27T17:26:28Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": {
+    "number": 116,
+    "url": "https://github.com/reflector-oy/schatten/pull/116"
+  },
+  "source": {
+    "base_sha": "ce8ec6ce766738fcd53dd7c882fa03d751ac2a83",
+    "head_sha": "12ed6583c110d062456f2d53dfbd0fcb63f8c4a5",
+    "comparison": "ce8ec6ce766738fcd53dd7c882fa03d751ac2a83...12ed6583c110d062456f2d53dfbd0fcb63f8c4a5",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "clean",
+    "summary": "Round 4 reviews the round 3 fix, a test-only change. The unflushed-changes test now also adds an unflushed operation row and deletes an existing one without flushing, and expects validate and submit to refuse each. It then checks that the change set is still a draft with its title and its one stored operation. Removing the guard's new-object check alone, or its deleted-object check alone, makes the test fail, and it passes against the committed guard. Ruff and pyright are clean, and the full backend suite passes on PostgreSQL 18 (1167 passed). No production code, docs or scope changed in this round.",
+    "findings": [],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-069I/review-003",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "The unflushed-changes test covers a pending new operation row and a pending deletion, each refused by validate and submit. Separate mutations that drop either the new-object or the deleted-object check each make the test fail.",
+        "validated_by": {
+          "review_id": "TASK-069I/review-004",
+          "commit": "12ed6583c110d062456f2d53dfbd0fcb63f8c4a5"
+        }
+      }
+    ]
+  }
+}

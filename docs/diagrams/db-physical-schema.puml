@@ -357,6 +357,41 @@ entity "mcp_oauth_tokens" as mcp_oauth_tokens {
   revoked_time : TIMESTAMPTZ
 }
 
+entity "ai_change_sets" as ai_change_sets {
+  * change_set_id : BIGINT
+  --
+  change_set_key : TEXT
+  organisation_id : BIGINT
+  scenario_id : BIGINT
+  title : TEXT
+  rationale : TEXT
+  status : TEXT
+  grant_id : BIGINT
+  client_id : TEXT
+  client_name : TEXT
+  validation_result : JSONB
+  applied_result : JSONB
+  reviewed_by : BIGINT
+  reviewed_time : TIMESTAMPTZ
+  review_note : TEXT
+  created_by : BIGINT
+  created_time : TIMESTAMPTZ
+  modified_by : BIGINT
+  modified_time : TIMESTAMPTZ
+}
+
+entity "ai_change_set_operations" as ai_change_set_operations {
+  * change_set_operation_id : BIGINT
+  --
+  change_set_id : BIGINT
+  position : INTEGER
+  ref : TEXT
+  op_type : TEXT
+  payload : JSONB
+  frozen_values : JSONB
+  error : JSONB
+}
+
 organisations ||--o{ scenarios
 users ||--o{ user_identities
 users ||--o{ auth_sessions
@@ -401,5 +436,10 @@ users ||--o{ mcp_oauth_grants : owns / revokes
 users |o--o{ mcp_oauth_authorization_requests : decides
 mcp_oauth_grants ||--o{ mcp_oauth_tokens : cascade
 mcp_oauth_grants |o--o{ mcp_oauth_authorization_requests : redeemed (set null)
+organisations ||--o{ ai_change_sets
+scenarios |o--o{ ai_change_sets : derived reference
+mcp_oauth_grants |o--o{ ai_change_sets : staged by (set null)
+users ||--o{ ai_change_sets : creates / reviews
+ai_change_sets ||--o{ ai_change_set_operations : cascade
 
 @enduml

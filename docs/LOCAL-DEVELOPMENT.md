@@ -78,6 +78,7 @@ the defaults shown in `.env.example`; override them in `.env` (no secrets):
 | `MCP_OAUTH_MAX_PENDING_REQUESTS_PER_CLIENT`, `MCP_OAUTH_MAX_PENDING_REQUESTS`, `MCP_OAUTH_MAX_CLIENTS` | `20`, `1000`, `10000` | Pending request and client caps |
 | `MCP_TOOL_CONCURRENCY` | `4` | Shared `anyio.CapacityLimiter` for MCP bearer verification and tool database work (1 to 64) |
 | `MCP_RATE_LIMIT_PER_MINUTE` | `120` | Requests per grant and minute on `/api/mcp/*`, counted by the separate `mcp_rate_limiter` |
+| `AI_CHANGE_SET_STATEMENT_TIMEOUT_MS`, `AI_CHANGE_SET_LOCK_TIMEOUT_MS` | `30000`, `5000` | Change-set `statement_timeout` and apply `lock_timeout`; the statement timeout must be longer |
 
 To try the endpoints locally, set `MCP_ENABLED=true` in `.env` and recreate the
 backend (`make dev-up`). Vendor-cloud connectors such as claude.ai cannot reach

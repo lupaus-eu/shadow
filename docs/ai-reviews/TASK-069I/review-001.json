@@ -1,0 +1,224 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-069I/review-001",
+  "task": {
+    "id": "TASK-069I",
+    "path": "tasks/TASK-069I-ai-change-set-engine.md"
+  },
+  "round": 1,
+  "reviewed_at": "2026-10-27T16:47:45Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": {
+    "number": 116,
+    "url": "https://github.com/reflector-oy/schatten/pull/116"
+  },
+  "source": {
+    "base_sha": "8c4a575203d268d881dc6195106d4f6e971a5588",
+    "head_sha": "c4477d773a54a127d68018390df65c1245b2e834",
+    "comparison": "8c4a575203d268d881dc6195106d4f6e971a5588...c4477d773a54a127d68018390df65c1245b2e834",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Round 1 reviews the whole TASK-069I branch: migration 018, the change-set models and operation schemas, the engine, the read-only twin-structure addition, the two settings, the tests and the docs. Two independent review passes covered production code and tests, docs and scope. Ruff check and pyright pass, and the full backend suite passes on PostgreSQL 18 (1162 passed); the PostgreSQL module was stable over five repeated runs. Mutation probes confirmed that the acceptance-criteria tests fail when the behaviour they name is removed. Ref resolution, the derived scenario reference, replacement flags and checksums, frozen values, limits, the step-based apply classification, the conditional failed update, the dry-run guard and the migration constraints behave as specified, and no MCP tool, route, UI or dependency was added. There are ten findings. The most important is that a dry-run blocks on PostgreSQL when the caller's transaction has already edited the change set, and several higher-ranked documents still describe TASK-069I as pending.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "bug",
+        "severity": "medium",
+        "summary": "validate_change_set and submit_change_set block until statement_timeout when the same transaction edited the change set earlier.",
+        "rationale": "add_operations and remove_operation write ai_change_sets.scenario_id, so PostgreSQL's foreign-key check holds a key-share lock on that scenarios row until the caller's transaction ends. The dry-run runs on a separate connection, and the org-state cores lock the scenarios row for update, which conflicts with that lock. The outer transaction waits in Python, not on a lock, so no deadlock is detected. A probe that added a create_org_state operation and validated in one transaction waited for the whole statement timeout and then reported a spurious statement_timeout, and submit left the change set a draft. The SQLite tests share one connection through StaticPool, so they cannot show this, and nothing states the precondition. A TASK-069J tool that stages and submits in one call would hit it.",
+        "recommendation": "Reject validate and submit when the caller's transaction has already written, with a clear programming error, document the precondition and add a PostgreSQL test.",
+        "locations": [
+          {
+            "path": "backend/app/api/v1/ai_change_sets/engine.py",
+            "line": 474
+          },
+          {
+            "path": "backend/app/api/v1/ai_change_sets/engine.py",
+            "line": 498
+          },
+          {
+            "path": "backend/app/api/v1/ai_change_sets/engine.py",
+            "line": 1351
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "documentation",
+        "severity": "medium",
+        "summary": "ADR-015, DOMAIN.md and CONCEPTS.md still describe TASK-069I as pending and the change-set tables as not migrated.",
+        "rationale": "The previous task updated these exact status lines, so this is an established convention. ARCHITECTURE.md and AGENTS.md now say TASK-069I is implemented, while the ADR, which ranks above them in the source order, its task table, the AI Domain section of DOMAIN.md and the AI Change Set entry of CONCEPTS.md do not.",
+        "recommendation": "Update the ADR status line, implemented-task paragraph and task table, the DOMAIN.md status and table-ownership sentences and the CONCEPTS.md status line.",
+        "locations": [
+          {
+            "path": "docs/decisions/ADR-015-ai-via-mcp.md",
+            "line": 3
+          },
+          {
+            "path": "docs/decisions/ADR-015-ai-via-mcp.md",
+            "line": 81
+          },
+          {
+            "path": "docs/domains/DOMAIN.md",
+            "line": 359
+          },
+          {
+            "path": "docs/concepts/CONCEPTS.md",
+            "line": 152
+          }
+        ]
+      },
+      {
+        "id": "F-003",
+        "category": "missing_test",
+        "severity": "low",
+        "summary": "No test exercises copy_scenario, and the rule that creating a scenario makes the derived scenario reference null is not isolated.",
+        "rationale": "No engine test uses copy_scenario, so the ref handling of its source fields, the scenario check on its source org state and its null scenario reference are untested. A mutation that ignores create and copy operations in derive_scenario_id passes the derivation test, because its new-scenario case returns null only through its ref-scoped operations. Probes show the behaviour is correct today.",
+        "recommendation": "Add a test that dry-runs and applies copy_scenario from an existing and from a ref source, rejects a source org state of another scenario, and add a derivation case that creates a scenario next to an operation on an existing one.",
+        "locations": [
+          {
+            "path": "backend/tests/test_ai_change_set_engine.py",
+            "line": 657
+          },
+          {
+            "path": "backend/app/api/v1/ai_change_sets/engine.py",
+            "line": 334
+          }
+        ]
+      },
+      {
+        "id": "F-004",
+        "category": "missing_test",
+        "severity": "low",
+        "summary": "No test covers the dry-run and stand-alone review statement timeouts or the lock-step-only apply_in_progress mapping.",
+        "rationale": "Removing the statement timeout from dry_run, removing it from compute_replacements outside apply, or mapping the lock-not-available SQLSTATE to apply_in_progress in every pre-execution step each left all tests passing. The task requires all three behaviours.",
+        "recommendation": "Add PostgreSQL tests that a dry-run reports statement_timeout under a short timeout and that a stand-alone compute_replacements sets the timeout, and a case that injects the lock-not-available error in the fingerprint step and expects apply_unavailable.",
+        "locations": [
+          {
+            "path": "backend/app/api/v1/ai_change_sets/engine.py",
+            "line": 465
+          },
+          {
+            "path": "backend/app/api/v1/ai_change_sets/engine.py",
+            "line": 558
+          },
+          {
+            "path": "backend/app/api/v1/ai_change_sets/engine.py",
+            "line": 1078
+          }
+        ]
+      },
+      {
+        "id": "F-005",
+        "category": "bug",
+        "severity": "low",
+        "summary": "A stored operation that no longer parses makes apply return the retryable apply_unavailable on every attempt.",
+        "rationale": "compute_replacements parses every stored operation in the fingerprint step, so a validation error there is classified as the generic retryable error and the status stays submitted. A probe that rewrote a stored payload to a value a stricter schema would reject returned apply_unavailable on repeated attempts. This follows the task's step rule, but it reports a deterministic failure as transient. It needs a breaking request-schema change while change sets are stored.",
+        "recommendation": "Either report an unparseable operation in the replacement report so apply reaches re-validation and marks the change set failed, or record a schema-evolution policy for stored operations.",
+        "locations": [
+          {
+            "path": "backend/app/api/v1/ai_change_sets/engine.py",
+            "line": 566
+          },
+          {
+            "path": "backend/app/api/v1/ai_change_sets/engine.py",
+            "line": 1317
+          }
+        ]
+      },
+      {
+        "id": "F-006",
+        "category": "security",
+        "severity": "low",
+        "summary": "A NUL character in an operation string reaches PostgreSQL as a raw DataError, and change-set title and rationale have no length bound.",
+        "rationale": "Pydantic accepts a NUL character, which PostgreSQL rejects when the operation row is written, so the caller sees an unexpected server error. The REST request schemas share this. create_change_set bounds neither title nor rationale in the engine, the schema or the database.",
+        "recommendation": "Bound title and rationale and reject NUL characters at the MCP tool input boundary in TASK-069J, or map the database error to a validation error.",
+        "locations": [
+          {
+            "path": "backend/app/api/v1/ai_change_sets/engine.py",
+            "line": 183
+          },
+          {
+            "path": "db/migrations/018_create_ai_change_sets.sql",
+            "line": 1
+          }
+        ]
+      },
+      {
+        "id": "F-007",
+        "category": "security",
+        "severity": "low",
+        "summary": "copy_scenario volume is not counted toward the change-set limits, and a dry-run has no overall time bound.",
+        "rationale": "The value limit counts only set and generated values. A copy duplicates the source scenario's timeseries values, graph and events, and a change set may hold up to 500 operations. The statement timeout bounds each statement, not the whole dry-run. The limits in ADR-015 allow this.",
+        "recommendation": "Count or cap copy operations, or bound the total dry-run time, or record the trade-off.",
+        "locations": [
+          {
+            "path": "backend/app/api/v1/ai_change_sets/schemas.py",
+            "line": 252
+          }
+        ]
+      },
+      {
+        "id": "F-008",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "The stored dry-run result contains server-generated keys of rolled-back rows, and the docs do not say they are provisional.",
+        "rationale": "validation_result keeps the refs map and each operation's key from the dry-run, although those rows never exist. A failed apply outcome deliberately drops such keys, but the dry-run result does not. Once TASK-069J returns validation results to AI clients, a client could reuse them as real keys.",
+        "recommendation": "Document that the dry-run keys are provisional and differ at apply, or drop them from the stored result.",
+        "locations": [
+          {
+            "path": "docs/concepts/AI_CHANGE_SET.md",
+            "line": 61
+          },
+          {
+            "path": "backend/app/api/v1/ai_change_sets/schemas.py",
+            "line": 310
+          }
+        ]
+      },
+      {
+        "id": "F-009",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "Two operation error codes, the refs field of a failed outcome and the failed case of the lock-timeout setting are undocumented.",
+        "rationale": "The operation error codes include invalid_operation and unexpected_error, which the concept doc does not list, and a failed applied_result also has an empty refs map. The DEPLOYMENT.md row for the lock-timeout setting mentions only apply_in_progress, not that a business-row wait longer than it during execution marks the change set failed, which operators should know when tuning it.",
+        "recommendation": "Complete the code list and the result shape in the concept doc and add the failed case to the DEPLOYMENT.md row.",
+        "locations": [
+          {
+            "path": "docs/concepts/AI_CHANGE_SET.md",
+            "line": 175
+          },
+          {
+            "path": "docs/DEPLOYMENT.md",
+            "line": 250
+          }
+        ]
+      },
+      {
+        "id": "F-010",
+        "category": "missing_test",
+        "severity": "low",
+        "summary": "The PostgreSQL test helpers count every ungranted lock on the server and release paused threads outside a finally block.",
+        "rationale": "The lock-waiter check returns as soon as any session on the server waits for any lock, so a parallel run on the same server would let it pass without proving the wait was on the change-set row. When an assertion fails before the release, the paused thread keeps its row lock and the schema teardown waits until the thread's own wait times out.",
+        "recommendation": "Restrict the lock-waiter query to the ai_change_sets relation and release paused threads in a finally block.",
+        "locations": [
+          {
+            "path": "backend/tests/test_ai_change_sets_postgresql_integration.py",
+            "line": 228
+          },
+          {
+            "path": "backend/tests/test_ai_change_sets_postgresql_integration.py",
+            "line": 297
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": []
+  }
+}

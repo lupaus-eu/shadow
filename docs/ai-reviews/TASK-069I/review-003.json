@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-069I/review-003",
+  "task": {
+    "id": "TASK-069I",
+    "path": "tasks/TASK-069I-ai-change-set-engine.md"
+  },
+  "round": 3,
+  "reviewed_at": "2026-10-27T17:20:55Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": {
+    "number": 116,
+    "url": "https://github.com/reflector-oy/schatten/pull/116"
+  },
+  "source": {
+    "base_sha": "46623151f73ff97b74b499ea7c356beb505368a5",
+    "head_sha": "ce8ec6ce766738fcd53dd7c882fa03d751ac2a83",
+    "comparison": "46623151f73ff97b74b499ea7c356beb505368a5...ce8ec6ce766738fcd53dd7c882fa03d751ac2a83",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Round 3 reviews the round 2 fixes: the dry-run guard now counts only dirty objects that are really modified, its message and docs name written or locked rows, a SQLite test covers an unflushed attribute change, and the statement timeout is documented as a per-statement bound with an open question for an overall bound. Both change-set test modules pass, the full backend suite passes on PostgreSQL 18 (1167 passed), and ruff and pyright are clean. Mutation probes show that the new test fails when the pending-change branch is removed and when plain dirty tracking replaces the modification check. A probe confirmed that the modification check issues no query, autoflush or lazy load, and that it treats an expired attribute set to the same value as a real update, as the flush does. There is one low finding: the guard's branches for new and deleted objects are still untested.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "missing_test",
+        "severity": "low",
+        "summary": "No test covers the guard's refusal of unflushed new or deleted objects.",
+        "rationale": "Dropping the new and deleted checks from the guard leaves every SQLite and PostgreSQL test passing, because add_operations always flushes. The branches protect a real invariant, because the application session does not autoflush: a probe added an unflushed malformed operation row and submitted, and with the checks removed the change set became submitted without validating that row, which the next flush then inserted.",
+        "recommendation": "Extend the unflushed-changes test with a pending new operation row and a pending deletion, each refused by validate and submit.",
+        "locations": [
+          {
+            "path": "backend/app/api/v1/ai_change_sets/engine.py",
+            "line": 1416
+          },
+          {
+            "path": "backend/tests/test_ai_change_set_engine.py",
+            "line": 1515
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-069I/review-002",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "The error message, both docstrings and the domain doc now say the transaction must not have written or locked rows, and the concept doc adds that on PostgreSQL this means having a transaction id or holding unflushed changes and that callers check ownership without row locks.",
+        "validated_by": {
+          "review_id": "TASK-069I/review-003",
+          "commit": "ce8ec6ce766738fcd53dd7c882fa03d751ac2a83"
+        }
+      },
+      {
+        "record_id": "TASK-069I/review-002",
+        "finding_id": "F-002",
+        "disposition": "fixed",
+        "rationale": "The guard counts dirty objects only when the session reports them modified, so assigning a loaded attribute its current value is allowed. A new SQLite test checks that case and that an unflushed title change is refused by validate and submit; each of the two mutations fails only that test.",
+        "validated_by": {
+          "review_id": "TASK-069I/review-003",
+          "commit": "ce8ec6ce766738fcd53dd7c882fa03d751ac2a83"
+        }
+      },
+      {
+        "record_id": "TASK-069I/review-002",
+        "finding_id": "F-003",
+        "disposition": "fixed",
+        "rationale": "The settings text now says the statement timeout bounds each statement of dry-run, apply and compute_replacements, not their total duration, and the open questions record the missing overall time bound for a change set of up to 500 operations.",
+        "validated_by": {
+          "review_id": "TASK-069I/review-003",
+          "commit": "ce8ec6ce766738fcd53dd7c882fa03d751ac2a83"
+        }
+      }
+    ]
+  }
+}

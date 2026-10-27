@@ -356,8 +356,8 @@ Related Documents:
 
 # AI Domain
 
-Status: accepted design in ADR-015; TASK-069B through TASK-069H are
-implemented and the rest is pending TASK-069I through TASK-069O. The earlier document-AI candidate
+Status: accepted design in ADR-015; TASK-069B through TASK-069I are
+implemented and the rest is pending TASK-069J through TASK-069O. The earlier document-AI candidate
 (classification, summaries, extraction) is retained in `docs/domains/AI.md` as
 an unplanned candidate outside this scope.
 
@@ -384,8 +384,9 @@ used by TASK-069E's registration, authorization and consent endpoints and
 TASK-069F's token and revoke endpoints, which are registered only with
 `MCP_ENABLED=true`, by TASK-069F's always-registered connections API and by
 TASK-069G's MCP bearer authentication on `/api/mcp/read` and `/api/mcp/write`
-(also registered only with `MCP_ENABLED=true`); the two change-set tables are
-accepted but not migrated yet (TASK-069I).
+(also registered only with `MCP_ENABLED=true`). The two change-set tables are
+migrated (TASK-069I, migration 018) and used by TASK-069I's engine; no tool or
+route uses them yet.
 
 Does NOT Own:
 

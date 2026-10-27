@@ -740,6 +740,55 @@ cd backend
 uv run pytest tests/test_mcp_auth.py tests/test_mcp_tools.py -v
 ```
 
+## AI Change-Set Engine Harness (TASK-069I)
+
+`tests/test_ai_change_set_engine.py` runs the engine over in-memory SQLite. It
+covers an end-to-end change set (scenario, org state, nodes, edge, timeserie
+with generated values, derived metric, node link through a derived-metric
+`$ref`, event) that dry-runs with no rows persisted and then applies
+atomically with the frozen values (generation is patched to fail at apply),
+the dry-run commit guard, a failing operation in the middle (`ok`, `error`,
+`not_run`; nothing persisted and the change set `failed`), the derived
+scenario reference (including a scenario created next to operations on an
+existing one), `copy_scenario` from an existing and from a `$ref` scenario,
+replacement flags and summaries against current data
+(including a timeserie that gains values after submit, an org state the change
+set creates and rows created earlier in the change set), `review_stale` for a
+changed and for a single edited flagged value, a target deleted after submit,
+`not_submitted` and `review_stale` never writing `failed`, the step-based
+classification of injected PostgreSQL lock-not-available and query-cancelled
+errors in the lock and fingerprint steps and at commit (lock-not-available is
+`apply_in_progress` only in the lock step), the timeout settings
+validation, the `$ref` and client-key rules with their error messages, draft-only
+edits, validate and submit refusing unflushed changes and the operation and
+value limits. Its lazy-cleanup test enables
+`PRAGMA foreign_keys=ON`, so the `ON DELETE SET NULL` rule itself nulls the
+change set's grant reference during a real token request.
+
+Row locks and timeouts need PostgreSQL.
+`tests/test_ai_change_sets_postgresql_integration.py` migrates a disposable
+schema and covers `apply_in_progress` while another apply holds the change-set
+lock, a lock timeout during execution behind a REST row lock (`failed`),
+TASK-069B's cores composed on the migrated schema with a real unique-index
+conflict that rolls back every earlier row, a dry-run with a unique violation
+in the middle, concurrent applies that apply once, and a transient
+statement-timeout failure that does not overwrite a concurrent successful
+apply. It also checks that validate and submit refuse a transaction that has
+already edited the change set, and that a dry-run and a stand-alone
+`compute_replacements` run under the statement timeout.
+`tests/test_migrations_integration.py` checks migration 018's up and
+down, its constraints and that deleting a referenced grant keeps the change
+set's audit fields. Both are skipped without `MIGRATION_TEST_DATABASE_URL`
+and always run in CI:
+
+```bash
+cd backend
+uv run pytest tests/test_ai_change_set_engine.py -v
+MIGRATION_TEST_DATABASE_URL=postgresql://schatten:schatten_dev_password@localhost:5432/schatten \
+  uv run pytest tests/test_ai_change_sets_postgresql_integration.py \
+    tests/test_migrations_integration.py -v
+```
+
 ## Local Direct-Entra Integration
 
 Use the local Caddy/direct-Entra configuration rather than the historical

@@ -161,6 +161,10 @@ def test_rejects_non_latest_and_unapplied_down_migrations(
         )
 
     execute_command(
+        DownCommand("018_create_ai_change_sets.down.sql"),
+        database_url=migration_database_url,
+    )
+    execute_command(
         DownCommand("017_create_mcp_oauth_schema.down.sql"),
         database_url=migration_database_url,
     )
@@ -627,6 +631,10 @@ def test_prediction_interval_migration_resets_development_rows_and_constraints(
                 )
 
     execute_command(
+        DownCommand("018_create_ai_change_sets.down.sql"),
+        database_url=migration_database_url,
+    )
+    execute_command(
         DownCommand("017_create_mcp_oauth_schema.down.sql"),
         database_url=migration_database_url,
     )
@@ -713,6 +721,10 @@ def test_prophet_result_kind_migration_up_and_down(
         connection.commit()
 
     execute_command(
+        DownCommand("018_create_ai_change_sets.down.sql"),
+        database_url=migration_database_url,
+    )
+    execute_command(
         DownCommand("017_create_mcp_oauth_schema.down.sql"),
         database_url=migration_database_url,
     )
@@ -791,6 +803,10 @@ def test_prediction_observation_source_migration_replaces_schema(
                 """
             )
 
+    execute_command(
+        DownCommand("018_create_ai_change_sets.down.sql"),
+        database_url=migration_database_url,
+    )
     execute_command(
         DownCommand("017_create_mcp_oauth_schema.down.sql"),
         database_url=migration_database_url,
@@ -923,6 +939,10 @@ def test_prediction_request_migration_preserves_versions_and_enforces_lifecycle(
                 (other[0], user[0], version[0]),
             )
 
+    execute_command(
+        DownCommand("018_create_ai_change_sets.down.sql"),
+        database_url=migration_database_url,
+    )
     execute_command(
         DownCommand("017_create_mcp_oauth_schema.down.sql"),
         database_url=migration_database_url,
@@ -1101,6 +1121,10 @@ def test_timeserie_name_and_short_name_indexes_enforce_active_scope(
         connection.commit()
 
     execute_command(
+        DownCommand("018_create_ai_change_sets.down.sql"),
+        database_url=migration_database_url,
+    )
+    execute_command(
         DownCommand("017_create_mcp_oauth_schema.down.sql"),
         database_url=migration_database_url,
     )
@@ -1230,6 +1254,10 @@ def test_mcp_oauth_migration_down_fully_reverses_up(
         == 4
     )
 
+    execute_command(
+        DownCommand("018_create_ai_change_sets.down.sql"),
+        database_url=migration_database_url,
+    )
     execute_command(
         DownCommand("017_create_mcp_oauth_schema.down.sql"),
         database_url=migration_database_url,
@@ -1436,6 +1464,252 @@ def test_mcp_oauth_schema_constraints(migration_database_url: str) -> None:
             psycopg.errors.UniqueViolation,
             client_insert,
             ("client-1", "Claude", MCP_REDIRECT_URIS),
+        ),
+    ]
+    for error, statement, parameters in rejected:
+        with psycopg.connect(migration_database_url) as connection:
+            with pytest.raises(error):
+                connection.execute(statement, parameters)
+
+
+def test_ai_change_sets_migration_down_fully_reverses_up(
+    migration_database_url: str, tmp_path: Path
+) -> None:
+    migrations = discover_migrations()
+    migration_copy = tmp_path / "migrations_through_017"
+    migration_copy.mkdir()
+    for migration in migrations[:17]:
+        shutil.copy2(migration.up_path, migration_copy / migration.up_name)
+        shutil.copy2(migration.down_path, migration_copy / migration.down_name)
+    execute_command(
+        UpCommand(),
+        database_url=migration_database_url,
+        migrations_directory=migration_copy,
+    )
+    before = _schema_catalog(migration_database_url)
+
+    execute_command(UpCommand(), database_url=migration_database_url)
+    assert (
+        _scalar(
+            migration_database_url,
+            "SELECT count(*) FROM pg_tables "
+            "WHERE schemaname = current_schema() AND tablename LIKE 'ai_change_set%'",
+        )
+        == 2
+    )
+
+    execute_command(
+        DownCommand("018_create_ai_change_sets.down.sql"),
+        database_url=migration_database_url,
+    )
+
+    assert (
+        _scalar(migration_database_url, "SELECT max(version) FROM schema_migrations")
+        == 17
+    )
+    assert _schema_catalog(migration_database_url) == before
+
+
+def _insert_ai_change_set_fixture(
+    connection: psycopg.Connection[tuple[object, ...]],
+) -> tuple[object, object, object]:
+    user_id, _, grant_id = _insert_mcp_oauth_fixture(connection)
+    organisation = connection.execute(
+        "INSERT INTO organisations (organisation_key, name, created_by) "
+        "VALUES ('ai-org', 'AI Org', %s) RETURNING organisation_id",
+        (user_id,),
+    ).fetchone()
+    assert organisation is not None
+    change_set = connection.execute(
+        "INSERT INTO ai_change_sets ("
+        "change_set_key, organisation_id, title, grant_id, client_id, client_name, "
+        "created_by"
+        ") VALUES ('change-set-1', %s, 'Plan', %s, 'client-1', 'Claude', %s) "
+        "RETURNING change_set_id",
+        (organisation[0], grant_id, user_id),
+    ).fetchone()
+    assert change_set is not None
+    connection.execute(
+        "INSERT INTO ai_change_set_operations ("
+        "change_set_id, position, ref, op_type, payload"
+        ") VALUES (%s, 0, '$plan', 'create_scenario', '{\"payload\": {}}'::jsonb)",
+        (change_set[0],),
+    )
+    return user_id, grant_id, change_set[0]
+
+
+def test_ai_change_set_grant_deletion_keeps_the_audit_record(
+    migration_database_url: str,
+) -> None:
+    execute_command(UpCommand(), database_url=migration_database_url)
+
+    with psycopg.connect(migration_database_url) as connection:
+        user_id, grant_id, change_set_id = _insert_ai_change_set_fixture(connection)
+        connection.commit()
+
+    with psycopg.connect(migration_database_url) as connection:
+        connection.execute(
+            "DELETE FROM mcp_oauth_grants WHERE grant_id = %s", (grant_id,)
+        )
+        connection.commit()
+
+    with psycopg.connect(migration_database_url) as connection:
+        row = connection.execute(
+            "SELECT grant_id, created_by, client_id, client_name, status "
+            "FROM ai_change_sets WHERE change_set_id = %s",
+            (change_set_id,),
+        ).fetchone()
+    assert row == (None, user_id, "client-1", "Claude", "draft")
+    assert (
+        _scalar(
+            migration_database_url, "SELECT count(*) FROM ai_change_set_operations"
+        )
+        == 1
+    )
+
+
+def test_ai_change_set_schema_constraints(migration_database_url: str) -> None:
+    execute_command(UpCommand(), database_url=migration_database_url)
+    with psycopg.connect(migration_database_url) as connection:
+        user_id, _, change_set_id = _insert_ai_change_set_fixture(connection)
+        organisation_id = connection.execute(
+            "SELECT organisation_id FROM organisations"
+        ).fetchone()
+        assert organisation_id is not None
+        connection.commit()
+
+    change_set_insert: LiteralString = (
+        "INSERT INTO ai_change_sets ("
+        "change_set_key, organisation_id, title, client_id, client_name, "
+        "created_by, status, applied_result, reviewed_by, reviewed_time, review_note"
+        ") VALUES (%s, %s, %s, 'client-1', 'Claude', %s, %s, %s::jsonb, %s, %s, %s)"
+    )
+    operation_insert: LiteralString = (
+        "INSERT INTO ai_change_set_operations ("
+        "change_set_id, position, ref, op_type, payload, frozen_values"
+        ") VALUES (%s, %s, %s, %s, %s::jsonb, %s::jsonb)"
+    )
+    now = datetime.now(UTC)
+    organisation = organisation_id[0]
+
+    def change_set(**overrides: object) -> tuple[object, ...]:
+        values: dict[str, object] = {
+            "key": "change-set-2",
+            "title": "Plan",
+            "status": "draft",
+            "applied_result": None,
+            "reviewed_by": None,
+            "reviewed_time": None,
+            "review_note": None,
+        } | overrides
+        return (
+            values["key"],
+            organisation,
+            values["title"],
+            user_id,
+            values["status"],
+            values["applied_result"],
+            values["reviewed_by"],
+            values["reviewed_time"],
+            values["review_note"],
+        )
+
+    def operation(**overrides: object) -> tuple[object, ...]:
+        values: dict[str, object] = {
+            "position": 1,
+            "ref": None,
+            "op_type": "create_node",
+            "payload": "{}",
+            "frozen_values": None,
+        } | overrides
+        return (
+            change_set_id,
+            values["position"],
+            values["ref"],
+            values["op_type"],
+            values["payload"],
+            values["frozen_values"],
+        )
+
+    accepted: list[tuple[LiteralString, tuple[object, ...]]] = [
+        (
+            change_set_insert,
+            change_set(
+                status="applied",
+                applied_result='{"status": "applied"}',
+                reviewed_by=user_id,
+                reviewed_time=now,
+            ),
+        ),
+        (
+            change_set_insert,
+            change_set(
+                key="change-set-3",
+                status="rejected",
+                reviewed_by=user_id,
+                reviewed_time=now,
+                review_note="Not now",
+            ),
+        ),
+        (
+            operation_insert,
+            operation(
+                op_type="generate_timeserie_values", frozen_values='{"values": []}'
+            ),
+        ),
+    ]
+    for statement, parameters in accepted:
+        with psycopg.connect(migration_database_url) as connection:
+            connection.execute(statement, parameters)
+            connection.commit()
+
+    rejected: list[tuple[type[psycopg.Error], LiteralString, tuple[object, ...]]] = [
+        (psycopg.errors.CheckViolation, change_set_insert, change_set(status="done")),
+        (psycopg.errors.CheckViolation, change_set_insert, change_set(title=" ")),
+        (
+            psycopg.errors.CheckViolation,
+            change_set_insert,
+            change_set(status="applied", reviewed_by=user_id, reviewed_time=now),
+        ),
+        (
+            psycopg.errors.CheckViolation,
+            change_set_insert,
+            change_set(applied_result='{"status": "applied"}'),
+        ),
+        (
+            psycopg.errors.CheckViolation,
+            change_set_insert,
+            change_set(status="rejected", reviewed_by=user_id),
+        ),
+        (
+            psycopg.errors.CheckViolation,
+            change_set_insert,
+            change_set(review_note="Too early"),
+        ),
+        (
+            psycopg.errors.UniqueViolation,
+            change_set_insert,
+            change_set(key="change-set-1"),
+        ),
+        (psycopg.errors.CheckViolation, operation_insert, operation(op_type="apply")),
+        (psycopg.errors.CheckViolation, operation_insert, operation(position=-1)),
+        (psycopg.errors.CheckViolation, operation_insert, operation(ref="$node")),
+        (
+            psycopg.errors.CheckViolation,
+            operation_insert,
+            operation(op_type="create_scenario", ref="plan"),
+        ),
+        (psycopg.errors.CheckViolation, operation_insert, operation(payload="[]")),
+        (
+            psycopg.errors.CheckViolation,
+            operation_insert,
+            operation(frozen_values='{"values": []}'),
+        ),
+        (psycopg.errors.UniqueViolation, operation_insert, operation(position=0)),
+        (
+            psycopg.errors.UniqueViolation,
+            operation_insert,
+            operation(op_type="create_scenario", ref="$plan"),
         ),
     ]
     for error, statement, parameters in rejected:

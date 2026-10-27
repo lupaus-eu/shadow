@@ -95,6 +95,7 @@ The current ordered migration chain is:
 015_create_prediction_requests.sql
 016_add_prophet_result_kind.sql
 017_create_mcp_oauth_schema.sql
+018_create_ai_change_sets.sql
 ```
 
 Jokaisella yllä olevalla tiedostolla on vastaava `.down.sql`-tiedosto.
@@ -170,6 +171,15 @@ ADR-015) and changes no existing table. They store only SHA-256 hashes of
 request ids, codes and tokens. Its down migration drops the four tables and
 deletes every MCP client registration, grant and token; MCP clients must
 register and authorize again afterwards.
+
+Migration 018 creates the AI Domain's change-set tables (`ai_change_sets`,
+`ai_change_set_operations`, ADR-015, TASK-069I) and changes no existing
+table. A change set's `grant_id` is `ON DELETE SET NULL`, so TASK-069F's lazy
+grant cleanup keeps working and the change set keeps `created_by`, the copied
+`client_id` and `client_name`. Its down migration drops both tables and
+deletes every change set, its operations, frozen values and review history.
+Business rows that applied change sets created stay, because they have no
+reference to the change set.
 
 ## Deployment Compatibility
 

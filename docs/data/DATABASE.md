@@ -68,6 +68,7 @@ db/migrations/014_add_prediction_intervals.sql
 db/migrations/015_create_prediction_requests.sql
 db/migrations/016_add_prophet_result_kind.sql
 db/migrations/017_create_mcp_oauth_schema.sql
+db/migrations/018_create_ai_change_sets.sql
 ```
 
 | Table | Purpose | Notes |
@@ -102,6 +103,8 @@ db/migrations/017_create_mcp_oauth_schema.sql
 | `mcp_oauth_authorization_requests` | Ten-minute pending authorization requests | Primary key is the SHA-256 request-id hash; holds client, redirect URI, `state`, S256 `code_challenge`, one scope and its resource. After consent it holds the deciding User, the 60-second code hash and expiry, the consumed time and the redeemed `grant_id`. |
 | `mcp_oauth_grants` | One User's consent for one client, scope and MCP resource | Unique `grant_key`; exactly one scope (`schatten.read` or `schatten.write`) bound to the matching resource; non-null 30-day absolute `expires_time`; last used, revoked time and `revoked_by`. |
 | `mcp_oauth_tokens` | Opaque MCP access and refresh tokens | Primary key is the SHA-256 token hash; `kind` is `access` or `refresh`; expiry, `replaced_by_hash` rotation link and `revoked_time`. |
+| `ai_change_sets` | AI change sets staged through MCP and applied or rejected only by a human (ADR-015, migration 018) | Unique `change_set_key`; organisation; nullable `scenario_id` derived by the engine from the operations; title and rationale; `status` (`draft`, `submitted`, `applied`, `rejected`, `failed`, `discarded`); nullable `grant_id` (`ON DELETE SET NULL`); copied `client_id` and self-declared `client_name`; JSONB `validation_result` and `applied_result`; reviewer, review time and note; standard audit columns with a required `created_by`. |
+| `ai_change_set_operations` | Ordered typed operations of a change set | Unique `(change_set_id, position)` and `(change_set_id, ref)`; `op_type` from ADR-015's list; JSONB `payload`, `frozen_values` (generated values and generator version, set on submit) and the latest `error`. |
 
 # Common Columns
 
@@ -238,6 +241,27 @@ back.
   revoked and the grant row is deleted, which cascades to them. Lazy cleanup
   deletes expired access tokens but never a refresh token of an active grant,
   because ADR-015's refresh-token reuse detection depends on these rows.
+- `ai_change_sets.grant_id` is `ON DELETE SET NULL`: lazy cleanup deletes a
+  revoked or expired grant without failing on a change set that references it,
+  and `created_by`, the copied `client_id` and `client_name` remain the audit
+  record. Change-set history is never deleted by the application.
+- `ai_change_sets.status` is one of `draft`, `submitted`, `applied`,
+  `rejected`, `failed` or `discarded`. `applied_result` is present exactly for
+  `applied` and `failed`; `reviewed_by` and `reviewed_time` are set together,
+  exactly for `applied`, `rejected` and `failed`; a `review_note` requires a
+  review. `change_set_key`, `title` and `client_id` are non-blank and
+  `client_name` is 1 to 100 characters. `validation_result` and
+  `applied_result` are JSON objects.
+- `ai_change_set_operations.position` is non-negative and unique per change
+  set; `op_type` is one of ADR-015's eleven operation types. `ref` is unique
+  per change set, matches `$` followed by a letter and up to 63 letters, digits
+  or underscores, and is allowed only on `create_scenario`, `copy_scenario`,
+  `create_org_state`, `create_event` and `create_derived_metric`.
+  `frozen_values` is allowed only on `generate_timeserie_values`; `payload`,
+  `frozen_values` and `error` are JSON objects. Operations are deleted with
+  their change set (`ON DELETE CASCADE`).
+- Nullable JSONB columns of the change-set tables store SQL `NULL`, never a
+  JSON `null` (the SQLAlchemy models use `JSON(none_as_null=True)`).
 
 Soft-delete propagation is not automatic in PostgreSQL. Application or service
 logic must set `deleted_time` on scenario-owned rows when a scenario is
@@ -283,6 +307,10 @@ The migration defines:
 - MCP OAuth lazy-cleanup indexes: authorization request, grant and access-token
   `expires_time`; revoked grants; non-deleted clients by
   `COALESCE(last_used_time, created_time)`; soft-deleted clients
+- AI change sets: unique `change_set_key`; the review list by organisation and
+  by derived scenario, newest first; change sets by grant for the
+  `ON DELETE SET NULL` of grant cleanup; unique operation position and ref per
+  change set
 
 ---
 
@@ -302,10 +330,9 @@ The following candidate tables are retained as planned future work. They are not
 | ai_summaries | AI Domain (unplanned document-AI candidate) | AI summary outputs; outside ADR-015's scope, no task |
 | ai_extractions | AI Domain (unplanned document-AI candidate) | AI extraction outputs; outside ADR-015's scope, no task |
 
-The AI Domain's MCP OAuth tables (`mcp_oauth_*`) are created by migration 017
-(TASK-069D) and listed under Core Tables. The accepted change-set tables
-(`ai_change_sets`, `ai_change_set_operations`) are described in
-`docs/data/DATA-MODEL.md` and ADR-015, and are added by TASK-069I.
+The AI Domain's MCP OAuth tables (`mcp_oauth_*`, migration 017, TASK-069D)
+and change-set tables (`ai_change_sets`, `ai_change_set_operations`,
+migration 018, TASK-069I) are listed under Core Tables.
 
 ---
 

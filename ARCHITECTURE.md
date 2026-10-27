@@ -65,9 +65,9 @@ Päätetty tekninen perusrakenne:
   token verification and connections API and TASK-069G's FastMCP read and
   write endpoints with bearer authentication and the first read tools and
   TASK-069H's remaining read tools and generator preview (all
-  MCP and public OAuth endpoints behind `MCP_ENABLED=false`) are implemented;
-  the rest is pending TASK-069I through TASK-069O (see
-  [AI Via MCP](#ai-via-mcp))
+  MCP and public OAuth endpoints behind `MCP_ENABLED=false`) and TASK-069I's
+  change-set schema and engine are implemented; the rest is pending TASK-069J
+  through TASK-069O (see [AI Via MCP](#ai-via-mcp))
 
 Tarkemmat toteutusyksityiskohdat täsmentyvät taskien ja tarvittaessa uusien ADR:ien kautta.
 
@@ -567,8 +567,14 @@ capacity limiter, the per-grant `mcp_rate_limiter` and the read tools
 `backend/app/mcp/`) and TASK-069H (the read tools `get_type_catalog`,
 `get_graph`, `list_timeseries`, `get_timeserie`, `list_events` and
 `preview_generated_timeserie`, with bounded value lists that report
-truncation) are implemented; the rest is pending TASK-069I through
-TASK-069O. The write server has no tools yet. Nothing else below is
+truncation) and TASK-069I (migration 018's `ai_change_sets` and
+`ai_change_set_operations`, and the change-set engine in
+`backend/app/api/v1/ai_change_sets/`: typed operations with `$ref`
+resolution, the always-rolled-back dry-run, submit freezing, replacement flags
+with the review fingerprint and the step-tracked atomic apply; see the
+[AI change-set lifecycle](docs/diagrams/generated/state-ai-change-set.svg))
+are implemented; the rest is pending TASK-069J through TASK-069O. The write
+server has no tools yet, and no route or tool calls the engine yet. Nothing else below is
 implemented yet, and the feature stays behind `MCP_ENABLED=false` until
 TASK-069O's separately approved production enablement.
 
@@ -906,7 +912,7 @@ ADR-004 Authentication, Identity And Session Architecture: accepted
 ADR-005 Production-Only Deployment Environments: accepted
 ADR-006 Local Authentik TLS And Optional Entra Federation: target superseded by ADR-013
 ADR-013 Shared Entra Registration And Local HTTPS Deployment: accepted; source delivery H1-H3 implemented, rollout pending
-ADR-015 AI Via MCP With Human-Applied Change Sets: accepted design; TASK-069B..TASK-069H implemented, TASK-069I..TASK-069O pending
+ADR-015 AI Via MCP With Human-Applied Change Sets: accepted design; TASK-069B..TASK-069I implemented, TASK-069J..TASK-069O pending
 ```
 
 ---

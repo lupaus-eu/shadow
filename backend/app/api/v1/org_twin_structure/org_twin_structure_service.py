@@ -1204,20 +1204,55 @@ def _get_active_scenario_context(
     return organisation, scenario
 
 
+def get_graph_node_visible_at(
+    session: Session,
+    organisation_key: str,
+    scenario_key: str,
+    node_key: str,
+    target_date: date,
+) -> GraphNodeResponse:
+    """Return the node as the graph of an org state with `target_date` shows it.
+
+    The date need not belong to an existing org state, so callers can read the
+    node an org state still to be created would see.
+    """
+    _, scenario = _get_active_scenario_context(
+        session,
+        organisation_key,
+        scenario_key,
+    )
+    node = _get_graph_node_visible_at(session, scenario, target_date, node_key)
+    return to_graph_node_response(session, node)
+
+
 def _get_visible_graph_node(
     session: Session,
     scenario: Scenario,
     org_state: OrgState,
     node_key: str,
 ) -> GraphNode:
+    return _get_graph_node_visible_at(
+        session,
+        scenario,
+        org_state.target_date,
+        node_key,
+    )
+
+
+def _get_graph_node_visible_at(
+    session: Session,
+    scenario: Scenario,
+    target_date: date,
+    node_key: str,
+) -> GraphNode:
     node = session.scalar(
         select(GraphNode).where(
             GraphNode.scenario_id == scenario.scenario_id,
             GraphNode.node_key == node_key,
-            GraphNode.create_date <= org_state.target_date,
+            GraphNode.create_date <= target_date,
             or_(
                 GraphNode.delete_date.is_(None),
-                GraphNode.delete_date >= org_state.target_date,
+                GraphNode.delete_date >= target_date,
             ),
             GraphNode.deleted_time.is_(None),
         ),

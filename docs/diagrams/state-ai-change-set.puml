@@ -1,0 +1,44 @@
+@startuml
+title Schatten - AI Change Set Lifecycle (ADR-015)
+
+hide empty description
+
+[*] --> draft : create_change_set (MCP, write grant)
+draft --> draft : add_operations / remove_operation\n(scenario reference recomputed)\nvalidate_change_set (dry-run, always rolled back)
+draft --> submitted : submit_change_set (creator's grant):\nre-validate, freeze generated values
+draft --> discarded : discard_change_set (creator's grant)
+submitted --> applied : human apply in Schatten:\nlock, status, fingerprint, re-validate,\nexecute, commit once
+submitted --> rejected : human reject in Schatten
+submitted --> failed : re-validation, operation or commit failure,\nor a lock or statement timeout during\nre-validation or execution
+submitted --> submitted : apply rejected in the lock, status or\nfingerprint step (review_stale,\napply_in_progress, retryable 503)
+
+note left of draft
+  Only the creator's grants edit a draft.
+  Dry-run stops at the first failing
+  operation: ok, error, then not_run.
+end note
+
+note left of submitted
+  Immutable. No MCP tool applies or rejects.
+  Replacement flags and the review fingerprint
+  are recomputed against current data.
+end note
+
+note bottom of applied
+  Business rows written only through the
+  domains' *_in_transaction cores; the
+  reviewer is their actor.
+end note
+
+note bottom of failed
+  Everything rolled back, then marked failed
+  in a new transaction only while still
+  submitted. Not retried; stage a new one.
+end note
+
+note bottom of rejected
+  applied, rejected, failed and
+  discarded are terminal.
+end note
+
+@enduml

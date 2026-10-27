@@ -144,6 +144,18 @@ class Settings(StrictBaseModel):
     mcp_rate_limit_per_minute: int = Field(
         default=120, alias="MCP_RATE_LIMIT_PER_MINUTE", ge=1
     )
+    ai_change_set_statement_timeout_ms: int = Field(
+        default=30_000,
+        alias="AI_CHANGE_SET_STATEMENT_TIMEOUT_MS",
+        ge=1,
+        le=600_000,
+    )
+    ai_change_set_lock_timeout_ms: int = Field(
+        default=5_000,
+        alias="AI_CHANGE_SET_LOCK_TIMEOUT_MS",
+        ge=1,
+        le=60_000,
+    )
 
     @field_validator(
         "oidc_scopes",
@@ -226,6 +238,16 @@ class Settings(StrictBaseModel):
             raise ValueError(
                 "MCP OAuth token lifetimes cannot exceed "
                 "MCP_OAUTH_GRANT_LIFETIME_SECONDS"
+            )
+        # The change-set lock wait must end with the lock-not-available error,
+        # never with a statement timeout.
+        if (
+            self.ai_change_set_statement_timeout_ms
+            <= self.ai_change_set_lock_timeout_ms
+        ):
+            raise ValueError(
+                "AI_CHANGE_SET_STATEMENT_TIMEOUT_MS must be longer than "
+                "AI_CHANGE_SET_LOCK_TIMEOUT_MS"
             )
         if self.app_environment == "production":
             if public.scheme != "https" or allowed.scheme != "https":
@@ -381,6 +403,8 @@ def get_settings() -> Settings:
         "MCP_OAUTH_MAX_CLIENTS",
         "MCP_TOOL_CONCURRENCY",
         "MCP_RATE_LIMIT_PER_MINUTE",
+        "AI_CHANGE_SET_STATEMENT_TIMEOUT_MS",
+        "AI_CHANGE_SET_LOCK_TIMEOUT_MS",
     )
     environment = os.getenv("APP_ENV", "development")
     required_auth_names = (

@@ -119,10 +119,12 @@ TASK-069C's deterministic timeseries generator, TASK-069D's MCP OAuth schema
 authorization request and consent API, TASK-069F's token, refresh and revoke
 endpoints, token verification and connections API and TASK-069G's `fastmcp`
 read and write endpoints with `McpBearerAuth`, resource protection and the
-first read tools (`backend/app/mcp/`) and TASK-069H's remaining read tools and
-generator preview are implemented; the MCP and public OAuth
-endpoints are registered only with `MCP_ENABLED=true`, off by default. The rest
-is pending TASK-069I through TASK-069O. Users chat in their own MCP client on
+first read tools (`backend/app/mcp/`), TASK-069H's remaining read tools and
+generator preview and TASK-069I's change-set schema (migration 018,
+`ai_change_sets`, `ai_change_set_operations`) and engine
+(`backend/app/api/v1/ai_change_sets/`) are implemented; the MCP and public
+OAuth endpoints are registered only with `MCP_ENABLED=true`, off by default.
+The rest is pending TASK-069J through TASK-069O. Users chat in their own MCP client on
 their own AI subscription; Schatten never calls an LLM or stores LLM keys.
 FastAPI hosts `/api/mcp/read` (`schatten.read`) and `/api/mcp/write`
 (`schatten.write`) and acts as OAuth 2.1 authorization server over the existing

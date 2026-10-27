@@ -3,9 +3,9 @@
 Tämä dokumentti kuvaa järjestelmän loogisen datamallin.
 
 Status: core, customer and Forecasting durable-request/saved-version models
-defined. The AI Domain's MCP OAuth entities are migrated (TASK-069D, migration
-017); its change-set entities are accepted in ADR-015 but not migrated
-(TASK-069I). Billing remains TBD.
+defined. The AI Domain's MCP OAuth entities (TASK-069D, migration 017) and
+change-set entities (TASK-069I, migration 018) are migrated. Billing remains
+TBD.
 
 Looginen datamalli kuvaa:
 
@@ -180,9 +180,9 @@ Lue nämä yhdessä datamallin kanssa:
 # AI Domain Entities
 
 ADR-015 accepts these logical entities. The four MCP OAuth tables are created
-by TASK-069D (`017_create_mcp_oauth_schema`) and described in
-`docs/data/DATABASE.md` and the physical diagram. The change-set entities are
-design, not schema, until TASK-069I (`018_create_ai_change_sets`).
+by TASK-069D (`017_create_mcp_oauth_schema`) and the two change-set tables by
+TASK-069I (`018_create_ai_change_sets`). Both are described in
+`docs/data/DATABASE.md` and the physical diagram.
 
 | Entity | Table | Notes |
 | --- | --- | --- |
@@ -191,7 +191,7 @@ design, not schema, until TASK-069I (`018_create_ai_change_sets`).
 | MCP Grant | `mcp_oauth_grants` | One User's consent for one client, one scope and its MCP resource, with a 30-day absolute expiry; revocable. |
 | MCP Token | `mcp_oauth_tokens` | Opaque access or refresh token keyed by SHA-256 hash, with expiry, rotation link and revocation. |
 | AI Change Set | `ai_change_sets` | Organisation-owned staged proposal with status, optional derived scenario reference, creator, grant, copied `client_id`, client name, validation and applied results, and review fields. |
-| AI Change Set Operation | `ai_change_set_operations` | Ordered typed operation with optional `$ref`, payload, frozen generated values and error. |
+| AI Change Set Operation | `ai_change_set_operations` | Ordered typed operation with a stable position, an optional `$ref` symbol for the server-generated key it creates, payload, frozen generated values and generator version, and its latest error. |
 
 Relationship rules:
 
@@ -218,8 +218,15 @@ Relationship rules:
   a revoked or expired Grant, the change set keeps `created_by`, a copied
   `client_id` (a plain value, not a foreign key) and `client_name` as its audit
   record. Change-set history is never deleted.
-  Its optional Scenario reference is derived from the Operations: it is set
-  only when all of them target the same existing Scenario.
+  Its optional Scenario reference is derived from the Operations whenever
+  they are added or removed: it is set only when all of them target the same
+  existing Scenario, and null when the change set creates or copies a
+  Scenario or touches several.
+- An Operation's position stays stable when another Operation is removed. A
+  `ref` names only a key the server generates (a created or copied Scenario,
+  an Organisation State, an Event or a Derived Metric) and is used only by
+  later Operations; Graph Node, Graph Edge and Timeserie keys are
+  client-supplied and repeated verbatim.
 - An AI Change Set's status is one of `draft`, `submitted`, `applied`,
   `rejected`, `failed` or `discarded`; only humans move `submitted` change
   sets to `applied` or `rejected`.
@@ -257,8 +264,7 @@ Examples:
 - `timeserie_key`
 - `prediction_key`
 - `prediction_request_key`
-- `grant_key` (migration 017) and `change_set_key` (accepted in ADR-015, not
-  migrated)
+- `grant_key` (migration 017) and `change_set_key` (migration 018)
 
 These keys preserve Varjo-style identifiers while allowing relational foreign keys to use bigint primary keys.
 
