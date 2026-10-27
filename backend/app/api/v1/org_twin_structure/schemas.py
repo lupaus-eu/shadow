@@ -313,6 +313,37 @@ class TypeCatalogResponse(StrictBaseModel):
     )
 
 
+class TypeAttributeMetadataResponse(StrictBaseModel):
+    owner_kind: str = Field(
+        alias="ownerKind",
+        description="Owner kind: `node_type` or `edge_type`.",
+    )
+    owner_type_id: str = Field(
+        alias="ownerTypeId",
+        description="Stable node or edge type key that owns the attribute.",
+    )
+    id: str = Field(description="Stable attribute key.")
+    name: str | None = Field(description="Attribute technical name.")
+    display_name: str = Field(
+        alias="displayName",
+        description="User-friendly attribute display name.",
+    )
+    data_type: str = Field(alias="dataType", description="Attribute data type.")
+    mandatory: bool = Field(description="Whether the attribute is mandatory.")
+    max_length: int | None = Field(
+        alias="maxLength",
+        description="Maximum text length.",
+    )
+    multiline: bool | None = Field(description="Whether text may span lines.")
+
+
+class TypeCatalogWithAttributesResponse(TypeCatalogResponse):
+    type_attributes: list[TypeAttributeMetadataResponse] = Field(
+        alias="typeAttributes",
+        description="Active attribute metadata of the active node and edge types.",
+    )
+
+
 def _stripped_non_blank(value: str, message: str) -> str:
     stripped = value.strip()
     if not stripped:

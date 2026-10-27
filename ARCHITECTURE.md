@@ -63,9 +63,10 @@ Päätetty tekninen perusrakenne:
   OAuth schema, TASK-069E's OAuth discovery, registration, authorization
   request and consent API, TASK-069F's token, refresh and revoke endpoints,
   token verification and connections API and TASK-069G's FastMCP read and
-  write endpoints with bearer authentication and the first read tools (all
+  write endpoints with bearer authentication and the first read tools and
+  TASK-069H's remaining read tools and generator preview (all
   MCP and public OAuth endpoints behind `MCP_ENABLED=false`) are implemented;
-  the rest is pending TASK-069H through TASK-069O (see
+  the rest is pending TASK-069I through TASK-069O (see
   [AI Via MCP](#ai-via-mcp))
 
 Tarkemmat toteutusyksityiskohdat täsmentyvät taskien ja tarvittaessa uusien ADR:ien kautta.
@@ -563,7 +564,10 @@ and TASK-069G (the `fastmcp` read and write servers at exact routes
 `/api/mcp/read` and `/api/mcp/write`, `McpBearerAuth`, the shared tool
 capacity limiter, the per-grant `mcp_rate_limiter` and the read tools
 `whoami`, `list_organisations`, `list_scenarios` and `list_org_states`, in
-`backend/app/mcp/`) are implemented; the rest is pending TASK-069H through
+`backend/app/mcp/`) and TASK-069H (the read tools `get_type_catalog`,
+`get_graph`, `list_timeseries`, `get_timeserie`, `list_events` and
+`preview_generated_timeserie`, with bounded value lists that report
+truncation) are implemented; the rest is pending TASK-069I through
 TASK-069O. The write server has no tools yet. Nothing else below is
 implemented yet, and the feature stays behind `MCP_ENABLED=false` until
 TASK-069O's separately approved production enablement.
@@ -902,7 +906,7 @@ ADR-004 Authentication, Identity And Session Architecture: accepted
 ADR-005 Production-Only Deployment Environments: accepted
 ADR-006 Local Authentik TLS And Optional Entra Federation: target superseded by ADR-013
 ADR-013 Shared Entra Registration And Local HTTPS Deployment: accepted; source delivery H1-H3 implemented, rollout pending
-ADR-015 AI Via MCP With Human-Applied Change Sets: accepted design; TASK-069B..TASK-069G implemented, TASK-069H..TASK-069O pending
+ADR-015 AI Via MCP With Human-Applied Change Sets: accepted design; TASK-069B..TASK-069H implemented, TASK-069I..TASK-069O pending
 ```
 
 ---

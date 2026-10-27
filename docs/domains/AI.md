@@ -7,15 +7,17 @@ client registration, the authorization request and the consent API, see
 [MCP OAuth Authorization](#mcp-oauth-authorization-task-069e)), TASK-069F
 (tokens, refresh rotation, revocation, `verify_access_token` and the
 connections API, see
-[MCP OAuth Tokens And Connections](#mcp-oauth-tokens-and-connections-task-069f))
-and TASK-069G (the MCP read and write endpoints, bearer authentication,
+[MCP OAuth Tokens And Connections](#mcp-oauth-tokens-and-connections-task-069f)),
+TASK-069G (the MCP read and write endpoints, bearer authentication,
 resource protection and the first read tools, see
-[MCP Servers (TASK-069G)](#mcp-servers-task-069g)) are implemented and the rest
-is pending TASK-069H through TASK-069O. The MCP endpoints, the public OAuth
+[MCP Servers (TASK-069G)](#mcp-servers-task-069g)) and TASK-069H (the
+remaining read tools and the generator preview, see
+[MCP Read Tools (TASK-069H)](#mcp-read-tools-task-069h)) are implemented and
+the rest is pending TASK-069I through TASK-069O. The MCP endpoints, the public OAuth
 endpoints and the consent API are registered only with `MCP_ENABLED=true`,
 which is off by default and in production; the connections API is always
 registered. The write server has no tools yet (TASK-069J); the generator is
-library code.
+reachable only through the read tool `preview_generated_timeserie`.
 
 ## Purpose
 
@@ -627,9 +629,79 @@ The first read tools are `whoami` (`UserResponse` of the principal's User),
 `list_organisations` (`OrganisationResponse` list),
 `list_scenarios(organisation_key)` (`ScenarioResponse` list) and
 `list_org_states(organisation_key, scenario_key)` (`OrgStateResponse` list).
-TASK-069H adds the remaining read tools, TASK-069J the write tools.
+TASK-069H added the remaining read tools (below), TASK-069J adds the write
+tools.
 
 How to connect Claude Code locally is in `docs/LOCAL-DEVELOPMENT.md`.
+
+## MCP Read Tools (TASK-069H)
+
+Every read tool has the TASK-069G annotations (`readOnlyHint`,
+`idempotentHint`, `openWorldHint=False`), needs `schatten.read` and runs
+through `McpToolRuntime`. The tool docstrings in
+`backend/app/mcp/read_server.py` are the LLM-facing contract; they state what
+each argument means, the date rules and the limits. Results are serialised by
+field name (snake_case). An unknown or soft-deleted organisation, scenario, org
+state or timeserie is a tool error with the service's message, such as
+`Scenario not found.`.
+
+| Tool | Service function | Result |
+| --- | --- | --- |
+| `whoami` | `users_service.get_user` | `UserResponse` |
+| `list_organisations` | `organisations_service.list_organisations` | `OrganisationResponse` list |
+| `list_scenarios(organisation_key)` | `list_organisation_scenarios` | `ScenarioResponse` list |
+| `list_org_states(organisation_key, scenario_key)` | `list_organisation_scenario_org_states` | `OrgStateResponse` list |
+| `get_type_catalog(organisation_key, scenario_key)` | `get_scenario_type_catalog_with_attributes` | `TypeCatalogWithAttributesResponse` |
+| `get_graph(organisation_key, scenario_key, org_state_key)` | `org_twin_structure_service.get_graph` | `GraphResponse` |
+| `list_timeseries(organisation_key, scenario_key, include_values=False)` | `list_scenario_timeseries(include_values=...)` | `TimeserieListResult` |
+| `get_timeserie(organisation_key, scenario_key, timeserie_key, from_date=None, to_date=None)` | `get_timeserie_values_page` | `TimeserieValuesResult` |
+| `list_events(organisation_key, scenario_key)` | `list_scenario_events` | `EventResponse` list |
+| `preview_generated_timeserie(spec)` | `timeserie_generation.generator.generate` | `GeneratedTimeseriePreview` |
+
+- `get_type_catalog` returns the REST type catalog (node types with UI
+  metadata, the timeserie defaults `timeserie_id`, `timeserie_secondary_id`
+  and `timeserie_id_rule`, edge types and allowed connections) plus
+  `type_attributes`: the active attribute definitions (`owner_kind`,
+  `owner_type_id`, `id`, `name`, `display_name`, `data_type`, `mandatory`,
+  `max_length`, `multiline`) of active node and edge types. REST has no
+  attribute metadata, so the org twin structure domain adds the service
+  function `get_scenario_type_catalog_with_attributes` and the schema
+  `TypeCatalogWithAttributesResponse`; the REST type-catalog responses are
+  unchanged. Graph element `attributes` stay a free JSON object that is not
+  validated against these definitions.
+- `get_graph` returns the graph visible at the org state's target date, as the
+  REST graph endpoint does.
+- `list_timeseries` returns `TimeserieResponse` items (definitions, short
+  names, units, `derived_formula`) in timeserie key order. Without
+  `include_values` every `values` list is empty and no value is read from the
+  database. With it, values are filled in
+  key and date order up to `LIST_TIMESERIES_MAX_VALUES` (2,000) in total;
+  `truncated` and `truncated_timeserie_ids` name every timeserie whose values
+  were cut or left out.
+- `get_timeserie` returns the timeserie with only its values between the
+  inclusive, unaligned `from_date` and `to_date` (ISO dates, `from_date` not
+  after `to_date`), at most `GET_TIMESERIE_MAX_POINTS` (1,000) in date order.
+  `value_count` counts all values in the bounds; when more remain, `truncated`
+  is true and `next_from_date` is the `from_date` of the next page. The service
+  function `get_timeserie_values_page` filters the dates and limits the rows in
+  SQL and counts the values in the bounds, so one page reads at most 1,001
+  values.
+- `list_events` returns the active events by target date.
+- `preview_generated_timeserie` validates its `TimeserieGenerationSpec`
+  argument (camelCase JSON, see
+  [Timeserie Generation Specification](#timeserie-generation-specification)),
+  so an invalid spec is a validation error naming the field. It returns
+  `generator_version`, `point_count`, `first_date`, `last_date`, `min`, `max`,
+  `mean` and the first and last `PREVIEW_SAMPLE_POINTS` (5) points. It is
+  deterministic for a fixed spec and seed, runs no database query and
+  persists nothing. `TimeserieGenerationError` becomes a tool error with its
+  message.
+
+`get_type_catalog`, `get_graph` and `list_events` are bounded by the size of
+the model itself and are not truncated. Only `list_timeseries` with
+`include_values=true` still reads every value of the scenario's timeseries
+before cutting them to 2,000, so that opt-in call bounds the response, not the
+database read (accepted in ADR-015's resource protection).
 
 ## MCP Tools
 

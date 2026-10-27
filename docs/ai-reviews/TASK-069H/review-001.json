@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-069H/review-001",
+  "task": {
+    "id": "TASK-069H",
+    "path": "tasks/TASK-069H-mcp-read-tools.md"
+  },
+  "round": 1,
+  "reviewed_at": "2026-10-27T12:49:35Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": {
+    "number": 115,
+    "url": "https://github.com/reflector-oy/schatten/pull/115"
+  },
+  "source": {
+    "base_sha": "e7e2bffa2cf0b7e54230dfca278d58a81044bf49",
+    "head_sha": "598f199b79dacb472e2ba0d3667b9cc9bce27718",
+    "comparison": "e7e2bffa2cf0b7e54230dfca278d58a81044bf49...598f199b79dacb472e2ba0d3667b9cc9bce27718",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Round 1 reviews the whole TASK-069H branch: the six new read tools, their result envelopes, the type-attribute service function and schema in the org twin structure domain, the tests and the docs. Ruff check and pyright pass, and the full backend suite passes (1067 passed, 61 skipped). For every new tool the structured content validates against the advertised output schema, and the docstrings match the serialised field names and the limit constants. Truncation, paging, ordering, graph visibility and the error mapping behave as documented, and no error leaks data. The preview is deterministic, runs no query and persists nothing. The type-attribute addition is justified because the task requires attributes and no existing service or schema exposed them; the REST responses are unchanged. There are three findings: the metadata-only list_timeseries path still loads every value, there is no test for the deleted edge-type owner filter, and some docs and docstring wording is inaccurate.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "security",
+        "severity": "medium",
+        "summary": "list_timeseries without values still loads and builds every active value of every timeserie, and each get_timeserie page loads the whole series.",
+        "rationale": "The tool reuses list_scenario_timeseries, which always loads all values, and then discards them when include_values is false. A probe with 20 timeseries of 10,000 daily values each took about 4.5 s and about 410 MB of peak Python allocation for a metadata-only call. It holds one of the four shared capacity limiter slots throughout. The server instructions present this as a routine call, and ADR-015 requires MCP requests to complete quickly on the resource-limited host. Paging a 20,000-value series in 1,000-point pages reads all rows 20 times. AI.md documents that the limits bound only the response, but the default no-values path is a cheap fix.",
+        "recommendation": "Let the existing service function skip loading values, for example with a keyword flag, so the default path reads no values without duplicating query logic. Optionally pass the date range to the single-timeserie values query, or record the remaining trade-off in ADR-015.",
+        "locations": [
+          {
+            "path": "backend/app/mcp/read_server.py",
+            "line": 222
+          },
+          {
+            "path": "backend/app/mcp/read_server.py",
+            "line": 259
+          },
+          {
+            "path": "backend/app/api/v1/org_states/org_states_service.py",
+            "line": 774
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "missing_test",
+        "severity": "low",
+        "summary": "No test covers dropping attributes whose owner edge type is soft-deleted.",
+        "rationale": "The seed has a soft-deleted node type that owns an attribute, but its only edge type is active. Removing the active-edge-type condition from the second outer join in get_scenario_type_catalog_with_attributes would not fail any test.",
+        "recommendation": "Seed a soft-deleted edge type that owns an attribute and assert that get_type_catalog leaves the attribute out.",
+        "locations": [
+          {
+            "path": "backend/tests/test_mcp_tools.py",
+            "line": 153
+          },
+          {
+            "path": "backend/app/api/v1/org_twin_structure/org_twin_structure_service.py",
+            "line": 146
+          }
+        ]
+      },
+      {
+        "id": "F-003",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "AI.md and the get_type_catalog docstring contain small inaccuracies.",
+        "rationale": "The AI.md status paragraph lost the conjunction before TASK-069G, so the list no longer reads correctly. Its closing remark that the generator is library code is stale now that preview_generated_timeserie exposes it. The docstring's type_attributes field list omits the serialised name field. The docstring's claim that only nodes of types with timeserie defaults carry timeseries is a UI convention that the backend does not enforce, so it is wrong as a contract for the LLM.",
+        "recommendation": "Repair the status sentence, say the generator is reached through the preview tool, list name among the attribute fields, and present the timeserie defaults as suggestions rather than a rule.",
+        "locations": [
+          {
+            "path": "docs/domains/AI.md",
+            "line": 11
+          },
+          {
+            "path": "docs/domains/AI.md",
+            "line": 19
+          },
+          {
+            "path": "backend/app/mcp/read_server.py",
+            "line": 156
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": []
+  }
+}

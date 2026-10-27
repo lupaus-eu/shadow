@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-069H/review-002",
+  "task": {
+    "id": "TASK-069H",
+    "path": "tasks/TASK-069H-mcp-read-tools.md"
+  },
+  "round": 2,
+  "reviewed_at": "2026-10-27T13:08:28Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": {
+    "number": 115,
+    "url": "https://github.com/reflector-oy/schatten/pull/115"
+  },
+  "source": {
+    "base_sha": "e7e2bffa2cf0b7e54230dfca278d58a81044bf49",
+    "head_sha": "94e67c3a5338678d4673e366dc09527dad6c5a71",
+    "comparison": "e7e2bffa2cf0b7e54230dfca278d58a81044bf49...94e67c3a5338678d4673e366dc09527dad6c5a71",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Round 2 reviews the whole TASK-069H branch, focusing on the fix commit after round 1. That commit changes the org states service, the read server, the MCP tool tests, ADR-015, AI.md and ORG_STATES.md. Ruff check and pyright pass, and the full backend suite passes (1069 passed, 61 skipped). On a probe scenario of 200,000 values, a metadata-only list_timeseries call fell from about 4.5 s to 0.08 s. A get_timeserie page over 10,000 values took 0.15 s and returned the correct count and next page date. The REST timeserie list and detail routes behave as before. The date bounds, the limit and the count are correct in SQL, and each new test fails under the mutation it targets. There is one new low-severity test gap: nothing checks that the new value count excludes soft-deleted values.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "missing_test",
+        "severity": "low",
+        "summary": "No test checks that the value_count of get_timeserie excludes soft-deleted values.",
+        "rationale": "The count query in get_timeserie_values_page shares its conditions with the page query today. However, replacing its conditions with ones that drop the soft-delete filter still passes every MCP test, because no get_timeserie test uses bounds that include the seeded soft-deleted revenue value. The function has no REST caller, so REST tests cannot catch it either. A later refactor could then report a count that does not match the values a client can page through.",
+        "recommendation": "Add a get_timeserie assertion on the revenue timeserie with bounds that include its soft-deleted value, checking that value_count is 4 and that the deleted value is not returned.",
+        "locations": [
+          {
+            "path": "backend/app/api/v1/org_states/org_states_service.py",
+            "line": 782
+          },
+          {
+            "path": "backend/tests/test_mcp_tools.py",
+            "line": 908
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-069H/review-001",
+        "finding_id": "F-001",
+        "disposition": "accepted_risk",
+        "rationale": "Partly fixed. list_timeseries reads no values by default, and get_timeserie reads one page of values, filtered by date and limited in SQL, plus a SQL count. New tests fail when either read becomes unbounded again. The remainder is that list_timeseries with include_values=true still reads every value of the scenario before cutting the response to 2,000. This opt-in path is recorded as an accepted trade-off in ADR-015 resource protection and in AI.md, and needs human confirmation.",
+        "validated_by": {
+          "review_id": "TASK-069H/review-002",
+          "commit": "94e67c3a5338678d4673e366dc09527dad6c5a71"
+        }
+      },
+      {
+        "record_id": "TASK-069H/review-001",
+        "finding_id": "F-002",
+        "disposition": "fixed",
+        "rationale": "The test seed now has a soft-deleted edge type that owns an attribute, and get_type_catalog must leave that attribute out. Removing the active-edge-type condition from the outer join fails the type catalog test.",
+        "validated_by": {
+          "review_id": "TASK-069H/review-002",
+          "commit": "94e67c3a5338678d4673e366dc09527dad6c5a71"
+        }
+      },
+      {
+        "record_id": "TASK-069H/review-001",
+        "finding_id": "F-003",
+        "disposition": "fixed",
+        "rationale": "The AI.md status sentence reads correctly again. It now says the generator is reached only through the preview tool, which matches the code. The get_type_catalog docstring lists the attribute name field and presents the timeserie defaults as suggestions, which matches the backend.",
+        "validated_by": {
+          "review_id": "TASK-069H/review-002",
+          "commit": "94e67c3a5338678d4673e366dc09527dad6c5a71"
+        }
+      }
+    ]
+  }
+}

@@ -7,7 +7,7 @@ from typing import cast
 from uuid import uuid4
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import ColumnElement, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -753,21 +753,40 @@ def get_timeserie(
     scenario_key: str,
     timeserie_key: str,
 ) -> TimeserieResponse:
-    organisation = _get_active_organisation(session, organisation_key)
-    scenario = _get_active_scenario(session, organisation, scenario_key)
-    timeserie = _get_active_timeserie(
-        session,
-        scenario,
-        _normalise_stable_key(timeserie_key, "Timeserie id must not be blank."),
+    scenario, timeserie = _get_active_scenario_timeserie(
+        session, organisation_key, scenario_key, timeserie_key
+    )
+    return _to_timeserie_detail_response(
+        session, scenario, timeserie, _active_timeserie_values(session, timeserie)
     )
 
-    values = _active_timeserie_values(session, timeserie)
-    equation = _active_derived_equation_for_timeserie(session, timeserie)
-    return to_timeserie_response(
-        timeserie,
-        values,
-        equation=equation,
-        short_name_editable=not _is_timeserie_referenced(session, scenario, timeserie),
+
+def get_timeserie_values_page(
+    session: Session,
+    organisation_key: str,
+    scenario_key: str,
+    timeserie_key: str,
+    *,
+    from_date: dt_date | None,
+    to_date: dt_date | None,
+    limit: int,
+) -> tuple[TimeserieResponse, int]:
+    """Return the timeserie with its first `limit` values within the inclusive
+    dates, and the number of its values within them."""
+    scenario, timeserie = _get_active_scenario_timeserie(
+        session, organisation_key, scenario_key, timeserie_key
+    )
+    values = _active_timeserie_values(
+        session, timeserie, from_date=from_date, to_date=to_date, limit=limit
+    )
+    value_count = session.scalar(
+        select(func.count())
+        .select_from(TimeserieValue)
+        .where(*_active_timeserie_value_conditions(timeserie, from_date, to_date)),
+    )
+    return (
+        _to_timeserie_detail_response(session, scenario, timeserie, values),
+        value_count or 0,
     )
 
 
@@ -775,6 +794,8 @@ def list_scenario_timeseries(
     session: Session,
     organisation_key: str,
     scenario_key: str,
+    *,
+    include_values: bool = True,
 ) -> list[TimeserieResponse]:
     organisation = _get_active_organisation(session, organisation_key)
     scenario = _get_active_scenario(session, organisation, scenario_key)
@@ -786,9 +807,13 @@ def list_scenario_timeseries(
         )
         .order_by(Timeserie.timeserie_key, Timeserie.timeserie_id),
     ).all()
-    values_by_timeserie_id = _active_values_by_timeserie_id(
-        session,
-        [timeserie.timeserie_id for timeserie in timeseries],
+    values_by_timeserie_id = (
+        _active_values_by_timeserie_id(
+            session,
+            [timeserie.timeserie_id for timeserie in timeseries],
+        )
+        if include_values
+        else {}
     )
 
     equations = _active_derived_equations(session, scenario)
@@ -1346,20 +1371,69 @@ def _get_active_timeserie(
     return timeserie
 
 
+def _get_active_scenario_timeserie(
+    session: Session,
+    organisation_key: str,
+    scenario_key: str,
+    timeserie_key: str,
+) -> tuple[Scenario, Timeserie]:
+    organisation = _get_active_organisation(session, organisation_key)
+    scenario = _get_active_scenario(session, organisation, scenario_key)
+    timeserie = _get_active_timeserie(
+        session,
+        scenario,
+        _normalise_stable_key(timeserie_key, "Timeserie id must not be blank."),
+    )
+    return scenario, timeserie
+
+
+def _to_timeserie_detail_response(
+    session: Session,
+    scenario: Scenario,
+    timeserie: Timeserie,
+    values: list[TimeserieValue],
+) -> TimeserieResponse:
+    equation = _active_derived_equation_for_timeserie(session, timeserie)
+    return to_timeserie_response(
+        timeserie,
+        values,
+        equation=equation,
+        short_name_editable=not _is_timeserie_referenced(session, scenario, timeserie),
+    )
+
+
 def _active_timeserie_values(
     session: Session,
     timeserie: Timeserie,
+    *,
+    from_date: dt_date | None = None,
+    to_date: dt_date | None = None,
+    limit: int | None = None,
 ) -> list[TimeserieValue]:
-    return list(
-        session.scalars(
-            select(TimeserieValue)
-            .where(
-                TimeserieValue.timeserie_id == timeserie.timeserie_id,
-                TimeserieValue.deleted_time.is_(None),
-            )
-            .order_by(TimeserieValue.date, TimeserieValue.timeserie_value_id),
-        ).all(),
+    query = (
+        select(TimeserieValue)
+        .where(*_active_timeserie_value_conditions(timeserie, from_date, to_date))
+        .order_by(TimeserieValue.date, TimeserieValue.timeserie_value_id)
     )
+    if limit is not None:
+        query = query.limit(limit)
+    return list(session.scalars(query).all())
+
+
+def _active_timeserie_value_conditions(
+    timeserie: Timeserie,
+    from_date: dt_date | None,
+    to_date: dt_date | None,
+) -> list[ColumnElement[bool]]:
+    conditions = [
+        TimeserieValue.timeserie_id == timeserie.timeserie_id,
+        TimeserieValue.deleted_time.is_(None),
+    ]
+    if from_date is not None:
+        conditions.append(TimeserieValue.date >= from_date)
+    if to_date is not None:
+        conditions.append(TimeserieValue.date <= to_date)
+    return conditions
 
 
 def _active_values_by_timeserie_id(

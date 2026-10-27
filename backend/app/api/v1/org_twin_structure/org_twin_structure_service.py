@@ -2,7 +2,7 @@ from copy import deepcopy
 from datetime import UTC, date, datetime
 
 from fastapi import HTTPException, status
-from sqlalchemy import or_, select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
 from app.api.v1.org_states.models import OrgState, Scenario, Timeserie
@@ -29,7 +29,9 @@ from app.api.v1.org_twin_structure.schemas import (
     GraphResponse,
     NodeTypeMetadataResponse,
     Position,
+    TypeAttributeMetadataResponse,
     TypeCatalogResponse,
+    TypeCatalogWithAttributesResponse,
 )
 from app.api.v1.organisations.models import Organisation
 from app.api.v1.organisations.service import get_active_organisation
@@ -112,6 +114,56 @@ def get_scenario_graph_type_catalog(
         scenario_key,
     )
     return _build_graph_type_catalog(session, organisation)
+
+
+def get_scenario_type_catalog_with_attributes(
+    session: Session,
+    organisation_key: str,
+    scenario_key: str,
+) -> TypeCatalogWithAttributesResponse:
+    organisation, _ = _get_active_scenario_context(
+        session,
+        organisation_key,
+        scenario_key,
+    )
+    catalog = _build_graph_type_catalog(session, organisation)
+    metamodel = _get_active_organisation_metamodel(session, organisation)
+    # The owner key is null when the outer join finds no active owner type.
+    rows: list[tuple[TypeAttribute, str | None, str | None]] = list(
+        session.execute(
+            select(TypeAttribute, NodeType.node_type_key, EdgeType.edge_type_key)
+            .outerjoin(
+                NodeType,
+                and_(
+                    NodeType.node_type_id == TypeAttribute.owner_node_type_id,
+                    NodeType.deleted_time.is_(None),
+                ),
+            )
+            .outerjoin(
+                EdgeType,
+                and_(
+                    EdgeType.edge_type_id == TypeAttribute.owner_edge_type_id,
+                    EdgeType.deleted_time.is_(None),
+                ),
+            )
+            .where(
+                TypeAttribute.metamodel_id == metamodel.metamodel_id,
+                TypeAttribute.deleted_time.is_(None),
+            )
+            .order_by(TypeAttribute.type_attribute_id),
+        ).tuples()
+    )
+
+    return TypeCatalogWithAttributesResponse(
+        nodeTypes=catalog.node_types,
+        edgeTypes=catalog.edge_types,
+        allowedConnections=catalog.allowed_connections,
+        typeAttributes=[
+            to_type_attribute_metadata_response(type_attribute, owner_type_key)
+            for type_attribute, node_type_key, edge_type_key in rows
+            if (owner_type_key := node_type_key or edge_type_key) is not None
+        ],
+    )
 
 
 def get_graph_type_catalog(
@@ -1053,6 +1105,23 @@ def to_edge_type_metadata_response(
         style=edge_type.ui_style,
         sourceEnd=edge_type.ui_source_end,
         targetEnd=edge_type.ui_target_end,
+    )
+
+
+def to_type_attribute_metadata_response(
+    type_attribute: TypeAttribute,
+    owner_type_key: str,
+) -> TypeAttributeMetadataResponse:
+    return TypeAttributeMetadataResponse(
+        ownerKind=type_attribute.owner_kind,
+        ownerTypeId=owner_type_key,
+        id=type_attribute.attribute_key,
+        name=type_attribute.name,
+        displayName=type_attribute.display_name,
+        dataType=type_attribute.data_type,
+        mandatory=type_attribute.mandatory,
+        maxLength=type_attribute.max_length,
+        multiline=type_attribute.multiline,
     )
 
 

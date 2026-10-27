@@ -384,6 +384,13 @@ state target-date edits do not rewrite existing graph lifetime dates. The
 frontend Refresh action reloads selected scenario and organisation state data
 through existing GET endpoints.
 
+For the MCP read tools (TASK-069H, `docs/domains/AI.md`) the service also
+offers `get_timeserie_values_page`, which returns a timeserie with at most a
+given number of its values within inclusive dates and the count of values
+within them, and `list_scenario_timeseries(include_values=False)`, which reads
+no values. Neither has a REST route, and the REST timeserie responses are
+unchanged.
+
 ---
 
 # Dependencies

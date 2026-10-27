@@ -167,6 +167,12 @@ node -> goal node -> selected metric node. It displays connected node names and
 the type catalog's actual `displayName`; missing or ambiguous paths are shown
 explicitly instead of selecting an arbitrary node.
 
+The service function `get_scenario_type_catalog_with_attributes` returns the
+type catalog plus the active type attribute definitions of active node and edge
+types (`TypeCatalogWithAttributesResponse.typeAttributes`). It has no REST
+route; the MCP read tool `get_type_catalog` (TASK-069H, `docs/domains/AI.md`)
+uses it, and the REST type-catalog responses are unchanged.
+
 Scenario history responses expose stable node and edge keys plus `createDate`
 and nullable `deleteDate`. They include logical history but exclude rows with a
 persistence-level `deleted_time`.
