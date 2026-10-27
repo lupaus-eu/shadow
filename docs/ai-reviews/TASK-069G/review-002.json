@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-069G/review-002",
+  "task": {
+    "id": "TASK-069G",
+    "path": "tasks/TASK-069G-mcp-read-server-foundation.md"
+  },
+  "round": 2,
+  "reviewed_at": "2026-10-27T09:57:11Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "8b903a02741ab06afb1a382ed569bc90f25e1500",
+    "head_sha": "e15c75656f66180b2f5759a9cb9e589efcc8eebe",
+    "comparison": "8b903a02741ab06afb1a382ed569bc90f25e1500...e15c75656f66180b2f5759a9cb9e589efcc8eebe",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "clean",
+    "summary": "Round 2 reviews the whole TASK-069G branch, focusing on the fix commit after round 1. That commit changes main.py, the MCP auth tests, AI.md and TESTING.md; no other code, setting or dependency changed. create_app now imports the MCP endpoint module only when MCP is enabled. The endpoint list keeps its type through a type-checking-only import, and its local annotation is not evaluated at runtime. Two new tests close the round 1 gaps, and the AI.md and TESTING.md wording matches them. Each new test fails against its mutation. Ruff check and pyright pass; the full backend suite passes (1044 passed, 61 skipped); the new concurrent test passed six repeated runs. A production image built from a git archive of this head does not load fastmcp with MCP disabled and registers both MCP routes only with MCP enabled. Round 1's F-002 stays open for a human decision in TASK-069O, without a disposition: rejected bearer attempts are not rate-limited and share the tool capacity limiter. The local OAuth flow with Claude Code through local Caddy remains a manual check. No new findings.",
+    "findings": [],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-069G/review-001",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "create_app imports the MCP endpoint module inside the MCP_ENABLED branch, and main.py has no other path to fastmcp. With MCP disabled, importing the app no longer loads fastmcp; a local probe measured about 34 MB less peak memory and about 1 s less import time than with MCP enabled. The production image built from this head confirms both states. A new test checks both states in a fresh interpreter, and it fails when the eager import is restored.",
+        "validated_by": {
+          "review_id": "TASK-069G/review-002",
+          "commit": "e15c75656f66180b2f5759a9cb9e589efcc8eebe"
+        }
+      },
+      {
+        "record_id": "TASK-069G/review-001",
+        "finding_id": "F-003",
+        "disposition": "fixed",
+        "rationale": "A new HTTP test seeds two Users with their own tokens and sends sequential warm-up calls, then 40 concurrent whoami calls over a file-backed SQLite database. Each call must return the calling token's own User. A mutation that makes McpBearerAuth reuse the first verified principal fails the new test, while the existing single-User test still passes.",
+        "validated_by": {
+          "review_id": "TASK-069G/review-002",
+          "commit": "e15c75656f66180b2f5759a9cb9e589efcc8eebe"
+        }
+      }
+    ]
+  }
+}

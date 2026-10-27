@@ -52,6 +52,7 @@ Päätetty teknologiapino:
 
 - frontend: React, TypeScript, Vite, pnpm, Vitest, ESLint, Prettier hakemistossa `frontend/`
 - backend: Python, FastAPI, Pydantic, uv, pytest, pyright, Ruff hakemistossa `backend/`
+- MCP: `fastmcp` 4 (ADR-015) for the MCP read and write endpoints in the backend
 - database: PostgreSQL
 - ORM: SQLAlchemy
 - migrations: repository-owned Python/Psycopg runner and paired SQL migrations
@@ -115,18 +116,20 @@ AI via MCP is an accepted design in `docs/decisions/ADR-015-ai-via-mcp.md`
 (TASK-069A). TASK-069B's flush-only domain service transaction cores,
 TASK-069C's deterministic timeseries generator, TASK-069D's MCP OAuth schema
 (migration 017, `mcp_oauth_*`), TASK-069E's OAuth discovery, registration,
-authorization request and consent API and TASK-069F's token, refresh and
-revoke endpoints (registered only with `MCP_ENABLED=true`, off by default),
-token verification and connections API are implemented; the rest is pending
-TASK-069G through TASK-069O, and no MCP client can connect yet. Users chat in their own MCP client on
+authorization request and consent API, TASK-069F's token, refresh and revoke
+endpoints, token verification and connections API and TASK-069G's `fastmcp`
+read and write endpoints with `McpBearerAuth`, resource protection and the
+first read tools (`backend/app/mcp/`) are implemented; the MCP and public OAuth
+endpoints are registered only with `MCP_ENABLED=true`, off by default. The rest
+is pending TASK-069H through TASK-069O. Users chat in their own MCP client on
 their own AI subscription; Schatten never calls an LLM or stores LLM keys.
-FastAPI will host `/api/mcp/read` (`schatten.read`) and `/api/mcp/write`
-(`schatten.write`) and act as OAuth 2.1 authorization server over the existing
+FastAPI hosts `/api/mcp/read` (`schatten.read`) and `/api/mcp/write`
+(`schatten.write`) and acts as OAuth 2.1 authorization server over the existing
 Entra login, without changing the Entra registration. The write service only
 stages AI change sets; **no MCP tool may apply changes** and a human applies or
 rejects each change set in the Metrics tab. No worker, scheduler or container is
-added. ADR-015 approves the `fastmcp` backend dependency (fallback: the `mcp`
-SDK's bundled FastMCP) for TASK-069G. The feature's C4 model uses LikeC4
+added. ADR-015 approved the `fastmcp` backend dependency, which TASK-069G added
+(`fastmcp>=4.1.4,<5`). The feature's C4 model uses LikeC4
 (`docs/diagrams/likec4/`); PlantUML remains the default elsewhere.
 
 ---

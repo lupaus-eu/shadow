@@ -63,25 +63,55 @@ docker compose --env-file .env --env-file .env.entra.local exec -T local-caddy \
   caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
 ```
 
-## AI via MCP settings (TASK-069E, TASK-069F)
+## AI via MCP settings (TASK-069E, TASK-069F, TASK-069G)
 
 MCP is off by default. `docker-compose.yml` passes these backend settings with
 the defaults shown in `.env.example`; override them in `.env` (no secrets):
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
-| `MCP_ENABLED` | `false` | With `false`, OAuth discovery, `/api/oauth/register`, `/api/oauth/authorize`, `/api/oauth/token`, `/api/oauth/revoke` and the `/api/v1/ai/oauth/consent` API return 404 and `GET /api/v1/auth/session` reports `features.mcp=false`; the `/api/v1/ai/connections` API stays available |
+| `MCP_ENABLED` | `false` | With `false`, the MCP endpoints `/api/mcp/read` and `/api/mcp/write`, OAuth discovery, `/api/oauth/register`, `/api/oauth/authorize`, `/api/oauth/token`, `/api/oauth/revoke` and the `/api/v1/ai/oauth/consent` API return 404 and `GET /api/v1/auth/session` reports `features.mcp=false`; the `/api/v1/ai/connections` API stays available |
 | `MCP_OAUTH_REDIRECT_URIS` | claude.ai and claude.com callbacks plus `http://127.0.0.1:{port}/callback`, `http://[::1]:{port}/callback`, `http://localhost:{port}/callback` | Redirect URI allowlist; `{port}` is literal |
 | `MCP_OAUTH_AUTHORIZATION_REQUEST_LIFETIME_SECONDS`, `MCP_OAUTH_AUTHORIZATION_CODE_LIFETIME_SECONDS` | `600`, `60` | Pending request and code lifetimes |
 | `MCP_OAUTH_ACCESS_TOKEN_LIFETIME_SECONDS`, `MCP_OAUTH_REFRESH_TOKEN_IDLE_LIFETIME_SECONDS`, `MCP_OAUTH_GRANT_LIFETIME_SECONDS` | `3600`, `604800`, `2592000` | Access token lifetime, refresh token idle timeout and absolute grant lifetime; no token outlives its grant |
 | `MCP_OAUTH_REGISTER_RATE_LIMIT_PER_MINUTE`, `..._AUTHORIZE_...`, `..._TOKEN_...`, `..._REVOKE_...` | `30`, `20`, `300`, `60` | Per-IP buckets of the separate `oauth_rate_limiter` |
 | `MCP_OAUTH_MAX_PENDING_REQUESTS_PER_CLIENT`, `MCP_OAUTH_MAX_PENDING_REQUESTS`, `MCP_OAUTH_MAX_CLIENTS` | `20`, `1000`, `10000` | Pending request and client caps |
+| `MCP_TOOL_CONCURRENCY` | `4` | Shared `anyio.CapacityLimiter` for MCP bearer verification and tool database work (1 to 64) |
+| `MCP_RATE_LIMIT_PER_MINUTE` | `120` | Requests per grant and minute on `/api/mcp/*`, counted by the separate `mcp_rate_limiter` |
 
 To try the endpoints locally, set `MCP_ENABLED=true` in `.env` and recreate the
-backend (`make dev-up`). Vendor-cloud connectors cannot reach `app.localhost`;
-use a local client such as Claude Code with `NODE_EXTRA_CA_CERTS` trusting the
-local Caddy CA (ADR-015). Tokens can be issued, but the MCP endpoints arrive
-with TASK-069G.
+backend (`make dev-up`). Vendor-cloud connectors such as claude.ai cannot reach
+`app.localhost`, so use a local MCP client (ADR-015).
+
+### Connect Claude Code locally
+
+Claude Code runs on Node.js, which does not read the host's CA store. Point
+`NODE_EXTRA_CA_CERTS` at the local CA certificate that `make dev-init` printed:
+`.local/app-tls/ca.crt`, or `.local/authentik-tls/ca.crt` when the legacy CA
+was reused. Never point it at a key.
+
+```bash
+export NODE_EXTRA_CA_CERTS="$PWD/.local/app-tls/ca.crt"
+claude mcp add --transport http schatten-read https://app.localhost/api/mcp/read
+claude
+```
+
+In Claude Code, run `/mcp`, select `schatten-read` and authenticate. Claude
+Code registers itself and opens the consent page in the browser, where you sign
+in with Entra and approve read access; the code returns to Claude Code on an
+allowlisted loopback redirect and Claude Code exchanges it for tokens. Then ask
+it to call the `whoami` tool, which returns your Schatten User. `schatten-write`
+(`https://app.localhost/api/mcp/write`) connects the same way with a separate
+grant; it has no tools until TASK-069J.
+
+An unauthenticated request shows the discovery challenge:
+
+```bash
+curl -si --cacert "$NODE_EXTRA_CA_CERTS" -X POST https://app.localhost/api/mcp/read
+```
+
+It answers `401` with
+`WWW-Authenticate: Bearer resource_metadata="https://app.localhost/.well-known/oauth-protected-resource/api/mcp/read"`.
 
 ## Designated local Entra administrator
 

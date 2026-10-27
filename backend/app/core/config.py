@@ -138,6 +138,12 @@ class Settings(StrictBaseModel):
     mcp_oauth_max_clients: int = Field(
         default=10_000, alias="MCP_OAUTH_MAX_CLIENTS", ge=1
     )
+    mcp_tool_concurrency: int = Field(
+        default=4, alias="MCP_TOOL_CONCURRENCY", ge=1, le=64
+    )
+    mcp_rate_limit_per_minute: int = Field(
+        default=120, alias="MCP_RATE_LIMIT_PER_MINUTE", ge=1
+    )
 
     @field_validator(
         "oidc_scopes",
@@ -373,6 +379,8 @@ def get_settings() -> Settings:
         "MCP_OAUTH_MAX_PENDING_REQUESTS_PER_CLIENT",
         "MCP_OAUTH_MAX_PENDING_REQUESTS",
         "MCP_OAUTH_MAX_CLIENTS",
+        "MCP_TOOL_CONCURRENCY",
+        "MCP_RATE_LIMIT_PER_MINUTE",
     )
     environment = os.getenv("APP_ENV", "development")
     required_auth_names = (

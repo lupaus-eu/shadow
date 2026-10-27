@@ -707,6 +707,39 @@ MIGRATION_TEST_DATABASE_URL=postgresql://schatten:schatten_dev_password@localhos
   uv run pytest tests/test_mcp_oauth_postgresql_integration.py -v
 ```
 
+## MCP Server Harness (TASK-069G)
+
+`tests/test_mcp_auth.py` builds the app with `MCP_ENABLED=true` over SQLite
+and passes its session factory as `create_app(mcp_session_factory=...)`,
+because `McpBearerAuth` and the tools open their own sessions outside FastAPI
+dependency injection. It uses `with TestClient(app)` so the lifespan starts
+both MCP session managers, stores grants and access tokens directly and sends
+plain JSON-RPC requests. It covers the `401` challenge without a token (also
+for every method and for the session cookie), `invalid_token` for malformed,
+unknown, repeated and other-resource tokens, `403 insufficient_scope` with a
+stubbed `ROLE_SCOPES` mapping, a role change acting on the next call, expired
+and revoked tokens and grants and a soft-deleted User, per-grant limiting by
+`mcp_rate_limiter` while `auth_rate_limiter` and `oauth_rate_limiter` are never
+called, the `MCP_ENABLED=false` 404s, the stateless 405s, that an MCP token is
+not accepted on `/api/v1`, and that neither tokens nor tool arguments reach the
+root or `fastmcp` logs. Concurrent `whoami` calls by two Users, over a
+file-backed SQLite database because the in-memory one shares one connection,
+must each return the calling token's own User. A fresh interpreter checks that
+importing `app.main` with MCP disabled does not import `fastmcp` and that
+enabling MCP does.
+
+`tests/test_mcp_tools.py` calls the read tools through `fastmcp.Client`'s
+in-memory transport with a stubbed `current_principal`. It covers the read-only
+annotations, every tool's result and ordering, deleted rows, service errors as
+tool errors, key argument validation, a missing principal, that tool work runs
+in a worker thread holding a token of the shared capacity limiter and that the
+write server has no tools yet.
+
+```bash
+cd backend
+uv run pytest tests/test_mcp_auth.py tests/test_mcp_tools.py -v
+```
+
 ## Local Direct-Entra Integration
 
 Use the local Caddy/direct-Entra configuration rather than the historical

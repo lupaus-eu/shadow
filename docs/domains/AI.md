@@ -4,15 +4,18 @@ Status: accepted design in ADR-015; TASK-069B (the domain service transaction
 cores this domain will use), TASK-069C (the deterministic timeseries
 generator), TASK-069D (the MCP OAuth schema), TASK-069E (OAuth discovery,
 client registration, the authorization request and the consent API, see
-[MCP OAuth Authorization](#mcp-oauth-authorization-task-069e)) and TASK-069F
+[MCP OAuth Authorization](#mcp-oauth-authorization-task-069e)), TASK-069F
 (tokens, refresh rotation, revocation, `verify_access_token` and the
 connections API, see
 [MCP OAuth Tokens And Connections](#mcp-oauth-tokens-and-connections-task-069f))
-are implemented and the rest is pending TASK-069G through TASK-069O. The public
-OAuth endpoints and the consent API are registered only with
-`MCP_ENABLED=true`, which is off by default and in production; the connections
-API is always registered. No MCP endpoint exists yet (TASK-069G), so no MCP
-client can use Schatten yet; the generator is library code.
+and TASK-069G (the MCP read and write endpoints, bearer authentication,
+resource protection and the first read tools, see
+[MCP Servers (TASK-069G)](#mcp-servers-task-069g)) are implemented and the rest
+is pending TASK-069H through TASK-069O. The MCP endpoints, the public OAuth
+endpoints and the consent API are registered only with `MCP_ENABLED=true`,
+which is off by default and in production; the connections API is always
+registered. The write server has no tools yet (TASK-069J); the generator is
+library code.
 
 ## Purpose
 
@@ -493,7 +496,7 @@ warning without secrets and left to a later token request, and the token
 request itself continues.
 
 `verify_access_token(session, token, required_resource, required_scope)` is
-the verification TASK-069G's `McpBearerAuth` will use. It re-reads the token,
+the verification that TASK-069G's `McpBearerAuth` uses. It re-reads the token,
 grant, client and User on every call and returns an `McpPrincipal` (`user_id`,
 `role`, `grant_id`, `grant_key`, `client_id`, `client_name`, `scopes`), or
 raises `TokenVerificationError` with:
@@ -558,6 +561,75 @@ stay revocable while `MCP_ENABLED=false`):
 
 `tests/test_api_authorization.py` sweeps these routes in both app
 configurations.
+
+## MCP Servers (TASK-069G)
+
+The code is in `backend/app/mcp/`: `endpoints.py` builds both servers,
+`auth.py` holds `McpBearerAuth`, `runtime.py` runs tool database work,
+`read_server.py` the read tools and `write_server.py` the write scaffold.
+`fastmcp` 4 is the one approved MCP dependency (ADR-015).
+
+- `create_app()` builds both FastMCP servers inside the factory, only with
+  `MCP_ENABLED=true`, stateless (`stateless_http=True`) with JSON responses
+  (`json_response=True`). It registers the exact routes `/api/mcp/read` and
+  `/api/mcp/write` for GET, POST and DELETE, outside the OpenAPI schema, each
+  wrapped in `McpBearerAuth`. `app.mount` is not used, because it redirects
+  `/api/mcp/<server>` to a trailing slash. One combined lifespan runs both
+  session managers; the OIDC provider initialisation in it stays skipped in the
+  test environment, which now also runs the lifespan. Stateless servers keep
+  no MCP session or server-sent event stream, so an authenticated GET or DELETE
+  answers 405. With `MCP_ENABLED=false` no MCP route exists and every method
+  answers 404, and `fastmcp` is not even imported: `create_app()` imports
+  `app.mcp.endpoints` only when MCP is enabled, so a disabled backend saves
+  fastmcp's memory, import time and import-time logging setup.
+- `McpBearerAuth` accepts exactly one `Authorization: Bearer` header and never
+  the session cookie. It calls `verify_access_token` with the endpoint's
+  canonical resource `<PUBLIC_ORIGIN>/api/mcp/<server>` and scope in a worker
+  thread under the shared capacity limiter, so a token for the other resource,
+  an expired or revoked token or grant and a soft-deleted User are rejected on
+  the next call, and the role is re-read on every call. It answers:
+  - `401` with
+    `WWW-Authenticate: Bearer resource_metadata="<origin>/.well-known/oauth-protected-resource/api/mcp/<server>"`
+    when no bearer token was presented (also for another scheme such as
+    `Basic`);
+  - `401` with `Bearer error="invalid_token", resource_metadata="..."` when a
+    token was presented but rejected, including a repeated `Authorization`
+    header and the resource mismatch;
+  - `403` with
+    `Bearer error="insufficient_scope", scope="<scope>", resource_metadata="..."`
+    when the effective scopes after the role mapping lack the endpoint's scope;
+  - `429 temporarily_unavailable` when the grant exceeded
+    `MCP_RATE_LIMIT_PER_MINUTE` (default 120) in the current minute. The count
+    is kept per grant key in `app.state.mcp_rate_limiter`, a separate
+    `FixedWindowRateLimiter` that never touches `auth_rate_limiter` or
+    `oauth_rate_limiter`.
+
+  Error bodies are `{"error", "error_description"}` and every `/api/mcp/*`
+  response has `Cache-Control: no-store`. On success it places the
+  `McpPrincipal` in the `current_principal` context variable for the tools.
+- `McpToolRuntime.run()` runs a tool's database work through
+  `anyio.to_thread.run_sync` in its own session under one
+  `anyio.CapacityLimiter` of `MCP_TOOL_CONCURRENCY` (default 4) tokens, shared
+  by both servers and the bearer verification. A domain `HTTPException` below
+  500 becomes a tool error with the service's message, for example
+  `Organisation not found.`. Any other error reaches the client only as
+  `Internal error` (the servers also set `mask_error_details`) and is logged
+  with its type and stack frames but without its message, because messages
+  such as SQL errors may contain tool arguments. Tokens and tool arguments are
+  never logged.
+- Read tools return the existing response schemas, which FastMCP serialises
+  as structured content by field name: list results are wrapped as
+  `{"result": [...]}` and `OrgStateResponse.target_date` appears as
+  `target_date`, not REST's `targetDate` alias. Key arguments are strings of 1
+  to 128 characters.
+
+The first read tools are `whoami` (`UserResponse` of the principal's User),
+`list_organisations` (`OrganisationResponse` list),
+`list_scenarios(organisation_key)` (`ScenarioResponse` list) and
+`list_org_states(organisation_key, scenario_key)` (`OrgStateResponse` list).
+TASK-069H adds the remaining read tools, TASK-069J the write tools.
+
+How to connect Claude Code locally is in `docs/LOCAL-DEVELOPMENT.md`.
 
 ## MCP Tools
 

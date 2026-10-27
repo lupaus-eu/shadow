@@ -103,6 +103,8 @@ services:
       MCP_OAUTH_MAX_PENDING_REQUESTS_PER_CLIENT: "20"
       MCP_OAUTH_MAX_PENDING_REQUESTS: "1000"
       MCP_OAUTH_MAX_CLIENTS: "10000"
+      MCP_TOOL_CONCURRENCY: "4"
+      MCP_RATE_LIMIT_PER_MINUTE: "120"
     tmpfs:
       - /tmp:size=64m
     # edge provides Caddy ingress and Entra egress; data is internal-only.

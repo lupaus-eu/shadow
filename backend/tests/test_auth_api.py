@@ -24,6 +24,9 @@ from app.core.database import get_db_session
 from app.core.models import Base
 from app.main import create_app
 
+# The domain the test client stores server-set cookies under.
+TEST_SERVER_COOKIE_DOMAIN = "testserver.local"
+
 
 class FakeProvider:
     def __init__(self) -> None:
@@ -255,7 +258,11 @@ def test_swapped_browser_binding_does_not_consume_transaction(
     state, valid_binding = _start(client)
     swapped_binding = "A" * 43
     assert swapped_binding != valid_binding
-    client.cookies.set("schatten-preauth", swapped_binding)
+    # Replace the server-set cookie instead of adding a second one with the
+    # same name: the Cookie header order of such duplicates is client-specific.
+    client.cookies.set(
+        "schatten-preauth", swapped_binding, domain=TEST_SERVER_COOKIE_DOMAIN
+    )
 
     response = client.get(
         "/api/v1/auth/callback", params={"state": state, "code": "secret-code"}
@@ -267,7 +274,9 @@ def test_swapped_browser_binding_does_not_consume_transaction(
         assert (
             session.scalar(select(func.count()).select_from(OidcLoginTransaction)) == 1
         )
-    client.cookies.set("schatten-preauth", valid_binding)
+    client.cookies.set(
+        "schatten-preauth", valid_binding, domain=TEST_SERVER_COOKIE_DOMAIN
+    )
 
 
 def test_provider_error_consumes_all_browser_bound_transactions(

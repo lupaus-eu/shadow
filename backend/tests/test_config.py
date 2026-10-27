@@ -275,6 +275,21 @@ def test_mcp_is_disabled_by_default_with_the_adr_015_allowlist() -> None:
     assert settings.mcp_oauth_max_pending_requests_per_client == 20
     assert settings.mcp_oauth_max_pending_requests == 1000
     assert settings.mcp_oauth_max_clients == 10_000
+    assert settings.mcp_tool_concurrency == 4
+    assert settings.mcp_rate_limit_per_minute == 120
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"MCP_TOOL_CONCURRENCY": 0},
+        {"MCP_TOOL_CONCURRENCY": 65},
+        {"MCP_RATE_LIMIT_PER_MINUTE": 0},
+    ],
+)
+def test_mcp_resource_limits_are_bounded(overrides: dict[str, int]) -> None:
+    with pytest.raises(ValidationError):
+        Settings.model_validate(overrides)
 
 
 def test_mcp_settings_are_read_from_the_environment(monkeypatch: MonkeyPatch) -> None:
@@ -288,6 +303,8 @@ def test_mcp_settings_are_read_from_the_environment(monkeypatch: MonkeyPatch) ->
     monkeypatch.setenv("MCP_OAUTH_ACCESS_TOKEN_LIFETIME_SECONDS", "600")
     monkeypatch.setenv("MCP_OAUTH_REFRESH_TOKEN_IDLE_LIFETIME_SECONDS", "3600")
     monkeypatch.setenv("MCP_OAUTH_GRANT_LIFETIME_SECONDS", "86400")
+    monkeypatch.setenv("MCP_TOOL_CONCURRENCY", "2")
+    monkeypatch.setenv("MCP_RATE_LIMIT_PER_MINUTE", "30")
 
     settings = get_settings()
 
@@ -300,6 +317,8 @@ def test_mcp_settings_are_read_from_the_environment(monkeypatch: MonkeyPatch) ->
     assert settings.mcp_oauth_access_token_lifetime_seconds == 600
     assert settings.mcp_oauth_refresh_token_idle_lifetime_seconds == 3600
     assert settings.mcp_oauth_grant_lifetime_seconds == 86400
+    assert settings.mcp_tool_concurrency == 2
+    assert settings.mcp_rate_limit_per_minute == 30
     get_settings.cache_clear()
 
 

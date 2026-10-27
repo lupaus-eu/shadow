@@ -1,6 +1,6 @@
 # ADR-015: AI Via MCP With Human-Applied Change Sets
 
-Status: Accepted design; TASK-069B through TASK-069F implemented, TASK-069G through TASK-069O pending
+Status: Accepted design; TASK-069B through TASK-069G implemented, TASK-069H through TASK-069O pending
 
 Date: 2026-10-21
 
@@ -52,15 +52,19 @@ Constraints from accepted decisions:
 
 ## Scope And Status
 
-This ADR is an accepted design. **No MCP client can use Schatten yet.** The
-implementation is delivered by TASK-069B through TASK-069O; TASK-069B (the
-domain service transaction cores, which change no REST behaviour), TASK-069C
-(the deterministic timeseries generator, which adds no route), TASK-069D (the
-MCP OAuth schema, which adds no route), TASK-069E (discovery, registration,
-authorization request and consent API, registered only with
-`MCP_ENABLED=true`) and TASK-069F (token, refresh and revoke endpoints,
-registered only with `MCP_ENABLED=true`, `verify_access_token` and the
-always-registered connections API) are implemented and the rest is pending.
+This ADR is an accepted design. **No production MCP client can use Schatten
+yet**; with `MCP_ENABLED=true` (development only) a local MCP client can
+connect to the read service. The implementation is delivered by TASK-069B
+through TASK-069O; TASK-069B (the domain service transaction cores, which
+change no REST behaviour), TASK-069C (the deterministic timeseries generator,
+which adds no route), TASK-069D (the MCP OAuth schema, which adds no route),
+TASK-069E (discovery, registration, authorization request and consent API,
+registered only with `MCP_ENABLED=true`), TASK-069F (token, refresh and revoke
+endpoints, registered only with `MCP_ENABLED=true`, `verify_access_token` and
+the always-registered connections API) and TASK-069G (the FastMCP read and
+write endpoints, registered only with `MCP_ENABLED=true`, bearer
+authentication, resource protection and the first read tools) are implemented
+and the rest is pending.
 The feature stays disabled (`MCP_ENABLED=false`) until TASK-069O's separately
 approved production enablement.
 
@@ -71,7 +75,7 @@ approved production enablement.
 | TASK-069D | MCP OAuth schema (`mcp_oauth_*`: clients, authorization requests, grants, tokens) (implemented) |
 | TASK-069E | OAuth discovery, client registration, authorization request, consent API and Caddy routing (implemented) |
 | TASK-069F | Token, refresh, revoke, `verify_access_token` and connections API (implemented) |
-| TASK-069G | FastMCP foundation, bearer authentication, resource protection, first read tools |
+| TASK-069G | FastMCP foundation, bearer authentication, resource protection, first read tools (implemented) |
 | TASK-069H | Remaining read tools and generator preview |
 | TASK-069I | Change-set schema and engine (dry-run and atomic apply) |
 | TASK-069J | Write MCP tools for staging change sets |
@@ -134,6 +138,9 @@ compatible major version. TASK-069G must first verify compatibility with the
 locked FastAPI and Starlette versions. If it is not compatible, the approved
 fallback is the official `mcp` SDK's bundled FastMCP (`mcp.server.fastmcp`).
 Only one of the two is added. No frontend dependency is approved.
+TASK-069G verified `fastmcp` 4.1.4 (with its `mcp` 2.3.0) against the locked
+FastAPI 0.138.1 and Starlette 1.3.1, which stay unchanged, and added
+`fastmcp>=4.1.4,<5`; the fallback was not needed.
 
 TASK-069C declares `numpy` directly in `backend/pyproject.toml`. It is already
 locked transitively through the forecasting stack, so `uv.lock` gains no new

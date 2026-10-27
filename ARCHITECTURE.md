@@ -26,6 +26,8 @@ Päätetty tekninen perusrakenne:
 
 - frontend: React, TypeScript, Vite, pnpm, Vitest, ESLint, Prettier hakemistossa `frontend/`
 - backend: Python, FastAPI, Pydantic, uv, pytest, pyright, Ruff hakemistossa `backend/`
+- MCP: `fastmcp` 4 (ADR-015) serves the MCP read and write endpoints inside
+  the backend process (TASK-069G)
 - database: PostgreSQL
 - ORM: SQLAlchemy
 - authentication target: provider-neutral backend OIDC connecting directly to
@@ -59,10 +61,12 @@ Päätetty tekninen perusrakenne:
   is an accepted design. TASK-069B's flush-only domain service transaction
   cores, TASK-069C's deterministic timeseries generator, TASK-069D's MCP
   OAuth schema, TASK-069E's OAuth discovery, registration, authorization
-  request and consent API and TASK-069F's token, refresh and revoke endpoints
-  (all behind `MCP_ENABLED=false`), token verification and connections API
-  are implemented; the rest is pending TASK-069G through TASK-069O and no MCP
-  client can connect yet (see [AI Via MCP](#ai-via-mcp))
+  request and consent API, TASK-069F's token, refresh and revoke endpoints,
+  token verification and connections API and TASK-069G's FastMCP read and
+  write endpoints with bearer authentication and the first read tools (all
+  MCP and public OAuth endpoints behind `MCP_ENABLED=false`) are implemented;
+  the rest is pending TASK-069H through TASK-069O (see
+  [AI Via MCP](#ai-via-mcp))
 
 Tarkemmat toteutusyksityiskohdat täsmentyvät taskien ja tarvittaessa uusien ADR:ien kautta.
 
@@ -555,9 +559,14 @@ rotating refresh tokens with reuse detection, RFC 7009 revocation, lazy
 cleanup, `verify_access_token` and the always-registered
 `/api/v1/ai/connections` API, in the same package; see the
 [MCP OAuth token sequence](docs/diagrams/generated/sequence-mcp-oauth-tokens.svg))
-are implemented; the rest is pending TASK-069G through TASK-069O. Nothing else
-below is implemented yet, and the feature stays behind `MCP_ENABLED=false`
-until TASK-069O's separately approved production enablement.
+and TASK-069G (the `fastmcp` read and write servers at exact routes
+`/api/mcp/read` and `/api/mcp/write`, `McpBearerAuth`, the shared tool
+capacity limiter, the per-grant `mcp_rate_limiter` and the read tools
+`whoami`, `list_organisations`, `list_scenarios` and `list_org_states`, in
+`backend/app/mcp/`) are implemented; the rest is pending TASK-069H through
+TASK-069O. The write server has no tools yet. Nothing else below is
+implemented yet, and the feature stays behind `MCP_ENABLED=false` until
+TASK-069O's separately approved production enablement.
 
 Users chat in their own MCP-capable AI client (Claude Desktop, claude.ai,
 Claude Code or another) on their own AI subscription. Schatten never calls an
@@ -574,8 +583,10 @@ Accepted design:
 
 - Two FastMCP Streamable HTTP services run in the existing FastAPI process:
   `/api/mcp/read` (scope `schatten.read`) and `/api/mcp/write` (scope
-  `schatten.write`), stateless with JSON responses. **No MCP tool applies
-  changes.**
+  `schatten.write`), stateless with JSON responses. `create_app()` builds
+  them, registers exact GET, POST and DELETE routes wrapped in `McpBearerAuth`
+  (not `app.mount`, which redirects to a trailing slash) and runs both session
+  managers in one combined lifespan. **No MCP tool applies changes.**
 - Schatten is its own OAuth 2.1 authorization server: discovery, Dynamic
   Client Registration limited by a redirect URI allowlist, mandatory PKCE
   S256, opaque SHA-256-hashed tokens, rotating refresh tokens with reuse
@@ -686,8 +697,8 @@ Status: TBD
 
 Ulkoiset integraatiot kirjataan tähän, kun niitä lisätään.
 
-Accepted, not implemented: MCP clients and AI vendor connectors call
-Schatten's MCP and OAuth endpoints (ADR-015). Schatten makes no outbound call
+Implemented behind `MCP_ENABLED=false`: MCP clients and AI vendor connectors
+call Schatten's MCP and OAuth endpoints (ADR-015). Schatten makes no outbound call
 to an AI vendor; see [AI Via MCP](#ai-via-mcp).
 
 ## Integration Principles
@@ -891,7 +902,7 @@ ADR-004 Authentication, Identity And Session Architecture: accepted
 ADR-005 Production-Only Deployment Environments: accepted
 ADR-006 Local Authentik TLS And Optional Entra Federation: target superseded by ADR-013
 ADR-013 Shared Entra Registration And Local HTTPS Deployment: accepted; source delivery H1-H3 implemented, rollout pending
-ADR-015 AI Via MCP With Human-Applied Change Sets: accepted design; TASK-069B..TASK-069E implemented, TASK-069F..TASK-069O pending
+ADR-015 AI Via MCP With Human-Applied Change Sets: accepted design; TASK-069B..TASK-069G implemented, TASK-069H..TASK-069O pending
 ```
 
 ---

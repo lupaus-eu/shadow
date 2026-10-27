@@ -223,14 +223,14 @@ and ACME account state persist in the `schatten_caddy_data` volume.
 Production retains secure cookies, `APP_ENV=production`, disabled CORS, the
 existing RS256/session/transaction limits and same-origin API behavior.
 
-### AI Via MCP Settings (TASK-069E, TASK-069F)
+### AI Via MCP Settings (TASK-069E, TASK-069F, TASK-069G)
 
 ADR-015's MCP OAuth settings are fixed in `docker-compose.production.yml`, not
 in the env file. They contain no secret.
 
 | Setting | Production value | Contract |
 | --- | --- | --- |
-| `MCP_ENABLED` | `false` | Feature flag. With `false` the discovery, registration, authorization, consent, token and revoke endpoints are not registered and return 404, and the session response reports `features.mcp=false`. The `/api/v1/ai/connections` API and the admin per-user revocation stay registered for ADR-015's incident procedure. Enabling it needs TASK-069O's separate human approval; `verify-production-compose.sh` asserts `false` |
+| `MCP_ENABLED` | `false` | Feature flag. With `false` the MCP endpoints `/api/mcp/read` and `/api/mcp/write` and the discovery, registration, authorization, consent, token and revoke endpoints are not registered and return 404, and the session response reports `features.mcp=false`. The `/api/v1/ai/connections` API and the admin per-user revocation stay registered for ADR-015's incident procedure. Enabling it needs TASK-069O's separate human approval; `verify-production-compose.sh` asserts `false` |
 | `MCP_OAUTH_REDIRECT_URIS` | claude.ai and claude.com callbacks, `http://127.0.0.1:{port}/callback`, `http://[::1]:{port}/callback`, `http://localhost:{port}/callback` | Space- or comma-separated allowlist. Exact entries must be HTTPS without userinfo, query, fragment or wildcard. Loopback entries keep the literal `{port}` placeholder. Startup fails on any other entry. TASK-069O trims the loopback entries to those real clients use |
 | `MCP_OAUTH_AUTHORIZATION_REQUEST_LIFETIME_SECONDS` | `600` | Pending authorization request lifetime (1 to 3600) |
 | `MCP_OAUTH_AUTHORIZATION_CODE_LIFETIME_SECONDS` | `60` | Single-use authorization code lifetime (1 to 600) |
@@ -244,6 +244,8 @@ in the env file. They contain no secret.
 | `MCP_OAUTH_MAX_PENDING_REQUESTS_PER_CLIENT` | `20` | Live undecided authorization requests per client; may not exceed the total |
 | `MCP_OAUTH_MAX_PENDING_REQUESTS` | `1000` | Live undecided authorization requests in total |
 | `MCP_OAUTH_MAX_CLIENTS` | `10000` | Non-deleted registered clients; beyond it `register` answers 503 and logs a warning. Raising it is the operator remedy (ADR-015) |
+| `MCP_TOOL_CONCURRENCY` | `4` | Tokens of the one `anyio.CapacityLimiter` shared by MCP bearer verification and tool database work in worker threads (1 to 64) |
+| `MCP_RATE_LIMIT_PER_MINUTE` | `120` | Requests per grant and minute on `/api/mcp/*`, counted by the separate in-process `mcp_rate_limiter`; beyond it `429` |
 
 The backend writes ADR-015's MCP OAuth audit entries (client registrations and
 every grant revocation with actor, User id, grant key, `client_id`,
@@ -253,8 +255,8 @@ though `fastapi run` configures only the uvicorn loggers.
 
 The `register`, `token` and `revoke` buckets are higher than `authorize`
 because vendor connector brokers call them from shared egress addresses.
-The OAuth limiter is separate from the login limiter, and both assume one
-backend replica. TASK-069O verifies the defaults with real clients.
+The OAuth and MCP limiters are separate from the login limiter, and all assume
+one backend replica. TASK-069O verifies the defaults with real clients.
 
 ## Host Setup And Build/Release Contract
 
