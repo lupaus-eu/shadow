@@ -1,17 +1,31 @@
-"""Read AI change sets for the MCP tools (ADR-015).
+"""Read AI change sets for the MCP tools and the review API (ADR-015).
 
 Change sets are read by key within active organisations. Scenario and
-organisation rows are joined only to map ids to keys, as the engine does.
+organisation rows are joined only to map ids to keys, as the engine does, and
+User rows are read only for the names of creators and reviewers.
 """
 
-from collections.abc import Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from typing import Any, cast
 
 from fastapi import HTTPException, status
-from sqlalchemy import Select, func, select
+from sqlalchemy import Select, and_, func, or_, select
 from sqlalchemy.orm import Session
 
+from app.api.v1.ai_change_sets import engine
 from app.api.v1.ai_change_sets.models import AiChangeSet, AiChangeSetOperation
+from app.api.v1.ai_change_sets.review_schemas import (
+    INLINE_FROZEN_VALUES_LIMIT,
+    ChangeSetListItem,
+    ChangeSetReviewDetail,
+    ChangeSetReviewOperation,
+    ReviewApplyOutcome,
+    ReviewExecutionResult,
+    ReviewFrozenValues,
+    ReviewNodeReplacement,
+    ReviewOperationError,
+    ReviewTimeserieReplacement,
+)
 from app.api.v1.ai_change_sets.schemas import (
     ApplyOutcome,
     ChangeSetDetail,
@@ -21,17 +35,34 @@ from app.api.v1.ai_change_sets.schemas import (
     ExecutionResult,
     FrozenValues,
     FrozenValuesSummary,
+    NodeReplacement,
     OperationError,
+    OperationReplacement,
+    TimeserieReplacement,
 )
 from app.api.v1.org_states import org_states_service
 from app.api.v1.org_states.models import Scenario
+from app.api.v1.org_twin_structure.schemas import GraphNodePatchRequest
 from app.api.v1.organisations.models import Organisation
 from app.api.v1.organisations.service import get_active_organisation
+from app.api.v1.users.models import User
+from app.core.config import Settings
+
+_PATCH_FIELD_ALIASES = {
+    name: field.alias
+    for name, field in GraphNodePatchRequest.model_fields.items()
+    if field.alias is not None
+}
 
 
-def get_change_set(session: Session, change_set_key: str) -> AiChangeSet:
-    """The change set with this key in an active organisation, else 404."""
-    change_set = session.scalar(
+def get_change_set(
+    session: Session, change_set_key: str, *, organisation_key: str | None = None
+) -> AiChangeSet:
+    """The change set with this key in an active organisation, else 404.
+
+    With `organisation_key` the change set must belong to that organisation.
+    """
+    query = (
         select(AiChangeSet)
         .join(Organisation, Organisation.organisation_id == AiChangeSet.organisation_id)
         .where(
@@ -39,6 +70,9 @@ def get_change_set(session: Session, change_set_key: str) -> AiChangeSet:
             Organisation.deleted_time.is_(None),
         )
     )
+    if organisation_key is not None:
+        query = query.where(Organisation.organisation_key == organisation_key)
+    change_set = session.scalar(query)
     if change_set is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -54,11 +88,13 @@ def list_change_sets(
     status_filter: ChangeSetStatus | None,
     scenario_key: str | None,
     limit: int,
+    include_unscoped: bool = False,
 ) -> list[ChangeSetSummary]:
     """An organisation's change sets, newest first, at most `limit`.
 
     `scenario_key` filters on the derived scenario reference and must name an
-    active scenario of the organisation.
+    active scenario of the organisation. `include_unscoped` adds the change
+    sets without a scenario reference to that filter.
     """
     organisation = get_active_organisation(session, organisation_key)
     query = _summary_query().where(
@@ -68,8 +104,13 @@ def list_change_sets(
         query = query.where(AiChangeSet.status == status_filter)
     if scenario_key is not None:
         org_states_service.get_scenario(session, organisation_key, scenario_key)
-        query = query.where(
+        scoped = and_(
             Scenario.scenario_key == scenario_key, Scenario.deleted_time.is_(None)
+        )
+        query = query.where(
+            or_(scoped, AiChangeSet.scenario_id.is_(None))
+            if include_unscoped
+            else scoped
         )
     rows = session.execute(
         query.order_by(
@@ -88,14 +129,9 @@ def change_set_summary(session: Session, change_set: AiChangeSet) -> ChangeSetSu
 
 def change_set_detail(session: Session, change_set: AiChangeSet) -> ChangeSetDetail:
     summary = change_set_summary(session, change_set)
-    rows = session.scalars(
-        select(AiChangeSetOperation)
-        .where(AiChangeSetOperation.change_set_id == change_set.change_set_id)
-        .order_by(AiChangeSetOperation.position)
-    ).all()
     return ChangeSetDetail(
         **summary.model_dump(),
-        operations=_operation_details(rows),
+        operations=_operation_details(_operation_rows(session, change_set)),
         validation_result=(
             ExecutionResult.model_validate(change_set.validation_result)
             if change_set.validation_result is not None
@@ -107,6 +143,167 @@ def change_set_detail(session: Session, change_set: AiChangeSet) -> ChangeSetDet
             else None
         ),
     )
+
+
+def user_names(session: Session, user_ids: Iterable[int | None]) -> dict[int, str]:
+    """Names of the creators and reviewers, deleted Users included."""
+    ids = {user_id for user_id in user_ids if user_id is not None}
+    if not ids:
+        return {}
+    return dict(
+        session.execute(select(User.user_id, User.name).where(User.user_id.in_(ids)))
+        .tuples()
+        .all()
+    )
+
+
+def review_list_item(
+    summary: ChangeSetSummary, names: Mapping[int, str]
+) -> ChangeSetListItem:
+    """A summary for the review API; `names` maps the User ids to names."""
+    return ChangeSetListItem(
+        **summary.model_dump(exclude={"organisation_key"}),
+        created_by_name=names[summary.created_by],
+        reviewed_by_name=(
+            names[summary.reviewed_by] if summary.reviewed_by is not None else None
+        ),
+    )
+
+
+def review_detail(
+    session: Session,
+    organisation_key: str,
+    change_set_key: str,
+    *,
+    settings: Settings,
+) -> ChangeSetReviewDetail:
+    """The review detail with replacement flags recomputed against current data.
+
+    Every read, the lookup included, runs under the change-set statement
+    timeout. The change set, its summary and its operation rows come from one
+    statement, and the flags are computed from exactly those rows, so a draft
+    edited meanwhile cannot make any part of the detail disagree. A stored
+    operation that no longer parses raises.
+    """
+    engine.set_statement_timeout(session, settings)
+    change_set = get_change_set(
+        session, change_set_key, organisation_key=organisation_key
+    )
+    results = session.execute(
+        _summary_query()
+        .add_columns(AiChangeSetOperation)
+        .outerjoin(
+            AiChangeSetOperation,
+            AiChangeSetOperation.change_set_id == AiChangeSet.change_set_id,
+        )
+        .where(AiChangeSet.change_set_id == change_set.change_set_id)
+        .order_by(AiChangeSetOperation.position)
+        .execution_options(populate_existing=True)
+    ).all()
+    summary = _summary(*results[0][:4])
+    rows = [result[4] for result in results if result[4] is not None]
+    report = engine.compute_replacements(
+        session,
+        change_set,
+        settings=settings,
+        operations=[engine.staged_operation(row) for row in rows],
+    )
+    names = user_names(session, (summary.created_by, summary.reviewed_by))
+    return ChangeSetReviewDetail(
+        **review_list_item(summary, names).model_dump(),
+        operations=[
+            _review_operation(row, replacement)
+            for row, replacement in zip(rows, report.operations, strict=True)
+        ],
+        review_fingerprint=report.review_fingerprint,
+        validation_result=(
+            ReviewExecutionResult.model_validate(change_set.validation_result)
+            if change_set.validation_result is not None
+            else None
+        ),
+        applied_result=(
+            ReviewApplyOutcome.model_validate(change_set.applied_result)
+            if change_set.applied_result is not None
+            else None
+        ),
+    )
+
+
+def _review_operation(
+    row: AiChangeSetOperation, replacement: OperationReplacement
+) -> ChangeSetReviewOperation:
+    frozen = (
+        FrozenValues.model_validate(row.frozen_values)
+        if row.frozen_values is not None
+        else None
+    )
+    return ChangeSetReviewOperation(
+        position=row.position,
+        type=row.op_type,
+        ref=row.ref,
+        operation=_operation_json(row),
+        error=(
+            ReviewOperationError.model_validate(row.error)
+            if row.error is not None
+            else None
+        ),
+        frozen_values=(
+            ReviewFrozenValues(
+                **_frozen_summary(frozen).model_dump(),
+                values=(
+                    frozen.values
+                    if len(frozen.values) <= INLINE_FROZEN_VALUES_LIMIT
+                    else None
+                ),
+            )
+            if frozen is not None
+            else None
+        ),
+        replaces_existing=replacement.replaces_existing,
+        replaces=_review_replacement(replacement.summary),
+    )
+
+
+def _review_replacement(
+    summary: NodeReplacement | TimeserieReplacement | None,
+) -> ReviewNodeReplacement | ReviewTimeserieReplacement | None:
+    match summary:
+        case None:
+            return None
+        case NodeReplacement(fields=dict() as fields):
+            # The engine names the patched fields by attribute; the review
+            # names them as the operation's payload does.
+            return ReviewNodeReplacement.model_validate(
+                {
+                    **summary.model_dump(),
+                    "fields": {
+                        _PATCH_FIELD_ALIASES.get(name, name): value
+                        for name, value in fields.items()
+                    },
+                }
+            )
+        case NodeReplacement():
+            return ReviewNodeReplacement.model_validate(summary.model_dump())
+        case TimeserieReplacement():
+            return ReviewTimeserieReplacement.model_validate(summary.model_dump())
+
+
+def _operation_rows(
+    session: Session, change_set: AiChangeSet
+) -> Sequence[AiChangeSetOperation]:
+    return session.scalars(
+        select(AiChangeSetOperation)
+        .where(AiChangeSetOperation.change_set_id == change_set.change_set_id)
+        .order_by(AiChangeSetOperation.position)
+    ).all()
+
+
+def _operation_json(row: AiChangeSetOperation) -> dict[str, Any]:
+    operation: dict[str, Any] = {"type": row.op_type}
+    if row.ref is not None:
+        operation["ref"] = row.ref
+    operation.update(row.payload)
+    return operation
 
 
 def _summary_query() -> Select[tuple[AiChangeSet, str, str, int]]:
@@ -158,16 +355,12 @@ def _operation_details(
 ) -> list[ChangeSetOperationDetail]:
     details: list[ChangeSetOperationDetail] = []
     for row in rows:
-        operation: dict[str, Any] = {"type": row.op_type}
-        if row.ref is not None:
-            operation["ref"] = row.ref
-        operation.update(row.payload)
         details.append(
             ChangeSetOperationDetail(
                 position=row.position,
                 type=row.op_type,
                 ref=row.ref,
-                operation=operation,
+                operation=_operation_json(row),
                 error=(
                     OperationError.model_validate(row.error)
                     if row.error is not None

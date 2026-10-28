@@ -20,18 +20,22 @@ def authenticate_test_client(
     role: str = "admin",
     raw_session_id: str = TEST_RAW_SESSION_ID,
     csrf_token: str = TEST_CSRF_TOKEN,
+    create_user: bool = True,
 ) -> int:
+    """Sign the client in; `create_user=False` signs in an existing User."""
     now = datetime.now(UTC)
     with session_factory() as session:
-        user = User(
-            user_id=user_id,
-            name=f"Test {role.title()}",
-            email=f"test-{abs(user_id)}@example.test",
-            role=role,
-        )
-        session.add(user)
-        # Insert the User first for test databases that enforce foreign keys.
-        session.flush()
+        if create_user:
+            session.add(
+                User(
+                    user_id=user_id,
+                    name=f"Test {role.title()}",
+                    email=f"test-{abs(user_id)}@example.test",
+                    role=role,
+                )
+            )
+            # Insert the User first for test databases that enforce foreign keys.
+            session.flush()
         session.add(
             AuthSession(
                 session_id_hash=hashlib.sha256(raw_session_id.encode()).digest(),

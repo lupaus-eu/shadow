@@ -14,6 +14,7 @@ writes another domain's tables itself.
 - `apply_change_set` is the human apply: one transaction under the change-set
   row lock, the fingerprint check, re-validation, execution and one commit.
   The step alone decides whether a failure marks the change set `failed`.
+- `reject_change_set` is the human reject under the same row lock.
 
 Only `apply_change_set` commits; the caller commits every other change.
 """
@@ -126,11 +127,12 @@ class ReferenceResolutionError(Exception):
 
 
 class ChangeSetApplyError(Exception):
-    """A rejected or failed apply.
+    """A rejected or failed apply, or a reject that could not run.
 
     `not_submitted`, `review_stale`, `apply_in_progress` and
     `apply_unavailable` come from the lock, status or fingerprint steps and
-    never change the status. `apply_failed` comes from re-validation,
+    never change the status; a reject raises only these, without
+    `review_stale`. `apply_failed` comes from re-validation,
     execution or commit; the change set was then marked `failed` unless a
     concurrent apply had already changed it (`change_set_status`).
     """
@@ -216,6 +218,11 @@ def create_change_set(
 
 def load_operations(session: Session, change_set: AiChangeSet) -> list[StagedOperation]:
     return [_staged(row) for row in _operation_rows(session, change_set)]
+
+
+def staged_operation(row: AiChangeSetOperation) -> StagedOperation:
+    """Parse a stored operation row; a row that no longer parses raises."""
+    return _staged(row)
 
 
 def add_operations(
@@ -564,6 +571,7 @@ def compute_replacements(
     change_set: AiChangeSet,
     *,
     settings: Settings | None = None,
+    operations: Sequence[StagedOperation] | None = None,
 ) -> ReplacementReport:
     """Flag operations that replace data existing before the change set.
 
@@ -573,6 +581,8 @@ def compute_replacements(
     scenario it creates or copies) is never flagged. Everything is read from
     current data on every call; a missing target is reported, not raised.
     The function only reads, under the change-set `statement_timeout`.
+    `operations` are the change set's operations when the caller has already
+    read them, so the report describes exactly those; otherwise they are read.
     """
     set_statement_timeout(session, settings or get_settings())
     organisation_key = _organisation_key(session, change_set)
@@ -582,7 +592,9 @@ def compute_replacements(
     timeserie_cache: dict[tuple[str, str], TimeserieReplacement | None] = {}
     entries: list[OperationReplacement] = []
 
-    for item in load_operations(session, change_set):
+    if operations is None:
+        operations = load_operations(session, change_set)
+    for item in operations:
         operation = item.operation
         summary: NodeReplacement | TimeserieReplacement | None = None
         match operation:
@@ -660,17 +672,7 @@ def apply_change_set(
     try:
         _set_apply_timeouts(session, settings)
         organisation = get_active_organisation(session, organisation_key)
-        change_set = session.scalar(
-            select(AiChangeSet)
-            .where(
-                AiChangeSet.organisation_id == organisation.organisation_id,
-                AiChangeSet.change_set_key == change_set_key,
-            )
-            .with_for_update()
-            .execution_options(populate_existing=True)
-        )
-        if change_set is None:
-            raise _change_set_not_found()
+        change_set = _lock_change_set_by_key(session, organisation, change_set_key)
         change_set_id = change_set.change_set_id
 
         step = "status"
@@ -735,7 +737,9 @@ def apply_change_set(
             ):
                 # An unknown organisation or change set is not retryable.
                 raise
-            raise _pre_execution_error(step, exc, change_set_key) from exc
+            raise _pre_execution_error(
+                step, exc, change_set_key, action="applied"
+            ) from exc
         assert change_set_id is not None
         outcome, failing = _failed_outcome(step, exc)
         logger.info(
@@ -755,6 +759,61 @@ def apply_change_set(
             step=step,
             change_set_status=change_set_status,
             outcome=outcome,
+        ) from exc
+
+
+def reject_change_set(
+    session: Session,
+    organisation_key: str,
+    change_set_key: str,
+    note: str | None,
+    actor_user_id: int,
+    *,
+    settings: Settings | None = None,
+) -> AiChangeSet:
+    """Reject a submitted change set; the reviewer is recorded with the note.
+
+    The change-set row is locked under apply's timeouts, so a reject waiting
+    behind an apply returns the same codes as a second apply: the retryable
+    `apply_in_progress` or `apply_unavailable`, or `not_submitted` once the
+    apply has finished. The stored operations are not parsed, so a change set
+    whose operations no longer parse can still be rejected. On an error the
+    session is rolled back; otherwise the caller commits.
+    """
+    settings = settings or get_settings()
+    step: ApplyStep = "lock"
+    try:
+        _set_apply_timeouts(session, settings)
+        organisation = get_active_organisation(session, organisation_key)
+        change_set = _lock_change_set_by_key(session, organisation, change_set_key)
+
+        step = "status"
+        if change_set.status != "submitted":
+            raise ChangeSetApplyError(
+                "not_submitted",
+                f"Only a submitted change set can be rejected; this one is "
+                f"{change_set.status}.",
+                step=step,
+                change_set_status=change_set.status,
+            )
+        now = datetime.now(UTC)
+        change_set.status = "rejected"
+        change_set.reviewed_by = actor_user_id
+        change_set.reviewed_time = now
+        change_set.review_note = note
+        change_set.modified_by = actor_user_id
+        change_set.modified_time = now
+        session.flush()
+        return change_set
+    except ChangeSetApplyError:
+        session.rollback()
+        raise
+    except Exception as exc:
+        session.rollback()
+        if isinstance(exc, HTTPException) and exc.status_code < 500:
+            raise
+        raise _pre_execution_error(
+            step, exc, change_set_key, action="rejected"
         ) from exc
 
 
@@ -1092,7 +1151,11 @@ def _sqlstate(exc: BaseException) -> str | None:
 
 
 def _pre_execution_error(
-    step: ApplyStep, exc: Exception, change_set_key: str
+    step: ApplyStep,
+    exc: Exception,
+    change_set_key: str,
+    *,
+    action: Literal["applied", "rejected"],
 ) -> ChangeSetApplyError:
     if step == "lock" and _sqlstate(exc) == LOCK_NOT_AVAILABLE:
         return ChangeSetApplyError(
@@ -1102,14 +1165,14 @@ def _pre_execution_error(
             step=step,
         )
     logger.warning(
-        "AI change set %s apply was not attempted after %s in step %s",
+        "AI change set %s was left unchanged after %s in step %s",
         change_set_key,
         type(exc).__name__,
         step,
     )
     return ChangeSetApplyError(
         "apply_unavailable",
-        "The change set could not be applied right now. Try again shortly.",
+        f"The change set could not be {action} right now. Try again shortly.",
         step=step,
     )
 
@@ -1444,6 +1507,23 @@ def _lock_change_set(session: Session, change_set_id: int) -> AiChangeSet:
     change_set = session.scalar(
         select(AiChangeSet)
         .where(AiChangeSet.change_set_id == change_set_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if change_set is None:
+        raise _change_set_not_found()
+    return change_set
+
+
+def _lock_change_set_by_key(
+    session: Session, organisation: Organisation, change_set_key: str
+) -> AiChangeSet:
+    change_set = session.scalar(
+        select(AiChangeSet)
+        .where(
+            AiChangeSet.organisation_id == organisation.organisation_id,
+            AiChangeSet.change_set_key == change_set_key,
+        )
         .with_for_update()
         .execution_options(populate_existing=True)
     )

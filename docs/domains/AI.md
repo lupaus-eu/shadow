@@ -16,11 +16,13 @@ remaining read tools and the generator preview, see
 change-set schema and engine, see
 [AI Change-Set Engine (TASK-069I)](#ai-change-set-engine-task-069i)) and
 TASK-069J (the change-set staging write tools and change-set read tools, see
-[MCP Write Tools (TASK-069J)](#mcp-write-tools-task-069j)) are implemented and
-the rest is pending TASK-069K through TASK-069O. The MCP endpoints, the public
+[MCP Write Tools (TASK-069J)](#mcp-write-tools-task-069j)) and TASK-069K (the
+cookie-session review API, see
+[Change-Set Review API (TASK-069K)](#change-set-review-api-task-069k)) are
+implemented and the rest is pending TASK-069L through TASK-069O. The MCP endpoints, the public
 OAuth endpoints and the consent API are registered only with
 `MCP_ENABLED=true`, which is off by default and in production; the connections
-API is always registered. No route applies a change set yet (TASK-069K).
+and change-set review APIs are always registered.
 
 ## Purpose
 
@@ -718,7 +720,8 @@ and replacement summaries. The engine adds no MCP tool, REST route or UI:
 TASK-069J's write tools call `create_change_set`, `add_operations`,
 `remove_operation`, `discard_change_set`, `validate_change_set`,
 `submit_change_set` and, for information only, `compute_replacements`, and
-TASK-069K's review API calls `compute_replacements` and `apply_change_set`.
+TASK-069K's review API calls `compute_replacements`, `apply_change_set` and
+`reject_change_set`.
 A tool commits its change-set edits before it validates or submits, because
 the dry-run runs on its own connection and the engine refuses a transaction
 that has written or locked rows. The operation JSON, `$ref` rules, results,
@@ -815,6 +818,77 @@ set, or one of a soft-deleted organisation, is `Change set not found.`.
 `rationale`, `status`, `operation_count`, `client_id`, `client_name`,
 `created_by`, `created_time`, `modified_time`, `reviewed_by`, `reviewed_time`
 and `review_note`.
+
+## Change-Set Review API (TASK-069K)
+
+`backend/app/api/v1/ai_change_sets/router.py` is the cookie-session API the
+Metrics tab uses; `review_schemas.py` holds its models and `service.py` builds
+them. It is registered with and without `MCP_ENABLED`, uses the router-level
+`require_business_request`, and both roles may use every route, including the
+creator. JSON keys are camelCase; the stored operation JSON is returned as it
+was staged, and the path parameters keep their snake_case names.
+
+| Route | Result |
+| --- | --- |
+| `GET …/ai/change-sets` | Newest first, at most `limit` (default 100, at most 200) list items |
+| `GET …/ai/change-sets/{change_set_key}` | `ChangeSetReviewDetail` |
+| `POST …/{change_set_key}/apply` (CSRF, exact Origin) | `ChangeSetApplyResponse` |
+| `POST …/{change_set_key}/reject` (CSRF, exact Origin) | The list item of the rejected change set |
+
+- **List.** `status` filters by one of the six statuses. `scenarioKey`
+  filters on the derived scenario reference and must name an active scenario
+  of the organisation (otherwise 404); with `includeUnscoped=true` the change
+  sets without a scenario reference (they create or copy a scenario, or touch
+  several) are included. A list item has `id`, `scenarioKey` (or null),
+  `title`, `rationale`, `status`, `operationCount`, `clientId`, `clientName`
+  (self-declared by the client, not verified), `createdBy`, `createdByName`,
+  `createdTime`, `modifiedTime`, `reviewedBy`, `reviewedByName`,
+  `reviewedTime` and `reviewNote`.
+- **Detail.** The list item plus `operations`, `reviewFingerprint`,
+  `validationResult` and `appliedResult`. Each operation has `position`,
+  `type`, `ref`, the stored `operation` JSON, its latest `error`,
+  `frozenValues` (`generatorVersion`, `valueCount`, `firstDate`, `lastDate`
+  and the `values` themselves up to 1,000 per operation, otherwise null),
+  `replacesExisting` and `replaces`. The detail reads the change set, its
+  summary (including `operationCount` and `validationResult`) and its
+  operation rows in one statement, and `compute_replacements` computes the
+  flags and summaries from exactly those rows against current data on every
+  read, so a draft edited meanwhile cannot make any part of the detail
+  disagree. Every read, the lookup by key included, runs under the change-set
+  `statement_timeout`; a timeout or other database error is the retryable
+  `503` `{"error": {"code": "review_unavailable", "message"}}`. A
+  target deleted after submit has `"missing": true` and the domain message. A
+  node summary names the patched `fields` as the operation's payload does
+  (`nodeTypeId`). A change set of another organisation is
+  `404 Change set not found.`. A change set whose stored operations no longer
+  parse has no detail (`500`); it can still be rejected by the key from the
+  list (see the open question in
+  [AI Change Set](../concepts/AI_CHANGE_SET.md#open-questions)).
+- **Apply** takes `{"reviewFingerprint": "<64 hex characters>"}`; a missing or
+  malformed value is a `422`. It calls `apply_change_set` with the reviewer as
+  the actor. Success returns `changeSet` (the list item, now `applied`),
+  `operations` (each with `opType`, `status`, `scenarioKey` and the created or
+  changed `key`) and `refs` (each `$ref` symbol's created key). Engine errors
+  are `{"error": {"code", "message"}}`:
+
+  | Code | HTTP | Status change |
+  | --- | --- | --- |
+  | `not_submitted` | 409 | none |
+  | `review_stale` | 409 | none; reload and confirm again |
+  | `apply_in_progress` | 409, retryable | none |
+  | `apply_unavailable` | 503, retryable | none |
+  | `apply_failed` | 409 | `failed`; the detail's `appliedResult` and operation `error` explain it |
+
+- **Reject** takes an optional body `{"note": "..."}`. The note is trimmed, a
+  blank note is stored as null, and it has at most 2,000 characters and no
+  NUL characters (otherwise 422). `reject_change_set` locks the change set
+  under apply's timeouts, requires `submitted` and records `rejected`,
+  `reviewed_by`, `reviewed_time`, `review_note` and `modified_by`. It does not
+  parse the stored operations, so a change set whose operations no longer
+  parse can still be rejected, although its detail fails. It returns
+  `not_submitted`, `apply_in_progress` or `apply_unavailable` (whose message
+  then says the change set could not be rejected) in the same error body as
+  apply.
 
 ## MCP Tools
 

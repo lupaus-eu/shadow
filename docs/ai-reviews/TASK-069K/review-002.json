@@ -1,0 +1,123 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-069K/review-002",
+  "task": {
+    "id": "TASK-069K",
+    "path": "tasks/TASK-069K-change-set-review-api.md"
+  },
+  "round": 2,
+  "reviewed_at": "2026-10-28T11:11:53Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": {
+    "number": 118,
+    "url": "https://github.com/reflector-oy/schatten/pull/118"
+  },
+  "source": {
+    "base_sha": "c8a9f331ca66ebc2dc56b14095d010d291212b72",
+    "head_sha": "ec7abe8707a14ad4d99608e5625d725fea1510ef",
+    "comparison": "c8a9f331ca66ebc2dc56b14095d010d291212b72...ec7abe8707a14ad4d99608e5625d725fea1510ef",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Round 2 reviews the round 1 fixes: the review detail's mapping of database errors to a retryable 503 review_unavailable, the single read of the operation rows shared by the flags and the listed operations, the action-specific retryable message for reject, the documentation of unparseable operations and the new tests. Ruff check and pyright pass, the change-set API, authorization, engine and MCP write tool tests pass (364) and the PostgreSQL integration module passes (10). A temporary worktree with the three source files reverted to the round 1 head made four of the new tests fail, so they cover the fixes; the unparseable-operations test pins documented behaviour. The MCP tools and apply keep reading the operations themselves, both callers of the pre-execution error mapping pass the action, and the new error body and log line carry only the key and the exception class. F-001 to F-004 are fixed and F-005 is left as an accepted risk. There is one low finding about the detail's operation count during a concurrent draft edit and one info finding about overstated timeout coverage in AI.md.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "bug",
+        "severity": "low",
+        "summary": "The detail's operationCount and validationResult can still disagree with its listed operations while a draft is edited concurrently.",
+        "rationale": "The detail reads the operation rows once for the flags and the list, but takes the operation count from a later summary query and the validation result from the change set loaded before the rows. Under READ COMMITTED an MCP add_operations commit between these reads gives, for example, an operation count of two with one listed operation, confirmed in a temporary worktree. Only drafts are affected and the effect is transient and cosmetic; before round 1 the same scenario failed with a 500.",
+        "recommendation": "Take the detail's operation count from the rows it read and the stored validation result from the same read, or narrow the AI.md statement to the flags and listed operations.",
+        "locations": [
+          {
+            "path": "backend/app/api/v1/ai_change_sets/service.py",
+            "line": 184
+          },
+          {
+            "path": "backend/app/api/v1/ai_change_sets/service.py",
+            "line": 191
+          },
+          {
+            "path": "docs/domains/AI.md",
+            "line": 855
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "documentation",
+        "severity": "info",
+        "summary": "AI.md says every detail read runs under the statement timeout and maps database errors to 503, but the router's change-set lookup does neither.",
+        "rationale": "The router looks the change set up by key before the review detail sets the statement timeout and outside the error mapping, so a database error in that single keyed query is still an unmapped 500. The practical risk is small.",
+        "recommendation": "Narrow the AI.md wording to the operation and flag reads, or move the lookup under the timeout and inside the error mapping.",
+        "locations": [
+          {
+            "path": "docs/domains/AI.md",
+            "line": 855
+          },
+          {
+            "path": "backend/app/api/v1/ai_change_sets/router.py",
+            "line": 82
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-069K/review-001",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "The detail route maps database errors from the review detail, such as a statement or lock timeout, to the retryable 503 review_unavailable with a generic message after rolling back, and logs only the key and exception class. A parametrised test covers both error kinds and fails without the fix.",
+        "validated_by": {
+          "review_id": "TASK-069K/review-002",
+          "commit": "ec7abe8707a14ad4d99608e5625d725fea1510ef"
+        }
+      },
+      {
+        "record_id": "TASK-069K/review-001",
+        "finding_id": "F-002",
+        "disposition": "fixed",
+        "rationale": "The review detail sets the statement timeout, reads the operation rows once and passes the parsed operations to compute_replacements, pairing rows and flags strictly, so a concurrent draft edit can no longer raise. The new test commits an edit after the flags are computed and fails with the old code. The remaining operation-count mismatch is recorded as review-002 F-001.",
+        "validated_by": {
+          "review_id": "TASK-069K/review-002",
+          "commit": "ec7abe8707a14ad4d99608e5625d725fea1510ef"
+        }
+      },
+      {
+        "record_id": "TASK-069K/review-001",
+        "finding_id": "F-003",
+        "disposition": "fixed",
+        "rationale": "The pre-execution error mapping takes the action from its two callers, so the retryable 503 of a reject says the change set could not be rejected and that of an apply says applied; tests cover both messages.",
+        "validated_by": {
+          "review_id": "TASK-069K/review-002",
+          "commit": "ec7abe8707a14ad4d99608e5625d725fea1510ef"
+        }
+      },
+      {
+        "record_id": "TASK-069K/review-001",
+        "finding_id": "F-004",
+        "disposition": "fixed",
+        "rationale": "AI.md and AI_CHANGE_SET.md now state that a change set whose stored operations no longer parse has no detail but can still be rejected by the key from the review list, and a test pins that behaviour.",
+        "validated_by": {
+          "review_id": "TASK-069K/review-002",
+          "commit": "ec7abe8707a14ad4d99608e5625d725fea1510ef"
+        }
+      },
+      {
+        "record_id": "TASK-069K/review-001",
+        "finding_id": "F-005",
+        "disposition": "accepted_risk",
+        "rationale": "The developer chose to leave the formatter's one-line change to the existing Origin-mismatch test; it is cosmetic and changes no behaviour.",
+        "validated_by": {
+          "review_id": "TASK-069K/review-002",
+          "commit": "ec7abe8707a14ad4d99608e5625d725fea1510ef"
+        }
+      }
+    ]
+  }
+}

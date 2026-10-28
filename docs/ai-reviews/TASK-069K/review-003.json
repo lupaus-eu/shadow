@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-069K/review-003",
+  "task": {
+    "id": "TASK-069K",
+    "path": "tasks/TASK-069K-change-set-review-api.md"
+  },
+  "round": 3,
+  "reviewed_at": "2026-10-28T11:27:45Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": {
+    "number": 118,
+    "url": "https://github.com/reflector-oy/schatten/pull/118"
+  },
+  "source": {
+    "base_sha": "93d6fc5cbe97d46ea57b5c44b748fe82cb2098b4",
+    "head_sha": "ee47d10896852f90ab9aaadeee32803ebdda936c",
+    "comparison": "93d6fc5cbe97d46ea57b5c44b748fe82cb2098b4...ee47d10896852f90ab9aaadeee32803ebdda936c",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Round 3 reviews the round 2 fixes: the review detail now looks the change set up under the statement timeout and inside the 503 mapping, and reads the change set, its summary columns with the correlated operation count and its operation rows in one statement that refreshes the loaded change set, so the flags, operationCount and validationResult describe the same snapshot. Ruff check and pyright pass, the change-set API, authorization and MCP read and write tool tests pass (379) and the PostgreSQL integration module passes (10). Reverting the source files to the round 2 head makes the updated consistency test and the new lookup-timeout case fail. Throwaway checks on PostgreSQL confirmed a change set without operations, positions with a gap after a removal, an edit committed between the lookup and the detail statement, the 404 for another organisation and the statement timeout. The MCP read tools, apply, reject and the list are unchanged. Both round 2 findings are fixed; one low finding notes that no committed test covers the refresh of the change set loaded by the lookup.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "missing_test",
+        "severity": "low",
+        "summary": "No test covers the refresh of the looked-up change set that keeps the detail's validationResult consistent with its listed operations.",
+        "rationale": "The consistency test commits its draft edit after the single detail statement, so it passes whether or not that statement refreshes the change set loaded by the lookup. A throwaway test that commits an edit between the lookup and the detail statement fails with the refresh removed: the detail lists two operations and an operation count of two but the stale validation result for one. A later refactor could drop the refresh unnoticed, and TESTING.md describes the consistency coverage more broadly than the test proves.",
+        "recommendation": "Add a case that commits a draft edit right after the lookup returns and asserts that the operations, operationCount and a cleared validationResult all reflect the edit.",
+        "locations": [
+          {
+            "path": "backend/app/api/v1/ai_change_sets/service.py",
+            "line": 201
+          },
+          {
+            "path": "backend/tests/test_ai_change_sets_api.py",
+            "line": 570
+          },
+          {
+            "path": "docs/TESTING.md",
+            "line": 825
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-069K/review-002",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "The review detail reads the change set, the summary columns with the correlated operation count and the operation rows in one statement, which uses one snapshot on PostgreSQL READ COMMITTED, and computes the flags from those rows; the updated test asserts a matching operationCount and validation result during a concurrent draft edit and fails with the round 2 code.",
+        "validated_by": {
+          "review_id": "TASK-069K/review-003",
+          "commit": "ee47d10896852f90ab9aaadeee32803ebdda936c"
+        }
+      },
+      {
+        "record_id": "TASK-069K/review-002",
+        "finding_id": "F-002",
+        "disposition": "fixed",
+        "rationale": "The lookup by key moved into the review detail after the statement timeout is set and inside the router's database-error mapping, while an unknown or other-organisation key remains a 404; a new lookup-timeout case fails with the round 2 code, and AI.md now describes this accurately.",
+        "validated_by": {
+          "review_id": "TASK-069K/review-003",
+          "commit": "ee47d10896852f90ab9aaadeee32803ebdda936c"
+        }
+      }
+    ]
+  }
+}

@@ -159,6 +159,52 @@ def test_sweep_covers_connections_routes_in_both_configurations() -> None:
     } == {("default", "POST"), ("mcp-enabled", "POST")}
 
 
+CHANGE_SET_ROUTES = tuple(
+    route for route in BUSINESS_ROUTES if "/ai/change-sets" in route[2]
+)
+
+
+def test_sweep_covers_change_set_review_routes_in_both_configurations() -> None:
+    assert set(CHANGE_SET_ROUTES) == {
+        (configuration, method, path)
+        for configuration in APP_CONFIGURATIONS
+        for method, path in (
+            ("GET", "/api/v1/organisations/missing/ai/change-sets"),
+            ("GET", "/api/v1/organisations/missing/ai/change-sets/missing"),
+            ("POST", "/api/v1/organisations/missing/ai/change-sets/missing/apply"),
+            ("POST", "/api/v1/organisations/missing/ai/change-sets/missing/reject"),
+        )
+    }
+
+
+@pytest.mark.parametrize(
+    ("configuration", "method", "path"),
+    [route for route in CHANGE_SET_ROUTES if route[1] == "POST"],
+)
+@pytest.mark.parametrize("csrf_token", [None, "wrong"])
+def test_change_set_review_actions_reject_a_csrf_mismatch(
+    session_factory: sessionmaker[Session],
+    configuration: str,
+    method: str,
+    path: str,
+    csrf_token: str | None,
+) -> None:
+    with _client(
+        session_factory, role="consultant", configuration=configuration
+    ) as client:
+        del client.headers["X-CSRF-Token"]
+        headers = {"X-CSRF-Token": csrf_token} if csrf_token is not None else {}
+        response = client.request(
+            method,
+            path,
+            json={"reviewFingerprint": "0" * 64},
+            headers=headers,
+        )
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "FORBIDDEN"
+
+
 @pytest.mark.parametrize(("configuration", "method", "path"), BUSINESS_ROUTES)
 def test_every_business_route_rejects_anonymous_requests(
     session_factory: sessionmaker[Session], configuration: str, method: str, path: str
@@ -179,9 +225,7 @@ def test_every_business_route_rejects_anonymous_requests(
 def test_every_unsafe_business_route_rejects_mismatched_origin(
     session_factory: sessionmaker[Session], configuration: str, method: str, path: str
 ) -> None:
-    with _client(
-        session_factory, role="admin", configuration=configuration
-    ) as client:
+    with _client(session_factory, role="admin", configuration=configuration) as client:
         response = client.request(
             method,
             path,

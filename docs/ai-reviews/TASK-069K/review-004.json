@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-069K/review-004",
+  "task": {
+    "id": "TASK-069K",
+    "path": "tasks/TASK-069K-change-set-review-api.md"
+  },
+  "round": 4,
+  "reviewed_at": "2026-10-28T11:38:45Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": {
+    "number": 118,
+    "url": "https://github.com/reflector-oy/schatten/pull/118"
+  },
+  "source": {
+    "base_sha": "ee47d10896852f90ab9aaadeee32803ebdda936c",
+    "head_sha": "b66f8478f949a3c00d4d8f1a8fd5f1d3b60bf35d",
+    "comparison": "ee47d10896852f90ab9aaadeee32803ebdda936c...b66f8478f949a3c00d4d8f1a8fd5f1d3b60bf35d",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "clean",
+    "summary": "Round 4 reviews the round 3 fix, which changes only the change-set API tests and TESTING.md. A new test commits an MCP-style draft edit right after the detail's lookup and asserts that the listed operations, operationCount and the cleared validationResult all reflect it; the existing concurrent-edit test was refactored onto shared helpers with unchanged assertions. Ruff check, ruff format check and pyright pass and the change-set API module passes (35). Removing the refresh of the looked-up change set in a temporary worktree made only the new test fail, with the stale validation result, and both detail consistency tests also fail against the round 2 source; fifteen repeated runs of both tests passed. The monkeypatch targets the module-level lookup that the review detail calls, and the TESTING.md wording matches the two tests. There are no new findings.",
+    "findings": [],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-069K/review-003",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "A new API test commits a draft edit between the detail's lookup and its single statement and asserts the refreshed validation result together with the operations and operationCount; it fails when the refresh is removed and passes with it.",
+        "validated_by": {
+          "review_id": "TASK-069K/review-004",
+          "commit": "b66f8478f949a3c00d4d8f1a8fd5f1d3b60bf35d"
+        }
+      }
+    ]
+  }
+}

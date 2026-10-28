@@ -1,0 +1,114 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-069K/review-001",
+  "task": {
+    "id": "TASK-069K",
+    "path": "tasks/TASK-069K-change-set-review-api.md"
+  },
+  "round": 1,
+  "reviewed_at": "2026-10-28T10:53:21Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": {
+    "number": 118,
+    "url": "https://github.com/reflector-oy/schatten/pull/118"
+  },
+  "source": {
+    "base_sha": "640c436fd4e744c91f7f2c20bd43ca242dc32846",
+    "head_sha": "c8a9f331ca66ebc2dc56b14095d010d291212b72",
+    "comparison": "640c436fd4e744c91f7f2c20bd43ca242dc32846...c8a9f331ca66ebc2dc56b14095d010d291212b72",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Round 1 reviews the whole TASK-069K branch: the review router and its camelCase models, the service's organisation-scoped lookup, includeUnscoped filter and review detail, the engine's reject_change_set and shared locked lookup, the tests and the docs. Ruff check and pyright pass, the SQLite API and authorization tests pass and the PostgreSQL integration module passes, including concurrent apply requests through HTTP that apply the change set once. Organisation scoping, session authentication, CSRF and exact Origin on apply and reject, both roles and the creator as reviewer, the apply error codes and their HTTP statuses, the reviewer as actor and the audit fields match the task and ADR-015. Before the engine runs the request transaction has only read the session and may have committed the activity touch, so the change-set lock and its SET LOCAL timeouts share one transaction. The MCP tools are unaffected by the service changes, no dependency or migration is added and every acceptance criterion has a matching test. There are three low findings (an unmapped database error on the detail, a transient detail failure for a concurrently edited draft and reject's apply-worded 503 message) and two info findings.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "bug",
+        "severity": "low",
+        "summary": "A statement timeout or other database error while the review detail recomputes the replacement flags is an unmapped 500 without the error code body.",
+        "rationale": "The detail recomputes the flags under the change-set statement timeout because it can be slow, but neither the service nor the router maps a query-cancelled or other database error, and the application has no handler for them. The Metrics tab then gets an opaque 500 and the server logs a traceback, while apply maps the same situation in its fingerprint step to the retryable 503 apply_unavailable. The task names no error code for the detail.",
+        "recommendation": "Map a query-cancelled or other database error in the detail to a retryable 503 with a distinct code and test it by injecting the error into the recomputation, or document the 500 as accepted in AI.md.",
+        "locations": [
+          {
+            "path": "backend/app/api/v1/ai_change_sets/service.py",
+            "line": 181
+          },
+          {
+            "path": "backend/app/api/v1/ai_change_sets/router.py",
+            "line": 72
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "bug",
+        "severity": "low",
+        "summary": "The review detail reads the operation rows twice and can fail with a 500 when a draft gains an operation between the reads.",
+        "rationale": "The replacement recomputation loads the operations itself and the detail then reads the rows again and looks each position up in the recomputed report. Under READ COMMITTED the reads are separate snapshots, so an MCP add_operations commit on a draft between them adds a position the report lacks and the lookup raises. Submitted change sets are immutable, so only drafts are affected and the failure is transient.",
+        "recommendation": "Load the operation rows once and build both the flags and the operation list from them, or tolerate a position missing from the report.",
+        "locations": [
+          {
+            "path": "backend/app/api/v1/ai_change_sets/service.py",
+            "line": 188
+          }
+        ]
+      },
+      {
+        "id": "F-003",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "A reject that fails with apply_unavailable reports that the change set could not be applied.",
+        "rationale": "reject_change_set reuses the apply path's pre-execution error mapping, whose retryable 503 message speaks of applying. The Metrics tab will show that message for a reject action. The apply_in_progress message, which names a concurrent apply as the usual lock holder, remains accurate for a reject.",
+        "recommendation": "Pass the action to the error mapping or use wording that fits both apply and reject.",
+        "locations": [
+          {
+            "path": "backend/app/api/v1/ai_change_sets/engine.py",
+            "line": 803
+          },
+          {
+            "path": "backend/app/api/v1/ai_change_sets/engine.py",
+            "line": 1157
+          }
+        ]
+      },
+      {
+        "id": "F-004",
+        "category": "documentation",
+        "severity": "info",
+        "summary": "A change set whose stored operations no longer parse can be rejected but its review detail fails.",
+        "rationale": "AI.md and the reject_change_set docstring state that reject does not parse the stored operations, but the detail always recomputes the flags, which parses them. Such a change set therefore returns an error on the detail, and a UI that opens the detail before offering reject would not reach the reject action. AI_CHANGE_SET.md already records stored-operation compatibility as an open question.",
+        "recommendation": "Note in AI.md that the detail fails for such a change set while reject still works, or let the detail degrade to an error marker instead of the flags.",
+        "locations": [
+          {
+            "path": "docs/domains/AI.md",
+            "line": 879
+          },
+          {
+            "path": "backend/app/api/v1/ai_change_sets/service.py",
+            "line": 181
+          }
+        ]
+      },
+      {
+        "id": "F-005",
+        "category": "scope",
+        "severity": "info",
+        "summary": "One existing authorization test was reformatted without a functional change.",
+        "rationale": "The Origin-mismatch sweep test's client context manager was joined onto one line by the formatter. It is cosmetic, harmless and unrelated to the task.",
+        "recommendation": "No change needed, or revert the line to keep the diff minimal.",
+        "locations": [
+          {
+            "path": "backend/tests/test_api_authorization.py",
+            "line": 228
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": []
+  }
+}

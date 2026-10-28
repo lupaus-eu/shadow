@@ -123,9 +123,11 @@ first read tools (`backend/app/mcp/`), TASK-069H's remaining read tools and
 generator preview, TASK-069I's change-set schema (migration 018,
 `ai_change_sets`, `ai_change_set_operations`) and engine
 (`backend/app/api/v1/ai_change_sets/`) and TASK-069J's change-set staging
-write tools and change-set read tools are implemented; the MCP and public
-OAuth endpoints are registered only with `MCP_ENABLED=true`, off by default.
-The rest is pending TASK-069K through TASK-069O. Users chat in their own MCP client on
+write tools and change-set read tools and TASK-069K's always-registered
+cookie-session change-set review API (list, detail, apply, reject) are
+implemented; the MCP and public OAuth endpoints are registered only with
+`MCP_ENABLED=true`, off by default. The rest is pending TASK-069L through
+TASK-069O. Users chat in their own MCP client on
 their own AI subscription; Schatten never calls an LLM or stores LLM keys.
 FastAPI hosts `/api/mcp/read` (`schatten.read`) and `/api/mcp/write`
 (`schatten.write`) and acts as OAuth 2.1 authorization server over the existing

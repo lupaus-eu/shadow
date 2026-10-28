@@ -795,7 +795,9 @@ already edited the change set, that a dry-run and a stand-alone
 `compute_replacements` run under the statement timeout, and (TASK-069J) that
 the MCP write tools create, add, validate and submit a change set with an
 operation that locks its scenario row through a real connection pool without
-waiting for the statement timeout.
+waiting for the statement timeout, and (TASK-069K) that two concurrent
+review API apply requests through a real connection pool apply the change set
+once: one `200`, one `409 not_submitted`.
 `tests/test_migrations_integration.py` checks migration 018's up and
 down, its constraints and that deleting a referenced grant keeps the change
 set's audit fields. Both are skipped without `MIGRATION_TEST_DATABASE_URL`
@@ -807,6 +809,42 @@ uv run pytest tests/test_ai_change_set_engine.py -v
 MIGRATION_TEST_DATABASE_URL=postgresql://schatten:schatten_dev_password@localhost:5432/schatten \
   uv run pytest tests/test_ai_change_sets_postgresql_integration.py \
     tests/test_migrations_integration.py -v
+```
+
+## AI Change-Set Review API Harness (TASK-069K)
+
+`tests/test_ai_change_sets_api.py` calls the cookie-session review API through
+`TestClient` over in-memory SQLite with default settings (`MCP_ENABLED=false`).
+It covers the list with its status and derived-scenario filters,
+`includeUnscoped`, `limit`, the camelCase keys and the client and creator
+fields; the detail with operations, inline and summarised frozen values and
+the stored validation result; replacement flags that follow data changed
+after submit and a target deleted after submit; a database error in the
+detail's lookup or flag recomputation as the retryable
+`503 review_unavailable`; flags, `operationCount` and `validationResult` that
+match the listed operations when an MCP edit commits to a draft after the
+detail's lookup (the detail statement refreshes the looked-up change set) or
+after its single read;
+organisation scoping; apply by
+both roles and by the creator with the created keys, the reviewer as actor
+and the audit fields; apply of a draft and of an applied change set
+(`409 not_submitted`); a missing or malformed `reviewFingerprint` (`422`) and
+a stale one (`409 review_stale`), each with nothing persisted and the status
+unchanged; `409 apply_in_progress` and the retryable `503 apply_unavailable`
+from lock-not-available and query-cancelled errors injected at the engine's
+lock and fingerprint steps (SQLite has no row locks or statement timeouts); an
+operation failure (`409 apply_failed`, `failed`); reject by both roles and the
+creator with its note and audit fields, the note bounds, reject of a draft
+or while another transaction holds the lock, a reject-worded retryable `503`,
+and a change set whose stored operations no longer parse, which has no detail
+but can still be rejected. `tests/test_api_authorization.py`
+sweeps the new routes for anonymous `401` and an Origin mismatch in both
+configurations and checks a missing or wrong CSRF token on apply and reject.
+The real lock behaviour is covered by the PostgreSQL integration module above.
+
+```bash
+cd backend
+uv run pytest tests/test_ai_change_sets_api.py tests/test_api_authorization.py -v
 ```
 
 ## Local Direct-Entra Integration

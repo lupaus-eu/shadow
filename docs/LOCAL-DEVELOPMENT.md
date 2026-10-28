@@ -114,8 +114,9 @@ event in the `reality` scenario: it calls `create_change_set`,
 `add_operations`, `validate_change_set` and `submit_change_set` and returns the
 review URL `https://app.localhost/schatten/<org>/metrics?changeSet=<key>`.
 `get_change_set` on `schatten-read` shows the submitted change set. Nothing is
-applied: the human review in the Metrics tab arrives with TASK-069K and
-TASK-069M.
+applied by MCP: a human applies or rejects it through the review API
+`/api/v1/organisations/<org>/ai/change-sets/<key>/apply` or `/reject`
+(TASK-069K), and the Metrics tab review UI arrives with TASK-069M.
 
 An unauthenticated request shows the discovery challenge:
 

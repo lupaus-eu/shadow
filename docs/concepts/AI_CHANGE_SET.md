@@ -2,8 +2,8 @@
 
 Status: accepted design in ADR-015; schema (migration 018) and engine
 implemented by TASK-069I (see [Engine](#engine-task-069i)); MCP write and
-change-set read tools implemented by TASK-069J (see `docs/domains/AI.md`);
-review API and UI pending TASK-069K through TASK-069M
+change-set read tools implemented by TASK-069J and the cookie-session review
+API by TASK-069K (see `docs/domains/AI.md`); review UI pending TASK-069M
 
 ## Purpose
 
@@ -158,8 +158,8 @@ reference.
 # Engine (TASK-069I)
 
 Code: `backend/app/api/v1/ai_change_sets/` (`models.py`, `schemas.py`,
-`engine.py`). TASK-069J's MCP write tools and TASK-069K's review API call the
-engine; it adds no tool, route or UI itself.
+`engine.py`). TASK-069J's MCP write tools and TASK-069K's review API
+(`router.py`) call the engine; it adds no tool, route or UI itself.
 
 - **Staging.** `create_change_set` starts a draft. `add_operations`,
   `remove_operation` and `discard_change_set` (added by TASK-069J) change only
@@ -236,6 +236,12 @@ engine; it adds no tool, route or UI itself.
   "operations", "refs": {}}` without created keys, and the failing operation's
   `error`. A failure outside an operation that matches no other code is
   `unexpected_error`.
+- **Reject.** `reject_change_set(session, organisation_key, change_set_key,
+  note, actor_user_id)` locks the change set under the same timeouts,
+  requires `submitted` and records `rejected` with the reviewer, time and
+  note; the caller commits. It raises only `not_submitted`,
+  `apply_in_progress` and `apply_unavailable`, and does not parse the stored
+  operations. TASK-069K's review API returns these codes as for apply.
 - **Settings.** `AI_CHANGE_SET_STATEMENT_TIMEOUT_MS` (default 30,000) bounds
   each statement of dry-run, apply and `compute_replacements`, not their total
   duration; `AI_CHANGE_SET_LOCK_TIMEOUT_MS`
@@ -404,9 +410,9 @@ Avoid:
   Today a change set cannot add nodes to that state, because its key is
   server-generated and not named by the copy's `ref`.
 - Compatibility of stored operations with later request-schema changes. An
-  operation that no longer parses makes the review read fail and apply return
+  operation that no longer parses makes the review detail fail and apply return
   the retryable `apply_unavailable` in its fingerprint step; such a change set
-  can only be rejected.
+  can only be rejected, by the key from the review list.
 - An overall time bound for a dry-run or apply. The statement timeout bounds
   each statement, so a change set of up to 500 operations can run much longer
   than the setting while it holds a database connection.

@@ -12,7 +12,9 @@ from urllib.parse import quote
 import anyio
 import psycopg
 import pytest
+from auth_helpers import authenticate_test_client
 from fastapi import HTTPException
+from fastapi.testclient import TestClient
 from fastmcp import Client
 from psycopg import sql
 from sqlalchemy import create_engine, func, select, text
@@ -52,7 +54,9 @@ from app.api.v1.organisations import service as organisations_service
 from app.api.v1.organisations.schemas import OrganisationCreateRequest
 from app.api.v1.users.models import User
 from app.core.config import Settings, get_sqlalchemy_database_url
+from app.core.database import get_db_session
 from app.core.migrations import UpCommand, execute_command
+from app.main import create_app
 from app.mcp.auth import current_principal
 from app.mcp.runtime import McpToolRuntime
 from app.mcp.write_server import build_write_server
@@ -528,6 +532,70 @@ def test_concurrent_apply_applies_the_change_set_once(
     assert (rejected.code, rejected.change_set_status) == ("not_submitted", "applied")
     assert _count(factory, Scenario, Scenario.name == "AI plan") == 1
     assert _status(factory, change_set_key) == "applied"
+
+
+def test_concurrent_apply_requests_apply_the_change_set_once(
+    factory: sessionmaker[Session],
+    organisation_key: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """TASK-069K: two review API requests through a real connection pool."""
+    change_set_key, fingerprint = _submitted(
+        factory, organisation_key, [_timeserie_operation("alpha")]
+    )
+    app = create_app(settings=WAITING_TIMEOUTS)
+
+    def override_get_db_session() -> Generator[Session, None, None]:
+        with factory() as session:
+            yield session
+
+    app.dependency_overrides[get_db_session] = override_get_db_session
+    url = (
+        f"/api/v1/organisations/{organisation_key}/ai/change-sets/"
+        f"{change_set_key}/apply"
+    )
+    locked, release = _pause_first_call(monkeypatch, engine, "compute_replacements")
+    with TestClient(app) as first_client, TestClient(app) as second_client:
+        authenticate_test_client(
+            first_client, factory, user_id=REVIEWER_USER_ID, create_user=False
+        )
+        second_client.cookies.update(first_client.cookies)
+        second_client.headers.update(
+            {
+                "Origin": first_client.headers["Origin"],
+                "X-CSRF-Token": first_client.headers["X-CSRF-Token"],
+            }
+        )
+
+        def apply(client: TestClient) -> Callable[[], tuple[int, Any]]:
+            def post() -> tuple[int, Any]:
+                response = client.post(url, json={"reviewFingerprint": fingerprint})
+                return response.status_code, response.json()
+
+            return post
+
+        first, first_outcome = _in_thread(apply(first_client))
+        try:
+            assert locked.wait(timeout=5)
+            second, second_outcome = _in_thread(apply(second_client))
+            _wait_for_lock_waiter(factory)
+        finally:
+            release.set()
+        applied = _joined(first, first_outcome)
+        rejected = _joined(second, second_outcome)
+
+    assert isinstance(applied, tuple) and isinstance(rejected, tuple)
+    assert applied[0] == 200, applied
+    assert applied[1]["changeSet"]["status"] == "applied"
+    assert rejected[0] == 409, rejected
+    assert rejected[1]["error"]["code"] == "not_submitted"
+    assert _count(factory, Timeserie, Timeserie.timeserie_key == "alpha") == 1
+    with factory() as session:
+        change_set = _load(session, change_set_key)
+        assert (change_set.status, change_set.reviewed_by) == (
+            "applied",
+            REVIEWER_USER_ID,
+        )
 
 
 def test_a_transient_failure_never_overwrites_a_concurrent_successful_apply(
