@@ -39,7 +39,6 @@ from app.mcp import read_server
 from app.mcp.auth import current_principal
 from app.mcp.read_server import build_read_server
 from app.mcp.runtime import McpToolRuntime
-from app.mcp.write_server import build_write_server
 
 USER_ID = 7
 PRINCIPAL = McpPrincipal(
@@ -492,6 +491,8 @@ async def test_read_tools_are_annotated_read_only(server: FastMCP) -> None:
         "get_timeserie",
         "list_events",
         "preview_generated_timeserie",
+        "list_change_sets",
+        "get_change_set",
     }
     for tool in tools:
         assert tool.annotations is not None
@@ -1238,9 +1239,3 @@ async def test_tool_work_runs_in_a_worker_thread_under_the_shared_limiter(
     with _acting_as(PRINCIPAL):
         assert await runtime.run(work) == (True, 1, USER_ID)
     assert runtime.limiter.borrowed_tokens == 0
-
-
-@pytest.mark.anyio
-async def test_write_server_is_a_scaffold_without_tools() -> None:
-    async with Client(build_write_server()) as client:
-        assert await client.list_tools() == []

@@ -76,7 +76,7 @@ the defaults shown in `.env.example`; override them in `.env` (no secrets):
 | `MCP_OAUTH_ACCESS_TOKEN_LIFETIME_SECONDS`, `MCP_OAUTH_REFRESH_TOKEN_IDLE_LIFETIME_SECONDS`, `MCP_OAUTH_GRANT_LIFETIME_SECONDS` | `3600`, `604800`, `2592000` | Access token lifetime, refresh token idle timeout and absolute grant lifetime; no token outlives its grant |
 | `MCP_OAUTH_REGISTER_RATE_LIMIT_PER_MINUTE`, `..._AUTHORIZE_...`, `..._TOKEN_...`, `..._REVOKE_...` | `30`, `20`, `300`, `60` | Per-IP buckets of the separate `oauth_rate_limiter` |
 | `MCP_OAUTH_MAX_PENDING_REQUESTS_PER_CLIENT`, `MCP_OAUTH_MAX_PENDING_REQUESTS`, `MCP_OAUTH_MAX_CLIENTS` | `20`, `1000`, `10000` | Pending request and client caps |
-| `MCP_TOOL_CONCURRENCY` | `4` | Shared `anyio.CapacityLimiter` for MCP bearer verification and tool database work (1 to 64) |
+| `MCP_TOOL_CONCURRENCY` | `4` | Shared `anyio.CapacityLimiter` for MCP bearer verification and tool database work (1 to 64); change-set validate and submit use two connections per token |
 | `MCP_RATE_LIMIT_PER_MINUTE` | `120` | Requests per grant and minute on `/api/mcp/*`, counted by the separate `mcp_rate_limiter` |
 | `AI_CHANGE_SET_STATEMENT_TIMEOUT_MS`, `AI_CHANGE_SET_LOCK_TIMEOUT_MS` | `30000`, `5000` | Change-set `statement_timeout` and apply `lock_timeout`; the statement timeout must be longer |
 
@@ -103,7 +103,19 @@ in with Entra and approve read access; the code returns to Claude Code on an
 allowlisted loopback redirect and Claude Code exchanges it for tokens. Then ask
 it to call the `whoami` tool, which returns your Schatten User. `schatten-write`
 (`https://app.localhost/api/mcp/write`) connects the same way with a separate
-grant; it has no tools until TASK-069J.
+grant:
+
+```bash
+claude mcp add --transport http schatten-write https://app.localhost/api/mcp/write
+```
+
+With both connected, ask Claude Code to stage a small change set, for example an
+event in the `reality` scenario: it calls `create_change_set`,
+`add_operations`, `validate_change_set` and `submit_change_set` and returns the
+review URL `https://app.localhost/schatten/<org>/metrics?changeSet=<key>`.
+`get_change_set` on `schatten-read` shows the submitted change set. Nothing is
+applied: the human review in the Metrics tab arrives with TASK-069K and
+TASK-069M.
 
 An unauthenticated request shows the discovery challenge:
 

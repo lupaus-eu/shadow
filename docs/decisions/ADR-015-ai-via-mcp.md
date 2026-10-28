@@ -1,6 +1,6 @@
 # ADR-015: AI Via MCP With Human-Applied Change Sets
 
-Status: Accepted design; TASK-069B through TASK-069I implemented, TASK-069J through TASK-069O pending
+Status: Accepted design; TASK-069B through TASK-069J implemented, TASK-069K through TASK-069O pending
 
 Date: 2026-10-21
 
@@ -64,9 +64,10 @@ endpoints, registered only with `MCP_ENABLED=true`, `verify_access_token` and
 the always-registered connections API) and TASK-069G (the FastMCP read and
 write endpoints, registered only with `MCP_ENABLED=true`, bearer
 authentication, resource protection and the first read tools), TASK-069H
-(the remaining read tools and the generator preview) and TASK-069I (the
-change-set schema and engine, which add no tool or route) are implemented and
-the rest is pending.
+(the remaining read tools and the generator preview), TASK-069I (the
+change-set schema and engine, which add no tool or route) and TASK-069J (the
+change-set staging write tools and the change-set read tools; no tool applies
+a change set) are implemented and the rest is pending.
 The feature stays disabled (`MCP_ENABLED=false`) until TASK-069O's separately
 approved production enablement.
 
@@ -80,7 +81,7 @@ approved production enablement.
 | TASK-069G | FastMCP foundation, bearer authentication, resource protection, first read tools (implemented) |
 | TASK-069H | Remaining read tools and generator preview (implemented) |
 | TASK-069I | Change-set schema and engine (dry-run and atomic apply) (implemented) |
-| TASK-069J | Write MCP tools for staging change sets |
+| TASK-069J | Write MCP tools for staging change sets (implemented) |
 | TASK-069K | Cookie-session change-set review API (apply, reject) |
 | TASK-069L | SPA consent page and connections list |
 | TASK-069M | Metrics tab AI panel and change-set review UI |

@@ -244,7 +244,7 @@ in the env file. They contain no secret.
 | `MCP_OAUTH_MAX_PENDING_REQUESTS_PER_CLIENT` | `20` | Live undecided authorization requests per client; may not exceed the total |
 | `MCP_OAUTH_MAX_PENDING_REQUESTS` | `1000` | Live undecided authorization requests in total |
 | `MCP_OAUTH_MAX_CLIENTS` | `10000` | Non-deleted registered clients; beyond it `register` answers 503 and logs a warning. Raising it is the operator remedy (ADR-015) |
-| `MCP_TOOL_CONCURRENCY` | `4` | Tokens of the one `anyio.CapacityLimiter` shared by MCP bearer verification and tool database work in worker threads (1 to 64) |
+| `MCP_TOOL_CONCURRENCY` | `4` | Tokens of the one `anyio.CapacityLimiter` shared by MCP bearer verification and tool database work in worker threads (1 to 64). `validate_change_set` and `submit_change_set` hold two database connections per token (the tool's own and the dry-run's), and the pool is shared with the REST API (SQLAlchemy default: 5 plus 10 overflow), so keep twice the setting well below the pool size |
 | `MCP_RATE_LIMIT_PER_MINUTE` | `120` | Requests per grant and minute on `/api/mcp/*`, counted by the separate in-process `mcp_rate_limiter`; beyond it `429` |
 | `AI_CHANGE_SET_STATEMENT_TIMEOUT_MS` | `30000` | PostgreSQL `statement_timeout` for change-set dry-runs, apply and the review's replacement recomputation (1 to 600,000); must be longer than the lock timeout |
 | `AI_CHANGE_SET_LOCK_TIMEOUT_MS` | `5000` | PostgreSQL `lock_timeout` for the whole change-set apply transaction (1 to 60,000); a change set held longer gives `apply_in_progress`, and a business row held longer during execution marks the change set `failed` |

@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-069J/review-002",
+  "task": {
+    "id": "TASK-069J",
+    "path": "tasks/TASK-069J-mcp-write-server.md"
+  },
+  "round": 2,
+  "reviewed_at": "2026-10-28T08:43:47Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": {
+    "number": 117,
+    "url": "https://github.com/reflector-oy/schatten/pull/117"
+  },
+  "source": {
+    "base_sha": "1a0e9583351c53d8179d696da2765952c1e5cab0",
+    "head_sha": "61a397e33736a7bef6db6cb4e818ecc0692778d8",
+    "comparison": "1a0e9583351c53d8179d696da2765952c1e5cab0...61a397e33736a7bef6db6cb4e818ecc0692778d8",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "clean",
+    "summary": "Round 2 reviews the round 1 fixes: the status lines in DOMAIN.md, CONCEPTS.md and ADR-015, a PostgreSQL integration test of the write tools, and the connection-use notes for the concurrency setting. No production code changed. Ruff check and pyright pass, and the full backend suite passes on PostgreSQL 18 with no skipped tests (1191 passed). The PostgreSQL module passed five repeated runs. A mutation probe that locks the change-set row in the tool before the dry-run makes the new test fail on PostgreSQL while the SQLite write-tool suite still passes, so the test covers the path the SQLite suite cannot. A wall-clock assertion was dropped from the new test before this round because a blocked or refused dry-run already fails its result assertions and the timing could flake on slow runners. No new findings.",
+    "findings": [],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-069J/review-001",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "DOMAIN.md and CONCEPTS.md now mark TASK-069J implemented and name TASK-069K onward as pending, and ADR-015's implemented-task paragraph lists TASK-069J with the note that no tool applies a change set.",
+        "validated_by": {
+          "review_id": "TASK-069J/review-002",
+          "commit": "61a397e33736a7bef6db6cb4e818ecc0692778d8"
+        }
+      },
+      {
+        "record_id": "TASK-069J/review-001",
+        "finding_id": "F-002",
+        "disposition": "fixed",
+        "rationale": "A new PostgreSQL test runs create, add, validate and submit through the write tools on a migrated schema with a real connection pool and a referenced grant row, including a create_org_state operation that locks its scenario row. It asserts every operation validates, the change set is submitted with the review URL and no business row exists. Locking the change-set row in the tool before the dry-run makes it fail. TESTING.md describes it.",
+        "validated_by": {
+          "review_id": "TASK-069J/review-002",
+          "commit": "61a397e33736a7bef6db6cb4e818ecc0692778d8"
+        }
+      },
+      {
+        "record_id": "TASK-069J/review-001",
+        "finding_id": "F-003",
+        "disposition": "fixed",
+        "rationale": "The MCP_TOOL_CONCURRENCY rows in DEPLOYMENT.md and LOCAL-DEVELOPMENT.md and the runtime description in AI.md now state that validate and submit hold two connections per token from the pool shared with the REST API, and that twice the setting must stay well below the pool size. The setting's range and default are unchanged; the default of 4 stays inside the pool.",
+        "validated_by": {
+          "review_id": "TASK-069J/review-002",
+          "commit": "61a397e33736a7bef6db6cb4e818ecc0692778d8"
+        }
+      }
+    ]
+  }
+}

@@ -295,6 +295,18 @@ def remove_operation(
     session.flush()
 
 
+def discard_change_set(
+    session: Session, change_set: AiChangeSet, actor_user_id: int
+) -> AiChangeSet:
+    """Discard a draft; its operations are kept as the record."""
+    change_set = _lock_change_set(session, change_set.change_set_id)
+    _ensure_draft(change_set)
+    change_set.status = "discarded"
+    _touch(change_set, actor_user_id)
+    session.flush()
+    return change_set
+
+
 def ensure_operation_limits(operations: Sequence[ChangeSetOperation]) -> None:
     if len(operations) > MAX_CHANGE_SET_OPERATIONS:
         raise HTTPException(

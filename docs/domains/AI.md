@@ -12,14 +12,15 @@ TASK-069G (the MCP read and write endpoints, bearer authentication,
 resource protection and the first read tools, see
 [MCP Servers (TASK-069G)](#mcp-servers-task-069g)), TASK-069H (the
 remaining read tools and the generator preview, see
-[MCP Read Tools (TASK-069H)](#mcp-read-tools-task-069h)) and TASK-069I (the
+[MCP Read Tools (TASK-069H)](#mcp-read-tools-task-069h)), TASK-069I (the
 change-set schema and engine, see
-[AI Change-Set Engine (TASK-069I)](#ai-change-set-engine-task-069i)) are
-implemented and the rest is pending TASK-069J through TASK-069O. The MCP endpoints, the public OAuth
-endpoints and the consent API are registered only with `MCP_ENABLED=true`,
-which is off by default and in production; the connections API is always
-registered. The write server has no tools yet (TASK-069J); the generator is
-reachable only through the read tool `preview_generated_timeserie`.
+[AI Change-Set Engine (TASK-069I)](#ai-change-set-engine-task-069i)) and
+TASK-069J (the change-set staging write tools and change-set read tools, see
+[MCP Write Tools (TASK-069J)](#mcp-write-tools-task-069j)) are implemented and
+the rest is pending TASK-069K through TASK-069O. The MCP endpoints, the public
+OAuth endpoints and the consent API are registered only with
+`MCP_ENABLED=true`, which is off by default and in production; the connections
+API is always registered. No route applies a change set yet (TASK-069K).
 
 ## Purpose
 
@@ -571,7 +572,7 @@ configurations.
 
 The code is in `backend/app/mcp/`: `endpoints.py` builds both servers,
 `auth.py` holds `McpBearerAuth`, `runtime.py` runs tool database work,
-`read_server.py` the read tools and `write_server.py` the write scaffold.
+`read_server.py` the read tools and `write_server.py` the write tools.
 `fastmcp` 4 is the one approved MCP dependency (ADR-015).
 
 - `create_app()` builds both FastMCP servers inside the factory, only with
@@ -615,7 +616,10 @@ The code is in `backend/app/mcp/`: `endpoints.py` builds both servers,
 - `McpToolRuntime.run()` runs a tool's database work through
   `anyio.to_thread.run_sync` in its own session under one
   `anyio.CapacityLimiter` of `MCP_TOOL_CONCURRENCY` (default 4) tokens, shared
-  by both servers and the bearer verification. A domain `HTTPException` below
+  by both servers and the bearer verification. `validate_change_set` and
+  `submit_change_set` hold two database connections per token, the tool's own
+  (with the change-set row lock) and the dry-run's, from the pool the REST API
+  shares, so twice the setting must stay well below the pool size. A domain `HTTPException` below
   500 becomes a tool error with the service's message, for example
   `Organisation not found.`. Any other error reaches the client only as
   `Internal error` (the servers also set `mask_error_details`) and is logged
@@ -632,8 +636,8 @@ The first read tools are `whoami` (`UserResponse` of the principal's User),
 `list_organisations` (`OrganisationResponse` list),
 `list_scenarios(organisation_key)` (`ScenarioResponse` list) and
 `list_org_states(organisation_key, scenario_key)` (`OrgStateResponse` list).
-TASK-069H added the remaining read tools (below), TASK-069J adds the write
-tools.
+TASK-069H added the remaining read tools and TASK-069J the write tools
+(below).
 
 How to connect Claude Code locally is in `docs/LOCAL-DEVELOPMENT.md`.
 
@@ -712,7 +716,8 @@ database read (accepted in ADR-015's resource protection).
 applies change sets; `schemas.py` holds the `ChangeSetOperation` union, results
 and replacement summaries. The engine adds no MCP tool, REST route or UI:
 TASK-069J's write tools call `create_change_set`, `add_operations`,
-`remove_operation`, `validate_change_set` and `submit_change_set`, and
+`remove_operation`, `discard_change_set`, `validate_change_set`,
+`submit_change_set` and, for information only, `compute_replacements`, and
 TASK-069K's review API calls `compute_replacements` and `apply_change_set`.
 A tool commits its change-set edits before it validates or submits, because
 the dry-run runs on its own connection and the engine refuses a transaction
@@ -732,6 +737,84 @@ with a given target date would show it, also for an org state the change set
 creates. The engine reads `scenarios` and `organisations` rows directly only
 to map between keys and ids: the derived scenario reference and a change set's
 organisation key.
+
+## MCP Write Tools (TASK-069J)
+
+`backend/app/mcp/write_server.py` holds the write tools; the change-set read
+tools are in `read_server.py` and read through
+`backend/app/api/v1/ai_change_sets/service.py`. Every write tool needs
+`schatten.write`, runs through `McpToolRuntime` under the shared capacity
+limiter and is annotated `openWorldHint=False` and `readOnlyHint=False`;
+`remove_operation` and `discard_change_set` are `destructiveHint`, the others
+explicitly not, and `validate_change_set` is `idempotentHint`. The server's
+instructions and the tool docstrings explain the workflow create, add,
+validate, fix, submit, the `$ref` rules (only server-generated scenario,
+organisation state, event and derived metric keys; node, edge and timeserie
+keys are client-supplied and referred to verbatim), that the dry-run stops at
+the first failing operation and that nothing is applied until a human approves
+it in Schatten.
+
+| Tool | Engine call | Result |
+| --- | --- | --- |
+| `create_change_set(organisation_key, title, rationale=None)` | `create_change_set` | `ChangeSetSummary`; its `id` is the change set key |
+| `add_operations(change_set_key, operations)` | `add_operations` | `OperationsAdded`: the summary and the `added_positions` |
+| `remove_operation(change_set_key, position)` | `remove_operation` | `ChangeSetSummary` |
+| `validate_change_set(change_set_key)` | `validate_change_set`, then `compute_replacements` | `ChangeSetValidation`: `ok`, per-operation results, provisional `refs` and the informational `replacements` |
+| `submit_change_set(change_set_key)` | `submit_change_set` | `ChangeSetSubmission`: `status`, `ok`, per-operation results and `review_url` |
+| `discard_change_set(change_set_key)` | `discard_change_set` | `ChangeSetSummary` with status `discarded` |
+
+- `create_change_set` records the principal's User as `created_by` and the
+  principal's grant, copied `client_id` and client name. `title` is 1 to 200
+  characters (trimmed) and `rationale` at most 4,000.
+- Only a `draft` can be changed, and only through a grant of the User who
+  created it: any of that User's grants, not only the staging one. Another
+  User's change set is the tool error `Only the User who created this change
+  set can change it; other Users can only read it.`; a change set that is not
+  a draft is the engine's `409` message. The ownership check is a plain read
+  without a row lock; the engine locks the row and checks the status.
+- `add_operations` takes 1 to 500 typed operations (`ChangeSetOperation`,
+  validated by the tool's input schema). The engine enforces the limits of
+  500 operations and 20,000 set or generated values per change set and checks
+  every reference. Before any database work the tool rejects NUL characters
+  in the title, rationale and operation JSON (PostgreSQL text and JSONB cannot
+  hold them) and more than `MAX_ADD_OPERATIONS_BYTES` (2 MiB) of operation
+  JSON per call.
+- `validate_change_set` commits the stored dry-run result first and then runs
+  `compute_replacements` read-only. The replacement report is returned for
+  information only; it is not stored, and the human review and apply
+  recompute it against current data.
+- `submit_change_set` re-validates and freezes generated values. When every
+  operation is `ok` the status becomes `submitted` and `review_url` is
+  `<PUBLIC_ORIGIN>/schatten/<org>/metrics?changeSet=<key>`; otherwise the
+  change set stays a draft with the stored result and `review_url` is null.
+- Every write tool's transaction runs under
+  `AI_CHANGE_SET_STATEMENT_TIMEOUT_MS`, so a lock wait on a busy draft also
+  ends. A lock-not-available or query-cancelled error outside the dry-run is
+  the retryable tool error `The change set is busy or the database timed out;
+  try again shortly.`
+- Edits commit before validation and submit, because the dry-run runs on its
+  own connection and the engine refuses a transaction that has written or
+  locked rows.
+
+Read tools (read-only annotations, `schatten.read`):
+
+- `list_change_sets(organisation_key, status=None, scenario_key=None)` returns
+  `ChangeSetListResult`: at most `LIST_CHANGE_SETS_MAX_ITEMS` (100)
+  `ChangeSetSummary` items, newest first, with `truncated`. `status` is one of
+  the six statuses; `scenario_key` filters on the derived scenario reference
+  and must name an active scenario of the organisation.
+- `get_change_set(change_set_key)` returns `ChangeSetDetail`: the summary, each
+  operation with `position`, `type`, `ref`, the stored `operation` JSON, its
+  latest `error` and a `frozen_values` summary (generator version, count and
+  first and last date; the values themselves are not returned), and the
+  stored `validation_result` and `applied_result`.
+
+Any User may read any change set of an active organisation. An unknown change
+set, or one of a soft-deleted organisation, is `Change set not found.`.
+`ChangeSetSummary` has `id`, `organisation_key`, `scenario_key`, `title`,
+`rationale`, `status`, `operation_count`, `client_id`, `client_name`,
+`created_by`, `created_time`, `modified_time`, `reviewed_by`, `reviewed_time`
+and `review_note`.
 
 ## MCP Tools
 

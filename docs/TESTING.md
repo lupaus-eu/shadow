@@ -732,12 +732,29 @@ enabling MCP does.
 in-memory transport with a stubbed `current_principal`. It covers the read-only
 annotations, every tool's result and ordering, deleted rows, service errors as
 tool errors, key argument validation, a missing principal, that tool work runs
-in a worker thread holding a token of the shared capacity limiter and that the
-write server has no tools yet.
+in a worker thread holding a token of the shared capacity limiter.
+
+`tests/test_mcp_write_tools.py` (TASK-069J) calls the write tools and the
+change-set read tools the same way over in-memory SQLite. It covers the tool
+listing (exactly the six staging tools, no apply or reject tool) and their
+annotations, the instructions and docstrings, the full create, add, validate,
+submit workflow with the recorded grant, client and creator and the review URL,
+that no business table changes before a human apply, per-operation validation
+results (`ok`, the first error, then `not_run`) stored and returned, the
+informational replacement flags that are not stored, rejected edits of a
+submitted, discarded or another User's change set (another grant of the
+creating User may edit), the operation and value limits, the tool-boundary
+title, rationale, NUL and payload-size limits, unknown change sets and deleted
+organisations, the statement timeout on every write transaction, a database
+timeout as a retryable tool error, and `list_change_sets` filtering and
+truncation. `tests/test_mcp_auth.py` also checks over HTTP that a write token
+stages a change set for its own grant and client and that a read-only token
+(another resource, or a write grant without the effective write scope) cannot
+call any write tool.
 
 ```bash
 cd backend
-uv run pytest tests/test_mcp_auth.py tests/test_mcp_tools.py -v
+uv run pytest tests/test_mcp_auth.py tests/test_mcp_tools.py tests/test_mcp_write_tools.py -v
 ```
 
 ## AI Change-Set Engine Harness (TASK-069I)
@@ -774,8 +791,11 @@ conflict that rolls back every earlier row, a dry-run with a unique violation
 in the middle, concurrent applies that apply once, and a transient
 statement-timeout failure that does not overwrite a concurrent successful
 apply. It also checks that validate and submit refuse a transaction that has
-already edited the change set, and that a dry-run and a stand-alone
-`compute_replacements` run under the statement timeout.
+already edited the change set, that a dry-run and a stand-alone
+`compute_replacements` run under the statement timeout, and (TASK-069J) that
+the MCP write tools create, add, validate and submit a change set with an
+operation that locks its scenario row through a real connection pool without
+waiting for the statement timeout.
 `tests/test_migrations_integration.py` checks migration 018's up and
 down, its constraints and that deleting a referenced grant keeps the change
 set's audit fields. Both are skipped without `MIGRATION_TEST_DATABASE_URL`

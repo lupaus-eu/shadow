@@ -13,6 +13,7 @@ verbatim, so a client-supplied key must not start with `$`.
 
 import re
 from datetime import date as dt_date
+from datetime import datetime
 from typing import Annotated, Any, Literal
 
 from pydantic import AfterValidator, Field, TypeAdapter, model_validator
@@ -376,3 +377,70 @@ class OperationReplacement(StrictBaseModel):
 class ReplacementReport(StrictBaseModel):
     operations: list[OperationReplacement]
     review_fingerprint: str
+
+
+type ChangeSetStatus = Literal[
+    "draft", "submitted", "applied", "rejected", "failed", "discarded"
+]
+
+
+class ChangeSetSummary(StrictBaseModel):
+    """A change set without its operations, as the MCP tools return it."""
+
+    id: str = Field(description="Change set key, the tools' change_set_key.")
+    organisation_key: str
+    scenario_key: str | None = Field(
+        description="Derived scenario reference: the one existing scenario every "
+        "operation targets. Null when the change set creates or copies a "
+        "scenario, touches several scenarios or has no operations."
+    )
+    title: str
+    rationale: str | None
+    status: ChangeSetStatus
+    operation_count: int
+    client_id: str = Field(description="client_id of the MCP client that staged it.")
+    client_name: str = Field(
+        description="Name the staging MCP client declared for itself."
+    )
+    created_by: int = Field(description="User id of the creator.")
+    created_time: datetime
+    modified_time: datetime
+    reviewed_by: int | None = Field(description="User id of the human reviewer.")
+    reviewed_time: datetime | None
+    review_note: str | None
+
+
+class FrozenValuesSummary(StrictBaseModel):
+    generator_version: int
+    value_count: int
+    first_date: dt_date | None
+    last_date: dt_date | None
+
+
+class ChangeSetOperationDetail(StrictBaseModel):
+    position: int = Field(
+        description="Position in the change set; remove_operation takes it."
+    )
+    type: str
+    ref: str | None
+    operation: dict[str, Any] = Field(
+        description="The stored operation JSON, as add_operations accepts it."
+    )
+    error: OperationError | None = Field(
+        description="The operation's error from the latest validation or apply."
+    )
+    frozen_values: FrozenValuesSummary | None = Field(
+        description="Summary of the generated values frozen on submit."
+    )
+
+
+class ChangeSetDetail(ChangeSetSummary):
+    operations: list[ChangeSetOperationDetail]
+    validation_result: ExecutionResult | None = Field(
+        description="Result of the latest validation or submit dry-run; cleared "
+        "whenever the operations change. Its server-generated keys are "
+        "provisional."
+    )
+    applied_result: ApplyOutcome | None = Field(
+        description="Result of the human apply of an applied or failed change set."
+    )

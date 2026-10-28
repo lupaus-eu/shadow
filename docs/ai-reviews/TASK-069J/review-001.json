@@ -1,0 +1,90 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-069J/review-001",
+  "task": {
+    "id": "TASK-069J",
+    "path": "tasks/TASK-069J-mcp-write-server.md"
+  },
+  "round": 1,
+  "reviewed_at": "2026-10-28T08:29:07Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": {
+    "number": 117,
+    "url": "https://github.com/reflector-oy/schatten/pull/117"
+  },
+  "source": {
+    "base_sha": "9c623955d60a8287ed6b9114689c634f3cae590a",
+    "head_sha": "1a0e9583351c53d8179d696da2765952c1e5cab0",
+    "comparison": "9c623955d60a8287ed6b9114689c634f3cae590a...1a0e9583351c53d8179d696da2765952c1e5cab0",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Round 1 reviews the whole TASK-069J branch: the six write tools, the engine's discard, the change-set read service and read tools, the result schemas, the tests and the docs. Ruff check and pyright pass. The write listing has exactly the six staging tools and no apply or reject tool, every tool has the required annotations, edits are restricted to drafts of the creating User (any grant of that User), title, rationale, NUL and per-call payload size are bounded at the tool boundary, which closes TASK-069I's input-bound finding, and edits commit before validate and submit so the dry-run runs in a transaction that has not written or locked rows, as TASK-069I requires. The review URL, provisional dry-run keys and informational replacement report match the task. The removed scaffold test asserted that the write server had no tools and is superseded by the listing test. No dependency, migration or apply path was added. There are three low findings: stale status lines in higher-ranked docs, no PostgreSQL coverage of the tool-level validate and submit path, and undocumented doubled connection use of validate and submit per limiter slot.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "DOMAIN.md, CONCEPTS.md and ADR-015's implemented-task paragraph still describe TASK-069J as pending.",
+        "rationale": "The branch updates ADR-015's status line and task table, ARCHITECTURE.md, AGENTS.md, AI.md and AI_CHANGE_SET.md, but the AI Domain status in DOMAIN.md and the AI Change Set status in CONCEPTS.md still say the write tools are pending TASK-069J, and ADR-015's prose list of implemented tasks ends at TASK-069I. TASK-069I's review established updating these lines as the convention.",
+        "recommendation": "Update the DOMAIN.md and CONCEPTS.md status lines and add TASK-069J to ADR-015's implemented-task paragraph.",
+        "locations": [
+          {
+            "path": "docs/domains/DOMAIN.md",
+            "line": 360
+          },
+          {
+            "path": "docs/concepts/CONCEPTS.md",
+            "line": 153
+          },
+          {
+            "path": "docs/decisions/ADR-015-ai-via-mcp.md",
+            "line": 67
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "missing_test",
+        "severity": "low",
+        "summary": "The tool-level validate and submit path is tested only on SQLite with a shared connection.",
+        "rationale": "The write tool tests use in-memory SQLite with StaticPool, so the dry-run shares the tool's connection and the engine's transaction-id check for earlier writes is skipped. The tools rely on committing edits before validate and submit and on the outer change-set row lock not blocking the separate dry-run connection on PostgreSQL. A regression that edits and validates in one transaction, or locks a business row before the dry-run, would pass the suite and only show on PostgreSQL as a statement-timeout wait or a programming error.",
+        "recommendation": "Add a PostgreSQL integration test that runs create, add, validate and submit through the write tools with a real connection pool, including an operation that locks the scenario row.",
+        "locations": [
+          {
+            "path": "backend/tests/test_mcp_write_tools.py",
+            "line": 385
+          },
+          {
+            "path": "backend/app/mcp/write_server.py",
+            "line": 235
+          }
+        ]
+      },
+      {
+        "id": "F-003",
+        "category": "security",
+        "severity": "low",
+        "summary": "validate_change_set and submit_change_set use two database connections per limiter slot, which the concurrency setting does not document.",
+        "rationale": "The tool session holds the change-set row lock and its connection while the dry-run opens a second session for its whole duration. MCP_TOOL_CONCURRENCY allows up to 64 slots, while the application engine uses SQLAlchemy's default pool shared with the REST API. Concurrent validations can therefore exhaust the pool, make tools wait in a hold-and-wait pattern until the pool timeout and fail with a generic internal error, and delay REST requests. The default of 4 slots stays well inside the pool.",
+        "recommendation": "Document in the MCP_TOOL_CONCURRENCY rows that validate and submit use two connections per slot and that the setting must stay within the pool size, or bound the setting accordingly.",
+        "locations": [
+          {
+            "path": "backend/app/mcp/write_server.py",
+            "line": 255
+          },
+          {
+            "path": "docs/DEPLOYMENT.md",
+            "line": 247
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": []
+  }
+}

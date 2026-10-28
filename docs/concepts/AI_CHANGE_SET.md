@@ -1,8 +1,9 @@
 # AI Change Set Concept
 
 Status: accepted design in ADR-015; schema (migration 018) and engine
-implemented by TASK-069I (see [Engine](#engine-task-069i)); MCP write tools,
-review API and UI pending TASK-069J through TASK-069M
+implemented by TASK-069I (see [Engine](#engine-task-069i)); MCP write and
+change-set read tools implemented by TASK-069J (see `docs/domains/AI.md`);
+review API and UI pending TASK-069K through TASK-069M
 
 ## Purpose
 
@@ -160,13 +161,15 @@ Code: `backend/app/api/v1/ai_change_sets/` (`models.py`, `schemas.py`,
 `engine.py`). TASK-069J's MCP write tools and TASK-069K's review API call the
 engine; it adds no tool, route or UI itself.
 
-- **Staging.** `create_change_set`, `add_operations` and `remove_operation`
-  edit only `draft` change sets and lock the change-set row, so concurrent
-  edits of one draft serialise. Adding appends at the next position; removing
-  keeps the other positions unchanged and is refused (`409`) while a later
-  operation uses the removed operation's `ref`. Every edit enforces the
-  limits, checks all references, recomputes the scenario reference and clears
-  the stored validation result. The caller commits.
+- **Staging.** `create_change_set` starts a draft. `add_operations`,
+  `remove_operation` and `discard_change_set` (added by TASK-069J) change only
+  `draft` change sets and lock the change-set row, so concurrent edits of one
+  draft serialise. Adding appends at the next position; removing keeps the
+  other positions unchanged and is refused (`409`) while a later operation
+  uses the removed operation's `ref`. Every edit of the operations enforces
+  the limits, checks all references, recomputes the scenario reference and
+  clears the stored validation result. Discarding sets `discarded` and keeps
+  the operations. The caller commits.
 - **Execution.** `execute_operations(session, organisation, ops,
   actor_user_id)` resolves refs in order, calls the owning domains'
   `*_in_transaction` cores and returns an `ExecutionResult`: per operation
@@ -407,6 +410,8 @@ Avoid:
 - An overall time bound for a dry-run or apply. The statement timeout bounds
   each statement, so a change set of up to 500 operations can run much longer
   than the setting while it holds a database connection.
-- Input bounds at the MCP tool boundary (TASK-069J): change-set title and
-  rationale lengths, payload size and NUL characters, which PostgreSQL
-  rejects in text and JSONB.
+- Input bounds beyond the MCP tool boundary. TASK-069J bounds the title (200
+  characters), rationale (4,000), operation JSON per `add_operations` call
+  (2 MiB) and rejects NUL characters there, but there is no bound on the total
+  stored operation JSON of a change set or on single string lengths inside a
+  payload other than these.

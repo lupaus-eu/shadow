@@ -150,8 +150,8 @@ Related Document:
 ## AI Change Set
 
 Status: accepted design in ADR-015; schema and engine implemented by
-TASK-069I; MCP write tools, review API and UI pending TASK-069J through
-TASK-069M
+TASK-069I; MCP write and change-set read tools implemented by TASK-069J;
+review API and UI pending TASK-069K through TASK-069M
 
 Meaning:
 

@@ -5,13 +5,15 @@ import threading
 import time
 import uuid
 from collections.abc import Callable, Generator, Sequence
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from urllib.parse import quote
 
+import anyio
 import psycopg
 import pytest
 from fastapi import HTTPException
+from fastmcp import Client
 from psycopg import sql
 from sqlalchemy import create_engine, func, select, text
 from sqlalchemy.exc import IntegrityError
@@ -20,6 +22,9 @@ from sqlalchemy.orm import Session, sessionmaker
 import app.api.v1.ai_change_sets.engine as engine
 from app.api.v1.ai_change_sets.models import AiChangeSet
 from app.api.v1.ai_change_sets.schemas import OPERATION_ADAPTER, ExecutionResult
+from app.api.v1.mcp_oauth.models import McpOauthClient, McpOauthGrant
+from app.api.v1.mcp_oauth.service import WRITE_SCOPE
+from app.api.v1.mcp_oauth.token_service import McpPrincipal
 from app.api.v1.org_states import org_states_service
 from app.api.v1.org_states.models import (
     OrgState,
@@ -48,6 +53,9 @@ from app.api.v1.organisations.schemas import OrganisationCreateRequest
 from app.api.v1.users.models import User
 from app.core.config import Settings, get_sqlalchemy_database_url
 from app.core.migrations import UpCommand, execute_command
+from app.mcp.auth import current_principal
+from app.mcp.runtime import McpToolRuntime
+from app.mcp.write_server import build_write_server
 
 TEST_DATABASE_ENV = "MIGRATION_TEST_DATABASE_URL"
 CREATOR_USER_ID = 7
@@ -661,6 +669,106 @@ def test_dry_run_and_review_run_under_the_statement_timeout(
             session, _load(session, change_set_key), settings=SHORT_TIMEOUTS
         )
         assert session.scalar(text("SHOW statement_timeout")) == "1s"
+
+
+def test_write_tools_stage_and_submit_through_a_real_connection_pool(
+    factory: sessionmaker[Session], organisation_key: str
+) -> None:
+    """The tools commit edits before the dry-run takes its own connection.
+
+    `create_org_state` locks its scenario row for update, which an uncommitted
+    edit's key-share lock on that row would block until the statement timeout.
+    """
+    principal = _write_principal(factory)
+    server = build_write_server(
+        McpToolRuntime(factory, anyio.CapacityLimiter(4)), SHORT_TIMEOUTS
+    )
+    operations: list[dict[str, Any]] = [
+        {
+            "type": "create_org_state",
+            "ref": "$q2",
+            "scenario_key": "reality",
+            "payload": {"name": "Q2", "targetDate": "2026-04-01"},
+        },
+        _timeserie_operation("alpha"),
+        {
+            "type": "set_timeserie_values",
+            "scenario_key": "reality",
+            "timeserie_key": "alpha",
+            "payload": {"values": [{"date": "2026-04-01", "value": 1}]},
+        },
+    ]
+
+    async def stage() -> tuple[dict[str, Any], dict[str, Any]]:
+        async def call(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+            result = await client.call_tool(name, arguments)
+            assert isinstance(result.structured_content, dict)
+            return result.structured_content
+
+        reset_token = current_principal.set(principal)
+        try:
+            async with Client(server) as client:
+                created = await call(
+                    "create_change_set",
+                    {"organisation_key": organisation_key, "title": "AI plan"},
+                )
+                key = created["id"]
+                await call(
+                    "add_operations", {"change_set_key": key, "operations": operations}
+                )
+                validated = await call("validate_change_set", {"change_set_key": key})
+                submitted = await call("submit_change_set", {"change_set_key": key})
+        finally:
+            current_principal.reset(reset_token)
+        return validated, submitted
+
+    validated, submitted = anyio.run(stage)
+
+    # A dry-run blocked by the tool's own transaction would report
+    # statement_timeout, and one after an uncommitted edit would be refused.
+    assert validated["ok"] is True
+    assert [item["status"] for item in validated["operations"]] == ["ok"] * 3
+    assert submitted["ok"] is True
+    assert submitted["status"] == "submitted"
+    assert submitted["review_url"].endswith(
+        f"/schatten/{organisation_key}/metrics?changeSet={submitted['change_set_key']}"
+    )
+    assert _status(factory, submitted["change_set_key"]) == "submitted"
+    assert _count(factory, OrgState, OrgState.name == "Q2") == 0
+    assert _count(factory, Timeserie, Timeserie.timeserie_key == "alpha") == 0
+
+
+def _write_principal(factory: sessionmaker[Session]) -> McpPrincipal:
+    """A write grant row, which the change set references, and its principal."""
+    now = datetime.now(UTC)
+    with factory() as session:
+        client = McpOauthClient(
+            client_id="client-1",
+            client_name="Claude",
+            redirect_uris=["http://127.0.0.1:{port}/callback"],
+        )
+        session.add(client)
+        session.flush()
+        grant = McpOauthGrant(
+            grant_key="grant_creator",
+            mcp_oauth_client_id=client.mcp_oauth_client_id,
+            user_id=CREATOR_USER_ID,
+            scopes=WRITE_SCOPE,
+            resource="http://testserver/api/mcp/write",
+            created_time=now,
+            expires_time=now + timedelta(days=30),
+        )
+        session.add(grant)
+        session.commit()
+        return McpPrincipal(
+            user_id=CREATOR_USER_ID,
+            role="consultant",
+            grant_id=grant.grant_id,
+            grant_key=grant.grant_key,
+            client_id=client.client_id,
+            client_name=client.client_name,
+            scopes=frozenset({WRITE_SCOPE}),
+        )
 
 
 def _seed_users_and_default_metamodel(factory: sessionmaker[Session]) -> None:

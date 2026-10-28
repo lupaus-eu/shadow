@@ -24,9 +24,11 @@ from sqlalchemy.orm import Session, sessionmaker
 
 import app.api.v1.mcp_oauth.token_service as token_service
 import app.api.v1.org_states.org_states_service as org_states_service
+from app.api.v1.ai_change_sets.models import AiChangeSet
 from app.api.v1.auth.rate_limit import FixedWindowRateLimiter
 from app.api.v1.mcp_oauth.models import McpOauthClient, McpOauthGrant, McpOauthToken
 from app.api.v1.mcp_oauth.service import READ_SCOPE, WRITE_SCOPE
+from app.api.v1.organisations.models import Organisation
 from app.api.v1.users.models import User
 from app.core.config import Settings
 from app.core.database import get_db_session
@@ -36,6 +38,14 @@ from app.main import create_app
 ORIGIN = "http://testserver"
 SERVERS = ("read", "write")
 SCOPE_FOR = {"read": READ_SCOPE, "write": WRITE_SCOPE}
+WRITE_TOOL_NAMES = (
+    "create_change_set",
+    "add_operations",
+    "remove_operation",
+    "validate_change_set",
+    "submit_change_set",
+    "discard_change_set",
+)
 MCP_HEADERS = {"Accept": "application/json, text/event-stream"}
 USER_ID = 7
 OTHER_USER_ID = 8
@@ -267,7 +277,83 @@ def test_valid_tokens_reach_their_server(
         "role": "consultant",
     }
     assert write_tools.status_code == 200, write_tools.text
-    assert write_tools.json()["result"]["tools"] == []
+    assert {tool["name"] for tool in write_tools.json()["result"]["tools"]} == set(
+        WRITE_TOOL_NAMES
+    )
+
+
+def _create_change_set(client: TestClient, token: str) -> httpx2.Response:
+    return _rpc(
+        client,
+        "write",
+        "tools/call",
+        {
+            "name": "create_change_set",
+            "arguments": {"organisation_key": "org_acme", "title": "AI plan"},
+        },
+        token=token,
+    )
+
+
+def _seed_organisation(session_factory: sessionmaker[Session]) -> None:
+    with session_factory() as session:
+        session.add(Organisation(organisation_key="org_acme", name="Acme"))
+        session.commit()
+
+
+def test_write_token_stages_a_change_set_for_its_grant(
+    client: TestClient, session_factory: sessionmaker[Session]
+) -> None:
+    _seed_organisation(session_factory)
+    token, grant_key = _issue_token(session_factory, "write")
+
+    response = _create_change_set(client, token)
+
+    assert response.status_code == 200, response.text
+    assert response.json()["result"]["structuredContent"]["status"] == "draft"
+    with session_factory() as session:
+        change_set = session.scalars(select(AiChangeSet)).one()
+        grant = session.scalars(
+            select(McpOauthGrant).where(McpOauthGrant.grant_key == grant_key)
+        ).one()
+        oauth_client = session.get_one(McpOauthClient, grant.mcp_oauth_client_id)
+        assert change_set.grant_id == grant.grant_id
+        assert change_set.client_id == oauth_client.client_id
+        assert change_set.client_name == "Claude"
+        assert change_set.created_by == USER_ID
+
+
+@pytest.mark.parametrize("tool", WRITE_TOOL_NAMES)
+def test_read_only_token_cannot_call_write_tools(
+    client: TestClient,
+    session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+    tool: str,
+) -> None:
+    _seed_organisation(session_factory)
+    read_token, _ = _issue_token(session_factory, "read")
+    arguments = {"organisation_key": "org_acme", "title": "AI plan"}
+
+    def call(token: str) -> httpx2.Response:
+        return _rpc(
+            client,
+            "write",
+            "tools/call",
+            {"name": tool, "arguments": arguments},
+            token=token,
+        )
+
+    other_resource = call(read_token)
+    # A write grant whose User's role has only the read scope.
+    _stub_role_scopes(monkeypatch, "consultant", frozenset({READ_SCOPE}))
+    write_token, _ = _issue_token(session_factory, "write")
+    insufficient = call(write_token)
+
+    _assert_invalid_token(other_resource, "write")
+    assert insufficient.status_code == 403
+    assert insufficient.json()["error"] == "insufficient_scope"
+    with session_factory() as session:
+        assert session.scalars(select(AiChangeSet)).all() == []
 
 
 def test_concurrent_calls_act_as_each_tokens_own_user(tmp_path: Path) -> None:
