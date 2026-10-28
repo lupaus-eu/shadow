@@ -1160,6 +1160,39 @@ container browser QA is owned by TASK-057E.
 
 ---
 
+# AI Consent And Connections UI (TASK-069L)
+
+`frontend/src/api/ai.test.ts` stubs `fetch` and checks that the consent
+lookup carries the request id only in the `request` query parameter, that
+approve and deny send it in the JSON body with the CSRF header, the
+`AiApiError` status and code, the grant-key encoding of a connection revoke
+and the admin per-user revocation.
+
+`frontend/src/features/ai/AuthorizePage.test.tsx` mocks the API module and
+`navigateBrowser`. It covers loading, approve and deny, navigation to exactly
+the server-returned `redirectUrl`, the expired, already-decided and not-found
+states, the missing `request` parameter, the "not available" state with
+`features.mcp` false (no API call), retry after a load failure, a failed
+decision, the client name in `<bdi>` with its self-declared label, the
+loopback notice without the host for `redirectIsLoopback: true`, the plain
+`redirectHost` for a vendor callback, the AI vendor notice and the default
+connection lifetime wording, and that the request id is never rendered.
+`ConnectionsList.test.tsx` covers the listed fields (`clientId`, scope and
+times), the isolated client name, confirmed revoke by `grantKey`,
+an already revoked grant, a failed revoke, load errors and use without the
+MCP feature. `UsersTab.test.tsx` covers the confirmed "Revoke AI connections"
+action and its revoked count, and `App.test.tsx` covers the anonymous
+consent redirect through login with `return_to`, an approve through the
+real API client with the session CSRF token, the missing-feature state, the
+admin action and its absence for `consultant`.
+
+Manual verification: with `MCP_ENABLED=true` locally, connect Claude Code as
+in `docs/LOCAL-DEVELOPMENT.md` while signed out, sign in when the consent
+page asks, check the client name label, the loopback notice and the access
+text, and approve. Deny once and confirm the client reports `access_denied`.
+
+---
+
 # Frontend Async Component Tests (TASK-065)
 
 A `findBy*` query returns as soon as its element is in the DOM, and `waitFor`

@@ -41,6 +41,7 @@ function mockSchattenApi(options?: {
   authRole?: "admin" | "consultant";
   sessionStatus?: number;
   logoutUrl?: string | null;
+  mcpEnabled?: boolean;
 }) {
   let cleanedFutureStates = false;
   let scenarioListRequestCount = 0;
@@ -85,9 +86,32 @@ function mockSchattenApi(options?: {
             email: "admin@example.local",
             role: options?.authRole ?? "admin"
           },
-          csrfToken: "app-csrf-token"
+          csrfToken: "app-csrf-token",
+          ...(options?.mcpEnabled ? { features: { mcp: true } } : {})
         })
       );
+    }
+
+    if (url.startsWith("/api/v1/ai/oauth/consent?") && method === "GET") {
+      return Promise.resolve(
+        jsonResponse({
+          clientName: "Claude",
+          clientNameSelfDeclared: true,
+          redirectIsLoopback: false,
+          redirectHost: "claude.ai",
+          scope: "schatten.read",
+          resource: "https://app.localhost/api/mcp/read",
+          expiresTime: "2026-10-28T10:10:00Z"
+        })
+      );
+    }
+
+    if (url === "/api/v1/ai/oauth/consent/approve" && method === "POST") {
+      return Promise.resolve(jsonResponse({ redirectUrl: consentRedirectUrl }));
+    }
+
+    if (url.endsWith("/connections/revoke") && method === "POST") {
+      return Promise.resolve(jsonResponse({ revokedCount: 2 }));
     }
 
     if (url.endsWith("/api/v1/auth/logout") && method === "POST") {
@@ -436,6 +460,9 @@ function mockSchattenApi(options?: {
   return fetchMock;
 }
 
+const consentRedirectUrl =
+  "https://claude.ai/api/mcp/auth_callback?code=app-code&state=s%2F1&iss=https%3A%2F%2Fapp.localhost";
+
 function renderAt(initialEntry: string | { pathname: string; state?: unknown }) {
   return render(
     <MemoryRouter initialEntries={[initialEntry]}>
@@ -585,6 +612,78 @@ describe("Schatten UI shell", () => {
     expect(await screen.findByRole("heading", { name: "Scenarios", level: 1 })).toBeVisible();
     expect(screen.queryByRole("link", { name: "Users" })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Users" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Revoke AI connections" })).not.toBeInTheDocument();
+  });
+
+  it("revokes a User's AI connections from Users administration", async () => {
+    const fetchMock = mockSchattenApi();
+
+    renderAt("/schatten/acme/users");
+    await screen.findByRole("button", { name: /Development Admin/ });
+    fireEvent.click(await screen.findByRole("button", { name: "Revoke AI connections" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm revoke AI connections" }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "2 AI connection(s) of Development Admin were revoked."
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/ai/users/101/connections/revoke",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({ "X-CSRF-Token": "app-csrf-token" })
+      })
+    );
+  });
+
+  it("shows login for an anonymous consent request and returns to it after sign-in", async () => {
+    const fetchMock = mockSchattenApi({ sessionStatus: 401 });
+
+    renderAt("/ai/authorize?request=pending-id");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Sign in" }));
+    expect(navigateBrowser).toHaveBeenCalledWith(
+      "/api/v1/auth/login?return_to=%2Fai%2Fauthorize%3Frequest%3Dpending-id"
+    );
+    expect(
+      fetchMock.mock.calls.some(([input]) => String(input).startsWith("/api/v1/ai/oauth"))
+    ).toBe(false);
+  });
+
+  it("approves a consent request with the session CSRF token", async () => {
+    const fetchMock = mockSchattenApi({ mcpEnabled: true });
+
+    renderAt("/ai/authorize?request=pending-id");
+
+    expect(await screen.findByRole("heading", { name: "Connect an AI client" })).toBeVisible();
+    expect(await screen.findByText("claude.ai")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+
+    await waitFor(() => expect(navigateBrowser).toHaveBeenCalledWith(consentRedirectUrl));
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/ai/oauth/consent?request=pending-id",
+      expect.objectContaining({ method: "GET" })
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/ai/oauth/consent/approve",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ request: "pending-id" }),
+        headers: expect.objectContaining({ "X-CSRF-Token": "app-csrf-token" })
+      })
+    );
+  });
+
+  it("shows the consent page as not available when the session has no MCP feature", async () => {
+    const fetchMock = mockSchattenApi();
+
+    renderAt("/ai/authorize?request=pending-id");
+
+    expect(
+      await screen.findByRole("heading", { name: "AI connections are not available" })
+    ).toBeVisible();
+    expect(
+      fetchMock.mock.calls.some(([input]) => String(input).startsWith("/api/v1/ai/oauth"))
+    ).toBe(false);
   });
 
   it("returns an admin to login after revoking their own sessions", async () => {

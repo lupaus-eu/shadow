@@ -16,10 +16,13 @@ remaining read tools and the generator preview, see
 change-set schema and engine, see
 [AI Change-Set Engine (TASK-069I)](#ai-change-set-engine-task-069i)) and
 TASK-069J (the change-set staging write tools and change-set read tools, see
-[MCP Write Tools (TASK-069J)](#mcp-write-tools-task-069j)) and TASK-069K (the
+[MCP Write Tools (TASK-069J)](#mcp-write-tools-task-069j)), TASK-069K (the
 cookie-session review API, see
-[Change-Set Review API (TASK-069K)](#change-set-review-api-task-069k)) are
-implemented and the rest is pending TASK-069L through TASK-069O. The MCP endpoints, the public
+[Change-Set Review API (TASK-069K)](#change-set-review-api-task-069k)) and
+TASK-069L (the SPA consent page, the connections list and the admin per-user
+revocation action, see
+[Consent Page And Connections UI (TASK-069L)](#consent-page-and-connections-ui-task-069l))
+are implemented and the rest is pending TASK-069M through TASK-069O. The MCP endpoints, the public
 OAuth endpoints and the consent API are registered only with
 `MCP_ENABLED=true`, which is off by default and in production; the connections
 and change-set review APIs are always registered.
@@ -275,9 +278,11 @@ With `MCP_ENABLED=false` (the default):
 - the connections API, the admin per-user revocation and the change-set
   review API stay registered, so grants can be revoked and staged change sets
   reviewed while MCP is disabled (TASK-069F, TASK-069K); and
-- the session response's `features.mcp` is `false` (TASK-069E), and the SPA
-  hides the consent page, connect instructions and skill links (TASK-069L,
-  TASK-069M, TASK-069N).
+- the session response's `features.mcp` is `false` (TASK-069E); the SPA
+  consent page then shows a "not available" state without calling the
+  consent API (TASK-069L), and the connect instructions and skill links are
+  hidden (TASK-069M, TASK-069N). The connections list and the admin
+  "Revoke AI connections" action do not depend on the flag.
 
 ## MCP OAuth Authorization (TASK-069E)
 
@@ -890,6 +895,74 @@ was staged, and the path parameters keep their snake_case names.
   then says the change set could not be rejected) in the same error body as
   apply.
 
+## Consent Page And Connections UI (TASK-069L)
+
+The SPA code is in `frontend/src/features/ai/` with the API wrappers in
+`frontend/src/api/ai.ts`, which use `authenticatedFetch` (session cookie, and
+the CSRF token on unsafe methods). `AiApiError` keeps the HTTP status and the
+`/api/v1` error code, so the page can tell the consent states apart.
+`AuthProvider` reads the session's `features.mcp`; a missing or malformed
+flag counts as `false`.
+
+Consent page `/ai/authorize` (`AuthorizePage.tsx`):
+
+- An anonymous visitor gets the existing login page, whose "Sign in" sends
+  `return_to=/ai/authorize?request=<id>` to `GET /api/v1/auth/login`, so the
+  page reopens with the same request after the Entra login.
+- With `features.mcp` false the page shows "AI connections are not available"
+  and calls no API. Without a `request` query parameter it shows the "not
+  found" state.
+- The page reads `request` only from its own query string and loads
+  `GET /api/v1/ai/oauth/consent?request=<id>`. The id is sent in that query
+  parameter and in the approve and deny JSON bodies, never in a URL path, and
+  it is never rendered or logged by the SPA.
+- It shows:
+  - the signed-in User the client will act as;
+  - the client name in its own `<bdi>` element, labelled "(self-declared by
+    the client)" (`SelfDeclaredClientName.tsx`);
+  - for `redirectIsLoopback: false`, the server's `redirectHost`; for `true`,
+    "A program on this computer" and a "Local program" notice that the code
+    goes to a program on this computer and that local programs cannot be
+    verified by name. The SPA never parses host strings;
+  - the request expiry;
+  - the requested access: "Read access" (the client can read what the User
+    can see and cannot change anything) or "Write access: proposals only"
+    (changes are only proposed, and nothing changes until a person reviews
+    and applies the change set in Schatten). An unknown scope is shown
+    verbatim with advice to deny;
+  - that data the client reads from Schatten is sent to the User's AI vendor,
+    and that the connection lasts for a limited time (30 days by default)
+    unless revoked. The grant lifetime is the deployment setting
+    `MCP_OAUTH_GRANT_LIFETIME_SECONDS`, which the consent API does not return,
+    so the page names only the default.
+- Approve and Deny post `{"request": "<id>"}` to
+  `/api/v1/ai/oauth/consent/approve` or `/deny`. On success the page calls
+  `navigateBrowser(redirectUrl)` (`window.location.assign`) with exactly the
+  server-returned `redirectUrl`; it never builds or changes a redirect URL.
+  This is a script navigation, so the CSP `form-action 'self'` is unchanged.
+  Both buttons are disabled while a decision is pending.
+- `410 AUTHORIZATION_REQUEST_EXPIRED` shows the expired state,
+  `409 AUTHORIZATION_REQUEST_DECIDED` the already-decided state and any `404`
+  the not-found state, on load or on a decision. Every final state tells the
+  User to start the connection again from the AI client. Another load error
+  offers Retry; another decision error keeps the request decidable.
+
+`ConnectionsList.tsx` lists `GET /api/v1/ai/connections`: each grant with its
+isolated, self-declared client name, `clientId`, scope, and created, last used
+("Never" when null) and expiry times. Revoke asks for confirmation and calls
+`DELETE /api/v1/ai/connections/{grant_key}`; a `404` removes the row as
+already revoked or expired. The component does not read `features.mcp`, so
+grants stay revocable while MCP is disabled. It is not mounted on a page yet:
+TASK-069M places it in the Metrics AI panel.
+
+Users administration (`frontend/src/features/users/UsersTab.tsx`, `admin`
+only) has a "Revoke AI connections" action for the selected User. After
+confirmation it calls
+`POST /api/v1/ai/users/{user_id}/connections/revoke` and shows the returned
+`revokedCount`. It is independent of `features.mcp` and serves ADR-015's
+offboarding rule and incident procedure. Consultants have no Users tab and
+therefore no action; the backend enforces the role.
+
 ## MCP Tools
 
 Read service (`readOnlyHint`, `idempotentHint`, `openWorldHint=False`):
@@ -1021,9 +1094,12 @@ Referenced By:
 2. It registers dynamically with an allowlisted redirect URI.
 3. The browser opens `/api/oauth/authorize`; Schatten stores a hashed pending
    request and redirects to the SPA consent page.
-4. An anonymous user signs in with the existing Entra login.
-5. The user approves or denies; approval returns a one-time code to the
-   client's redirect URI.
+4. An anonymous user signs in with the existing Entra login and returns to
+   the consent page.
+5. The consent page shows the self-declared client name, the vendor host or
+   the loopback notice, and the requested access. The user approves or
+   denies; the browser then goes to the server-built redirect URL, which
+   carries a one-time code on approval.
 6. The client exchanges the code with its PKCE verifier for an access and a
    refresh token.
 

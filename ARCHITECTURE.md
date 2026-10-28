@@ -66,9 +66,10 @@ Päätetty tekninen perusrakenne:
   write endpoints with bearer authentication and the first read tools and
   TASK-069H's remaining read tools and generator preview (all
   MCP and public OAuth endpoints behind `MCP_ENABLED=false`), TASK-069I's
-  change-set schema and engine, TASK-069J's change-set staging write tools and
-  TASK-069K's cookie-session change-set review API are implemented; the rest
-  is pending TASK-069L through TASK-069O (see
+  change-set schema and engine, TASK-069J's change-set staging write tools,
+  TASK-069K's cookie-session change-set review API and TASK-069L's SPA consent
+  page and connections UI are implemented; the rest is pending TASK-069M
+  through TASK-069O (see
   [AI Via MCP](#ai-via-mcp))
 
 Tarkemmat toteutusyksityiskohdat täsmentyvät taskien ja tarvittaessa uusien ADR:ien kautta.
@@ -582,9 +583,12 @@ read tools `list_change_sets` and `get_change_set`) and TASK-069K (the
 cookie-session review API `/api/v1/organisations/{organisation_key}/ai/change-sets`
 in `backend/app/api/v1/ai_change_sets/router.py`: list, detail with the
 replacement flags recomputed on every read and the `reviewFingerprint`, apply
-and reject, registered also with `MCP_ENABLED=false`) are implemented; the
-rest is pending TASK-069L through TASK-069O. The review UI arrives with
-TASK-069M.
+and reject, registered also with `MCP_ENABLED=false`) and TASK-069L (the SPA
+consent page `/ai/authorize` in `frontend/src/features/ai/AuthorizePage.tsx`,
+the reusable `ConnectionsList.tsx` and the admin "Revoke AI connections"
+action in Users administration, with the API wrappers in
+`frontend/src/api/ai.ts`) are implemented; the rest is pending TASK-069M
+through TASK-069O. The review UI arrives with TASK-069M.
 Nothing else below is implemented yet, and the feature stays behind `MCP_ENABLED=false` until
 TASK-069O's separately approved production enablement.
 
@@ -922,7 +926,7 @@ ADR-004 Authentication, Identity And Session Architecture: accepted
 ADR-005 Production-Only Deployment Environments: accepted
 ADR-006 Local Authentik TLS And Optional Entra Federation: target superseded by ADR-013
 ADR-013 Shared Entra Registration And Local HTTPS Deployment: accepted; source delivery H1-H3 implemented, rollout pending
-ADR-015 AI Via MCP With Human-Applied Change Sets: accepted design; TASK-069B..TASK-069K implemented, TASK-069L..TASK-069O pending
+ADR-015 AI Via MCP With Human-Applied Change Sets: accepted design; TASK-069B..TASK-069L implemented, TASK-069M..TASK-069O pending
 ```
 
 ---

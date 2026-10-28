@@ -5,6 +5,7 @@ import { useAuth } from "./auth/AuthContext";
 import LoginPage from "./auth/LoginPage";
 import SessionControls from "./auth/SessionControls";
 import { RouteErrorBoundary, RouteLoadingFallback } from "./components/DeferredRoute";
+import AuthorizePage from "./features/ai/AuthorizePage";
 import HomePage from "./pages/HomePage";
 import NotFound from "./pages/NotFound";
 
@@ -53,6 +54,9 @@ function AuthenticatedApplication() {
       <div className="authenticated-shell__content">
         <Routes>
           <Route path="/" element={<HomePage />} />
+          {/* An anonymous visitor gets the login page above, which returns here
+              with the same `request` query after sign-in. */}
+          <Route path="/ai/authorize" element={<AuthorizePage />} />
           <Route
             path="/schatten/:orgId/*"
             element={

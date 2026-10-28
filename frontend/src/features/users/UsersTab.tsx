@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SubmitEvent } from "react";
+import { revokeUserAiConnections } from "../../api/ai";
 import {
   createUser,
   deleteUser,
@@ -49,7 +50,8 @@ export default function UsersTab(props: {
   const [actionError, setActionError] = useState("");
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [confirmingRevoke, setConfirmingRevoke] = useState(false);
-  const [actionSuccess, setActionSuccess] = useState("");
+  const [confirmingAiRevoke, setConfirmingAiRevoke] = useState(false);
+  const [actionSuccess, setActionSuccess] = useState<{ title: string; text: string } | null>(null);
   const requestController = useRef<AbortController | null>(null);
   const selectedUserIdRef = useRef<number | null>(null);
 
@@ -65,9 +67,10 @@ export default function UsersTab(props: {
     setEditEmail(user?.email ?? "");
     setEditRole(user?.role ?? "consultant");
     setActionError("");
-    setActionSuccess("");
+    setActionSuccess(null);
     setConfirmingDelete(false);
     setConfirmingRevoke(false);
+    setConfirmingAiRevoke(false);
   }, []);
 
   const applyUsers = useCallback(
@@ -208,14 +211,37 @@ export default function UsersTab(props: {
     try {
       setSaving(true);
       setActionError("");
-      setActionSuccess("");
+      setActionSuccess(null);
       await revokeUserSessions(selectedUser.id);
       if (selectedUser.id === props.currentUserId) {
         props.onCurrentUserSessionsRevoked?.();
         return;
       }
       setConfirmingRevoke(false);
-      setActionSuccess(`${selectedUser.name}'s Schatten application sessions were revoked.`);
+      setActionSuccess({
+        title: "Sessions revoked",
+        text: `${selectedUser.name}'s Schatten application sessions were revoked.`
+      });
+    } catch (error) {
+      setActionError(messageFromError(error));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function onConfirmAiRevoke() {
+    if (!selectedUser) return;
+
+    try {
+      setSaving(true);
+      setActionError("");
+      setActionSuccess(null);
+      const result = await revokeUserAiConnections(selectedUser.id);
+      setConfirmingAiRevoke(false);
+      setActionSuccess({
+        title: "AI connections revoked",
+        text: `${result.revokedCount} AI connection(s) of ${selectedUser.name} were revoked.`
+      });
     } catch (error) {
       setActionError(messageFromError(error));
     } finally {
@@ -323,8 +349,8 @@ export default function UsersTab(props: {
                     <ActionError message={actionError} />
                     {actionSuccess ? (
                       <div className="alert alert--info" role="status">
-                        <p className="alert__title">Sessions revoked</p>
-                        <p className="alert__text">{actionSuccess}</p>
+                        <p className="alert__title">{actionSuccess.title}</p>
+                        <p className="alert__text">{actionSuccess.text}</p>
                       </div>
                     ) : null}
                     <div className="form-actions">
@@ -349,6 +375,7 @@ export default function UsersTab(props: {
                           type="button"
                           onClick={() => {
                             setConfirmingDelete(false);
+                            setConfirmingAiRevoke(false);
                             setConfirmingRevoke(true);
                           }}
                           disabled={busy}
@@ -388,6 +415,59 @@ export default function UsersTab(props: {
                     )}
                   </section>
 
+                  {/* ADR-015 offboarding and incident procedure: stays available
+                      while MCP is disabled. */}
+                  <section
+                    className="destructive-action-section"
+                    aria-label="User AI connection revocation"
+                  >
+                    {!confirmingAiRevoke ? (
+                      <div className="form-actions">
+                        <button
+                          className="btn btn--secondary"
+                          type="button"
+                          onClick={() => {
+                            setConfirmingDelete(false);
+                            setConfirmingRevoke(false);
+                            setConfirmingAiRevoke(true);
+                          }}
+                          disabled={busy}
+                        >
+                          Revoke AI connections
+                        </button>
+                      </div>
+                    ) : (
+                      <div
+                        className="delete-confirmation"
+                        role="alertdialog"
+                        aria-labelledby="revoke-ai-connections-confirmation"
+                      >
+                        <p id="revoke-ai-connections-confirmation">
+                          Revoke every AI client connection of {selectedUser.name}? Their AI clients
+                          lose access to Schatten immediately and must be connected again.
+                        </p>
+                        <div className="form-actions">
+                          <button
+                            className="btn btn--secondary"
+                            type="button"
+                            onClick={() => setConfirmingAiRevoke(false)}
+                            disabled={busy}
+                          >
+                            Cancel AI revocation
+                          </button>
+                          <button
+                            className="btn btn--danger"
+                            type="button"
+                            onClick={() => void onConfirmAiRevoke()}
+                            disabled={busy}
+                          >
+                            {saving ? "Revoking..." : "Confirm revoke AI connections"}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </section>
+
                   <section className="destructive-action-section" aria-label="User deletion">
                     {!confirmingDelete ? (
                       <div className="form-actions">
@@ -396,6 +476,7 @@ export default function UsersTab(props: {
                           type="button"
                           onClick={() => {
                             setConfirmingRevoke(false);
+                            setConfirmingAiRevoke(false);
                             setConfirmingDelete(true);
                           }}
                           disabled={busy}

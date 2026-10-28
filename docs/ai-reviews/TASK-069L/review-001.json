@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-069L/review-001",
+  "task": {
+    "id": "TASK-069L",
+    "path": "tasks/TASK-069L-mcp-consent-connections-ui.md"
+  },
+  "round": 1,
+  "reviewed_at": "2026-10-28T17:29:11Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": {
+    "number": 119,
+    "url": "https://github.com/reflector-oy/schatten/pull/119"
+  },
+  "source": {
+    "base_sha": "442be19156ac131dd9d534169b94cb9e70e0e11b",
+    "head_sha": "b08f0ac201c746ba139ead8ef23725a3ec60110e",
+    "comparison": "442be19156ac131dd9d534169b94cb9e70e0e11b...b08f0ac201c746ba139ead8ef23725a3ec60110e",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Round 1 reviews the whole TASK-069L branch: the AI API wrappers, the session features flag in AuthProvider, the /ai/authorize route and consent page, the self-declared client name component, ConnectionsList, the admin Revoke AI connections action in UsersTab, the CSS, the tests and the docs. Frontend format check, lint, the full Vitest suite (26 files, 353 tests) and the build pass, and tsc covers the test files. The wrappers use authenticatedFetch, keep the request id in the request query parameter and the JSON bodies only, and the page navigates only to the server-returned redirectUrl. The DTOs, the error body shape and the 410, 409 and 404 consent codes match the backend consent and connections routers. The session flag matches the backend session schema, and the connections and admin revoke endpoints stay registered with MCP disabled. The login return_to keeps the query and is redacted in the backend access log and the Caddy log filter, and the redirect allowlist admits only HTTPS and loopback HTTP, so the script navigation always leaves the page. The client name is isolated in bdi and labelled, the loopback notice uses the server flag, and the admin action is absent for consultant. No dependency is added and every acceptance criterion has a matching test. The OAuth flow with Claude Code was not verified by hand in this review because it needs an interactive Entra sign-in. There is one low finding (the consent text hardcodes the grant lifetime) and one info finding (ConnectionsList is not yet mounted).",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "bug",
+        "severity": "low",
+        "summary": "The consent page tells the user the connection lasts at most 30 days, but the grant lifetime is a deployment setting.",
+        "rationale": "MCP_OAUTH_GRANT_LIFETIME_SECONDS defaults to 30 days but accepts 1 second to 365 days and is documented as tunable in LOCAL-DEVELOPMENT.md and DEPLOYMENT.md. The consent API does not return the lifetime, so the page hardcodes it. With a longer configured lifetime the consent statement the user approves on would be false. AI.md repeats the fixed value. The task does not require a lifetime statement.",
+        "recommendation": "Drop the fixed number or word it as a limited lifetime (30 days by default), or have the consent API return the grant lifetime in a later task; update the AI.md consent page description to match.",
+        "locations": [
+          {
+            "path": "frontend/src/features/ai/AuthorizePage.tsx",
+            "line": 231
+          },
+          {
+            "path": "docs/domains/AI.md",
+            "line": 934
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "scope",
+        "severity": "info",
+        "summary": "ConnectionsList is not mounted on any page, so a non-admin user has no SPA view to revoke their own grant until TASK-069M.",
+        "rationale": "The task only requires a reusable component, and AI.md states that TASK-069M places it in the Metrics AI panel. ADR-015 promises that a user can revoke any grant at any time; until then only the admin per-user action and the API serve that. MCP stays disabled until TASK-069O, so no user can create a grant in production before then.",
+        "recommendation": "No change in this task. Make sure TASK-069O's enablement checks that TASK-069M has mounted the list.",
+        "locations": [
+          {
+            "path": "frontend/src/features/ai/ConnectionsList.tsx",
+            "line": 14
+          },
+          {
+            "path": "docs/domains/AI.md",
+            "line": 952
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": []
+  }
+}

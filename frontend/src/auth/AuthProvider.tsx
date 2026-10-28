@@ -3,13 +3,16 @@ import type { PropsWithChildren } from "react";
 import { authenticatedFetch, buildApiUrl, configureRequestAuthentication } from "../api/client";
 import type { UserDto } from "../api/users";
 import { AuthContext } from "./AuthContext";
-import type { AuthContextValue, AuthStatus } from "./AuthContext";
+import type { AuthContextValue, AuthStatus, SessionFeatures } from "./AuthContext";
 import { navigateBrowser } from "./browserNavigation";
 
 type SessionResponse = {
   user: UserDto;
   csrfToken: string;
+  features: SessionFeatures;
 };
+
+const DISABLED_FEATURES: SessionFeatures = { mcp: false };
 
 type LogoutResponse = {
   logoutUrl: string | null;
@@ -34,7 +37,14 @@ function parseSession(value: unknown): SessionResponse {
   if (!isUser(session.user) || typeof session.csrfToken !== "string" || !session.csrfToken) {
     throw new Error("Invalid authentication session response.");
   }
-  return { user: session.user, csrfToken: session.csrfToken };
+  return { user: session.user, csrfToken: session.csrfToken, features: parseFeatures(session) };
+}
+
+// A missing or malformed flag keeps the feature off, so MCP-only UI stays hidden.
+function parseFeatures(session: Partial<SessionResponse>): SessionFeatures {
+  const features: unknown = session.features;
+  if (!features || typeof features !== "object") return DISABLED_FEATURES;
+  return { mcp: (features as Partial<SessionFeatures>).mcp === true };
 }
 
 function parseLogout(value: unknown): LogoutResponse {
@@ -70,12 +80,14 @@ function safeReturnTo(value: string): string {
 export function AuthProvider({ children }: PropsWithChildren) {
   const [status, setStatus] = useState<AuthStatus>("loading");
   const [user, setUser] = useState<UserDto | null>(null);
+  const [features, setFeatures] = useState<SessionFeatures>(DISABLED_FEATURES);
   const [authError, setAuthError] = useState("");
   const csrfTokenRef = useRef<string | null>(null);
 
   const invalidateSession = useCallback(() => {
     csrfTokenRef.current = null;
     setUser(null);
+    setFeatures(DISABLED_FEATURES);
     setAuthError("");
     setStatus("anonymous");
   }, []);
@@ -106,6 +118,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
         if (!active) return;
         csrfTokenRef.current = session.csrfToken;
         setUser(session.user);
+        setFeatures(session.features);
         setAuthError("");
         setStatus("authenticated");
       } catch (error) {
@@ -147,8 +160,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
   }, [invalidateSession]);
 
   const value = useMemo<AuthContextValue>(
-    () => ({ status, user, authError, login, logout, invalidateSession }),
-    [authError, invalidateSession, login, logout, status, user]
+    () => ({ status, user, features, authError, login, logout, invalidateSession }),
+    [authError, features, invalidateSession, login, logout, status, user]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

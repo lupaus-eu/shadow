@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { StrictMode } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { revokeUserAiConnections } from "../../api/ai";
 import {
   createUser,
   deleteUser,
@@ -19,11 +20,16 @@ vi.mock("../../api/users", () => ({
   updateUser: vi.fn()
 }));
 
+vi.mock("../../api/ai", () => ({
+  revokeUserAiConnections: vi.fn()
+}));
+
 const fetchUsersMock = vi.mocked(fetchUsers);
 const createUserMock = vi.mocked(createUser);
 const updateUserMock = vi.mocked(updateUser);
 const deleteUserMock = vi.mocked(deleteUser);
 const revokeUserSessionsMock = vi.mocked(revokeUserSessions);
+const revokeUserAiConnectionsMock = vi.mocked(revokeUserAiConnections);
 
 const ada: UserDto = {
   id: 2,
@@ -48,6 +54,10 @@ function deferred<T>() {
 
 beforeEach(() => {
   vi.resetAllMocks();
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 describe("UsersTab", () => {
@@ -236,6 +246,45 @@ describe("UsersTab", () => {
     fireEvent.click(screen.getByRole("button", { name: "Confirm revoke sessions" }));
 
     expect(await screen.findByText("Revocation forbidden.")).toBeInTheDocument();
+  });
+
+  it("confirms and reports AI connection revocation with the revoked count", async () => {
+    fetchUsersMock.mockResolvedValue([ada, grace]);
+    revokeUserAiConnectionsMock.mockResolvedValue({ revokedCount: 3 });
+
+    render(<UsersTab />);
+    await screen.findByRole("button", { name: /ada/ });
+    fireEvent.click(screen.getByRole("button", { name: "Revoke AI connections" }));
+
+    expect(screen.getByRole("alertdialog")).toHaveTextContent(
+      "Revoke every AI client connection of ada?"
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Cancel AI revocation" }));
+    expect(revokeUserAiConnectionsMock).not.toHaveBeenCalled();
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Revoke AI connections" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm revoke AI connections" }));
+
+    await waitFor(() => expect(revokeUserAiConnectionsMock).toHaveBeenCalledWith(ada.id));
+    const status = await screen.findByRole("status");
+    expect(status).toHaveTextContent("AI connections revoked");
+    expect(status).toHaveTextContent("3 AI connection(s) of ada were revoked.");
+    expect(revokeUserSessionsMock).not.toHaveBeenCalled();
+    expect(await screen.findByRole("button", { name: "Revoke AI connections" })).toBeEnabled();
+  });
+
+  it("reports an AI connection revocation failure", async () => {
+    fetchUsersMock.mockResolvedValue([ada]);
+    revokeUserAiConnectionsMock.mockRejectedValue(new Error("AI revocation forbidden."));
+
+    render(<UsersTab />);
+    await screen.findByRole("button", { name: /ada/ });
+    fireEvent.click(screen.getByRole("button", { name: "Revoke AI connections" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm revoke AI connections" }));
+
+    expect(await screen.findByText("AI revocation forbidden.")).toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 
   it("invalidates frontend auth when the admin revokes their own sessions", async () => {

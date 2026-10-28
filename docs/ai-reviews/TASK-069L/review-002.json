@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-069L/review-002",
+  "task": {
+    "id": "TASK-069L",
+    "path": "tasks/TASK-069L-mcp-consent-connections-ui.md"
+  },
+  "round": 2,
+  "reviewed_at": "2026-10-28T17:38:02Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": {
+    "number": 119,
+    "url": "https://github.com/reflector-oy/schatten/pull/119"
+  },
+  "source": {
+    "base_sha": "b08f0ac201c746ba139ead8ef23725a3ec60110e",
+    "head_sha": "296e1c87d91bec24f43993c068fec8d0841ee7b9",
+    "comparison": "b08f0ac201c746ba139ead8ef23725a3ec60110e...296e1c87d91bec24f43993c068fec8d0841ee7b9",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "clean",
+    "summary": "Round 2 reviews the round 1 fix. The consent page now says the connection lasts for a limited time, 30 days by default, unless revoked. AI.md describes the same wording and notes that the lifetime is the deployment setting MCP_OAUTH_GRANT_LIFETIME_SECONDS, which the consent API does not return. The read-access test asserts the new wording, and TESTING.md lists it. Frontend format check, lint, the full Vitest suite (26 files, 353 tests) and the build pass. With the old wording restored in a temporary edit, only the read-access test failed, and it passes again with the fix. The other 30-day statements in AI.md describe the default or the setting itself and predate this task. There are no new findings. The developer accepted F-002 (ConnectionsList not yet mounted) as a risk.",
+    "findings": [],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-069L/review-001",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "The consent text no longer states a fixed maximum. It names a limited lifetime with the 30-day default, so it stays true for any configured grant lifetime. AI.md matches it, and a test pins the wording; that test fails with the old text.",
+        "validated_by": {
+          "review_id": "TASK-069L/review-002",
+          "commit": "296e1c87d91bec24f43993c068fec8d0841ee7b9"
+        }
+      },
+      {
+        "record_id": "TASK-069L/review-001",
+        "finding_id": "F-002",
+        "disposition": "accepted_risk",
+        "rationale": "The developer accepted that ConnectionsList stays unmounted until TASK-069M places it in the Metrics AI panel, as the task scopes it and AI.md states. Until then the admin per-user revocation and the connections API still revoke grants, and MCP stays disabled until TASK-069O.",
+        "validated_by": {
+          "review_id": "TASK-069L/review-002",
+          "commit": "296e1c87d91bec24f43993c068fec8d0841ee7b9"
+        }
+      }
+    ]
+  }
+}
