@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-069N/review-004",
+  "task": {
+    "id": "TASK-069N",
+    "path": "tasks/TASK-069N-ai-skills-plugin-bundle.md"
+  },
+  "round": 4,
+  "reviewed_at": "2026-10-29T13:57:23Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": {
+    "number": 121,
+    "url": "https://github.com/reflector-oy/schatten/pull/121"
+  },
+  "source": {
+    "base_sha": "9d3341a4c89a3c1e1e28ffcdd17a4e1e2fdf1f16",
+    "head_sha": "86c5159a0f8d46a43148800a13363f18f1752f32",
+    "comparison": "9d3341a4c89a3c1e1e28ffcdd17a4e1e2fdf1f16...86c5159a0f8d46a43148800a13363f18f1752f32",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "clean",
+    "summary": "Round 4 reviews 86c5159, which fixes two inconsistencies that the AI client noted during the developer's manual end-to-end check: the revenue examples used percentPerPeriod 1.5 while the text gives 1.53 for 20 % a year, and the rounding rule said 2 decimals for money while the revenue examples round to whole units. Both revenue examples now use 1.53, which compounds to about 20 % a year. The rounding rule now gives 0 decimals for counts, people and money totals and 2 for prices, other small money amounts and ratios. Every example in both skills follows it, and only the percentage example sets clampMax 100. A quick pass over noise, ar1, seed, peak and trend advice found no other contradiction between the rules and the examples. The skill tests, including the engine run of the model-building example and generation of every spec, and the plugin validation pass. Nothing new was found.",
+    "findings": [],
+    "prior_finding_dispositions": []
+  }
+}

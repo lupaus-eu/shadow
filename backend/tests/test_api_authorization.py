@@ -134,6 +134,9 @@ def test_sweep_covers_mcp_gated_routes_only_when_enabled() -> None:
     }
 
     assert consent_routes == {("mcp-enabled", "GET"), ("mcp-enabled", "POST")}
+    assert {
+        route for route in BUSINESS_ROUTES if route[2].startswith("/api/v1/ai/skills/")
+    } == {("mcp-enabled", "GET", "/api/v1/ai/skills/missing.zip")}
 
 
 def test_sweep_covers_connections_routes_in_both_configurations() -> None:

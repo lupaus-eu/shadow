@@ -129,9 +129,11 @@ TASK-069L's SPA consent page `/ai/authorize`, reusable `ConnectionsList` and
 admin "Revoke AI connections" action (`frontend/src/features/ai/`) and
 TASK-069M's Metrics tab AI panel (connect instructions, connections and
 change-set review with apply and reject, `frontend/src/features/ai/AiPanel.tsx`)
-are implemented; the MCP and public OAuth endpoints are registered only with
-`MCP_ENABLED=true`, off by default. The rest is pending TASK-069N and
-TASK-069O. Users chat in their own MCP client on
+and TASK-069N's Schatten skills, Claude Code plugin and repository marketplace
+(`backend/app/mcp/plugin/`, `.claude-plugin/marketplace.json`), read-server MCP
+prompts and skill zip download are implemented; the MCP and public OAuth
+endpoints and the skill zip download are registered only with
+`MCP_ENABLED=true`, off by default. The rest is pending TASK-069O. Users chat in their own MCP client on
 their own AI subscription; Schatten never calls an LLM or stores LLM keys.
 FastAPI hosts `/api/mcp/read` (`schatten.read`) and `/api/mcp/write`
 (`schatten.write`) and acts as OAuth 2.1 authorization server over the existing

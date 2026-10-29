@@ -63,14 +63,14 @@ docker compose --env-file .env --env-file .env.entra.local exec -T local-caddy \
   caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
 ```
 
-## AI via MCP settings (TASK-069E, TASK-069F, TASK-069G)
+## AI via MCP settings (TASK-069E, TASK-069F, TASK-069G, TASK-069N)
 
 MCP is off by default. `docker-compose.yml` passes these backend settings with
 the defaults shown in `.env.example`; override them in `.env` (no secrets):
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
-| `MCP_ENABLED` | `false` | With `false`, the MCP endpoints `/api/mcp/read` and `/api/mcp/write`, OAuth discovery, `/api/oauth/register`, `/api/oauth/authorize`, `/api/oauth/token`, `/api/oauth/revoke` and the `/api/v1/ai/oauth/consent` API return 404 and `GET /api/v1/auth/session` reports `features.mcp=false`; the `/api/v1/ai/connections` API stays available |
+| `MCP_ENABLED` | `false` | With `false`, the MCP endpoints `/api/mcp/read` and `/api/mcp/write`, OAuth discovery, `/api/oauth/register`, `/api/oauth/authorize`, `/api/oauth/token`, `/api/oauth/revoke`, the `/api/v1/ai/oauth/consent` API and the skill zip download `/api/v1/ai/skills/{name}.zip` return 404 and `GET /api/v1/auth/session` reports `features.mcp=false`; the `/api/v1/ai/connections` API stays available |
 | `MCP_OAUTH_REDIRECT_URIS` | claude.ai and claude.com callbacks plus `http://127.0.0.1:{port}/callback`, `http://[::1]:{port}/callback`, `http://localhost:{port}/callback` | Redirect URI allowlist; `{port}` is literal |
 | `MCP_OAUTH_AUTHORIZATION_REQUEST_LIFETIME_SECONDS`, `MCP_OAUTH_AUTHORIZATION_CODE_LIFETIME_SECONDS` | `600`, `60` | Pending request and code lifetimes |
 | `MCP_OAUTH_ACCESS_TOKEN_LIFETIME_SECONDS`, `MCP_OAUTH_REFRESH_TOKEN_IDLE_LIFETIME_SECONDS`, `MCP_OAUTH_GRANT_LIFETIME_SECONDS` | `3600`, `604800`, `2592000` | Access token lifetime, refresh token idle timeout and absolute grant lifetime; no token outlives its grant |
@@ -127,6 +127,51 @@ curl -si --cacert "$NODE_EXTRA_CA_CERTS" -X POST https://app.localhost/api/mcp/r
 
 It answers `401` with
 `WWW-Authenticate: Bearer resource_metadata="https://app.localhost/.well-known/oauth-protected-resource/api/mcp/read"`.
+
+### Skills, the Claude Code plugin and MCP prompts locally (TASK-069N)
+
+The skills are `backend/app/mcp/plugin/skills/*/SKILL.md`. The plugin in
+`backend/app/mcp/plugin/` bundles them with a `.mcp.json` that points at the
+production servers `https://schatten.lupaus.eu/api/mcp/read` and `/write`.
+Locally, keep the `app.localhost` servers added above and load the plugin for
+its skills, either for one session straight from the checkout (picks up
+`SKILL.md` edits on the next start):
+
+```bash
+claude --plugin-dir backend/app/mcp/plugin
+```
+
+or installed from the local marketplace, as users install it from GitHub:
+
+```bash
+claude plugin marketplace add ./
+claude plugin install schatten@schatten
+```
+
+The plugin's own servers (`plugin:schatten:schatten-read` and
+`plugin:schatten:schatten-write` in `/mcp`) connect to production, where MCP
+stays off until TASK-069O; disable them in `/mcp` for local work.
+`claude --plugin-dir backend/app/mcp/plugin plugin details schatten` (or
+`claude plugin details schatten@schatten` once installed) lists the skills
+`schatten-model-building` and `schatten-timeseries-generation` and both
+servers. Then ask for a small model, for example a
+team with a goal measured by a monthly revenue metric and two years of
+generated revenue. Claude Code should call `get_type_catalog` first, preview
+the generator spec with `preview_generated_timeserie`, stage, validate and
+submit a change set, and return the review URL without claiming that anything
+was applied.
+
+The read server's prompts `model_building` and `timeseries_generation` serve
+the same `SKILL.md` bodies; Claude Code offers them as
+`/mcp__schatten-read__model_building` and
+`/mcp__schatten-read__timeseries_generation`. The backend reads the files when
+it builds the app, and the dev server reloads only on Python changes, so
+restart the backend container after editing a skill
+(`docker compose --env-file .env --env-file .env.entra.local restart backend`).
+The Metrics tab AI panel's Connect section links the skill zips
+(`/api/v1/ai/skills/<name>.zip`, read on each request) for upload to claude.ai
+or Claude Desktop; those vendor-cloud clients cannot reach `app.localhost`, so
+test them only against an environment they can reach.
 
 ## Designated local Entra administrator
 

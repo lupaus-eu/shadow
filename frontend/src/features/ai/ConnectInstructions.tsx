@@ -1,6 +1,20 @@
 import { useState } from "react";
+import { buildApiUrl } from "../../api/client";
 
-type CopyState = { url: string; result: "copied" | "failed" } | null;
+type CopyState = { text: string; result: "copied" | "failed" } | null;
+type CopyHandler = (text: string) => Promise<void>;
+
+// The Claude Code plugin is installed from the repository marketplace; its
+// `.mcp.json` points at the production origin.
+const PLUGIN_MARKETPLACE_COMMAND = "/plugin marketplace add reflector-oy/schatten";
+const PLUGIN_INSTALL_COMMAND = "/plugin install schatten@schatten";
+const PLUGIN_ORIGIN = "https://schatten.lupaus.eu";
+
+// The same `SKILL.md` folders the plugin ships, zipped by the backend.
+const SKILLS = [
+  { name: "schatten-model-building", label: "Model building" },
+  { name: "schatten-timeseries-generation", label: "Timeseries generation" }
+];
 
 // MCP resource URLs are `<PUBLIC_ORIGIN>/api/mcp/<server>`; the SPA is served
 // from the public origin, so it builds them from its own origin.
@@ -9,15 +23,16 @@ function mcpUrls(origin: string): { read: string; write: string } {
 }
 
 export default function ConnectInstructions() {
-  const urls = mcpUrls(window.location.origin);
+  const origin = window.location.origin;
+  const urls = mcpUrls(origin);
   const [copyState, setCopyState] = useState<CopyState>(null);
 
-  async function copy(url: string) {
+  async function copy(text: string) {
     try {
-      await navigator.clipboard.writeText(url);
-      setCopyState({ url, result: "copied" });
+      await navigator.clipboard.writeText(text);
+      setCopyState({ text, result: "copied" });
     } catch {
-      setCopyState({ url, result: "failed" });
+      setCopyState({ text, result: "failed" });
     }
   }
 
@@ -51,21 +66,110 @@ export default function ConnectInstructions() {
       </ol>
 
       <h4 className="ai-panel__section-title">Claude Code</h4>
+      <p className="muted">
+        The Schatten plugin adds both servers and the Schatten skills. It needs read access to the
+        reflector-oy/schatten GitHub repository.
+      </p>
       <ol className="ai-panel-connect__steps">
-        <li>Add both servers:</li>
+        <li>Add the repository marketplace:</li>
       </ol>
+      <CopyCommand
+        label="marketplace command"
+        command={PLUGIN_MARKETPLACE_COMMAND}
+        copyState={copyState}
+        onCopy={copy}
+      />
+      <ol className="ai-panel-connect__steps" start={2}>
+        <li>Install the plugin:</li>
+      </ol>
+      <CopyCommand
+        label="install command"
+        command={PLUGIN_INSTALL_COMMAND}
+        copyState={copyState}
+        onCopy={copy}
+      />
+      {origin !== PLUGIN_ORIGIN ? (
+        <p className="ai-panel__hint">
+          The plugin connects to {PLUGIN_ORIGIN}. For this Schatten, also add the servers below; the
+          plugin&apos;s skills apply to them too.
+        </p>
+      ) : null}
+      <p className="muted">Or add only the servers:</p>
       <pre className="ai-panel-connect__command">
         <code>
           {`claude mcp add --transport http schatten-read ${urls.read}\nclaude mcp add --transport http schatten-write ${urls.write}`}
         </code>
       </pre>
-      <ol className="ai-panel-connect__steps" start={2}>
+      <ol className="ai-panel-connect__steps" start={3}>
         <li>
-          In Claude Code, run <code className="metadata-code">/mcp</code>, select each server and
-          authenticate. Approve the access in Schatten.
+          Whether you installed the plugin or added the servers, run{" "}
+          <code className="metadata-code">/mcp</code> in Claude Code, select each Schatten server
+          and authenticate. Approve the access in Schatten.
+        </li>
+      </ol>
+
+      <h4 className="ai-panel__section-title">Skills for claude.ai and Claude Desktop</h4>
+      <p className="muted">
+        Skills teach your AI client how to build Schatten models and generate timeseries.
+      </p>
+      <ul className="ai-panel-connect__downloads">
+        {SKILLS.map((skill) => (
+          <li key={skill.name}>
+            <a href={buildApiUrl(`/api/v1/ai/skills/${skill.name}.zip`)} download>
+              {skill.label} ({skill.name}.zip)
+            </a>
+          </li>
+        ))}
+      </ul>
+      <ol className="ai-panel-connect__steps">
+        <li>Download both skill zips.</li>
+        <li>
+          In claude.ai or Claude Desktop, turn on code execution under Settings, Capabilities.
+        </li>
+        <li>
+          Open Customize, then Skills, choose to upload a skill and select a zip. Repeat for the
+          other.
         </li>
       </ol>
     </section>
+  );
+}
+
+function CopyResult(props: { result: "copied" | "failed" | null; failedText: string }) {
+  return props.result === "failed" ? (
+    <span className="ai-panel__hint" role="status">
+      {props.failedText}
+    </span>
+  ) : null;
+}
+
+function copyResult(copyState: CopyState, text: string) {
+  return copyState?.text === text ? copyState.result : null;
+}
+
+function CopyCommand(props: {
+  label: string;
+  command: string;
+  copyState: CopyState;
+  onCopy: CopyHandler;
+}) {
+  const result = copyResult(props.copyState, props.command);
+
+  return (
+    <div className="ai-panel-connect__copy-command">
+      <pre className="ai-panel-connect__command">
+        <code>{props.command}</code>
+      </pre>
+      <button
+        className="btn btn--secondary btn--compact"
+        type="button"
+        aria-label={`Copy ${props.label}`}
+        onClick={() => void props.onCopy(props.command)}
+      >
+        {result === "copied" ? "Copied" : "Copy"}
+      </button>
+      <CopyResult result={result} failedText="Copying failed; select the command and copy it." />
+    </div>
   );
 }
 
@@ -74,9 +178,9 @@ function McpUrl(props: {
   label: string;
   url: string;
   copyState: CopyState;
-  onCopy: (url: string) => Promise<void>;
+  onCopy: CopyHandler;
 }) {
-  const result = props.copyState?.url === props.url ? props.copyState.result : null;
+  const result = copyResult(props.copyState, props.url);
 
   return (
     <div className="ai-panel-connect__url">
@@ -91,11 +195,7 @@ function McpUrl(props: {
         >
           {result === "copied" ? "Copied" : "Copy"}
         </button>
-        {result === "failed" ? (
-          <span className="ai-panel__hint" role="status">
-            Copying failed; select the URL and copy it.
-          </span>
-        ) : null}
+        <CopyResult result={result} failedText="Copying failed; select the URL and copy it." />
       </dd>
     </div>
   );

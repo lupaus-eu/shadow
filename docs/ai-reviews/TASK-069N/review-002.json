@@ -1,0 +1,165 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-069N/review-002",
+  "task": {
+    "id": "TASK-069N",
+    "path": "tasks/TASK-069N-ai-skills-plugin-bundle.md"
+  },
+  "round": 2,
+  "reviewed_at": "2026-10-29T12:57:50Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": {
+    "number": 121,
+    "url": "https://github.com/reflector-oy/schatten/pull/121"
+  },
+  "source": {
+    "base_sha": "9d3341a4c89a3c1e1e28ffcdd17a4e1e2fdf1f16",
+    "head_sha": "abbe69cd6f68181916bb0a204b1fb420c5871c54",
+    "comparison": "9d3341a4c89a3c1e1e28ffcdd17a4e1e2fdf1f16...abbe69cd6f68181916bb0a204b1fb420c5871c54",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Round 2 checks the round 1 fixes in abbe69c and rescans the whole branch. All nine round 1 findings are fixed. The new fix loop, rerun in a scratch engine script, leaves the example all ok, and a state on a later date in a copied scenario works. The new engine test of the model-building example failed when the reviewer reversed an edge or renamed a node type. The production-origin test failed when the reviewer inverted the origin check or always showed the hint. Backend lint, format check, pyright and the skill and authorization tests pass, and so do the frontend AI tests, Prettier and ESLint. The fixes introduced one low gap: the fix loop names only the failing operation's direct dependents. There are also two info items: a reflowed line in LOCAL-DEVELOPMENT.md, and the timeseries skill specs, which are schema-checked but never generated. The spec timeUnit check in the change-set engine is still missing, but that predates this branch, and the claude.ai menu paths are left to the manual check, so neither is a finding of this task.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "The model-building fix loop removes only direct dependents of the failing operation, so an indirect dependent still runs too early.",
+        "rationale": "The rule covers later operations that use the failing operation's own ref or key. An operation that needs it only through one of those dependents, for example an edge in a later state that uses a node created in the failing state, stays in place and fails next. A derived metric uses a timeserie's shortName, not its key, so the rule does not name it either. Validation names the next failure, so the loop still converges, but slower.",
+        "recommendation": "Include the operations that depend on the removed dependents in turn, and count a formula's shortName as a use.",
+        "locations": [
+          {
+            "path": "backend/app/mcp/plugin/skills/schatten-model-building/SKILL.md",
+            "line": 86
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "documentation",
+        "severity": "info",
+        "summary": "A reflow in LOCAL-DEVELOPMENT.md left a lone word on its own source line.",
+        "rationale": "The Markdown renders correctly, but the source line break is out of place in the paragraph.",
+        "recommendation": "Rewrap the paragraph.",
+        "locations": [
+          {
+            "path": "docs/LOCAL-DEVELOPMENT.md",
+            "line": 171
+          }
+        ]
+      },
+      {
+        "id": "F-003",
+        "category": "missing_test",
+        "severity": "info",
+        "summary": "The timeseries skill specs are only schema-checked, never generated.",
+        "rationale": "A spec that validates can still fail in the generator, for example on date alignment, while the model-building example now runs through the engine. The specs generated correctly in the round 1 manual check, so the gap is small.",
+        "recommendation": "Generate every spec in the example test.",
+        "locations": [
+          {
+            "path": "backend/tests/test_ai_skills.py",
+            "line": 238
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-069N/review-001",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "The fix loop now removes the later operations that use the failing operation's ref or key, latest first, and re-adds them in dependency order. A scratch engine run of the new loop on a failing create_node leaves the example all ok.",
+        "validated_by": {
+          "review_id": "TASK-069N/review-002",
+          "commit": "abbe69cd6f68181916bb0a204b1fb420c5871c54"
+        }
+      },
+      {
+        "record_id": "TASK-069N/review-001",
+        "finding_id": "F-002",
+        "disposition": "fixed",
+        "rationale": "The skill now says a later target date, says that values are copied up to the state's date, and reuses an existing state's key when the date is taken. A copy, a later state and a node change in the copy run all ok.",
+        "validated_by": {
+          "review_id": "TASK-069N/review-002",
+          "commit": "abbe69cd6f68181916bb0a204b1fb420c5871c54"
+        }
+      },
+      {
+        "record_id": "TASK-069N/review-001",
+        "finding_id": "F-003",
+        "disposition": "fixed",
+        "rationale": "Both skills now say that replacements cover only existing scenarios and tell the client to tell the user about copied values or nodes, which matches compute_replacements.",
+        "validated_by": {
+          "review_id": "TASK-069N/review-002",
+          "commit": "abbe69cd6f68181916bb0a204b1fb420c5871c54"
+        }
+      },
+      {
+        "record_id": "TASK-069N/review-001",
+        "finding_id": "F-004",
+        "disposition": "fixed",
+        "rationale": "The skill gives the compounding formula and 1.53 % a month, 0.35 % a week and 0.05 % a day, which match the percent trend.",
+        "validated_by": {
+          "review_id": "TASK-069N/review-002",
+          "commit": "abbe69cd6f68181916bb0a204b1fb420c5871c54"
+        }
+      },
+      {
+        "record_id": "TASK-069N/review-001",
+        "finding_id": "F-005",
+        "disposition": "fixed",
+        "rationale": "LOCAL-DEVELOPMENT.md now restarts the backend container with the same compose files as the Makefile.",
+        "validated_by": {
+          "review_id": "TASK-069N/review-002",
+          "commit": "abbe69cd6f68181916bb0a204b1fb420c5871c54"
+        }
+      },
+      {
+        "record_id": "TASK-069N/review-001",
+        "finding_id": "F-006",
+        "disposition": "fixed",
+        "rationale": "The /mcp step is now step 3 for both the plugin and the servers, and a test asserts its text.",
+        "validated_by": {
+          "review_id": "TASK-069N/review-002",
+          "commit": "abbe69cd6f68181916bb0a204b1fb420c5871c54"
+        }
+      },
+      {
+        "record_id": "TASK-069N/review-001",
+        "finding_id": "F-007",
+        "disposition": "fixed",
+        "rationale": "A new test runs the model-building example through the change-set engine against every type and connection of the default metamodel file. It failed when an edge was reversed or a node type renamed.",
+        "validated_by": {
+          "review_id": "TASK-069N/review-002",
+          "commit": "abbe69cd6f68181916bb0a204b1fb420c5871c54"
+        }
+      },
+      {
+        "record_id": "TASK-069N/review-001",
+        "finding_id": "F-008",
+        "disposition": "fixed",
+        "rationale": "A new test renders the Connect section on the production origin and asserts that the hint is absent. It failed when the origin check was inverted or the hint always shown.",
+        "validated_by": {
+          "review_id": "TASK-069N/review-002",
+          "commit": "abbe69cd6f68181916bb0a204b1fb420c5871c54"
+        }
+      },
+      {
+        "record_id": "TASK-069N/review-001",
+        "finding_id": "F-009",
+        "disposition": "fixed",
+        "rationale": "The model-building skill now names the MCP prompt timeseries_generation next to the skill.",
+        "validated_by": {
+          "review_id": "TASK-069N/review-002",
+          "commit": "abbe69cd6f68181916bb0a204b1fb420c5871c54"
+        }
+      }
+    ]
+  }
+}

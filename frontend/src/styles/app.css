@@ -2450,11 +2450,25 @@
   margin: 0;
 }
 
-.ai-panel-connect__steps {
+.ai-panel-connect__steps,
+.ai-panel-connect__downloads {
   display: grid;
   gap: var(--space-1);
   margin: 0;
   padding-left: var(--space-5);
+}
+
+.ai-panel-connect__copy-command {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.ai-panel-connect__copy-command .ai-panel-connect__command {
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
 .ai-panel-connect__command {

@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from starlette.middleware.base import RequestResponseEndpoint
 
+from app.api.v1.ai_skills.router import router as ai_skills_router
 from app.api.v1.auth.dependencies import AuthHttpError
 from app.api.v1.auth.logging import install_sensitive_query_filter
 from app.api.v1.auth.provider import AuthlibOidcProvider, OidcProvider
@@ -158,6 +159,7 @@ def create_app(
     if resolved_settings.mcp_enabled:
         app.include_router(mcp_oauth_router)
         app.include_router(mcp_oauth_consent_router)
+        app.include_router(ai_skills_router)
     app.router.routes.extend(endpoint.route for endpoint in mcp_endpoints)
     return app
 

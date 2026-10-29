@@ -176,6 +176,37 @@ uv run pytest
 uv run pyright
 ```
 
+## Connect an AI client
+
+Schatten itself never calls an LLM: you chat in your own MCP client on your
+own AI subscription, and the client proposes changes as change sets that a
+person applies or rejects in the Metrics tab
+([ADR-015](docs/decisions/ADR-015-ai-via-mcp.md)). The feature is behind
+`MCP_ENABLED` (off by default); when it is on, the Metrics tab's AI panel
+Connect section shows these steps for the current Schatten.
+
+- Claude Code: install the Schatten plugin, which adds the MCP servers
+  `https://schatten.lupaus.eu/api/mcp/read` and `/api/mcp/write` and the
+  Schatten skills (needs read access to this repository):
+
+  ```text
+  /plugin marketplace add reflector-oy/schatten
+  /plugin install schatten@schatten
+  ```
+
+  Then run `/mcp`, authenticate each server and approve the access in
+  Schatten.
+- claude.ai and Claude Desktop: add the read and write URLs as two custom
+  connectors (Settings, Connectors), and upload the two skill zips from the
+  Connect section under Customize, Skills (code execution must be on).
+- Other MCP clients: add both URLs and use the read server's MCP prompts
+  `model_building` and `timeseries_generation`, which carry the same skill
+  text.
+
+The skills live in `backend/app/mcp/plugin/skills/`. Local use against
+`https://app.localhost` is described in
+[docs/LOCAL-DEVELOPMENT.md](docs/LOCAL-DEVELOPMENT.md).
+
 ## Kehitysworkflow
 
 ```text

@@ -68,8 +68,9 @@ Päätetty tekninen perusrakenne:
   MCP and public OAuth endpoints behind `MCP_ENABLED=false`), TASK-069I's
   change-set schema and engine, TASK-069J's change-set staging write tools,
   TASK-069K's cookie-session change-set review API, TASK-069L's SPA consent
-  page and connections UI and TASK-069M's Metrics tab AI panel are
-  implemented; the rest is pending TASK-069N and TASK-069O (see
+  page and connections UI, TASK-069M's Metrics tab AI panel and TASK-069N's
+  skills, Claude Code plugin, MCP prompts and skill zips are implemented; the
+  rest is pending TASK-069O (see
   [AI Via MCP](#ai-via-mcp))
 
 Tarkemmat toteutusyksityiskohdat täsmentyvät taskien ja tarvittaessa uusien ADR:ien kautta.
@@ -588,8 +589,9 @@ consent page `/ai/authorize` in `frontend/src/features/ai/AuthorizePage.tsx`,
 the reusable `ConnectionsList.tsx` and the admin "Revoke AI connections"
 action in Users administration, with the API wrappers in
 `frontend/src/api/ai.ts`) and TASK-069M (the Metrics tab AI panel, see
-[Metrics Tab AI Panel](#metrics-tab-ai-panel)) are implemented; the rest is
-pending TASK-069N and TASK-069O.
+[Metrics Tab AI Panel](#metrics-tab-ai-panel)) and TASK-069N (the skills,
+Claude Code plugin, MCP prompts and skill zips, see [AI Skills](#ai-skills))
+are implemented; the rest is pending TASK-069O.
 Nothing else below is implemented yet, and the feature stays behind `MCP_ENABLED=false` until
 TASK-069O's separately approved production enablement.
 
@@ -665,12 +667,33 @@ also before a scenario is selected. The panel has three sections:
   reloads the metrics grid, and its confirmation warns when unsaved grid edits
   would be discarded; reject takes an optional note.
 - Connections: TASK-069L's `ConnectionsList`.
-- Connect: the MCP URLs and client steps, hidden when `features.mcp` is false.
+- Connect: the MCP URLs and client steps, the Claude Code plugin install
+  commands and the skill zip downloads, hidden when `features.mcp` is false.
 
 With `features.mcp` false the toggle is shown only when the organisation has
 change sets or the User has connections, and review, apply and reject keep
 working. The panel never calls an LLM; editing operations stays in the AI
 client.
+
+## AI Skills
+
+Implemented by TASK-069N. The skills `schatten-model-building` and
+`schatten-timeseries-generation` teach the modelling workflow and the
+contracts a model cannot infer from the tool docstrings. Each has one source
+text, `backend/app/mcp/plugin/skills/<name>/SKILL.md`, which reaches AI
+clients in three ways:
+
+- the Claude Code plugin `schatten` in `backend/app/mcp/plugin/` (the skills
+  and a `.mcp.json` with the production MCP URLs), installed through the
+  repository-root marketplace `.claude-plugin/marketplace.json`;
+- `GET /api/v1/ai/skills/{name}.zip` (business session, registered only with
+  `MCP_ENABLED=true`), the skill folder zipped with the standard library for
+  upload to claude.ai or Claude Desktop; and
+- the read server's MCP prompts `model_building` and `timeseries_generation`,
+  which serve the `SKILL.md` bodies to any MCP client.
+
+`backend/app/mcp/skills.py` loads the files for both the prompts and the zip
+route and does not import `fastmcp`.
 
 Domain ownership is in `docs/domains/AI.md` and the change-set concept in
 `docs/concepts/AI_CHANGE_SET.md`.
@@ -955,7 +978,7 @@ ADR-004 Authentication, Identity And Session Architecture: accepted
 ADR-005 Production-Only Deployment Environments: accepted
 ADR-006 Local Authentik TLS And Optional Entra Federation: target superseded by ADR-013
 ADR-013 Shared Entra Registration And Local HTTPS Deployment: accepted; source delivery H1-H3 implemented, rollout pending
-ADR-015 AI Via MCP With Human-Applied Change Sets: accepted design; TASK-069B..TASK-069M implemented, TASK-069N..TASK-069O pending
+ADR-015 AI Via MCP With Human-Applied Change Sets: accepted design; TASK-069B..TASK-069N implemented, TASK-069O pending
 ```
 
 ---

@@ -24,10 +24,13 @@ revocation action, see
 [Consent Page And Connections UI (TASK-069L)](#consent-page-and-connections-ui-task-069l))
 and TASK-069M (the Metrics tab AI panel, see
 [Metrics Tab AI Panel (TASK-069M)](#metrics-tab-ai-panel-task-069m))
-are implemented and the rest is pending TASK-069N and TASK-069O. The MCP endpoints, the public
-OAuth endpoints and the consent API are registered only with
-`MCP_ENABLED=true`, which is off by default and in production; the connections
-and change-set review APIs are always registered.
+and TASK-069N (the skills, the Claude Code plugin, the MCP prompts and the
+skill zips, see
+[Skills And Distribution (TASK-069N)](#skills-and-distribution-task-069n))
+are implemented and the rest is pending TASK-069O. The MCP endpoints, the
+public OAuth endpoints, the consent API and the skill zip download are
+registered only with `MCP_ENABLED=true`, which is off by default and in
+production; the connections and change-set review APIs are always registered.
 
 ## Purpose
 
@@ -1027,6 +1030,51 @@ route passes `features.mcp` and the `changeSet` query parameter.
   detail and shows the change set's current status. Reject maps the same
   codes the same way.
 
+## Skills And Distribution (TASK-069N)
+
+The skills teach what a model cannot infer from the tool docstrings. Each has
+one source text in `backend/app/mcp/plugin/skills/<name>/SKILL.md`, with
+frontmatter holding exactly `name` and `description`:
+
+- `schatten-model-building`: agree the organisation and scenario, call
+  `get_type_catalog` first and keep to its types and allowed connections,
+  date nodes and edges with organisation-state target dates and keep edge
+  lifetimes within node lifetimes, link timeseries to nodes following
+  `timeserie_id_rule`, use `$ref` only for server-generated keys, follow the
+  create → add → validate → fix → submit loop, and never claim that changes
+  are applied before a person applies them in Schatten.
+- `schatten-timeseries-generation`: choosing `timeUnit`, `unit` and
+  `valueUnit`, realistic trend, seasonality (including `peakOffset`), noise,
+  bound and seed parameters with worked example specs, date alignment,
+  derived-metric formulas over short names, and always previewing with
+  `preview_generated_timeserie` before staging the same spec.
+
+The same files are distributed three ways:
+
+| Channel | Where | For |
+| --- | --- | --- |
+| Claude Code plugin `schatten` | `backend/app/mcp/plugin/` (`.claude-plugin/plugin.json`, `.mcp.json` with `https://schatten.lupaus.eu/api/mcp/read` and `/api/mcp/write`, `skills/`), listed by the repository-root marketplace `.claude-plugin/marketplace.json` | Claude Code: `/plugin marketplace add reflector-oy/schatten`, then `/plugin install schatten@schatten` (needs read access to the repository) |
+| Skill zip | `GET /api/v1/ai/skills/{name}.zip` in `backend/app/api/v1/ai_skills/router.py`, business session, `MCP_ENABLED=true` only | Upload to claude.ai or Claude Desktop (Customize, Skills) |
+| MCP prompts | Read server prompts `model_building` and `timeseries_generation` | Any MCP client, including clients without skills support |
+
+- `backend/app/mcp/skills.py` reads the files for the prompts and the zip
+  route. It does not import `fastmcp`, so the zip route does not load it.
+- A prompt has no arguments and returns the `SKILL.md` body (the Markdown
+  after the frontmatter) as one user message; its description is the
+  frontmatter `description`. No prompt changes data.
+- The zip holds the skill folder under its own name (`<name>/SKILL.md`), as
+  claude.ai uploads expect, with fixed timestamps so the same files always
+  give the same bytes. An unknown name is `404 SKILL_NOT_FOUND`; with MCP
+  disabled the route does not exist (404).
+- The Metrics tab Connect section shows the plugin commands with copy buttons,
+  a note on non-production origins that the plugin's servers are the
+  production ones, and the zip links with short upload steps. It is hidden
+  when `features.mcp` is false.
+- Tests check the frontmatter, the plugin and marketplace JSON, and that every
+  JSON example in the skills validates against the change-set operation and
+  generation spec schemas, so the skills stay current with the tool
+  contracts.
+
 ## MCP Tools
 
 Read service (`readOnlyHint`, `idempotentHint`, `openWorldHint=False`):
@@ -1046,7 +1094,8 @@ list_change_sets(organisation_key, status, scenario_key)
 get_change_set(change_set_key)
 ```
 
-Read service MCP prompts: `model_building`, `timeseries_generation`.
+Read service MCP prompts (TASK-069N), served from the skills' `SKILL.md`
+bodies: `model_building`, `timeseries_generation`.
 
 Write service (`openWorldHint=False`):
 

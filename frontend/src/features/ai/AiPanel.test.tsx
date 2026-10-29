@@ -109,6 +109,85 @@ describe("AiPanel", () => {
     expect(await screen.findByText("Copying failed; select the URL and copy it.")).toBeVisible();
   });
 
+  it("shows the Claude Code plugin install commands with copy buttons", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    stubClipboard(writeText);
+    renderPanel();
+
+    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+
+    expect(screen.getByText("/plugin marketplace add reflector-oy/schatten")).toBeVisible();
+    expect(screen.getByText("/plugin install schatten@schatten")).toBeVisible();
+    // The plugin's servers are the production ones; this origin is not.
+    expect(screen.getByText(/The plugin connects to https:\/\/schatten\.lupaus\.eu/)).toBeVisible();
+    expect(screen.getByText(/Whether you installed the plugin or added the servers/)).toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy install command" }));
+
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith("/plugin install schatten@schatten")
+    );
+    expect(await screen.findByRole("button", { name: "Copy install command" })).toHaveTextContent(
+      "Copied"
+    );
+    expect(screen.getByRole("button", { name: "Copy marketplace command" })).toHaveTextContent(
+      "Copy"
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy marketplace command" }));
+
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith("/plugin marketplace add reflector-oy/schatten")
+    );
+  });
+
+  it("omits the plugin origin hint on the production origin", () => {
+    vi.spyOn(window, "location", "get").mockReturnValue(
+      new URL("https://schatten.lupaus.eu/schatten/acme/metrics") as unknown as Location
+    );
+    renderPanel();
+
+    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+
+    expect(screen.getByText("/plugin install schatten@schatten")).toBeVisible();
+    expect(
+      screen.getByText("https://schatten.lupaus.eu/api/mcp/read", { selector: "code" })
+    ).toBeVisible();
+    expect(screen.queryByText(/The plugin connects to/)).not.toBeInTheDocument();
+  });
+
+  it("explains a failed command copy", async () => {
+    stubClipboard(vi.fn().mockRejectedValue(new Error("Denied")));
+    renderPanel();
+
+    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+    fireEvent.click(screen.getByRole("button", { name: "Copy marketplace command" }));
+
+    expect(
+      await screen.findByText("Copying failed; select the command and copy it.")
+    ).toBeVisible();
+  });
+
+  it("links the skill zips with upload steps for claude.ai and Claude Desktop", () => {
+    renderPanel();
+
+    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+
+    expect(
+      screen.getByRole("heading", { name: "Skills for claude.ai and Claude Desktop" })
+    ).toBeVisible();
+    for (const [label, name] of [
+      ["Model building", "schatten-model-building"],
+      ["Timeseries generation", "schatten-timeseries-generation"]
+    ]) {
+      const link = screen.getByRole("link", { name: `${label} (${name}.zip)` });
+      expect(link).toHaveAttribute("href", `/api/v1/ai/skills/${name}.zip`);
+      expect(link).toHaveAttribute("download");
+    }
+    expect(screen.getByText(/turn on code execution/)).toBeVisible();
+    expect(screen.getByText(/Open Customize, then Skills/)).toBeVisible();
+  });
+
   it("hides the Connect section when features.mcp is false", async () => {
     renderPanel({ mcpEnabled: false });
 
@@ -117,5 +196,7 @@ describe("AiPanel", () => {
     expect(within(sections).queryByRole("button", { name: "Connect" })).not.toBeInTheDocument();
     expect(within(sections).getByRole("button", { name: "Connections" })).toBeVisible();
     expect(screen.queryByText(/api\/mcp\/read/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/\/plugin (marketplace add|install)/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /\.zip/ })).not.toBeInTheDocument();
   });
 });

@@ -1,0 +1,166 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-069N/review-001",
+  "task": {
+    "id": "TASK-069N",
+    "path": "tasks/TASK-069N-ai-skills-plugin-bundle.md"
+  },
+  "round": 1,
+  "reviewed_at": "2026-10-29T12:53:16Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": {
+    "number": 121,
+    "url": "https://github.com/reflector-oy/schatten/pull/121"
+  },
+  "source": {
+    "base_sha": "9d3341a4c89a3c1e1e28ffcdd17a4e1e2fdf1f16",
+    "head_sha": "d6491e84b46c3e81ff52fe1ad93229fc939f60ab",
+    "comparison": "9d3341a4c89a3c1e1e28ffcdd17a4e1e2fdf1f16...d6491e84b46c3e81ff52fe1ad93229fc939f60ab",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Round 1 reviews the whole TASK-069N branch: both SKILL.md files, the plugin, MCP and marketplace manifests, the skill loader and zip, the read-server prompts, the MCP-gated zip route, the authorization sweep, ConnectInstructions, the tests and the docs. The code holds up. The zip route needs a business session, is registered only with MCP_ENABLED=true and checks the name against the skill catalog before building any path, so there is no path traversal. fastmcp is not imported with MCP off, the prompts return static text, no tool or prompt can apply a change set, no dependency is added and nothing is out of scope. Every tool, operation type and field named in the skills exists. The model-building example runs through the change-set engine against the default metamodel types, and all five generator specs validate and peak, shift and saturate where the text says. The findings are in guidance that an AI client follows literally: the fix loop breaks operation order, the copy_scenario advice gives a target date that is already taken, the replacements warning does not cover new or copied scenarios, the growth conversions do not compound, the restart advice for skill edits does nothing, and the /mcp step reads as optional for plugin users. Two tests are missing, and one cross-reference is unclear for prompt-only clients. Outside this task: the engine does not check that a generation spec's timeUnit equals the timeserie's (TASK-069I/J code); the skill states the rule. The claude.ai menu paths and the manual Claude Code check were not verified, because they need network access and an interactive Entra sign-in.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "documentation",
+        "severity": "medium",
+        "summary": "The model-building skill's fix loop puts the corrected operation after the operations that depend on it.",
+        "rationale": "The skill says to fix a failing operation with remove_operation and add_operations. add_operations always appends at the next free position, so later operations that use the removed operation's node, edge or timeserie key now run before its replacement. A scratch run that made a create_node fail, removed it and appended the corrected one failed validation at the next create_edge with a missing graph node. The skill only mentions removing operations that use the failing operation's ref.",
+        "recommendation": "Tell the client to remove every later operation that uses the failing operation's ref or key, latest first, then the failing one, and to add them again in dependency order, or to discard the draft and stage a new one when most of it depends on the failing operation.",
+        "locations": [
+          {
+            "path": "backend/app/mcp/plugin/skills/schatten-model-building/SKILL.md",
+            "line": 83
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "The copy_scenario guidance allows a target date that is always taken, and implies that all timeseries values are copied.",
+        "rationale": "The skill says to create a new organisation state in the copy with a target date on or after the copied one. The copy already has a state on that date, and target dates are unique per scenario, so the same date fails with a duplicate-target-date error. A scratch run confirmed this. The copy also keeps only the values dated on or before the copied state's date, while the skill says it copies all timeseries.",
+        "recommendation": "Say a later target date, say that timeseries are copied with their values up to the state's date, and add that an existing state's key is reused when the date is already taken.",
+        "locations": [
+          {
+            "path": "backend/app/mcp/plugin/skills/schatten-model-building/SKILL.md",
+            "line": 44
+          }
+        ]
+      },
+      {
+        "id": "F-003",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "The skills promise that replacements flag every overwrite, but new and copied scenarios are not covered.",
+        "rationale": "compute_replacements skips every patch_node and value operation whose scenario_key is a $ref. Generating or setting values on a copied series in a copied scenario replaces its copied history without a flag, and the timeseries skill tells the client to rely on validate_change_set to flag such operations.",
+        "recommendation": "State that replacements cover only scenarios that already exist, and tell the client to tell the user itself when it replaces copied values or patches copied nodes.",
+        "locations": [
+          {
+            "path": "backend/app/mcp/plugin/skills/schatten-timeseries-generation/SKILL.md",
+            "line": 156
+          },
+          {
+            "path": "backend/app/mcp/plugin/skills/schatten-model-building/SKILL.md",
+            "line": 86
+          }
+        ]
+      },
+      {
+        "id": "F-004",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "The timeseries skill divides yearly growth by the periods instead of compounding it.",
+        "rationale": "The percent trend compounds per period. 20 % a year is about 1.53 % a month and 0.35 % a week, not 1.66 % and 0.38 %; 1.66 % a month gives about 21.8 % a year. The skill's own worked example uses 1.5 % for about 20 % a year, so the text contradicts it. The daily figure, 0.05 %, is right.",
+        "recommendation": "Use the compounded values and give the conversion formula.",
+        "locations": [
+          {
+            "path": "backend/app/mcp/plugin/skills/schatten-timeseries-generation/SKILL.md",
+            "line": 35
+          }
+        ]
+      },
+      {
+        "id": "F-005",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "The local-development advice to run make dev-up after editing a skill does not reload the MCP prompts.",
+        "rationale": "make dev-up runs compose up -d, which leaves a running backend container with unchanged configuration alone, and the dev server reloads only on Python changes. The prompts are built when the app starts, so they stay stale. The zip route reads the files on each request and is not affected.",
+        "recommendation": "Tell developers to restart the backend container instead.",
+        "locations": [
+          {
+            "path": "docs/LOCAL-DEVELOPMENT.md",
+            "line": 168
+          }
+        ]
+      },
+      {
+        "id": "F-006",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "In the Connect section, the /mcp authentication step reads as part of the add-only-the-servers alternative.",
+        "rationale": "The Then run /mcp paragraph follows the Or add only the servers command, so plugin users may skip it, although the plugin's servers also need authentication. The README says that plugin users run /mcp too.",
+        "recommendation": "Make the /mcp step a numbered step that applies whether the user installed the plugin or added the servers, and cover it in the test.",
+        "locations": [
+          {
+            "path": "frontend/src/features/ai/ConnectInstructions.tsx",
+            "line": 104
+          }
+        ]
+      },
+      {
+        "id": "F-007",
+        "category": "missing_test",
+        "severity": "low",
+        "summary": "No test runs the model-building example through the change-set engine.",
+        "rationale": "The example test validates the JSON against the operation schemas only. It would not catch an example that breaks allowed connections, operation order, key references or date uniqueness, which is the kind of drift F-001 and F-002 show in the prose.",
+        "recommendation": "Run the example through the engine against the default metamodel's types and connections and assert that every operation is ok.",
+        "locations": [
+          {
+            "path": "backend/tests/test_ai_skills.py",
+            "line": 150
+          }
+        ]
+      },
+      {
+        "id": "F-008",
+        "category": "missing_test",
+        "severity": "low",
+        "summary": "No test checks that the plugin origin hint is hidden on the production origin.",
+        "rationale": "The tests cover the hint on a non-production origin only. Inverting the origin check would still pass them.",
+        "recommendation": "Add a test that renders the Connect section on https://schatten.lupaus.eu and asserts that the hint is absent.",
+        "locations": [
+          {
+            "path": "frontend/src/features/ai/ConnectInstructions.tsx",
+            "line": 91
+          },
+          {
+            "path": "frontend/src/features/ai/AiPanel.test.tsx",
+            "line": 112
+          }
+        ]
+      },
+      {
+        "id": "F-009",
+        "category": "documentation",
+        "severity": "info",
+        "summary": "The model-building skill refers to the timeseries generation skill by name only, which prompt-only clients do not see.",
+        "rationale": "Clients that use the read server's MCP prompts instead of skills know the guidance as the prompt timeseries_generation. The read-server instructions name both prompts, so the effect is small.",
+        "recommendation": "Name the MCP prompt next to the skill.",
+        "locations": [
+          {
+            "path": "backend/app/mcp/plugin/skills/schatten-model-building/SKILL.md",
+            "line": 132
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": []
+  }
+}
