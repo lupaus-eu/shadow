@@ -1,5 +1,13 @@
-import { lazy, Suspense, useLayoutEffect, useMemo, useState } from "react";
-import { NavLink, Navigate, Route, Routes, useLocation, useParams } from "react-router-dom";
+import { lazy, Suspense, useCallback, useLayoutEffect, useMemo, useState } from "react";
+import {
+  NavLink,
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+  useParams,
+  useSearchParams
+} from "react-router-dom";
 import EmptyTab from "../components/EmptyTab";
 import { useAuth } from "../auth/AuthContext";
 import SessionControls from "../auth/SessionControls";
@@ -212,7 +220,7 @@ function WorkspaceTabContent(props: { tab: WorkspaceTab; orgId: string }) {
   }
 
   if (props.tab.signature === "metrics") {
-    return <MetricsTab orgId={props.orgId} />;
+    return <MetricsWorkspaceTab orgId={props.orgId} />;
   }
 
   if (props.tab.signature === "graph") {
@@ -236,4 +244,36 @@ function WorkspaceTabContent(props: { tab: WorkspaceTab; orgId: string }) {
   }
 
   return <EmptyTab title={props.tab.label} description={props.tab.emptyText} />;
+}
+
+// The Metrics tab AI panel follows the `changeSet` query parameter, which the
+// review URL `/schatten/<org>/metrics?changeSet=<key>` sets (ADR-015).
+function MetricsWorkspaceTab(props: { orgId: string }) {
+  const { features } = useAuth();
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const changeSetKey = searchParams.get("changeSet") || null;
+  const locationState: unknown = location.state;
+
+  const onChangeSetKeyChange = useCallback(
+    (key: string | null) => {
+      setSearchParams(
+        (current) => {
+          const next = new URLSearchParams(current);
+          if (key) next.set("changeSet", key);
+          else next.delete("changeSet");
+          return next;
+        },
+        { replace: true, state: locationState }
+      );
+    },
+    [locationState, setSearchParams]
+  );
+
+  return (
+    <MetricsTab
+      orgId={props.orgId}
+      ai={{ mcpEnabled: features.mcp, changeSetKey, onChangeSetKeyChange }}
+    />
+  );
 }

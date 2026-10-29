@@ -151,7 +151,7 @@ Related Document:
 
 Status: accepted design in ADR-015; schema and engine implemented by
 TASK-069I; MCP write and change-set read tools implemented by TASK-069J;
-review API implemented by TASK-069K; review UI pending TASK-069M
+review API implemented by TASK-069K; review UI implemented by TASK-069M
 
 Meaning:
 

@@ -3,7 +3,8 @@
 Status: accepted design in ADR-015; schema (migration 018) and engine
 implemented by TASK-069I (see [Engine](#engine-task-069i)); MCP write and
 change-set read tools implemented by TASK-069J and the cookie-session review
-API by TASK-069K (see `docs/domains/AI.md`); review UI pending TASK-069M
+API by TASK-069K and the Metrics tab review UI by TASK-069M (see
+`docs/domains/AI.md`)
 
 ## Purpose
 

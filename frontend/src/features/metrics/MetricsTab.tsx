@@ -16,6 +16,9 @@ import type {
   TimeserieValueUnit
 } from "../../api/timeseries";
 import { useWorkspaceSelection } from "../../workspace/WorkspaceSelectionContext";
+import AiPanel from "../ai/AiPanel";
+import type { AiPanelOptions } from "../ai/AiPanel";
+import AiPanelToggle from "../ai/AiPanelToggle";
 
 type DraftState = Record<string, Record<string, string>>;
 type SavingRowsState = Record<string, boolean>;
@@ -42,6 +45,7 @@ const DEFAULT_METRICS_CELL_WIDTH = 150;
 const MIN_METRICS_CELL_WIDTH = 90;
 const MAX_METRICS_CELL_WIDTH = 320;
 const METRICS_CELL_WIDTH_STEP = 10;
+const AI_PANEL_ID = "metrics-ai-panel";
 
 const METRICS_SORT_OPTIONS = [
   { value: "name-asc", label: "Timeserie name, asc.", field: "name", direction: 1 },
@@ -408,7 +412,7 @@ function parseCsvImport(
   return { values, dates: Object.keys(values) };
 }
 
-export default function MetricsTab(props: { orgId: string }) {
+export default function MetricsTab(props: { orgId: string; ai?: AiPanelOptions }) {
   const { selectedScenario } = useWorkspaceSelection();
   const selectedScenarioId = selectedScenario?.id ?? null;
   const activeScenarioIdRef = useRef<string | null>(selectedScenarioId);
@@ -435,6 +439,9 @@ export default function MetricsTab(props: { orgId: string }) {
   const [cellWidth, setCellWidth] = useState(DEFAULT_METRICS_CELL_WIDTH);
   const [isDerivedMetricEditorVisible, setDerivedMetricEditorVisible] = useState(false);
   const [editingDerivedMetric, setEditingDerivedMetric] = useState<TimeserieDto | null>(null);
+  const [isAiPanelOpen, setAiPanelOpen] = useState(false);
+  // A `?changeSet=<key>` review link opens the AI panel on that change set.
+  const aiPanelVisible = isAiPanelOpen || Boolean(props.ai?.changeSetKey);
 
   const allDateColumns = useMemo(
     () => buildDateColumns(timeseries, manualDates),
@@ -714,24 +721,67 @@ export default function MetricsTab(props: { orgId: string }) {
     }
   }
 
+  function closeAiPanel() {
+    setAiPanelOpen(false);
+    props.ai?.onChangeSetKeyChange(null);
+  }
+
+  // Opening or leaving a change set inside the panel keeps it open, also when
+  // a review link opened it.
+  function changeAiChangeSet(changeSetKey: string | null) {
+    setAiPanelOpen(true);
+    props.ai?.onChangeSetKeyChange(changeSetKey);
+  }
+
+  const aiPanel =
+    props.ai && aiPanelVisible ? (
+      <AiPanel
+        id={AI_PANEL_ID}
+        orgId={props.orgId}
+        scenario={selectedScenario}
+        options={{ ...props.ai, onChangeSetKeyChange: changeAiChangeSet }}
+        unsavedMetricRows={dirtyRows.length}
+        onApplied={() => void loadMetrics()}
+        onClose={closeAiPanel}
+      />
+    ) : null;
+
   if (!selectedScenario) {
-    return (
+    const emptyTab = (
       <EmptyTab
         title="Metrics"
         description="Select a scenario in Scenarios to activate this tab."
       />
+    );
+    // A review link still opens its change set before a scenario is selected.
+    return aiPanel ? (
+      <div className="metrics-tab ai-panel-layout ai-panel-layout--no-scenario">
+        {emptyTab}
+        {aiPanel}
+      </div>
+    ) : (
+      emptyTab
     );
   }
 
   const saveAllDisabled = loading || isSaving || dirtyRows.length === 0;
 
   return (
-    <div className="metrics-tab">
+    <div className={`metrics-tab${aiPanel ? " ai-panel-layout" : ""}`}>
       <section className="tab-toolbar" aria-label="Metrics overview">
         <div className="tab-toolbar__title">
           <h1 className="page-title">Metrics</h1>
           <span className="tab-toolbar__count">{metricsCountText(timeseries.length)}</span>
         </div>
+        {props.ai ? (
+          <AiPanelToggle
+            orgId={props.orgId}
+            mcpEnabled={props.ai.mcpEnabled}
+            open={aiPanelVisible}
+            panelId={AI_PANEL_ID}
+            onToggle={() => (aiPanelVisible ? closeAiPanel() : setAiPanelOpen(true))}
+          />
+        ) : null}
       </section>
 
       <div className="metrics-notices">
@@ -931,6 +981,8 @@ export default function MetricsTab(props: { orgId: string }) {
           }}
         />
       ) : null}
+
+      {aiPanel}
     </div>
   );
 }

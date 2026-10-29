@@ -1,10 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   AiApiError,
+  applyAiChangeSet,
   approveConsentRequest,
   denyConsentRequest,
+  fetchAiChangeSet,
+  fetchAiChangeSets,
   fetchAiConnections,
   fetchConsentRequest,
+  rejectAiChangeSet,
   revokeAiConnection,
   revokeUserAiConnections
 } from "./ai";
@@ -174,5 +178,86 @@ describe("AI API", () => {
     await expect(revokeUserAiConnections(102)).rejects.toThrow(
       "Failed to revoke AI connections (403): Forbidden"
     );
+  });
+
+  it("lists change sets with the scenario filter and the unscoped ones", async () => {
+    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(jsonResponse([])));
+    vi.stubGlobal("fetch", fetchMock);
+    const controller = new AbortController();
+
+    await expect(
+      fetchAiChangeSets(
+        "acme/org",
+        { scenarioKey: "future", includeUnscoped: true, status: "submitted", limit: 5 },
+        controller.signal
+      )
+    ).resolves.toEqual([]);
+    await fetchAiChangeSets("acme");
+
+    expect(fetchMock.mock.calls[0]).toEqual([
+      "/api/v1/organisations/acme%2Forg/ai/change-sets?status=submitted&scenarioKey=future&includeUnscoped=true&limit=5",
+      expect.objectContaining({ method: "GET", signal: controller.signal })
+    ]);
+    expect(fetchMock.mock.calls[1][0]).toBe("/api/v1/organisations/acme/ai/change-sets");
+  });
+
+  it("loads, applies with the review fingerprint and rejects with a note", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ id: "cs/1" }))
+      .mockResolvedValueOnce(jsonResponse({ changeSet: { id: "cs/1" }, operations: [], refs: {} }))
+      .mockResolvedValueOnce(jsonResponse({ id: "cs/1", status: "rejected" }));
+    vi.stubGlobal("fetch", fetchMock);
+    const fingerprint = "a".repeat(64);
+
+    await expect(fetchAiChangeSet("acme", "cs/1")).resolves.toEqual({ id: "cs/1" });
+    await expect(applyAiChangeSet("acme", "cs/1", fingerprint)).resolves.toMatchObject({
+      refs: {}
+    });
+    await expect(rejectAiChangeSet("acme", "cs/1", "Not now")).resolves.toMatchObject({
+      status: "rejected"
+    });
+
+    expect(fetchMock.mock.calls[0]).toEqual([
+      "/api/v1/organisations/acme/ai/change-sets/cs%2F1",
+      expect.objectContaining({ method: "GET" })
+    ]);
+    for (const [index, action, body] of [
+      [1, "apply", { reviewFingerprint: fingerprint }],
+      [2, "reject", { note: "Not now" }]
+    ] as const) {
+      expect(fetchMock.mock.calls[index]).toEqual([
+        `/api/v1/organisations/acme/ai/change-sets/cs%2F1/${action}`,
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify(body),
+          headers: expect.objectContaining({
+            "Content-Type": "application/json",
+            "X-CSRF-Token": "test-csrf-token"
+          })
+        })
+      ]);
+    }
+  });
+
+  it("keeps the apply error code so the review can tell retryable conflicts apart", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(
+          jsonResponse(
+            { error: { code: "apply_in_progress", message: "Another transaction holds it." } },
+            { status: 409 }
+          )
+        )
+    );
+
+    const error = await applyAiChangeSet("acme", "cs-1", "b".repeat(64)).catch(
+      (caught: unknown) => caught
+    );
+
+    expect(error).toBeInstanceOf(AiApiError);
+    expect(error).toMatchObject({ status: 409, code: "apply_in_progress" });
   });
 });

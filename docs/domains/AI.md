@@ -22,7 +22,9 @@ cookie-session review API, see
 TASK-069L (the SPA consent page, the connections list and the admin per-user
 revocation action, see
 [Consent Page And Connections UI (TASK-069L)](#consent-page-and-connections-ui-task-069l))
-are implemented and the rest is pending TASK-069M through TASK-069O. The MCP endpoints, the public
+and TASK-069M (the Metrics tab AI panel, see
+[Metrics Tab AI Panel (TASK-069M)](#metrics-tab-ai-panel-task-069m))
+are implemented and the rest is pending TASK-069N and TASK-069O. The MCP endpoints, the public
 OAuth endpoints and the consent API are registered only with
 `MCP_ENABLED=true`, which is off by default and in production; the connections
 and change-set review APIs are always registered.
@@ -282,7 +284,9 @@ With `MCP_ENABLED=false` (the default):
   consent page then shows a "not available" state without calling the
   consent API (TASK-069L), and the connect instructions and skill links are
   hidden (TASK-069M, TASK-069N). The connections list and the admin
-  "Revoke AI connections" action do not depend on the flag.
+  "Revoke AI connections" action do not depend on the flag, and the Metrics
+  tab AI panel is then offered only when the organisation has change sets or
+  the User has connections (TASK-069M).
 
 ## MCP OAuth Authorization (TASK-069E)
 
@@ -952,8 +956,8 @@ isolated, self-declared client name, `clientId`, scope, and created, last used
 ("Never" when null) and expiry times. Revoke asks for confirmation and calls
 `DELETE /api/v1/ai/connections/{grant_key}`; a `404` removes the row as
 already revoked or expired. The component does not read `features.mcp`, so
-grants stay revocable while MCP is disabled. It is not mounted on a page yet:
-TASK-069M places it in the Metrics AI panel.
+grants stay revocable while MCP is disabled. The Metrics tab AI panel shows it
+in its Connections section (TASK-069M).
 
 Users administration (`frontend/src/features/users/UsersTab.tsx`, `admin`
 only) has a "Revoke AI connections" action for the selected User. After
@@ -962,6 +966,66 @@ confirmation it calls
 `revokedCount`. It is independent of `features.mcp` and serves ADR-015's
 offboarding rule and incident procedure. Consultants have no Users tab and
 therefore no action; the backend enforces the role.
+
+## Metrics Tab AI Panel (TASK-069M)
+
+The panel is in `frontend/src/features/ai/` and uses the review API wrappers
+`fetchAiChangeSets`, `fetchAiChangeSet`, `applyAiChangeSet` and
+`rejectAiChangeSet` in `frontend/src/api/ai.ts`. `MetricsTab.tsx` adds only
+the toolbar toggle (`AiPanelToggle.tsx`) and the panel slot; the workspace
+route passes `features.mcp` and the `changeSet` query parameter.
+
+- **Toggle.** With `features.mcp` true the "AI panel" toggle is always shown.
+  With it false the toggle loads one change set of the organisation and the
+  User's connections and is shown only when either exists.
+- **Deep link.** `/schatten/<org>/metrics?changeSet=<key>`, the review URL of
+  `submit_change_set`, opens the panel on that change set, also before a
+  scenario is selected. Opening a change set from the list and going back set
+  and clear the parameter and keep the panel open, also when a review link
+  opened it; closing the panel clears it.
+- **Sections** (`AiPanel.tsx`): Change sets, Connections (TASK-069L's
+  `ConnectionsList`) and Connect. Connect (`ConnectInstructions.tsx`) shows
+  `<origin>/api/mcp/read` and `<origin>/api/mcp/write` with copy buttons, the
+  custom-connector steps for Claude Desktop and claude.ai, and the
+  `claude mcp add --transport http …` commands and `/mcp` authentication for
+  Claude Code. It is hidden when `features.mcp` is false.
+- **List** (`ChangeSetList.tsx`): newest first with status badges, operation
+  count, creator and the derived scenario key. With a selected scenario it
+  requests `scenarioKey=<scenario>&includeUnscoped=true`; "Show all change sets
+  of the organisation" drops the filter.
+- **Review** (`ChangeSetReview.tsx`):
+  - each operation in readable form (`changeSetOperations.ts`), for example
+    "Create node *Revenue* (GOAL)" and "Create edge *Revenue → Company*
+    (MEASURED_BY)", naming nodes and timeseries the change set creates, with
+    its scenario, organisation state, key and `$ref`;
+  - for `set_timeserie_values` and `generate_timeserie_values`, a values table
+    (at most 1,000 rows, in staged order) and an inline SVG sparkline of the
+    numeric values sorted by date (`Sparkline.tsx`), since staged values may
+    come in any order; frozen values the detail returns only as a summary are
+    shown as their count and date range;
+  - validation errors: each operation's latest `error` and a failed apply's
+    step and error;
+  - a "Replaces existing data" badge on every operation with
+    `replacesExisting`, with the recomputed summary (the existing value count
+    and date range, or the patched node fields with their current and proposed
+    values), and a summary line before Apply counting these operations;
+  - a "Target missing" state for a target deleted after submit, which apply's
+    re-validation will reject;
+  - the creator, and the client as its `clientId` plus the client name in
+    `<bdi>` labelled self-declared (`SelfDeclaredClientName.tsx`). AI-supplied
+    titles, names and notes are also rendered in `<bdi>`.
+- **Apply and reject** need a confirmation; reject takes an optional note.
+  Apply sends the `reviewFingerprint` of the detail shown. On success the
+  panel lists the created or changed keys and `$ref` keys and the Metrics tab
+  reloads its grid. The reload discards unsaved grid edits, so the apply
+  confirmation names the number of timeseries with unsaved changes and asks
+  to save them first. `409 review_stale` reloads the detail, says that the
+  replaced data changed and requires a fresh confirmation. The retryable
+  `409 apply_in_progress` and any `503` keep the shown review and offer "Try
+  again", which resends the same fingerprint without a reload or a new
+  confirmation. Any other `409` (`not_submitted`, `apply_failed`) reloads the
+  detail and shows the change set's current status. Reject maps the same
+  codes the same way.
 
 ## MCP Tools
 

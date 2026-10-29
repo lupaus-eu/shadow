@@ -126,9 +126,11 @@ generator preview, TASK-069I's change-set schema (migration 018,
 write tools and change-set read tools, TASK-069K's always-registered
 cookie-session change-set review API (list, detail, apply, reject) and
 TASK-069L's SPA consent page `/ai/authorize`, reusable `ConnectionsList` and
-admin "Revoke AI connections" action (`frontend/src/features/ai/`) are
-implemented; the MCP and public OAuth endpoints are registered only with
-`MCP_ENABLED=true`, off by default. The rest is pending TASK-069M through
+admin "Revoke AI connections" action (`frontend/src/features/ai/`) and
+TASK-069M's Metrics tab AI panel (connect instructions, connections and
+change-set review with apply and reject, `frontend/src/features/ai/AiPanel.tsx`)
+are implemented; the MCP and public OAuth endpoints are registered only with
+`MCP_ENABLED=true`, off by default. The rest is pending TASK-069N and
 TASK-069O. Users chat in their own MCP client on
 their own AI subscription; Schatten never calls an LLM or stores LLM keys.
 FastAPI hosts `/api/mcp/read` (`schatten.read`) and `/api/mcp/write`

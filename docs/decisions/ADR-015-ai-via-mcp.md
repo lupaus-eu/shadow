@@ -1,6 +1,6 @@
 # ADR-015: AI Via MCP With Human-Applied Change Sets
 
-Status: Accepted design; TASK-069B through TASK-069L implemented, TASK-069M through TASK-069O pending
+Status: Accepted design; TASK-069B through TASK-069M implemented, TASK-069N and TASK-069O pending
 
 Date: 2026-10-21
 
@@ -87,7 +87,7 @@ approved production enablement.
 | TASK-069J | Write MCP tools for staging change sets (implemented) |
 | TASK-069K | Cookie-session change-set review API (apply, reject) (implemented) |
 | TASK-069L | SPA consent page and connections list (implemented) |
-| TASK-069M | Metrics tab AI panel and change-set review UI |
+| TASK-069M | Metrics tab AI panel and change-set review UI (implemented) |
 | TASK-069N | Skills, Claude Code plugin bundle, MCP prompts, skill zips |
 | TASK-069O | End-to-end QA, runbook and approved production enablement |
 

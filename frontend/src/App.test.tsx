@@ -440,6 +440,33 @@ function mockSchattenApi(options?: {
       return Promise.resolve(noContentResponse());
     }
 
+    if (url === "/api/v1/organisations/acme/ai/change-sets/cs-1" && method === "GET") {
+      return Promise.resolve(
+        jsonResponse({
+          id: "cs-1",
+          scenarioKey: null,
+          title: "Linked change set",
+          rationale: null,
+          status: "submitted",
+          operationCount: 0,
+          clientId: "client-abc",
+          clientName: "Claude",
+          createdBy: 101,
+          createdByName: "Development Admin",
+          createdTime: "2026-10-27T09:00:00Z",
+          modifiedTime: "2026-10-27T09:00:00Z",
+          reviewedBy: null,
+          reviewedByName: null,
+          reviewedTime: null,
+          reviewNote: null,
+          operations: [],
+          reviewFingerprint: "a".repeat(64),
+          validationResult: null,
+          appliedResult: null
+        })
+      );
+    }
+
     if (url.endsWith("/api/v1/organisations/acme/scenarios/reality/org-states")) {
       return Promise.resolve(
         jsonResponse([
@@ -684,6 +711,26 @@ describe("Schatten UI shell", () => {
     expect(
       fetchMock.mock.calls.some(([input]) => String(input).startsWith("/api/v1/ai/oauth"))
     ).toBe(false);
+  });
+
+  it("opens the Metrics AI panel on the change set of a review link", async () => {
+    const fetchMock = mockSchattenApi();
+
+    renderAt("/schatten/acme/metrics?changeSet=cs-1");
+
+    const panel = await screen.findByRole("complementary", { name: "AI" });
+    expect(await within(panel).findByRole("heading", { name: "Linked change set" })).toBeVisible();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/organisations/acme/ai/change-sets/cs-1",
+      expect.objectContaining({ method: "GET" })
+    );
+
+    fireEvent.click(within(panel).getByRole("button", { name: "Close AI panel" }));
+
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "AI" })).not.toBeInTheDocument()
+    );
+    expect(screen.getByRole("link", { name: "Metrics" })).toHaveClass("tab-link--active");
   });
 
   it("returns an admin to login after revoking their own sessions", async () => {

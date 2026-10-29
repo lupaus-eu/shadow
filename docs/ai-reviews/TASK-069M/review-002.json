@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-069M/review-002",
+  "task": {
+    "id": "TASK-069M",
+    "path": "tasks/TASK-069M-metrics-ai-panel.md"
+  },
+  "round": 2,
+  "reviewed_at": "2026-10-29T08:29:15Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": {
+    "number": 120,
+    "url": "https://github.com/reflector-oy/schatten/pull/120"
+  },
+  "source": {
+    "base_sha": "91a6337bc18a07f530ed0f766ecadce354804f05",
+    "head_sha": "3368a54921104a1d8f690c433d1a60c9793d5903",
+    "comparison": "91a6337bc18a07f530ed0f766ecadce354804f05...3368a54921104a1d8f690c433d1a60c9793d5903",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "clean",
+    "summary": "Round 2 reviews the round 1 fixes. MetricsTab now marks the AI panel open whenever the panel itself opens or leaves a change set, so Back from a change set opened through a review link shows the list; closing the panel still clears the link. The apply confirmation now gives the number of timeseries with unsaved grid changes and says the reload after the apply discards them. Sparkline sorts the points by their ISO date before drawing and labelling, while the values table keeps the staged order. AI.md, ARCHITECTURE.md and TESTING.md describe the new behaviour and tests. Frontend format check, lint, the full Vitest suite (31 files, 390 tests) and the build pass. With the source fixes stashed, the four new tests failed, and they pass with the fixes. There are no new findings. A retry after a busy apply does not show the unsaved-changes warning again, but the warning was shown in the confirmation the user already accepted.",
+    "findings": [],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-069M/review-001",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "Selecting or leaving a change set inside the panel now sets the panel's open state before it changes the link, so clearing the link no longer closes a panel that a review link opened. A new MetricsTab test goes back from a linked change set and finds the list in the same open panel. That test fails without the fix.",
+        "validated_by": {
+          "review_id": "TASK-069M/review-002",
+          "commit": "3368a54921104a1d8f690c433d1a60c9793d5903"
+        }
+      },
+      {
+        "record_id": "TASK-069M/review-001",
+        "finding_id": "F-002",
+        "disposition": "fixed",
+        "rationale": "MetricsTab passes the number of rows with unsaved edits to the review. When there are any, the apply confirmation says that the reload discards them and asks the user to save first. A review test checks the wording, and a MetricsTab test checks it after a real cell edit; both fail without the fix. The reload behaviour itself is unchanged and matches the toolbar Refresh.",
+        "validated_by": {
+          "review_id": "TASK-069M/review-002",
+          "commit": "3368a54921104a1d8f690c433d1a60c9793d5903"
+        }
+      },
+      {
+        "record_id": "TASK-069M/review-001",
+        "finding_id": "F-003",
+        "disposition": "fixed",
+        "rationale": "Sparkline sorts the numeric points by date before computing the polyline and its accessible label. A new Sparkline test with values out of date order checks the label range and the point coordinates, and fails without the fix.",
+        "validated_by": {
+          "review_id": "TASK-069M/review-002",
+          "commit": "3368a54921104a1d8f690c433d1a60c9793d5903"
+        }
+      }
+    ]
+  }
+}

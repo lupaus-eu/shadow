@@ -67,9 +67,9 @@ Päätetty tekninen perusrakenne:
   TASK-069H's remaining read tools and generator preview (all
   MCP and public OAuth endpoints behind `MCP_ENABLED=false`), TASK-069I's
   change-set schema and engine, TASK-069J's change-set staging write tools,
-  TASK-069K's cookie-session change-set review API and TASK-069L's SPA consent
-  page and connections UI are implemented; the rest is pending TASK-069M
-  through TASK-069O (see
+  TASK-069K's cookie-session change-set review API, TASK-069L's SPA consent
+  page and connections UI and TASK-069M's Metrics tab AI panel are
+  implemented; the rest is pending TASK-069N and TASK-069O (see
   [AI Via MCP](#ai-via-mcp))
 
 Tarkemmat toteutusyksityiskohdat täsmentyvät taskien ja tarvittaessa uusien ADR:ien kautta.
@@ -587,8 +587,9 @@ and reject, registered also with `MCP_ENABLED=false`) and TASK-069L (the SPA
 consent page `/ai/authorize` in `frontend/src/features/ai/AuthorizePage.tsx`,
 the reusable `ConnectionsList.tsx` and the admin "Revoke AI connections"
 action in Users administration, with the API wrappers in
-`frontend/src/api/ai.ts`) are implemented; the rest is pending TASK-069M
-through TASK-069O. The review UI arrives with TASK-069M.
+`frontend/src/api/ai.ts`) and TASK-069M (the Metrics tab AI panel, see
+[Metrics Tab AI Panel](#metrics-tab-ai-panel)) are implemented; the rest is
+pending TASK-069N and TASK-069O.
 Nothing else below is implemented yet, and the feature stays behind `MCP_ENABLED=false` until
 TASK-069O's separately approved production enablement.
 
@@ -642,6 +643,34 @@ Accepted design:
   protect the shared host.
 - Business data read through MCP flows to the user's AI vendor; this is an
   accepted product and security decision.
+
+## Metrics Tab AI Panel
+
+Implemented by TASK-069M in `frontend/src/features/ai/` (`AiPanel.tsx`,
+`AiPanelToggle.tsx`, `ConnectInstructions.tsx`, `ChangeSetList.tsx`,
+`ChangeSetReview.tsx`). The Metrics tab (`MetricsTab.tsx`) only adds the
+toolbar toggle and the panel slot; the panel sits beside the metrics grid in
+the side-panel layout of the Structure tab and stacks below the toolbar on
+narrow screens. The workspace route passes the session's `features.mcp` and
+the `changeSet` query parameter, so the review URL
+`/schatten/<org>/metrics?changeSet=<key>` opens the panel on that change set,
+also before a scenario is selected. The panel has three sections:
+
+- Change sets: the organisation's change sets, by default those of the
+  selected scenario plus those without a scenario reference, or all of them.
+  The review shows readable operations, values tables and inline SVG
+  sparklines, validation errors, the creator and the self-declared client, a
+  warning on each operation that replaces existing data with its recomputed
+  summary, and missing targets. Apply sends the shown `reviewFingerprint` and
+  reloads the metrics grid, and its confirmation warns when unsaved grid edits
+  would be discarded; reject takes an optional note.
+- Connections: TASK-069L's `ConnectionsList`.
+- Connect: the MCP URLs and client steps, hidden when `features.mcp` is false.
+
+With `features.mcp` false the toggle is shown only when the organisation has
+change sets or the User has connections, and review, apply and reject keep
+working. The panel never calls an LLM; editing operations stays in the AI
+client.
 
 Domain ownership is in `docs/domains/AI.md` and the change-set concept in
 `docs/concepts/AI_CHANGE_SET.md`.
@@ -926,7 +955,7 @@ ADR-004 Authentication, Identity And Session Architecture: accepted
 ADR-005 Production-Only Deployment Environments: accepted
 ADR-006 Local Authentik TLS And Optional Entra Federation: target superseded by ADR-013
 ADR-013 Shared Entra Registration And Local HTTPS Deployment: accepted; source delivery H1-H3 implemented, rollout pending
-ADR-015 AI Via MCP With Human-Applied Change Sets: accepted design; TASK-069B..TASK-069L implemented, TASK-069M..TASK-069O pending
+ADR-015 AI Via MCP With Human-Applied Change Sets: accepted design; TASK-069B..TASK-069M implemented, TASK-069N..TASK-069O pending
 ```
 
 ---

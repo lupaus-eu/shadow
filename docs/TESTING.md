@@ -1193,6 +1193,56 @@ text, and approve. Deny once and confirm the client reports `access_denied`.
 
 ---
 
+# Metrics Tab AI Panel (TASK-069M)
+
+`frontend/src/api/ai.test.ts` also covers the change-set wrappers: the list's
+`status`, `scenarioKey`, `includeUnscoped` and `limit` query, the detail, apply
+with `{"reviewFingerprint"}` and reject with `{"note"}` under the CSRF header,
+and the kept apply error code.
+
+The component tests mock the API module:
+
+- `ChangeSetReview.test.tsx`: the readable description of every operation
+  type, the values table and sparkline of both timeserie value operations,
+  the "Replaces existing data" badges with their summaries and the count
+  before Apply, the creator and `clientId` next to the `<bdi>` client name
+  with its self-declared label, a target missing after submit, operation and
+  failed-apply errors, apply with the shown `reviewFingerprint` and the listed
+  created keys, `409 review_stale` reloading and requiring a new
+  confirmation (the second apply sends the new fingerprint), the retryable
+  `409 apply_in_progress` and `503` keeping the review and offering "Try
+  again" without a reload, the terminal `409 not_submitted` reload with the
+  current status, the apply confirmation's warning about unsaved grid
+  changes, reject with a trimmed note, cancel and a not-found change set.
+- `Sparkline.test.tsx`: staged values out of date order drawn and labelled in
+  date order, and no sparkline with fewer than two numeric values.
+- `ChangeSetList.test.tsx`: the default selected-scenario filter with
+  `includeUnscoped`, the "Show all" toggle, the list without a scenario and
+  its load error.
+- `AiPanel.test.tsx`: the sections, the MCP URLs, their copy buttons and a
+  failed copy, the Claude Code command and the hidden Connect section with
+  `features.mcp` false.
+- `features/metrics/MetricsTabAiPanel.test.tsx`: the toolbar toggle with MCP
+  enabled, its absence with MCP disabled and nothing to show and its presence
+  with a connection, the deep link (also before a scenario is selected) and
+  clearing it on close, opening and leaving a change set through the link,
+  going back from a deep-linked change set to the list with the panel still
+  open, the apply warning after an unsaved cell edit, and the grid reload
+  after an apply.
+
+`MetricsTab.test.tsx` is unchanged and renders the tab without the AI options,
+so it makes no AI request. `App.test.tsx` opens
+`/schatten/acme/metrics?changeSet=cs-1` through the real workspace route and
+closes the panel again.
+
+Manual verification: with `MCP_ENABLED=true` locally, stage and submit a small
+change set from Claude Code as in `docs/LOCAL-DEVELOPMENT.md`, open the
+returned review URL in a fresh tab, check the operations, warnings and client
+label, apply it and check the metrics grid and the Structure graph. Repeat
+with a reject, and check the panel at a narrow window width.
+
+---
+
 # Frontend Async Component Tests (TASK-065)
 
 A `findBy*` query returns as soon as its element is in the DOM, and `waitFor`

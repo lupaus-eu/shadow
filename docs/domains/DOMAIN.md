@@ -356,8 +356,8 @@ Related Documents:
 
 # AI Domain
 
-Status: accepted design in ADR-015; TASK-069B through TASK-069L are
-implemented and the rest is pending TASK-069M through TASK-069O. The earlier document-AI candidate
+Status: accepted design in ADR-015; TASK-069B through TASK-069M are
+implemented and the rest is pending TASK-069N and TASK-069O. The earlier document-AI candidate
 (classification, summaries, extraction) is retained in `docs/domains/AI.md` as
 an unplanned candidate outside this scope.
 

@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-069M/review-001",
+  "task": {
+    "id": "TASK-069M",
+    "path": "tasks/TASK-069M-metrics-ai-panel.md"
+  },
+  "round": 1,
+  "reviewed_at": "2026-10-29T08:16:50Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": {
+    "number": 120,
+    "url": "https://github.com/reflector-oy/schatten/pull/120"
+  },
+  "source": {
+    "base_sha": "cd72d0d97ec3fe762d76fb1be817ca7ebf9ce257",
+    "head_sha": "91a6337bc18a07f530ed0f766ecadce354804f05",
+    "comparison": "cd72d0d97ec3fe762d76fb1be817ca7ebf9ce257...91a6337bc18a07f530ed0f766ecadce354804f05",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Round 1 reviews the whole TASK-069M branch: the review API wrappers and DTOs, the Metrics tab toggle and panel slot, the changeSet query parameter in the workspace route, AiPanel, AiPanelToggle, ConnectInstructions, ChangeSetList, ChangeSetReview, the operation descriptions, the sparkline, the CSS, the tests and the docs. Frontend format check, lint, the full Vitest suite (30 files, 385 tests) and the build pass, and MetricsTab.test.tsx is unchanged. The DTOs match the backend review schemas, including the camelCase operation payloads and the patched field names in the node replacement summary. Apply sends the shown reviewFingerprint. review_stale reloads the change set and needs a new confirmation. apply_in_progress and the 503 apply_unavailable keep the review and offer Try again. Other 409s, including apply_failed, reload the change set and show its status. AI-supplied text renders as escaped React text in bdi elements, the client name uses the TASK-069L self-declared component, and keys are URL-encoded in the API paths. No dependency is added and every acceptance criterion has a matching test. The layout, apply against real data and the flow from Claude Code were not checked by hand because they need an interactive Entra sign-in. There are three low findings: Back from a linked change set closes the panel, apply discards unsaved grid edits, and the sparkline assumes the values are in date order.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "bug",
+        "severity": "low",
+        "summary": "On a change set opened from a review link, Back to change sets closes the whole AI panel instead of showing the list.",
+        "rationale": "MetricsTab shows the panel while its open state is true or a changeSet key is set. A review link sets only the key, and Back clears it, so the panel closes. The review link from submit_change_set is the main way users reach a change set. A temporary test that opened a linked change set and pressed Back confirmed that the panel closes. The existing list-selection test opens the panel with the toggle first, so it does not cover this case.",
+        "recommendation": "Keep the panel open when the key is cleared from inside the panel, for example by setting the open state when the panel opens for a key. Add a test that Back from a linked change set shows the list.",
+        "locations": [
+          {
+            "path": "frontend/src/features/metrics/MetricsTab.tsx",
+            "line": 444
+          },
+          {
+            "path": "frontend/src/features/ai/AiPanel.tsx",
+            "line": 84
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "bug",
+        "severity": "low",
+        "summary": "A successful apply reloads the metrics grid and discards unsaved cell edits without warning.",
+        "rationale": "onApplied calls loadMetrics, which replaces the draft values with the server values. A user who edits cells next to the open panel and then applies a change set loses those edits, and the apply confirmation does not say so. The toolbar Refresh button also discards drafts, but there the user asks for the reload.",
+        "recommendation": "Warn in the apply confirmation when the grid has unsaved changes, or keep the drafts of rows the apply did not change. Add a test either way.",
+        "locations": [
+          {
+            "path": "frontend/src/features/metrics/MetricsTab.tsx",
+            "line": 736
+          },
+          {
+            "path": "frontend/src/features/metrics/MetricsTab.tsx",
+            "line": 501
+          }
+        ]
+      },
+      {
+        "id": "F-003",
+        "category": "bug",
+        "severity": "low",
+        "summary": "The sparkline draws values in the order they were staged, but its comment and accessible label assume date order.",
+        "rationale": "set_timeserie_values accepts values in any order, and the stored payload keeps that order. Sparkline does not sort, so unordered values draw a zigzag, and the label names the first and last listed dates as the range. Generated values are already in date order, so only staged values are affected.",
+        "recommendation": "Sort the points by date in Sparkline (ISO dates sort as strings) and add a test with unordered values.",
+        "locations": [
+          {
+            "path": "frontend/src/features/ai/Sparkline.tsx",
+            "line": 8
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": []
+  }
+}
