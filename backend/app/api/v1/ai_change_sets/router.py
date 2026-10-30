@@ -2,8 +2,10 @@
 
 The Metrics tab lists, inspects, applies and rejects change sets staged
 through MCP. Both roles may review, including the creator, and the reviewer is
-the actor. The routes stay registered with `MCP_ENABLED=false`, so staged
-change sets can still be reviewed while MCP is disabled.
+the actor; the review is recorded with the `web` channel. MCP clients can also
+apply and reject through the write server (TASK-069O). The routes stay
+registered with `MCP_ENABLED=false`, so staged change sets can still be
+reviewed while MCP is disabled.
 """
 
 import logging
@@ -114,6 +116,7 @@ def apply_change_set(
             change_set_key,
             payload.review_fingerprint,
             active.user.user_id,
+            channel=engine.ReviewChannel.web(),
             settings=settings,
         )
     except engine.ChangeSetApplyError as exc:
@@ -144,6 +147,7 @@ def reject_change_set(
             change_set_key,
             payload.note if payload is not None else None,
             active.user.user_id,
+            channel=engine.ReviewChannel.web(),
             settings=settings,
         )
     except engine.ChangeSetApplyError as exc:

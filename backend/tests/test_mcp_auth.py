@@ -356,6 +356,52 @@ def test_read_only_token_cannot_call_write_tools(
         assert session.scalars(select(AiChangeSet)).all() == []
 
 
+def test_the_review_switch_adds_apply_and_reject_to_the_write_server(
+    session_factory: sessionmaker[Session],
+) -> None:
+    write_token, _ = _issue_token(session_factory, "write")
+
+    with _client(session_factory, MCP_CHANGE_SET_REVIEW_ENABLED=True) as client:
+        write_tools = _rpc(client, "write", "tools/list", token=write_token)
+
+    assert write_tools.status_code == 200, write_tools.text
+    assert {tool["name"] for tool in write_tools.json()["result"]["tools"]} == {
+        *WRITE_TOOL_NAMES,
+        "apply_change_set",
+        "reject_change_set",
+    }
+
+
+@pytest.mark.parametrize("tool", ["apply_change_set", "reject_change_set"])
+def test_read_only_token_cannot_apply_or_reject(
+    session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+    tool: str,
+) -> None:
+    read_token, _ = _issue_token(session_factory, "read")
+    _stub_role_scopes(monkeypatch, "consultant", frozenset({READ_SCOPE}))
+    write_token, _ = _issue_token(session_factory, "write")
+    arguments = {"change_set_key": "any", "review_fingerprint": "0" * 64}
+
+    with _client(session_factory, MCP_CHANGE_SET_REVIEW_ENABLED=True) as client:
+
+        def call(token: str) -> httpx2.Response:
+            return _rpc(
+                client,
+                "write",
+                "tools/call",
+                {"name": tool, "arguments": arguments},
+                token=token,
+            )
+
+        other_resource = call(read_token)
+        insufficient = call(write_token)
+
+    _assert_invalid_token(other_resource, "write")
+    assert insufficient.status_code == 403
+    assert insufficient.json()["error"] == "insufficient_scope"
+
+
 def test_concurrent_calls_act_as_each_tokens_own_user(tmp_path: Path) -> None:
     # A file database: the in-memory one shares a single connection, which
     # concurrent requests cannot use.

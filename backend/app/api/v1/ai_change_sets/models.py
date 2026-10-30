@@ -46,6 +46,8 @@ OPERATION_TYPES = (
     "create_derived_metric",
     "create_event",
 )
+# How a human reviewed a change set: the Metrics tab, or an approved MCP call.
+REVIEW_CHANNELS = ("web", "mcp")
 # Operations whose created key is server-generated and may be named by a ref.
 REF_OPERATION_TYPES = (
     "create_scenario",
@@ -91,6 +93,23 @@ class AiChangeSet(Base):
         CheckConstraint(
             "review_note IS NULL OR reviewed_time IS NOT NULL",
             name="ck_ai_change_sets_review_note",
+        ),
+        CheckConstraint(
+            "(reviewed_via IS NULL) = (reviewed_time IS NULL) AND "
+            f"(reviewed_via IS NULL OR {_in_list('reviewed_via', REVIEW_CHANNELS)})",
+            name="ck_ai_change_sets_reviewed_via",
+        ),
+        CheckConstraint(
+            "(review_client_id IS NULL) = (review_client_name IS NULL) AND "
+            "COALESCE(reviewed_via = 'mcp', false) = (review_client_id IS NOT NULL)",
+            name="ck_ai_change_sets_review_client",
+        ),
+        *non_blank_constraints(
+            "review_client_id", "ck_ai_change_sets_review_client_id_non_blank"
+        ),
+        CheckConstraint(
+            "length(review_client_name) BETWEEN 1 AND 100",
+            name="ck_ai_change_sets_review_client_name_length",
         ),
     )
 
@@ -139,6 +158,11 @@ class AiChangeSet(Base):
         nullable=True,
     )
     review_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # `web` or `mcp`; for `mcp` the reviewing grant's client, copied like
+    # client_id and client_name.
+    reviewed_via: Mapped[str | None] = mapped_column(Text, nullable=True)
+    review_client_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    review_client_name: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_by: Mapped[int] = mapped_column(BigInteger, ForeignKey(User.user_id))
     created_time: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

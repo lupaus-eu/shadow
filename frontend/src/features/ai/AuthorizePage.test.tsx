@@ -58,11 +58,14 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-function renderPage(path = `/ai/authorize?request=${REQUEST_ID}`, options = { mcp: true }) {
+function renderPage(
+  path = `/ai/authorize?request=${REQUEST_ID}`,
+  options: { mcp: boolean; mcpChangeSetReview?: boolean } = { mcp: true }
+) {
   const auth: AuthContextValue = {
     status: "authenticated",
     user: { id: 7, name: "Ada Admin", email: "ada@example.local", role: "admin" },
-    features: { mcp: options.mcp },
+    features: { mcp: options.mcp, mcpChangeSetReview: options.mcpChangeSetReview ?? false },
     authError: "",
     login: vi.fn(),
     logout: vi.fn(async () => undefined),
@@ -147,6 +150,25 @@ describe("AuthorizePage", () => {
       screen.getByText(/Data that the AI client reads from Schatten is sent to your AI vendor\./)
     ).toBeVisible();
     expect(screen.queryByRole("heading", { name: "Read access" })).not.toBeInTheDocument();
+  });
+
+  it("explains that write access can apply and reject when MCP review is on", async () => {
+    fetchConsentRequestMock.mockResolvedValue(loopbackConsent);
+
+    renderPage(`/ai/authorize?request=${REQUEST_ID}`, { mcp: true, mcpChangeSetReview: true });
+
+    expect(
+      await screen.findByRole("heading", {
+        name: "Write access: propose, apply and reject changes"
+      })
+    ).toBeVisible();
+    expect(
+      screen.getByText(/it can also apply or reject change sets awaiting review/)
+    ).toBeVisible();
+    expect(screen.getByText(/including change sets that other people proposed/)).toBeVisible();
+    expect(
+      screen.queryByRole("heading", { name: "Write access: proposals only" })
+    ).not.toBeInTheDocument();
   });
 
   it("approves and navigates to exactly the server-returned redirect URL", async () => {

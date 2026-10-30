@@ -7,8 +7,8 @@ hide empty description
 draft --> draft : add_operations / remove_operation\n(scenario reference recomputed)\nvalidate_change_set (dry-run, always rolled back)
 draft --> submitted : submit_change_set (creator's grant):\nre-validate, freeze generated values
 draft --> discarded : discard_change_set (creator's grant)
-submitted --> applied : human apply in Schatten:\nlock, status, fingerprint, re-validate,\nexecute, commit once
-submitted --> rejected : human reject in Schatten
+submitted --> applied : human apply in Schatten (web), or\napply_change_set approved in the MCP client (mcp):\nlock, status, fingerprint, re-validate,\nexecute, commit once
+submitted --> rejected : human reject in Schatten (web), or\nreject_change_set approved in the MCP client (mcp)
 submitted --> failed : re-validation, operation or commit failure,\nor a lock or statement timeout during\nre-validation or execution
 submitted --> submitted : apply rejected in the lock, status or\nfingerprint step (review_stale,\napply_in_progress, retryable 503)
 
@@ -19,9 +19,12 @@ note left of draft
 end note
 
 note left of submitted
-  Immutable. No MCP tool applies or rejects.
+  Immutable. Only a human decides: in Schatten,
+  or by approving apply_change_set or
+  reject_change_set (MCP_CHANGE_SET_REVIEW_ENABLED).
   Replacement flags and the review fingerprint
   are recomputed against current data.
+  The review records its channel (web or mcp).
 end note
 
 note bottom of applied

@@ -6,6 +6,8 @@ from app.core.schemas import StrictBaseModel
 
 class SessionFeatures(StrictBaseModel):
     mcp: bool
+    # MCP clients can also apply and reject change sets (ADR-015, TASK-069O).
+    mcpChangeSetReview: bool
 
 
 class SessionResponse(StrictBaseModel):

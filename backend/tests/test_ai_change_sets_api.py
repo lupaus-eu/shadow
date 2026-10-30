@@ -329,6 +329,9 @@ def test_list_filters_by_status_and_derived_scenario(
             "reviewedByName",
             "reviewedTime",
             "reviewNote",
+            "reviewedVia",
+            "reviewClientId",
+            "reviewClientName",
         }
         assert item["scenarioKey"] is None
         assert (item["clientId"], item["clientName"]) == (
@@ -692,6 +695,11 @@ def test_both_roles_and_the_creator_can_apply(
     assert (change_set["status"], change_set["reviewedBy"]) == ("applied", user_id)
     assert change_set["reviewedByName"] is not None
     assert change_set["reviewedTime"] is not None
+    assert (
+        change_set["reviewedVia"],
+        change_set["reviewClientId"],
+        change_set["reviewClientName"],
+    ) == ("web", None, None)
 
     stored = _stored(session_factory, change_set_key)
     assert (stored.status, stored.reviewed_by, stored.modified_by) == (
@@ -699,6 +707,11 @@ def test_both_roles_and_the_creator_can_apply(
         user_id,
         user_id,
     )
+    assert (
+        stored.reviewed_via,
+        stored.review_client_id,
+        stored.review_client_name,
+    ) == ("web", None, None)
     with session_factory() as session:
         scenario = session.scalar(
             select(Scenario).where(Scenario.scenario_key == plan_key)
@@ -863,6 +876,7 @@ def test_an_operation_failure_marks_the_change_set_failed(
     assert _error_code(response) == "apply_failed"
     assert detail["status"] == "failed"
     assert detail["reviewedBy"] == REVIEWER_USER_ID
+    assert detail["reviewedVia"] == "web"
     assert detail["appliedResult"]["status"] == "failed"
     assert detail["appliedResult"]["step"] == "execute"
     assert detail["operations"][0]["error"]["code"] == "domain_error"
@@ -903,6 +917,7 @@ def test_reject_records_the_reviewer_and_note(
         "Wrong scenario.",
     )
     assert body["reviewedTime"] is not None
+    assert (body["reviewedVia"], body["reviewClientName"]) == ("web", None)
     stored = _stored(session_factory, change_set_key)
     assert (
         stored.status,

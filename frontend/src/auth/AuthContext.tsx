@@ -3,9 +3,12 @@ import type { UserDto } from "../api/users";
 
 export type AuthStatus = "loading" | "authenticated" | "anonymous";
 
-// Server feature flags from the session response; `mcp` mirrors MCP_ENABLED.
+// Server feature flags from the session response; `mcp` mirrors MCP_ENABLED,
+// and `mcpChangeSetReview` whether MCP clients can also apply and reject change
+// sets (MCP_ENABLED and MCP_CHANGE_SET_REVIEW_ENABLED).
 export type SessionFeatures = {
   mcp: boolean;
+  mcpChangeSetReview: boolean;
 };
 
 export type AuthContextValue = {

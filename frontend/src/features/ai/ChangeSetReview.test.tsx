@@ -176,6 +176,9 @@ function detail(overrides: Partial<AiChangeSetDetailDto> = {}): AiChangeSetDetai
     reviewedByName: null,
     reviewedTime: null,
     reviewNote: null,
+    reviewedVia: null,
+    reviewClientId: null,
+    reviewClientName: null,
     operations: allOperations,
     reviewFingerprint: fingerprint,
     validationResult: { ok: true, operations: [], refs: {} },
@@ -310,6 +313,43 @@ describe("ChangeSetReview", () => {
     expect(name.tagName).toBe("BDI");
     expect(within(client).getByText("(self-declared by the client)")).toBeVisible();
     expect(screen.getByText("No single scenario")).toBeVisible();
+  });
+
+  it("shows the reviewing AI client of a change set applied through MCP", async () => {
+    fetchDetailMock.mockResolvedValue(
+      detail({
+        status: "applied",
+        reviewedBy: 8,
+        reviewedByName: "Rita Reviewer",
+        reviewedTime: "2026-10-28T08:00:00Z",
+        reviewedVia: "mcp",
+        reviewClientId: "client-review",
+        reviewClientName: "Claude Code"
+      })
+    );
+    renderReview();
+
+    const channel = (await screen.findByText("Reviewed through")).nextElementSibling as HTMLElement;
+    expect(channel).toHaveTextContent("AI client (MCP)");
+    expect(within(channel).getByText("client-review")).toBeVisible();
+    expect(within(channel).getByText("Claude Code").tagName).toBe("BDI");
+    expect(within(channel).getByText("(self-declared by the client)")).toBeVisible();
+  });
+
+  it("shows no review channel for a change set reviewed in Schatten", async () => {
+    fetchDetailMock.mockResolvedValue(
+      detail({
+        status: "rejected",
+        reviewedBy: 8,
+        reviewedByName: "Rita Reviewer",
+        reviewedTime: "2026-10-28T08:00:00Z",
+        reviewedVia: "web"
+      })
+    );
+    renderReview();
+
+    expect(await screen.findByText("Reviewed by")).toBeVisible();
+    expect(screen.queryByText("Reviewed through")).not.toBeInTheDocument();
   });
 
   it("shows a missing target deleted after submit", async () => {

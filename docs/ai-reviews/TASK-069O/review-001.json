@@ -1,0 +1,86 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-069O/review-001",
+  "task": {
+    "id": "TASK-069O",
+    "path": "tasks/TASK-069O-mcp-change-set-review.md"
+  },
+  "round": 1,
+  "reviewed_at": "2026-10-30T08:27:30Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": {
+    "number": 122,
+    "url": "https://github.com/reflector-oy/schatten/pull/122"
+  },
+  "source": {
+    "base_sha": "b4c46c199be654551a753bb045cff3f51bde749e",
+    "head_sha": "a79bf524772f640810811bba02520690020caacb",
+    "comparison": "b4c46c199be654551a753bb045cff3f51bde749e...a79bf524772f640810811bba02520690020caacb",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Round 1 reviews a79bf52, the ADR-015 amendment and its implementation. The engine's apply, reject and conditional failed update take a required review channel, and the review API passes web. Migration 019 adds the three nullable audit columns, backfills web for reviewed rows, adds checks that match the ORM model and the 1 to 100 character client-name rule of migration 017, and its down migration restores the table comment of migration 018. get_change_set_review reuses the review API's single-statement load and replacement computation under the statement timeout, so its fingerprint is the one apply compares. apply_change_set and reject_change_set are registered only with the switch, annotated destructive, non-idempotent and closed-world, map every apply error code to a tool error naming it, and apply the review API's note rules. The write server's instructions switch with the setting, the session feature needs both MCP_ENABLED and the switch, production compose pins the switch off and its verification asserts it, and a read-only token cannot reach either tool. The SPA wording, the channel display, the skills, the plugin version, the PlantUML and LikeC4 diagrams and the TASK-069P renumbering match the task. No bug, regression or security problem was found. Backend ruff check, pytest with the PostgreSQL integration suites, pyright, the frontend format, lint, test and build, the LikeC4 validation and the record validation pass. Three findings are wording and formatting notes for the developer.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "The staging tools' texts are reworded once for both switch states instead of describing the in-chat review when on and keeping the previous wording when off.",
+        "rationale": "The task requires that the server instructions and the staging tools' texts describe the in-chat review when MCP_CHANGE_SET_REVIEW_ENABLED is on and keep today's wording when it is off. The instructions do switch. The docstrings of create_change_set, add_operations, validate_change_set, submit_change_set and discard_change_set were instead changed to neutral wording in both states (a human approves it, without in Schatten) and never mention the in-chat review. The neutral wording is accurate in both states, submit_change_set still names the review page in Schatten, and ADR-015 only fixes the instructions' wording for the switch-off state, so the behaviour and ADR agree; only the task's literal requirement differs.",
+        "recommendation": "Decide whether the single neutral wording is acceptable, and record it as an accepted risk in the next round, or make the staging tool descriptions depend on the switch as the task states.",
+        "locations": [
+          {
+            "path": "backend/app/mcp/write_server.py",
+            "line": 156
+          },
+          {
+            "path": "tasks/TASK-069O-mcp-change-set-review.md",
+            "line": 90
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "scope",
+        "severity": "info",
+        "summary": "config.py carries formatting-only reflows unrelated to the task, while the new write-tool tests leave lines that the formatter would change.",
+        "rationale": "Three statements in the settings module were reflowed by the formatter although the task only adds the switch and its property there; main had drifted because CI runs ruff check but not ruff format. Conversely the write-tool test module was formatter-clean on main and now has three hunks that ruff format would change. Neither affects behaviour or CI.",
+        "recommendation": "Either keep the config.py reflow and also format the touched test module, or revert the unrelated reflow; mention the choice in the PR.",
+        "locations": [
+          {
+            "path": "backend/app/core/config.py",
+            "line": 16
+          },
+          {
+            "path": "backend/tests/test_mcp_write_tools.py",
+            "line": 1074
+          }
+        ]
+      },
+      {
+        "id": "F-003",
+        "category": "documentation",
+        "severity": "info",
+        "summary": "The model-building skill asks the AI to say whose change set it is, but the MCP change-set results identify the creator only by User id.",
+        "rationale": "The in-chat review section tells the AI to say whose a change set is before asking, because another person's change set can be applied. The change-set summary returns created_by as a User id and no read tool resolves other Users' names, so the AI can only tell whether the user staged it (by comparing with whoami's id) and give the other creator's id. The safety-relevant part, own versus someone else's, is possible; naming the person is not.",
+        "recommendation": "Reword the skill to say whether the user or another User staged it (comparing created_by with whoami), or plan a creator name in the review result; TASK-069P's client QA can confirm what clients show.",
+        "locations": [
+          {
+            "path": "backend/app/mcp/plugin/skills/schatten-model-building/SKILL.md",
+            "line": 128
+          },
+          {
+            "path": "backend/app/api/v1/ai_change_sets/schemas.py",
+            "line": 408
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": []
+  }
+}

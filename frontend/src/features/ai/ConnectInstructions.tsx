@@ -22,7 +22,9 @@ function mcpUrls(origin: string): { read: string; write: string } {
   return { read: `${origin}/api/mcp/read`, write: `${origin}/api/mcp/write` };
 }
 
-export default function ConnectInstructions() {
+// `changeSetReview`: the write connection can also apply and reject change
+// sets (ADR-015 amendment).
+export default function ConnectInstructions(props: { changeSetReview: boolean }) {
   const origin = window.location.origin;
   const urls = mcpUrls(origin);
   const [copyState, setCopyState] = useState<CopyState>(null);
@@ -41,17 +43,29 @@ export default function ConnectInstructions() {
       <h3 id="ai-connect-title" className="ai-panel__section-title">
         Connect an AI client
       </h3>
-      <p className="muted">
-        Chat in your own AI client. It reads Schatten through the read connection and proposes
-        changes through the write connection; nothing changes until a person applies the change set
-        here. Data the client reads is sent to your AI vendor.
-      </p>
+      {props.changeSetReview ? (
+        <p className="muted">
+          Chat in your own AI client. It reads Schatten through the read connection and proposes
+          changes through the write connection. Nothing changes until a person applies the change
+          set, here or in the chat: when you tell it to, the client can apply or reject a change set
+          awaiting review, and it should ask you to approve each call. Data the client reads is sent
+          to your AI vendor.
+        </p>
+      ) : (
+        <p className="muted">
+          Chat in your own AI client. It reads Schatten through the read connection and proposes
+          changes through the write connection; nothing changes until a person applies the change
+          set here. Data the client reads is sent to your AI vendor.
+        </p>
+      )}
 
       <dl className="ai-panel-connect__urls">
         <McpUrl server="read" label="Read" url={urls.read} copyState={copyState} onCopy={copy} />
         <McpUrl
           server="write"
-          label="Write (proposals only)"
+          label={
+            props.changeSetReview ? "Write (propose, apply and reject)" : "Write (proposals only)"
+          }
           url={urls.write}
           copyState={copyState}
           onCopy={copy}

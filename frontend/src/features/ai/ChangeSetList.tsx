@@ -154,6 +154,11 @@ export default function ChangeSetList(props: {
                     "No single scenario"
                   )}
                 </span>
+                {changeSet.reviewedVia === "mcp" && changeSet.reviewClientName ? (
+                  <span className="ai-panel-list__meta">
+                    Reviewed through AI client <bdi>{changeSet.reviewClientName}</bdi> (MCP)
+                  </span>
+                ) : null}
               </button>
             </li>
           ))}

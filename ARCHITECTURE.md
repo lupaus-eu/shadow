@@ -57,8 +57,9 @@ Päätetty tekninen perusrakenne:
   UI and supported-runtime wiring are implemented
 - AI via MCP: ADR-015 accepts read and write MCP services in the backend,
   Schatten as OAuth 2.1 authorization server for MCP clients over the existing
-  Entra login, and AI change sets that only a human applies in Schatten. This
-  is an accepted design. TASK-069B's flush-only domain service transaction
+  Entra login, and AI change sets that a human applies or rejects, in
+  Schatten or, since the 2026-10-29 amendment, by approving the MCP client's
+  call. This is an accepted design. TASK-069B's flush-only domain service transaction
   cores, TASK-069C's deterministic timeseries generator, TASK-069D's MCP
   OAuth schema, TASK-069E's OAuth discovery, registration, authorization
   request and consent API, TASK-069F's token, refresh and revoke endpoints,
@@ -68,9 +69,10 @@ Päätetty tekninen perusrakenne:
   MCP and public OAuth endpoints behind `MCP_ENABLED=false`), TASK-069I's
   change-set schema and engine, TASK-069J's change-set staging write tools,
   TASK-069K's cookie-session change-set review API, TASK-069L's SPA consent
-  page and connections UI, TASK-069M's Metrics tab AI panel and TASK-069N's
-  skills, Claude Code plugin, MCP prompts and skill zips are implemented; the
-  rest is pending TASK-069O (see
+  page and connections UI, TASK-069M's Metrics tab AI panel, TASK-069N's
+  skills, Claude Code plugin, MCP prompts and skill zips and TASK-069O's MCP
+  change-set review behind `MCP_CHANGE_SET_REVIEW_ENABLED` are implemented;
+  the rest is pending TASK-069P (see
   [AI Via MCP](#ai-via-mcp))
 
 Tarkemmat toteutusyksityiskohdat täsmentyvät taskien ja tarvittaessa uusien ADR:ien kautta.
@@ -591,9 +593,11 @@ action in Users administration, with the API wrappers in
 `frontend/src/api/ai.ts`) and TASK-069M (the Metrics tab AI panel, see
 [Metrics Tab AI Panel](#metrics-tab-ai-panel)) and TASK-069N (the skills,
 Claude Code plugin, MCP prompts and skill zips, see [AI Skills](#ai-skills))
-are implemented; the rest is pending TASK-069O.
+and TASK-069O (MCP change-set review, see
+[MCP Change-Set Review](#mcp-change-set-review)) are implemented; the rest is
+pending TASK-069P.
 Nothing else below is implemented yet, and the feature stays behind `MCP_ENABLED=false` until
-TASK-069O's separately approved production enablement.
+TASK-069P's separately approved production enablement.
 
 Users chat in their own MCP-capable AI client (Claude Desktop, claude.ai,
 Claude Code or another) on their own AI subscription. Schatten never calls an
@@ -601,7 +605,8 @@ LLM and never stores LLM keys.
 
 ```text
 AI client / vendor connector --HTTPS Bearer--> Caddy --/api/mcp/read----> FastAPI MCP read service
-                                                     --/api/mcp/write---> FastAPI MCP write service (stages only)
+                                                     --/api/mcp/write---> FastAPI MCP write service (stages; applies or rejects only with
+                                                                          MCP_CHANGE_SET_REVIEW_ENABLED and the human's approval in the client)
                                                      --/api/oauth, /.well-known/oauth-*--> FastAPI OAuth server
 Browser SPA --session + CSRF--> /api/v1/ai/... consent, connections, change-set review (human apply)
 ```
@@ -613,7 +618,8 @@ Accepted design:
   `schatten.write`), stateless with JSON responses. `create_app()` builds
   them, registers exact GET, POST and DELETE routes wrapped in `McpBearerAuth`
   (not `app.mount`, which redirects to a trailing slash) and runs both session
-  managers in one combined lifespan. **No MCP tool applies changes.**
+  managers in one combined lifespan. **Only `apply_change_set`, behind
+  `MCP_CHANGE_SET_REVIEW_ENABLED`, applies changes through MCP.**
 - Schatten is its own OAuth 2.1 authorization server: discovery, Dynamic
   Client Registration limited by a redirect URI allowlist, mandatory PKCE
   S256, opaque SHA-256-hashed tokens, rotating refresh tokens with reuse
@@ -631,8 +637,9 @@ Accepted design:
   the User's grants. The incident procedure is to disable MCP and revoke
   grants, with no manual database change.
 - The write service stages AI change sets. Dry-run always rolls back.
-  **A human reviews and applies or rejects each change set in the Metrics
-  tab**; apply is atomic through the domain services' `*_in_transaction`
+  **A human reviews and applies or rejects each change set**, in the Metrics
+  tab or by approving the MCP client's `apply_change_set` or
+  `reject_change_set` call; apply is atomic through the domain services' `*_in_transaction`
   cores. Generated values come from a deterministic, seeded generator and are
   frozen at submit. Apply validates but does not detect general staleness. The
   review UI flags operations that replace existing values, recomputed against
@@ -645,6 +652,26 @@ Accepted design:
   protect the shared host.
 - Business data read through MCP flows to the user's AI vendor; this is an
   accepted product and security decision.
+
+## MCP Change-Set Review
+
+Implemented by TASK-069O under the 2026-10-29 amendment of ADR-015. The read
+server's `get_change_set_review` returns what the Metrics tab review shows:
+the operations, the replacement flags and summaries recomputed against current
+data and the `review_fingerprint` (`service.change_set_review`, sharing the
+review API's load). With `MCP_CHANGE_SET_REVIEW_ENABLED=true` (default
+`false`, and no effect without `MCP_ENABLED`) the write server also registers
+`apply_change_set(change_set_key, review_fingerprint)` and
+`reject_change_set(change_set_key, note)`. They run the engine's apply and
+reject unchanged, on any submitted change set of the organisation, with the
+grant's User as reviewer, and are annotated destructive so that MCP clients
+ask the human before each call. Engine errors become tool errors that name the
+review API's codes. Every review records `reviewed_via` (`web` or `mcp`) and,
+for `mcp`, the reviewing client's `review_client_id` and `review_client_name`
+(migration 019). The session's `features.mcpChangeSetReview` switches the
+consent page, connect instructions and connections list wording; the Metrics
+AI panel shows the reviewing client. Production pins the switch to `false`
+until TASK-069P's approved enablement.
 
 ## Metrics Tab AI Panel
 
@@ -665,7 +692,8 @@ also before a scenario is selected. The panel has three sections:
   warning on each operation that replaces existing data with its recomputed
   summary, and missing targets. Apply sends the shown `reviewFingerprint` and
   reloads the metrics grid, and its confirmation warns when unsaved grid edits
-  would be discarded; reject takes an optional note.
+  would be discarded; reject takes an optional note. A change set applied or
+  rejected through MCP names the reviewing AI client.
 - Connections: TASK-069L's `ConnectionsList`.
 - Connect: the MCP URLs and client steps, the Claude Code plugin install
   commands and the skill zip downloads, hidden when `features.mcp` is false.
@@ -978,7 +1006,7 @@ ADR-004 Authentication, Identity And Session Architecture: accepted
 ADR-005 Production-Only Deployment Environments: accepted
 ADR-006 Local Authentik TLS And Optional Entra Federation: target superseded by ADR-013
 ADR-013 Shared Entra Registration And Local HTTPS Deployment: accepted; source delivery H1-H3 implemented, rollout pending
-ADR-015 AI Via MCP With Human-Applied Change Sets: accepted design; TASK-069B..TASK-069N implemented, TASK-069O pending
+ADR-015 AI Via MCP With Human-Applied Change Sets: accepted design, amended 2026-10-29; TASK-069B..TASK-069O implemented, TASK-069P pending
 ```
 
 ---

@@ -12,7 +12,7 @@ type SessionResponse = {
   features: SessionFeatures;
 };
 
-const DISABLED_FEATURES: SessionFeatures = { mcp: false };
+const DISABLED_FEATURES: SessionFeatures = { mcp: false, mcpChangeSetReview: false };
 
 type LogoutResponse = {
   logoutUrl: string | null;
@@ -44,7 +44,9 @@ function parseSession(value: unknown): SessionResponse {
 function parseFeatures(session: Partial<SessionResponse>): SessionFeatures {
   const features: unknown = session.features;
   if (!features || typeof features !== "object") return DISABLED_FEATURES;
-  return { mcp: (features as Partial<SessionFeatures>).mcp === true };
+  const flags = features as Partial<SessionFeatures>;
+  const mcp = flags.mcp === true;
+  return { mcp, mcpChangeSetReview: mcp && flags.mcpChangeSetReview === true };
 }
 
 function parseLogout(value: unknown): LogoutResponse {

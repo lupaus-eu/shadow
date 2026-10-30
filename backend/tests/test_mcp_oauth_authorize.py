@@ -1272,12 +1272,33 @@ def test_mcp_disabled_registers_no_endpoint_and_reports_feature_off(
             client.post("/api/v1/ai/oauth/consent/deny", json={"request": "x"}),
         ]
 
-    assert session_body["features"] == {"mcp": False}
+    assert session_body["features"] == {"mcp": False, "mcpChangeSetReview": False}
     assert [response.status_code for response in responses] == [404] * len(responses)
 
 
 def test_session_reports_mcp_feature_when_enabled(client: TestClient) -> None:
-    assert client.get("/api/v1/auth/session").json()["features"] == {"mcp": True}
+    assert client.get("/api/v1/auth/session").json()["features"] == {
+        "mcp": True,
+        "mcpChangeSetReview": False,
+    }
+
+
+@pytest.mark.parametrize(
+    ("mcp_enabled", "review_enabled", "expected"),
+    [(True, True, True), (False, True, False), (True, False, False)],
+)
+def test_session_reports_mcp_change_set_review_only_with_mcp(
+    session_factory: sessionmaker[Session],
+    mcp_enabled: bool,
+    review_enabled: bool,
+    expected: bool,
+) -> None:
+    settings = _settings(
+        MCP_ENABLED=mcp_enabled, MCP_CHANGE_SET_REVIEW_ENABLED=review_enabled
+    )
+    with _client(session_factory, settings, role="consultant") as client:
+        features = client.get("/api/v1/auth/session").json()["features"]
+    assert features == {"mcp": mcp_enabled, "mcpChangeSetReview": expected}
 
 
 @pytest.mark.parametrize(

@@ -273,7 +273,12 @@ function MetricsWorkspaceTab(props: { orgId: string }) {
   return (
     <MetricsTab
       orgId={props.orgId}
-      ai={{ mcpEnabled: features.mcp, changeSetKey, onChangeSetKeyChange }}
+      ai={{
+        mcpEnabled: features.mcp,
+        mcpChangeSetReview: features.mcpChangeSetReview,
+        changeSetKey,
+        onChangeSetKeyChange
+      }}
     />
   );
 }

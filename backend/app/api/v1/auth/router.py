@@ -148,7 +148,10 @@ def session_status(
     return SessionResponse(
         user=to_user_response(active.user),
         csrfToken=active.auth_session.csrf_token,
-        features=SessionFeatures(mcp=settings.mcp_enabled),
+        features=SessionFeatures(
+            mcp=settings.mcp_enabled,
+            mcpChangeSetReview=settings.mcp_change_set_review_active,
+        ),
     )
 
 

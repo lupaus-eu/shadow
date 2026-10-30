@@ -87,9 +87,12 @@ services:
       AUTH_SESSION_ABSOLUTE_LIFETIME_SECONDS: "28800"
       AUTH_SESSION_ACTIVITY_WRITE_SECONDS: "300"
       OIDC_TRANSACTION_LIFETIME_SECONDS: "600"
-      # ADR-015: MCP stays disabled until TASK-069O's separately approved
+      # ADR-015: MCP stays disabled until TASK-069P's separately approved
       # production enablement.
       MCP_ENABLED: "false"
+      # ADR-015 amendment (TASK-069O): MCP apply and reject stay off until
+      # TASK-069P's approved enablement.
+      MCP_CHANGE_SET_REVIEW_ENABLED: "false"
       MCP_OAUTH_REDIRECT_URIS: https://claude.ai/api/mcp/auth_callback https://claude.com/api/mcp/auth_callback http://127.0.0.1:{port}/callback http://[::1]:{port}/callback http://localhost:{port}/callback
       MCP_OAUTH_AUTHORIZATION_REQUEST_LIFETIME_SECONDS: "600"
       MCP_OAUTH_AUTHORIZATION_CODE_LIFETIME_SECONDS: "60"

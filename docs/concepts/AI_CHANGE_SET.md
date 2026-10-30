@@ -3,17 +3,19 @@
 Status: accepted design in ADR-015; schema (migration 018) and engine
 implemented by TASK-069I (see [Engine](#engine-task-069i)); MCP write and
 change-set read tools implemented by TASK-069J and the cookie-session review
-API by TASK-069K and the Metrics tab review UI by TASK-069M (see
+API by TASK-069K, the Metrics tab review UI by TASK-069M and the MCP
+change-set review with the review channel (migration 019) by TASK-069O (see
 `docs/domains/AI.md`)
 
 ## Purpose
 
-AI Change Set tarkoittaa AI-asiakkaan MCP:n kautta valmistelemaa, tyypitettyjen
+AI Change Set tarkoittaa AI-klientin MCP:n kautta valmistelemaa, tyypitettyjen
 operaatioiden joukkoa, jonka ihminen tarkistaa ja joko soveltaa tai hylkää
-Schattenissa.
+Schattenissa tai hyväksymällä MCP-klientin kutsun.
 
 An AI Change Set is a proposal, not business data. Nothing in it affects
-scenarios, graphs or timeseries until a human applies it in the Metrics tab.
+scenarios, graphs or timeseries until a human applies it, in the Metrics tab
+or by approving an MCP client's `apply_change_set` call.
 It is not a prediction, a forecast or an audit log of REST edits.
 
 ---
@@ -40,7 +42,8 @@ Related Decision:
 An AI Change Set is an organisation-scoped, ordered list of typed operations
 staged by an MCP client on behalf of one User. It is validated by a dry-run
 that always rolls back, frozen on submit, and applied atomically through the
-owning domains' services only when a human approves it in Schatten.
+owning domains' services only when a human approves it, in Schatten or in the
+MCP client.
 ```
 
 ---
@@ -65,6 +68,10 @@ Change set (`ai_change_sets`):
   taken from it; they are recomputed against current data (see Domain Rules)
 - `applied_result`: per-operation result and the `$ref` to real key map
 - `reviewed_by`, `reviewed_time`, `review_note`
+- `reviewed_via` (migration 019): `web` for the Metrics tab or `mcp` for an
+  approved MCP client call, set exactly when `reviewed_time` is; for `mcp`
+  also `review_client_id` (copied plain value) and the self-declared
+  `review_client_name` of the reviewing grant's client
 - `created_by` (the grant's User), `created_time`, `modified_by`,
   `modified_time`
 
@@ -159,8 +166,9 @@ reference.
 # Engine (TASK-069I)
 
 Code: `backend/app/api/v1/ai_change_sets/` (`models.py`, `schemas.py`,
-`engine.py`). TASK-069J's MCP write tools and TASK-069K's review API
-(`router.py`) call the engine; it adds no tool, route or UI itself.
+`engine.py`). TASK-069J's MCP write tools, TASK-069K's review API
+(`router.py`) and TASK-069O's MCP apply and reject tools call the engine; it
+adds no tool, route or UI itself.
 
 - **Staging.** `create_change_set` starts a draft. `add_operations`,
   `remove_operation` and `discard_change_set` (added by TASK-069J) change only
@@ -217,7 +225,7 @@ Code: `backend/app/api/v1/ai_change_sets/` (`models.py`, `schemas.py`,
   node in an organisation state the change set creates is read at that state's
   target date (`get_graph_node_visible_at`).
 - **Apply.** `apply_change_set(session, organisation_key, change_set_key,
-  review_fingerprint, actor_user_id)` runs the steps `lock`, `status`,
+  review_fingerprint, actor_user_id, *, channel)` runs the steps `lock`, `status`,
   `fingerprint`, `revalidate` (stored operations, frozen values, limits and
   references), `execute` and `commit` in one transaction under the
   `lock_timeout` and `statement_timeout`. Its `ChangeSetApplyError` carries
@@ -238,11 +246,16 @@ Code: `backend/app/api/v1/ai_change_sets/` (`models.py`, `schemas.py`,
   `error`. A failure outside an operation that matches no other code is
   `unexpected_error`.
 - **Reject.** `reject_change_set(session, organisation_key, change_set_key,
-  note, actor_user_id)` locks the change set under the same timeouts,
+  note, actor_user_id, *, channel)` locks the change set under the same timeouts,
   requires `submitted` and records `rejected` with the reviewer, time and
   note; the caller commits. It raises only `not_submitted`,
   `apply_in_progress` and `apply_unavailable`, and does not parse the stored
-  operations. TASK-069K's review API returns these codes as for apply.
+  operations. TASK-069K's review API returns these codes as for apply, and
+  TASK-069O's MCP tools name them in their tool errors.
+- **Review channel.** `ReviewChannel.web()` or
+  `ReviewChannel.mcp(client_id, client_name)` is passed explicitly to apply
+  and reject, and apply passes it on to the conditional `failed` update, so
+  every review records `reviewed_via` and, for MCP, the reviewing client.
 - **Settings.** `AI_CHANGE_SET_STATEMENT_TIMEOUT_MS` (default 30,000) bounds
   each statement of dry-run, apply and `compute_replacements`, not their total
   duration; `AI_CHANGE_SET_LOCK_TIMEOUT_MS`
@@ -269,9 +282,13 @@ The lifecycle is drawn in
 - A `submitted` change set is immutable. Its `generate_timeserie_values`
   operations have `frozen_values` and a generator version, and apply uses them
   instead of regenerating.
-- No MCP tool can move a change set to `applied` or `rejected`. Those
-  transitions require a human through the cookie-session review API with CSRF
-  and exact Origin.
+- Only a human decision moves a change set to `applied` or `rejected`: the
+  cookie-session review API with CSRF and exact Origin, or, with
+  `MCP_CHANGE_SET_REVIEW_ENABLED=true`, an MCP client's `apply_change_set` or
+  `reject_change_set` call that the human approved. No other MCP tool makes
+  these transitions.
+- `reviewed_via` is set exactly when `reviewed_time` is, and the reviewing
+  client exactly when it is `mcp`.
 - A dry-run never persists business rows; it always rolls back. Without
   SAVEPOINTs it stops at the first failing operation, and later operations
   report `not_run`.
@@ -309,8 +326,10 @@ States:
 
 - `draft`: being staged and validated through MCP
 - `submitted`: frozen and waiting for human review
-- `applied`: a human applied it; business rows exist
-- `rejected`: a human rejected it, optionally with a note
+- `applied`: a human applied it, in Schatten or through MCP; business rows
+  exist
+- `rejected`: a human rejected it, in Schatten or through MCP, optionally
+  with a note
 - `failed`: apply was attempted and rolled back
 - `discarded`: the creator discarded the draft through MCP
 
@@ -319,9 +338,11 @@ Transitions:
 ```text
 draft -> submitted        submit_change_set (MCP, creator's grant): re-validate and freeze
 draft -> discarded        discard_change_set (MCP, creator's grant)
-submitted -> applied      human apply in Schatten (either role)
-submitted -> rejected     human reject in Schatten (either role)
-submitted -> failed       human apply rolled back by a re-validation, operation or commit failure,
+submitted -> applied      human apply in Schatten, or apply_change_set (MCP, switch on) approved
+                          by the human (either role, any creator)
+submitted -> rejected     human reject in Schatten, or reject_change_set (MCP, switch on) approved
+                          by the human (either role, any creator)
+submitted -> failed       apply rolled back by a re-validation, operation or commit failure,
                           or a lock or statement timeout during re-validation or execution
 submitted -> submitted    apply rejected before re-validation (409 review_stale, 409
                           apply_in_progress or a retryable 503): no transition
@@ -352,15 +373,19 @@ Related APIs:
 
 - MCP write tools `create_change_set`, `add_operations`, `remove_operation`,
   `validate_change_set`, `submit_change_set`, `discard_change_set`
-- MCP read tools `list_change_sets`, `get_change_set`
+- MCP write tools `apply_change_set`, `reject_change_set` (TASK-069O, only
+  with `MCP_CHANGE_SET_REVIEW_ENABLED=true`)
+- MCP read tools `list_change_sets`, `get_change_set`, `get_change_set_review`
 - `/api/v1/organisations/{organisation_key}/ai/change-sets`
 
 ---
 
 # Domain Rules
 
-- The human apply is the only path from AI output to business data.
-- Both `admin` and `consultant` may review, including the creator.
+- A human-decided apply, in the Metrics tab or through an approved MCP
+  `apply_change_set` call, is the only path from AI output to business data.
+- Both `admin` and `consultant` may review any submitted change set,
+  including the creator, through either channel.
 - The reviewer is the actor (`created_by`/`modified_by`) of the business rows
   created by apply; the change set records the creator, grant and client.
 - Apply re-validates against current data: references must exist, keys must
@@ -397,7 +422,8 @@ When implementing this concept:
 
 Avoid:
 
-- adding an MCP apply path;
+- adding an MCP apply path other than `apply_change_set` behind
+  `MCP_CHANGE_SET_REVIEW_ENABLED`, or one without the review fingerprint;
 - regenerating values at apply time;
 - writing other domains' tables from the engine.
 

@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-069O/review-002",
+  "task": {
+    "id": "TASK-069O",
+    "path": "tasks/TASK-069O-mcp-change-set-review.md"
+  },
+  "round": 2,
+  "reviewed_at": "2026-10-30T09:13:44Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": {
+    "number": 122,
+    "url": "https://github.com/reflector-oy/schatten/pull/122"
+  },
+  "source": {
+    "base_sha": "b4c46c199be654551a753bb045cff3f51bde749e",
+    "head_sha": "017dfe876cf65d342f80dd6da54a573505aaac70",
+    "comparison": "b4c46c199be654551a753bb045cff3f51bde749e...017dfe876cf65d342f80dd6da54a573505aaac70",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Round 2 reviews 017dfe8, which fixes the three round 1 findings as the developer decided. With the switch off, the six staging tools' docstrings and the write server's instructions are again exactly those on main, compared by parsing both revisions. With the switch on, REVIEW_WORDING replaces the approved-in-Schatten sentence of create_change_set, add_operations, validate_change_set and submit_change_set, points submit_change_set to get_change_set_review and adds the in-chat review to discard_change_set, while remove_operation, apply_change_set and reject_change_set keep their docstrings. The replacement matches across line breaks and fails the server build when a docstring no longer contains its sentence, and new tests cover both states and the build failure. The write-tool test module is formatter-clean, the config.py reflow stays, and the skill now says to compare created_by with the id that whoami returns. ADR-015, the AI domain document and TESTING.md describe the switch-dependent descriptions. Backend ruff check, pytest with the PostgreSQL integration suites (1300 passed), pyright and the record validation pass; the frontend is unchanged since round 1. A second pass over the rest of the diff found only one new info-level wording note.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "documentation",
+        "severity": "info",
+        "summary": "The deployment settings row says that setting the switch to false removes the tools on the next request, without saying that the backend must be restarted first.",
+        "rationale": "The write server and its tool list are built once at application startup from the cached settings, so a changed MCP_CHANGE_SET_REVIEW_ENABLED takes effect only after the backend is restarted or recreated. ADR-015's incident procedure says so in its first step, but an operator reading only the settings table in the deployment document could expect the change to act at once.",
+        "recommendation": "Optionally say in the deployment row that the change takes effect after the backend is restarted through the approved deployment procedure, as the incident procedure does.",
+        "locations": [
+          {
+            "path": "docs/DEPLOYMENT.md",
+            "line": 234
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-069O/review-001",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "As the developer decided, the staging tool descriptions now depend on the switch: off they equal the docstrings on main, on they name the in-chat review through REVIEW_WORDING, and a missing sentence fails the build. Tests cover both states.",
+        "validated_by": {
+          "review_id": "TASK-069O/review-002",
+          "commit": "017dfe876cf65d342f80dd6da54a573505aaac70"
+        }
+      },
+      {
+        "record_id": "TASK-069O/review-001",
+        "finding_id": "F-002",
+        "disposition": "fixed",
+        "rationale": "As the developer decided, the config.py reflow is kept and the write-tool test module is now formatter-clean.",
+        "validated_by": {
+          "review_id": "TASK-069O/review-002",
+          "commit": "017dfe876cf65d342f80dd6da54a573505aaac70"
+        }
+      },
+      {
+        "record_id": "TASK-069O/review-001",
+        "finding_id": "F-003",
+        "disposition": "fixed",
+        "rationale": "The model-building skill now tells the AI to say whether the user or another User staged the change set by comparing created_by with the id that whoami returns, which the tools provide. The AI domain document says the same.",
+        "validated_by": {
+          "review_id": "TASK-069O/review-002",
+          "commit": "017dfe876cf65d342f80dd6da54a573505aaac70"
+        }
+      }
+    ]
+  }
+}

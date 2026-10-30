@@ -382,6 +382,9 @@ class ReplacementReport(StrictBaseModel):
 type ChangeSetStatus = Literal[
     "draft", "submitted", "applied", "rejected", "failed", "discarded"
 ]
+# How a human reviewed a change set: in the Metrics tab (`web`) or by
+# approving an MCP client's apply or reject call (`mcp`).
+type ReviewChannelName = Literal["web", "mcp"]
 
 
 class ChangeSetSummary(StrictBaseModel):
@@ -408,6 +411,18 @@ class ChangeSetSummary(StrictBaseModel):
     reviewed_by: int | None = Field(description="User id of the human reviewer.")
     reviewed_time: datetime | None
     review_note: str | None
+    reviewed_via: ReviewChannelName | None = Field(
+        description="How the human reviewed it: `web` (the Metrics tab) or `mcp` "
+        "(an approved MCP client call)."
+    )
+    review_client_id: str | None = Field(
+        description="client_id of the MCP client that applied or rejected it; "
+        "null unless reviewed_via is `mcp`."
+    )
+    review_client_name: str | None = Field(
+        description="Name the reviewing MCP client declared for itself; null "
+        "unless reviewed_via is `mcp`."
+    )
 
 
 class FrozenValuesSummary(StrictBaseModel):
@@ -442,5 +457,5 @@ class ChangeSetDetail(ChangeSetSummary):
         "provisional."
     )
     applied_result: ApplyOutcome | None = Field(
-        description="Result of the human apply of an applied or failed change set."
+        description="Result of the apply of an applied or failed change set."
     )

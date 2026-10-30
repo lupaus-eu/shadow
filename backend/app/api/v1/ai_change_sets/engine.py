@@ -11,10 +11,14 @@ writes another domain's tables itself.
   operation that replaces data that existed before the change set, and hashes
   the flags, summaries and per-target checksums into the review fingerprint.
 - `submit_change_set` re-validates and freezes generated values.
-- `apply_change_set` is the human apply: one transaction under the change-set
-  row lock, the fingerprint check, re-validation, execution and one commit.
-  The step alone decides whether a failure marks the change set `failed`.
+- `apply_change_set` is the human apply, from the Metrics tab or an approved
+  MCP call: one transaction under the change-set row lock, the fingerprint
+  check, re-validation, execution and one commit. The step alone decides
+  whether a failure marks the change set `failed`.
 - `reject_change_set` is the human reject under the same row lock.
+
+Apply and reject record the reviewer with the `ReviewChannel` they came
+through.
 
 Only `apply_change_set` commits; the caller commits every other change.
 """
@@ -62,6 +66,7 @@ from app.api.v1.ai_change_sets.schemas import (
     PatchNodeOperation,
     RefKind,
     ReplacementReport,
+    ReviewChannelName,
     SetTimeserieValuesOperation,
     TimeserieReplacement,
     operation_value_count,
@@ -103,6 +108,34 @@ type ApplyErrorCode = Literal[
     "apply_unavailable",
     "apply_failed",
 ]
+
+
+@dataclass(frozen=True)
+class ReviewChannel:
+    """How a human reviews a change set, recorded with the reviewer.
+
+    `web` is the Metrics tab. `mcp` is an MCP client call the human approved;
+    its client is copied like the staging client, as a plain value.
+    """
+
+    via: ReviewChannelName
+    client_id: str | None = None
+    client_name: str | None = None
+
+    @classmethod
+    def web(cls) -> "ReviewChannel":
+        return cls("web")
+
+    @classmethod
+    def mcp(cls, client_id: str, client_name: str) -> "ReviewChannel":
+        return cls("mcp", client_id, client_name)
+
+    def audit_values(self) -> dict[str, str | None]:
+        return {
+            "reviewed_via": self.via,
+            "review_client_id": self.client_id,
+            "review_client_name": self.client_name,
+        }
 
 
 @dataclass(frozen=True)
@@ -643,7 +676,7 @@ def compute_replacements(
     )
 
 
-# Human apply.
+# Human apply and reject, from the Metrics tab or an approved MCP call.
 
 
 def apply_change_set(
@@ -653,6 +686,7 @@ def apply_change_set(
     review_fingerprint: str,
     actor_user_id: int,
     *,
+    channel: ReviewChannel,
     settings: Settings | None = None,
 ) -> ExecutionResult:
     """Apply a submitted change set atomically; the reviewer is the actor.
@@ -718,6 +752,7 @@ def apply_change_set(
         ).model_dump(mode="json")
         change_set.reviewed_by = actor_user_id
         change_set.reviewed_time = now
+        _record_channel(change_set, channel)
         change_set.modified_by = actor_user_id
         change_set.modified_time = now
         for row in rows:
@@ -749,7 +784,7 @@ def apply_change_set(
             type(exc).__name__,
         )
         change_set_status = _mark_failed(
-            session, change_set_id, outcome, failing, actor_user_id, settings
+            session, change_set_id, outcome, failing, actor_user_id, channel, settings
         )
         assert outcome.error is not None
         raise ChangeSetApplyError(
@@ -769,6 +804,7 @@ def reject_change_set(
     note: str | None,
     actor_user_id: int,
     *,
+    channel: ReviewChannel,
     settings: Settings | None = None,
 ) -> AiChangeSet:
     """Reject a submitted change set; the reviewer is recorded with the note.
@@ -801,6 +837,7 @@ def reject_change_set(
         change_set.reviewed_by = actor_user_id
         change_set.reviewed_time = now
         change_set.review_note = note
+        _record_channel(change_set, channel)
         change_set.modified_by = actor_user_id
         change_set.modified_time = now
         session.flush()
@@ -1213,6 +1250,7 @@ def _mark_failed(
     outcome: ApplyOutcome,
     failing: OperationResult | None,
     actor_user_id: int,
+    channel: ReviewChannel,
     settings: Settings,
 ) -> str | None:
     """Mark a still-submitted change set failed in a new transaction.
@@ -1234,6 +1272,7 @@ def _mark_failed(
                 applied_result=outcome.model_dump(mode="json"),
                 reviewed_by=actor_user_id,
                 reviewed_time=now,
+                **channel.audit_values(),
                 modified_by=actor_user_id,
                 modified_time=now,
             )
@@ -1264,6 +1303,12 @@ def _mark_failed(
         )
     finally:
         session.rollback()
+
+
+def _record_channel(change_set: AiChangeSet, channel: ReviewChannel) -> None:
+    change_set.reviewed_via = channel.via
+    change_set.review_client_id = channel.client_id
+    change_set.review_client_name = channel.client_name
 
 
 def _set_apply_timeouts(session: Session, settings: Settings) -> None:

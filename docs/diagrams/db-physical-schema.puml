@@ -374,6 +374,9 @@ entity "ai_change_sets" as ai_change_sets {
   reviewed_by : BIGINT
   reviewed_time : TIMESTAMPTZ
   review_note : TEXT
+  reviewed_via : TEXT
+  review_client_id : TEXT
+  review_client_name : TEXT
   created_by : BIGINT
   created_time : TIMESTAMPTZ
   modified_by : BIGINT

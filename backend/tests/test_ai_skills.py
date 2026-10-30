@@ -268,7 +268,10 @@ def test_model_building_example_runs_against_the_default_metamodel(
 
 @pytest.mark.anyio
 async def test_read_server_prompts_return_the_skill_content() -> None:
-    server = build_read_server(McpToolRuntime(sessionmaker(), anyio.CapacityLimiter(1)))
+    server = build_read_server(
+        McpToolRuntime(sessionmaker(), anyio.CapacityLimiter(1)),
+        Settings.model_validate({"MCP_ENABLED": True}),
+    )
 
     async with Client(server) as client:
         prompts = {prompt.name: prompt for prompt in await client.list_prompts()}

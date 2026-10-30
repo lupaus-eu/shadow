@@ -34,6 +34,7 @@ from app.api.v1.organisations.models import Organisation
 from app.api.v1.timeserie_generation.generator import GENERATOR_VERSION, generate
 from app.api.v1.timeserie_generation.schemas import TimeserieGenerationSpec
 from app.api.v1.users.models import User
+from app.core.config import Settings
 from app.core.models import Base
 from app.mcp import read_server
 from app.mcp.auth import current_principal
@@ -51,6 +52,8 @@ PRINCIPAL = McpPrincipal(
     scopes=frozenset({READ_SCOPE}),
 )
 DELETED = datetime(2026, 1, 1, tzinfo=UTC)
+
+SETTINGS = Settings.model_validate({"MCP_ENABLED": True})
 
 
 @pytest.fixture()
@@ -432,7 +435,7 @@ def runtime(session_factory: sessionmaker[Session]) -> McpToolRuntime:
 
 @pytest.fixture()
 def server(runtime: McpToolRuntime) -> FastMCP:
-    return build_read_server(runtime)
+    return build_read_server(runtime, SETTINGS)
 
 
 @contextmanager
@@ -493,6 +496,7 @@ async def test_read_tools_are_annotated_read_only(server: FastMCP) -> None:
         "preview_generated_timeserie",
         "list_change_sets",
         "get_change_set",
+        "get_change_set_review",
     }
     for tool in tools:
         assert tool.annotations is not None

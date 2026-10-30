@@ -161,6 +161,10 @@ def test_rejects_non_latest_and_unapplied_down_migrations(
         )
 
     execute_command(
+        DownCommand("019_add_ai_change_set_review_channel.down.sql"),
+        database_url=migration_database_url,
+    )
+    execute_command(
         DownCommand("018_create_ai_change_sets.down.sql"),
         database_url=migration_database_url,
     )
@@ -631,6 +635,10 @@ def test_prediction_interval_migration_resets_development_rows_and_constraints(
                 )
 
     execute_command(
+        DownCommand("019_add_ai_change_set_review_channel.down.sql"),
+        database_url=migration_database_url,
+    )
+    execute_command(
         DownCommand("018_create_ai_change_sets.down.sql"),
         database_url=migration_database_url,
     )
@@ -721,6 +729,10 @@ def test_prophet_result_kind_migration_up_and_down(
         connection.commit()
 
     execute_command(
+        DownCommand("019_add_ai_change_set_review_channel.down.sql"),
+        database_url=migration_database_url,
+    )
+    execute_command(
         DownCommand("018_create_ai_change_sets.down.sql"),
         database_url=migration_database_url,
     )
@@ -803,6 +815,10 @@ def test_prediction_observation_source_migration_replaces_schema(
                 """
             )
 
+    execute_command(
+        DownCommand("019_add_ai_change_set_review_channel.down.sql"),
+        database_url=migration_database_url,
+    )
     execute_command(
         DownCommand("018_create_ai_change_sets.down.sql"),
         database_url=migration_database_url,
@@ -939,6 +955,10 @@ def test_prediction_request_migration_preserves_versions_and_enforces_lifecycle(
                 (other[0], user[0], version[0]),
             )
 
+    execute_command(
+        DownCommand("019_add_ai_change_set_review_channel.down.sql"),
+        database_url=migration_database_url,
+    )
     execute_command(
         DownCommand("018_create_ai_change_sets.down.sql"),
         database_url=migration_database_url,
@@ -1121,6 +1141,10 @@ def test_timeserie_name_and_short_name_indexes_enforce_active_scope(
         connection.commit()
 
     execute_command(
+        DownCommand("019_add_ai_change_set_review_channel.down.sql"),
+        database_url=migration_database_url,
+    )
+    execute_command(
         DownCommand("018_create_ai_change_sets.down.sql"),
         database_url=migration_database_url,
     )
@@ -1254,6 +1278,10 @@ def test_mcp_oauth_migration_down_fully_reverses_up(
         == 4
     )
 
+    execute_command(
+        DownCommand("019_add_ai_change_set_review_channel.down.sql"),
+        database_url=migration_database_url,
+    )
     execute_command(
         DownCommand("018_create_ai_change_sets.down.sql"),
         database_url=migration_database_url,
@@ -1499,6 +1527,10 @@ def test_ai_change_sets_migration_down_fully_reverses_up(
     )
 
     execute_command(
+        DownCommand("019_add_ai_change_set_review_channel.down.sql"),
+        database_url=migration_database_url,
+    )
+    execute_command(
         DownCommand("018_create_ai_change_sets.down.sql"),
         database_url=migration_database_url,
     )
@@ -1508,6 +1540,63 @@ def test_ai_change_sets_migration_down_fully_reverses_up(
         == 17
     )
     assert _schema_catalog(migration_database_url) == before
+
+
+def test_ai_change_set_review_channel_migration_backfills_and_reverses(
+    migration_database_url: str, tmp_path: Path
+) -> None:
+    migrations = discover_migrations()
+    migration_copy = tmp_path / "migrations_through_018"
+    migration_copy.mkdir()
+    for migration in migrations[:18]:
+        shutil.copy2(migration.up_path, migration_copy / migration.up_name)
+        shutil.copy2(migration.down_path, migration_copy / migration.down_name)
+    execute_command(
+        UpCommand(),
+        database_url=migration_database_url,
+        migrations_directory=migration_copy,
+    )
+    with psycopg.connect(migration_database_url) as connection:
+        user_id, _, draft_id = _insert_ai_change_set_fixture(connection)
+        reviewed = connection.execute(
+            "INSERT INTO ai_change_sets ("
+            "change_set_key, organisation_id, title, client_id, client_name, "
+            "created_by, status, reviewed_by, reviewed_time"
+            ") SELECT 'change-set-2', organisation_id, 'Plan', 'client-1', 'Claude', "
+            "%s, 'rejected', %s, now() FROM ai_change_sets WHERE change_set_id = %s "
+            "RETURNING change_set_id",
+            (user_id, user_id, draft_id),
+        ).fetchone()
+        assert reviewed is not None
+        connection.commit()
+    before = _schema_catalog(migration_database_url)
+
+    execute_command(UpCommand(), database_url=migration_database_url)
+
+    with psycopg.connect(migration_database_url) as connection:
+        rows = connection.execute(
+            "SELECT change_set_id, reviewed_via, review_client_id, review_client_name "
+            "FROM ai_change_sets ORDER BY change_set_id"
+        ).fetchall()
+    assert rows == [(draft_id, None, None, None), (reviewed[0], "web", None, None)]
+
+    execute_command(
+        DownCommand("019_add_ai_change_set_review_channel.down.sql"),
+        database_url=migration_database_url,
+    )
+
+    assert (
+        _scalar(migration_database_url, "SELECT max(version) FROM schema_migrations")
+        == 18
+    )
+    assert _schema_catalog(migration_database_url) == before
+    assert _scalar(
+        migration_database_url,
+        "SELECT obj_description('ai_change_sets'::regclass, 'pg_class')",
+    ) == (
+        "AI change sets staged through MCP. Only a human applies or rejects them. "
+        "Down migration destroys this history."
+    )
 
 
 def _insert_ai_change_set_fixture(
@@ -1581,8 +1670,10 @@ def test_ai_change_set_schema_constraints(migration_database_url: str) -> None:
     change_set_insert: LiteralString = (
         "INSERT INTO ai_change_sets ("
         "change_set_key, organisation_id, title, client_id, client_name, "
-        "created_by, status, applied_result, reviewed_by, reviewed_time, review_note"
-        ") VALUES (%s, %s, %s, 'client-1', 'Claude', %s, %s, %s::jsonb, %s, %s, %s)"
+        "created_by, status, applied_result, reviewed_by, reviewed_time, review_note, "
+        "reviewed_via, review_client_id, review_client_name"
+        ") VALUES (%s, %s, %s, 'client-1', 'Claude', %s, %s, %s::jsonb, %s, %s, %s, "
+        "%s, %s, %s)"
     )
     operation_insert: LiteralString = (
         "INSERT INTO ai_change_set_operations ("
@@ -1601,6 +1692,9 @@ def test_ai_change_set_schema_constraints(migration_database_url: str) -> None:
             "reviewed_by": None,
             "reviewed_time": None,
             "review_note": None,
+            "reviewed_via": None,
+            "review_client_id": None,
+            "review_client_name": None,
         } | overrides
         return (
             values["key"],
@@ -1612,6 +1706,9 @@ def test_ai_change_set_schema_constraints(migration_database_url: str) -> None:
             values["reviewed_by"],
             values["reviewed_time"],
             values["review_note"],
+            values["reviewed_via"],
+            values["review_client_id"],
+            values["review_client_name"],
         )
 
     def operation(**overrides: object) -> tuple[object, ...]:
@@ -1639,6 +1736,7 @@ def test_ai_change_set_schema_constraints(migration_database_url: str) -> None:
                 applied_result='{"status": "applied"}',
                 reviewed_by=user_id,
                 reviewed_time=now,
+                reviewed_via="web",
             ),
         ),
         (
@@ -1649,6 +1747,9 @@ def test_ai_change_set_schema_constraints(migration_database_url: str) -> None:
                 reviewed_by=user_id,
                 reviewed_time=now,
                 review_note="Not now",
+                reviewed_via="mcp",
+                review_client_id="client-2",
+                review_client_name="Claude Code",
             ),
         ),
         (
@@ -1685,6 +1786,72 @@ def test_ai_change_set_schema_constraints(migration_database_url: str) -> None:
             psycopg.errors.CheckViolation,
             change_set_insert,
             change_set(review_note="Too early"),
+        ),
+        (
+            psycopg.errors.CheckViolation,
+            change_set_insert,
+            change_set(status="rejected", reviewed_by=user_id, reviewed_time=now),
+        ),
+        (
+            psycopg.errors.CheckViolation,
+            change_set_insert,
+            change_set(reviewed_via="web"),
+        ),
+        (
+            psycopg.errors.CheckViolation,
+            change_set_insert,
+            change_set(
+                status="rejected",
+                reviewed_by=user_id,
+                reviewed_time=now,
+                reviewed_via="chat",
+            ),
+        ),
+        (
+            psycopg.errors.CheckViolation,
+            change_set_insert,
+            change_set(
+                status="rejected",
+                reviewed_by=user_id,
+                reviewed_time=now,
+                reviewed_via="mcp",
+            ),
+        ),
+        (
+            psycopg.errors.CheckViolation,
+            change_set_insert,
+            change_set(
+                status="rejected",
+                reviewed_by=user_id,
+                reviewed_time=now,
+                reviewed_via="web",
+                review_client_id="client-2",
+                review_client_name="Claude Code",
+            ),
+        ),
+        (
+            psycopg.errors.CheckViolation,
+            change_set_insert,
+            change_set(
+                status="rejected",
+                reviewed_by=user_id,
+                reviewed_time=now,
+                reviewed_via="mcp",
+                review_client_id=" ",
+                review_client_name="Claude Code",
+            ),
+        ),
+        (
+            psycopg.errors.CheckViolation,
+            change_set_insert,
+            change_set(
+                status="rejected",
+                reviewed_by=user_id,
+                reviewed_time=now,
+                reviewed_via="mcp",
+                review_client_id="client-2",
+                review_client_name="x" * 101,
+            ),
         ),
         (
             psycopg.errors.UniqueViolation,

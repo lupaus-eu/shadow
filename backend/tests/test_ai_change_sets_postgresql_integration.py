@@ -200,6 +200,7 @@ def _apply(
             change_set_key,
             fingerprint,
             REVIEWER_USER_ID,
+            channel=engine.ReviewChannel.web(),
             settings=settings,
         )
 
@@ -804,6 +805,77 @@ def test_write_tools_stage_and_submit_through_a_real_connection_pool(
     assert _status(factory, submitted["change_set_key"]) == "submitted"
     assert _count(factory, OrgState, OrgState.name == "Q2") == 0
     assert _count(factory, Timeserie, Timeserie.timeserie_key == "alpha") == 0
+
+
+def test_concurrent_mcp_and_web_apply_apply_the_change_set_once(
+    factory: sessionmaker[Session],
+    organisation_key: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An MCP apply waits for a web apply's change-set lock, then sees it applied."""
+    principal = _write_principal(factory)
+    server = build_write_server(
+        McpToolRuntime(factory, anyio.CapacityLimiter(4)),
+        Settings.model_validate(
+            {
+                "MCP_CHANGE_SET_REVIEW_ENABLED": True,
+                "AI_CHANGE_SET_LOCK_TIMEOUT_MS": 5_000,
+                "AI_CHANGE_SET_STATEMENT_TIMEOUT_MS": 10_000,
+            }
+        ),
+    )
+    change_set_key, fingerprint = _submitted(
+        factory,
+        organisation_key,
+        [{"type": "create_scenario", "ref": "$plan", "payload": {"name": "AI plan"}}],
+    )
+    locked, release = _pause_first_call(monkeypatch, engine, "compute_replacements")
+
+    def web_apply() -> ExecutionResult:
+        return _apply(
+            factory, organisation_key, change_set_key, fingerprint, WAITING_TIMEOUTS
+        )
+
+    def mcp_apply() -> str:
+        async def call() -> str:
+            reset_token = current_principal.set(principal)
+            try:
+                async with Client(server) as client:
+                    result = await client.call_tool(
+                        "apply_change_set",
+                        {
+                            "change_set_key": change_set_key,
+                            "review_fingerprint": fingerprint,
+                        },
+                        raise_on_error=False,
+                    )
+            finally:
+                current_principal.reset(reset_token)
+            assert result.is_error
+            return "".join(getattr(block, "text", "") for block in result.content)
+
+        return anyio.run(call)
+
+    first, first_outcome = _in_thread(web_apply)
+    try:
+        assert locked.wait(timeout=5)
+        second, second_outcome = _in_thread(mcp_apply)
+        _wait_for_lock_waiter(factory)
+    finally:
+        release.set()
+
+    web = _joined(first, first_outcome)
+    mcp = _joined(second, second_outcome)
+
+    assert isinstance(web, ExecutionResult) and web.ok
+    assert mcp == (
+        "not_submitted: Only a submitted change set can be applied; this one is "
+        "applied."
+    )
+    assert _count(factory, Scenario, Scenario.name == "AI plan") == 1
+    with factory() as session:
+        change_set = _load(session, change_set_key)
+        assert (change_set.status, change_set.reviewed_via) == ("applied", "web")
 
 
 def _write_principal(factory: sessionmaker[Session]) -> McpPrincipal:

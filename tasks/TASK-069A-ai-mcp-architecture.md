@@ -6,8 +6,14 @@ Approved plan: "AI chat via MCP for generating Schatten model and timeseries
 data". It was accepted for task creation in the conversation on 2026-10-21
 under Step 3 of `docs/AI-DEVELOPMENT-WORKFLOW.md`.
 
-This task is the architecture prerequisite for TASK-069B through TASK-069O.
+This task is the architecture prerequisite for TASK-069B through TASK-069P.
 Creating these files specifies future work; it does not implement the tasks.
+
+Renumbering note (2026-10-29): the end-to-end QA, runbook and production
+enablement task created here as TASK-069O is now TASK-069P. TASK-069O is the
+later developer-requested MCP change-set review amendment
+(`tasks/TASK-069O-mcp-change-set-review.md`). The rules below are recorded as
+decided on 2026-10-21; ADR-015 records the amendment.
 
 Requirements and developer decisions (2026-10-21):
 
@@ -25,7 +31,7 @@ Requirements and developer decisions (2026-10-21):
   All MCP work is short and synchronous.
 - The architecture is documented as a C4 model in LikeC4. It includes a
   deployment view of how MCP is used.
-- Delivery is phased through TASK-069B to TASK-069O.
+- Delivery is phased through TASK-069B to TASK-069P.
 
 ## Goal
 
@@ -129,7 +135,7 @@ skills, and how the feature is protected on a resource-limited host.
   `docs/diagrams/README.md` to admit LikeC4 for this feature's C4 model.
 - Link the views from ADR-015, `docs/domains/AI.md` and `ARCHITECTURE.md`.
 - Update `ARCHITECTURE.md` and `AGENTS.md`. Mark the feature as an accepted
-  design whose implementation is pending TASK-069B through TASK-069O.
+  design whose implementation is pending TASK-069B through TASK-069P.
 
 ## Acceptance Criteria
 
@@ -148,7 +154,7 @@ skills, and how the feature is protected on a resource-limited host.
 
 ## Out Of Scope
 
-- Any implementation of TASK-069B through TASK-069O.
+- Any implementation of TASK-069B through TASK-069P.
 - Production actions or changes to the Entra registration.
 - An in-app LLM chat, storing LLM API keys, or Schatten calling an LLM.
 
@@ -166,7 +172,7 @@ docs/domains/AI.md
 docs/domains/ORG_STATES.md
 docs/domains/ORG_TWIN_STRUCTURE.md
 docs/diagrams/README.md
-tasks/TASK-069B-*.md ... tasks/TASK-069O-*.md
+tasks/TASK-069B-*.md ... tasks/TASK-069P-*.md
 ```
 
 - LikeC4 runs through `npx` pinned to `likec4@1.60.0`. No project dependency is

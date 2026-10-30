@@ -45,7 +45,7 @@ def build_mcp_endpoints(
     limiter = anyio.CapacityLimiter(settings.mcp_tool_concurrency)
     runtime = McpToolRuntime(resolved_session_factory, limiter)
     servers: dict[McpServerName, FastMCP] = {
-        "read": build_read_server(runtime),
+        "read": build_read_server(runtime, settings),
         "write": build_write_server(runtime, settings),
     }
     endpoints: list[McpEndpoint] = []

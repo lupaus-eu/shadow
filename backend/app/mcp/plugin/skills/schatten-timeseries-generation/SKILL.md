@@ -7,7 +7,8 @@ description: Choose units, time grains and realistic generator parameters for Sc
 
 You choose generation parameters; Schatten generates the numbers. Never type
 long value lists yourself. Every proposal is staged in a change set and takes
-effect only when a person applies it in Schatten.
+effect only when a person applies it, in Schatten or, through
+`apply_change_set`, here in the chat (see the model-building skill).
 
 ## Units and time grain
 

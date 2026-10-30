@@ -4,8 +4,8 @@ Tämä dokumentti kuvaa järjestelmän loogisen datamallin.
 
 Status: core, customer and Forecasting durable-request/saved-version models
 defined. The AI Domain's MCP OAuth entities (TASK-069D, migration 017) and
-change-set entities (TASK-069I, migration 018) are migrated. Billing remains
-TBD.
+change-set entities (TASK-069I, migration 018, with the review channel of
+TASK-069O, migration 019) are migrated. Billing remains TBD.
 
 Looginen datamalli kuvaa:
 
@@ -190,7 +190,7 @@ TASK-069I (`018_create_ai_change_sets`). Both are described in
 | MCP Authorization Request | `mcp_oauth_authorization_requests` | Ten-minute pending authorization request keyed by request-id hash, with PKCE challenge, scopes, resource, state and redirect URI; after approval it holds the deciding User and a 60-second single-use code hash; after denial it holds only the deciding User. |
 | MCP Grant | `mcp_oauth_grants` | One User's consent for one client, one scope and its MCP resource, with a 30-day absolute expiry; revocable. |
 | MCP Token | `mcp_oauth_tokens` | Opaque access or refresh token keyed by SHA-256 hash, with expiry, rotation link and revocation. |
-| AI Change Set | `ai_change_sets` | Organisation-owned staged proposal with status, optional derived scenario reference, creator, grant, copied `client_id`, client name, validation and applied results, and review fields. |
+| AI Change Set | `ai_change_sets` | Organisation-owned staged proposal with status, optional derived scenario reference, creator, grant, copied `client_id`, client name, validation and applied results, and review fields, including the review channel and reviewing MCP client (migration 019). |
 | AI Change Set Operation | `ai_change_set_operations` | Ordered typed operation with a stable position, an optional `$ref` symbol for the server-generated key it creates, payload, frozen generated values and generator version, and its latest error. |
 
 Relationship rules:
@@ -229,7 +229,9 @@ Relationship rules:
   client-supplied and repeated verbatim.
 - An AI Change Set's status is one of `draft`, `submitted`, `applied`,
   `rejected`, `failed` or `discarded`; only humans move `submitted` change
-  sets to `applied` or `rejected`.
+  sets to `applied` or `rejected`, in the Metrics tab (`web`) or by approving
+  an MCP client's call (`mcp`). The review records that channel and, for
+  `mcp`, the reviewing client.
 - An applied AI Change Set creates or patches Scenario, Organisation State,
   Event, Timeserie, Timeserie Value, Derived Metric Equation, Graph Node and
   Graph Edge rows only through the owning domains' services. Those rows have no

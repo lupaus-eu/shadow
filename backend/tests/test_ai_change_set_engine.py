@@ -16,7 +16,7 @@ from fastapi import HTTPException
 from pydantic import ValidationError
 from sqlalchemy import StaticPool, create_engine, event, func, select
 from sqlalchemy.engine import Engine
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session, sessionmaker
 
 import app.api.v1.ai_change_sets.engine as engine
@@ -304,6 +304,7 @@ def _apply(
             change_set_key,
             fingerprint,
             REVIEWER_USER_ID,
+            channel=engine.ReviewChannel.web(),
             settings=SETTINGS,
         )
 
@@ -1670,3 +1671,95 @@ def _seed_users_and_default_metamodel(factory: sessionmaker[Session]) -> None:
             ),
         )
         session.commit()
+
+
+def test_apply_and_reject_record_their_review_channel(
+    session_factory: sessionmaker[Session], organisation_key: str
+) -> None:
+    applied_key = _create_change_set(
+        session_factory, organisation_key, END_TO_END_OPERATIONS[:1]
+    )
+    rejected_key = _create_change_set(
+        session_factory, organisation_key, END_TO_END_OPERATIONS[:1]
+    )
+    for key in (applied_key, rejected_key):
+        assert _submit(session_factory, key).ok
+    fingerprint = _review(session_factory, applied_key).review_fingerprint
+
+    with session_factory() as session:
+        engine.apply_change_set(
+            session,
+            organisation_key,
+            applied_key,
+            fingerprint,
+            REVIEWER_USER_ID,
+            channel=engine.ReviewChannel.mcp("client-review", "Claude Code"),
+            settings=SETTINGS,
+        )
+    with session_factory() as session:
+        engine.reject_change_set(
+            session,
+            organisation_key,
+            rejected_key,
+            None,
+            REVIEWER_USER_ID,
+            channel=engine.ReviewChannel.web(),
+            settings=SETTINGS,
+        )
+        session.commit()
+
+    applied = _status(session_factory, applied_key)
+    rejected = _status(session_factory, rejected_key)
+    assert (
+        applied.status,
+        applied.reviewed_via,
+        applied.review_client_id,
+        applied.review_client_name,
+    ) == ("applied", "mcp", "client-review", "Claude Code")
+    assert (
+        rejected.status,
+        rejected.reviewed_via,
+        rejected.review_client_id,
+        rejected.review_client_name,
+    ) == ("rejected", "web", None, None)
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        # A review without its channel.
+        {"reviewed_via": None},
+        {"reviewed_via": "chat"},
+        # The client belongs to an MCP review only, and needs both fields.
+        {"review_client_id": "client-review", "review_client_name": "Claude"},
+        {"reviewed_via": "mcp"},
+        {"reviewed_via": "mcp", "review_client_id": "client-review"},
+        {
+            "reviewed_via": "mcp",
+            "review_client_id": " ",
+            "review_client_name": "Claude",
+        },
+        {
+            "reviewed_via": "mcp",
+            "review_client_id": "client-review",
+            "review_client_name": "",
+        },
+    ],
+)
+def test_the_review_channel_constraints_hold(
+    session_factory: sessionmaker[Session],
+    organisation_key: str,
+    values: dict[str, object],
+) -> None:
+    change_set_key = _create_change_set(session_factory, organisation_key)
+
+    with session_factory() as session:
+        change_set = _load(session, change_set_key)
+        change_set.status = "rejected"
+        change_set.reviewed_by = REVIEWER_USER_ID
+        change_set.reviewed_time = change_set.created_time
+        change_set.reviewed_via = "web"
+        for name, value in values.items():
+            setattr(change_set, name, value)
+        with pytest.raises(IntegrityError):
+            session.commit()

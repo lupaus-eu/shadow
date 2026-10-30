@@ -191,7 +191,7 @@ def test_valid_callback_first_links_and_creates_opaque_session(
             "role": "consultant",
         },
         "csrfToken": response.json()["csrfToken"],
-        "features": {"mcp": False},
+        "features": {"mcp": False, "mcpChangeSetReview": False},
     }
     serialized = response.text
     assert "provider-code" not in serialized

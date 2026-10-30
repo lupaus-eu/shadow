@@ -57,7 +57,7 @@ export default function AuthorizePage() {
 }
 
 function ConsentRequest(props: { requestId: string }) {
-  const { user } = useAuth();
+  const { user, features } = useAuth();
   const [state, setState] = useState<ConsentState>({ kind: "loading" });
   const [loadAttempt, setLoadAttempt] = useState(0);
   const [deciding, setDeciding] = useState<Decision | null>(null);
@@ -225,7 +225,7 @@ function ConsentRequest(props: { requestId: string }) {
           <h2 id="ai-authorize-access-title" className="section-title">
             Requested access
           </h2>
-          <ScopeExplanation scope={consent.scope} />
+          <ScopeExplanation scope={consent.scope} changeSetReview={features.mcpChangeSetReview} />
           <p>
             Data that the AI client reads from Schatten is sent to your AI vendor. The connection
             lasts for a limited time (30 days by default) unless it is revoked.
@@ -262,7 +262,9 @@ function ConsentRequest(props: { requestId: string }) {
   );
 }
 
-function ScopeExplanation(props: { scope: string }) {
+// With MCP change-set review on, write access can also apply and reject
+// submitted change sets (ADR-015 amendment).
+function ScopeExplanation(props: { scope: string; changeSetReview: boolean }) {
   if (props.scope === "schatten.read") {
     return (
       <div className="ai-authorize__scope">
@@ -270,6 +272,20 @@ function ScopeExplanation(props: { scope: string }) {
         <p>
           The AI client can read the organisations, scenarios, model structure, timeseries, events
           and AI change sets that you can see in Schatten. It cannot change anything.
+        </p>
+      </div>
+    );
+  }
+
+  if (props.scope === "schatten.write" && props.changeSetReview) {
+    return (
+      <div className="ai-authorize__scope">
+        <h3 className="secondary-title">Write access: propose, apply and reject changes</h3>
+        <p>
+          The AI client can propose changes as change sets. When you tell it to, it can also apply
+          or reject change sets awaiting review on your behalf, including change sets that other
+          people proposed. Applying a change set changes Schatten data, and you are recorded as its
+          reviewer. Your AI client should ask you to approve each apply or reject.
         </p>
       </div>
     );

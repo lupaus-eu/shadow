@@ -7,10 +7,12 @@ import ConnectInstructions from "./ConnectInstructions";
 import ConnectionsList from "./ConnectionsList";
 
 // What the workspace route gives the Metrics tab: the session's `features.mcp`
-// and the `changeSet` query parameter, which the review URL of
-// `submit_change_set` sets and which names the reviewed change set.
+// and `features.mcpChangeSetReview`, and the `changeSet` query parameter,
+// which the review URL of `submit_change_set` sets and which names the
+// reviewed change set.
 export type AiPanelOptions = {
   mcpEnabled: boolean;
+  mcpChangeSetReview: boolean;
   changeSetKey: string | null;
   onChangeSetKeyChange: (changeSetKey: string | null) => void;
 };
@@ -34,7 +36,7 @@ export default function AiPanel(props: {
 }) {
   const titleId = useId();
   const [section, setSection] = useState<AiPanelSection>("change-sets");
-  const { mcpEnabled, changeSetKey, onChangeSetKeyChange } = props.options;
+  const { mcpEnabled, mcpChangeSetReview, changeSetKey, onChangeSetKeyChange } = props.options;
   const sections: Array<[AiPanelSection, string]> = [
     ["change-sets", "Change sets"],
     ["connections", "Connections"],
@@ -96,8 +98,12 @@ export default function AiPanel(props: {
           />
         )
       ) : null}
-      {activeSection === "connections" ? <ConnectionsList /> : null}
-      {activeSection === "connect" ? <ConnectInstructions /> : null}
+      {activeSection === "connections" ? (
+        <ConnectionsList changeSetReview={mcpChangeSetReview} />
+      ) : null}
+      {activeSection === "connect" ? (
+        <ConnectInstructions changeSetReview={mcpChangeSetReview} />
+      ) : null}
     </aside>
   );
 }

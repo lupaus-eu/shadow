@@ -10,8 +10,9 @@ function messageFromError(error: unknown): string {
 
 // Lists the signed-in User's active MCP grants. It does not depend on
 // `features.mcp`: the connections API stays registered while MCP is disabled,
-// so grants stay revocable (ADR-015 incident procedure).
-export default function ConnectionsList() {
+// so grants stay revocable (ADR-015 incident procedure). `changeSetReview`
+// names write access as able to apply and reject change sets.
+export default function ConnectionsList(props: { changeSetReview?: boolean }) {
   const [connections, setConnections] = useState<AiConnectionDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -148,6 +149,7 @@ export default function ConnectionsList() {
             <ConnectionRow
               key={connection.grantKey}
               connection={connection}
+              changeSetReview={props.changeSetReview ?? false}
               confirming={confirmingKey === connection.grantKey}
               revoking={revokingKey === connection.grantKey}
               disabled={busy}
@@ -164,6 +166,7 @@ export default function ConnectionsList() {
 
 function ConnectionRow(props: {
   connection: AiConnectionDto;
+  changeSetReview: boolean;
   confirming: boolean;
   revoking: boolean;
   disabled: boolean;
@@ -179,7 +182,9 @@ function ConnectionRow(props: {
     <li className="ai-connection" aria-labelledby={titleId}>
       <div id={titleId} className="ai-connection__title">
         <SelfDeclaredClientName name={connection.clientName} />
-        <span className="badge badge--neutral">{aiScopeLabel(connection.scope)}</span>
+        <span className="badge badge--neutral">
+          {aiScopeLabel(connection.scope, props.changeSetReview)}
+        </span>
       </div>
       <dl className="detail-meta">
         <div className="detail-meta__row">

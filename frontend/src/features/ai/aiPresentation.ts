@@ -10,9 +10,12 @@ export function formatAiTimestamp(value: string): string {
   }).format(new Date(value));
 }
 
-export function aiScopeLabel(scope: string): string {
+// With MCP change-set review on, write access can also apply and reject.
+export function aiScopeLabel(scope: string, changeSetReview = false): string {
   if (scope === "schatten.read") return "Read";
-  if (scope === "schatten.write") return "Propose changes";
+  if (scope === "schatten.write") {
+    return changeSetReview ? "Propose and apply changes" : "Propose changes";
+  }
   return scope;
 }
 

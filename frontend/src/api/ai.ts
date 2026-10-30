@@ -53,6 +53,11 @@ export type AiChangeSetListItemDto = {
   reviewedByName: string | null;
   reviewedTime: string | null;
   reviewNote: string | null;
+  // ADR-015 amendment: `web` for the Metrics tab, `mcp` for an approved MCP
+  // client call, which also names the reviewing client.
+  reviewedVia: "web" | "mcp" | null;
+  reviewClientId: string | null;
+  reviewClientName: string | null;
 };
 
 export type AiOperationErrorDto = {

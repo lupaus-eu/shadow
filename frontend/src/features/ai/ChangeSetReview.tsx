@@ -296,6 +296,15 @@ export default function ChangeSetReview(props: {
                 </dd>
               </div>
             ) : null}
+            {detail.reviewedVia === "mcp" && detail.reviewClientId && detail.reviewClientName ? (
+              <div className="detail-meta__row">
+                <dt>Reviewed through</dt>
+                <dd className="ai-panel-review__client">
+                  AI client (MCP) <code className="metadata-code">{detail.reviewClientId}</code>
+                  <SelfDeclaredClientName name={detail.reviewClientName} />
+                </dd>
+              </div>
+            ) : null}
             {detail.reviewNote ? (
               <div className="detail-meta__row">
                 <dt>Review note</dt>

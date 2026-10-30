@@ -1,10 +1,14 @@
-# TASK-069O AI Via MCP QA, Runbook And Production Rollout
+# TASK-069P AI Via MCP QA, Runbook And Production Rollout
 
 ## Source Plan
 
 This task is part of the approved plan "AI chat via MCP for generating Schatten
 model and timeseries data", accepted on 2026-10-21. See
 [TASK-069A](TASK-069A-ai-mcp-architecture.md) and ADR-015.
+
+This task was TASK-069O until 2026-10-29, when the developer-requested
+[TASK-069O](TASK-069O-mcp-change-set-review.md) (applying and rejecting change
+sets from MCP clients, ADR-015 amendment) was inserted before it.
 
 ## Goal
 
@@ -27,9 +31,35 @@ enable it in production, but only after separate human approval.
   - read and write scope separation;
   - change-set staging, validate, submit, review, apply and reject, and
     concurrent apply;
-  - that no business data changes before a human apply;
+  - that no business data changes before a human apply, either in the Metrics
+    tab or through an MCP `apply_change_set` call the human approved in the
+    client;
+  - MCP change-set review (TASK-069O):
+    - with `MCP_CHANGE_SET_REVIEW_ENABLED=false` the write server lists only
+      the six staging tools and the consent page says "proposals only";
+    - with it `true` the write server also lists `apply_change_set` and
+      `reject_change_set`, and the consent page, connect instructions and
+      connections list describe applying;
+    - `get_change_set_review`, then `apply_change_set` with its
+      `review_fingerprint`, and `reject_change_set` with and without a note;
+    - `review_stale` after a REST edit of a flagged target between review and
+      apply;
+    - concurrent MCP and Metrics tab apply of the same change set: it applies
+      once;
+    - the Metrics tab shows "via <client> (MCP)" for MCP reviews and the
+      database records `reviewed_via`, `review_client_id` and
+      `review_client_name`;
+    - each real client asks the human before calling `apply_change_set` and
+      `reject_change_set` (Claude Code permission prompt, Claude Desktop and
+      claude.ai tool approval), and what an "always allow" setting does.
+      Record the observed behaviour in the runbook;
+    - whether each real client supports MCP elicitation, including the
+      stateless `InputRequiredResult` flow, as input for a later server-side
+      confirmation decision (ADR-015, deferred);
   - prompt injection: business text returned by read tools that tries to make
-    the AI act. Writes remain human-gated.
+    the AI act, including text that asks it to apply or reject a change set.
+    Staging stays human-gated, and an MCP apply or reject still needs the
+    human's approval in the client.
   - Log redaction: after a full connect flow, both an anonymous and a
     signed-in start, inspect the Caddy and backend access logs, locally and in
     production once enabled. Confirm that:
@@ -76,8 +106,12 @@ enable it in production, but only after separate human approval.
       (vendor-cloud connectors cannot reach localhost);
     - at least one non-Claude MCP client, for provider neutrality.
 - Update `docs/PRODUCTION-RUNBOOK.md` and `docs/DEPLOYMENT.md`:
-  - `MCP_ENABLED` and `MCP_OAUTH_REDIRECT_URIS`;
-  - enabling and disabling the feature;
+  - `MCP_ENABLED`, `MCP_CHANGE_SET_REVIEW_ENABLED` and
+    `MCP_OAUTH_REDIRECT_URIS`;
+  - enabling and disabling the feature, and enabling MCP change-set review
+    before or together with production enablement (turning it on later gives
+    existing write grants the apply and reject tools, although their consent
+    said "proposals only"; tell users when doing so);
   - offboarding: soft-delete the Schatten User or revoke the User's grants;
     disabling the Entra account alone does not end MCP access (ADR-015
     accepted trade-off);
@@ -88,12 +122,23 @@ enable it in production, but only after separate human approval.
     cap;
   - the incident procedure, with no manual database change:
     1. set `MCP_ENABLED=false` and restart through the approved deployment
-       procedure;
+       procedure; when only MCP applies are suspicious, setting
+       `MCP_CHANGE_SET_REVIEW_ENABLED=false` instead removes the apply and
+       reject tools and keeps staging;
     2. revoke affected Users' grants with the admin "Revoke AI connections"
        action (or soft-delete the Users), and let Users revoke their own;
-    3. reject suspicious staged change sets in the Metrics tab;
+    3. reject suspicious staged change sets in the Metrics tab, and find
+       change sets applied through MCP by their review channel and client;
     4. re-enable only with separate human approval;
-  - what to check in logs.
+  - what to check in logs;
+  - tool schema changes: tool results are strict (`additionalProperties:
+    false`), and Claude Code validates them against the output schema it
+    cached when it connected. After a release that adds a field to a tool
+    result (TASK-069O added the review channel to every change-set summary),
+    already-connected clients reject those results until they reconnect
+    (`/mcp` in Claude Code, reconnecting the connector elsewhere). Tell users
+    to reconnect after such releases, and check whether vendor-cloud
+    connectors behave the same way.
 - Run the checklist locally and record the evidence.
 - Production enablement is a separate, human-approved release. Do not deploy or
   change production settings without that approval.
@@ -126,7 +171,7 @@ docs/domains/AI.md
 docs/PRODUCTION-RUNBOOK.md
 docs/DEPLOYMENT.md
 docs/qa/AUTHENTICATION-QA-CHECKLIST.md
-tasks/TASK-069A-ai-mcp-architecture.md ... tasks/TASK-069N-ai-skills-plugin-bundle.md
+tasks/TASK-069A-ai-mcp-architecture.md ... tasks/TASK-069O-mcp-change-set-review.md
 ```
 
 ## Testing
@@ -152,8 +197,8 @@ LikeC4 model with its PNGs.
 
 ## Notes For AI Agent
 
-- Branch: `docs/TASK-069O-ai-mcp-qa-rollout`.
-- Do not start until TASK-069B through TASK-069N are merged.
+- Branch: `docs/TASK-069P-ai-mcp-qa-rollout`.
+- Do not start until TASK-069B through TASK-069O are merged.
 - Never perform the production rollout without explicit human approval.
-- Save each Step 13 review record under `docs/ai-reviews/TASK-069O/`.
+- Save each Step 13 review record under `docs/ai-reviews/TASK-069P/`.
 - Report all changed files and every verification command run.

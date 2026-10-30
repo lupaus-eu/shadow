@@ -69,6 +69,7 @@ db/migrations/015_create_prediction_requests.sql
 db/migrations/016_add_prophet_result_kind.sql
 db/migrations/017_create_mcp_oauth_schema.sql
 db/migrations/018_create_ai_change_sets.sql
+db/migrations/019_add_ai_change_set_review_channel.sql
 ```
 
 | Table | Purpose | Notes |
@@ -103,7 +104,7 @@ db/migrations/018_create_ai_change_sets.sql
 | `mcp_oauth_authorization_requests` | Ten-minute pending authorization requests | Primary key is the SHA-256 request-id hash; holds client, redirect URI, `state`, S256 `code_challenge`, one scope and its resource. After consent it holds the deciding User, the 60-second code hash and expiry, the consumed time and the redeemed `grant_id`. |
 | `mcp_oauth_grants` | One User's consent for one client, scope and MCP resource | Unique `grant_key`; exactly one scope (`schatten.read` or `schatten.write`) bound to the matching resource; non-null 30-day absolute `expires_time`; last used, revoked time and `revoked_by`. |
 | `mcp_oauth_tokens` | Opaque MCP access and refresh tokens | Primary key is the SHA-256 token hash; `kind` is `access` or `refresh`; expiry, `replaced_by_hash` rotation link and `revoked_time`. |
-| `ai_change_sets` | AI change sets staged through MCP and applied or rejected only by a human (ADR-015, migration 018) | Unique `change_set_key`; organisation; nullable `scenario_id` derived by the engine from the operations; title and rationale; `status` (`draft`, `submitted`, `applied`, `rejected`, `failed`, `discarded`); nullable `grant_id` (`ON DELETE SET NULL`); copied `client_id` and self-declared `client_name`; JSONB `validation_result` and `applied_result`; reviewer, review time and note; standard audit columns with a required `created_by`. |
+| `ai_change_sets` | AI change sets staged through MCP and applied or rejected only by a human, in the Metrics tab or by approving an MCP client call (ADR-015, migrations 018 and 019) | Unique `change_set_key`; organisation; nullable `scenario_id` derived by the engine from the operations; title and rationale; `status` (`draft`, `submitted`, `applied`, `rejected`, `failed`, `discarded`); nullable `grant_id` (`ON DELETE SET NULL`); copied `client_id` and self-declared `client_name`; JSONB `validation_result` and `applied_result`; reviewer, review time and note; `reviewed_via` (`web` or `mcp`) with the reviewing MCP client's copied `review_client_id` and `review_client_name` (migration 019); standard audit columns with a required `created_by`. |
 | `ai_change_set_operations` | Ordered typed operations of a change set | Unique `(change_set_id, position)` and `(change_set_id, ref)`; `op_type` from ADR-015's list; JSONB `payload`, `frozen_values` (generated values and generator version, set on submit) and the latest `error`. |
 
 # Common Columns
@@ -252,6 +253,13 @@ back.
   review. `change_set_key`, `title` and `client_id` are non-blank and
   `client_name` is 1 to 100 characters. `validation_result` and
   `applied_result` are JSON objects.
+- Migration 019 (TASK-069O): `reviewed_via` is `web` or `mcp` and is set
+  exactly when `reviewed_time` is; `review_client_id` and
+  `review_client_name` are set together and exactly when `reviewed_via` is
+  `mcp`, with a non-blank client id and a 1 to 100 character name. The
+  migration backfills `web` for change sets reviewed before it. Its down
+  migration drops the three columns and their constraints, losing the channel
+  and reviewing client of every reviewed change set.
 - `ai_change_set_operations.position` is non-negative and unique per change
   set; `op_type` is one of ADR-015's eleven operation types. `ref` is unique
   per change set, matches `$` followed by a letter and up to 63 letters, digits
@@ -332,7 +340,8 @@ The following candidate tables are retained as planned future work. They are not
 
 The AI Domain's MCP OAuth tables (`mcp_oauth_*`, migration 017, TASK-069D)
 and change-set tables (`ai_change_sets`, `ai_change_set_operations`,
-migration 018, TASK-069I) are listed under Core Tables.
+migration 018, TASK-069I, review channel migration 019, TASK-069O) are listed
+under Core Tables.
 
 ---
 

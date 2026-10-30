@@ -18,6 +18,7 @@ from app.api.v1.ai_change_sets.schemas import (
     ChangeSetStatus,
     OperationErrorCode,
     OperationStatus,
+    ReviewChannelName,
 )
 from app.api.v1.timeserie_generation.schemas import GeneratedPoint
 from app.core.schemas import StrictBaseModel
@@ -137,6 +138,17 @@ class ChangeSetListItem(ReviewModel):
     reviewed_by_name: str | None
     reviewed_time: datetime | None
     review_note: str | None
+    reviewed_via: ReviewChannelName | None = Field(
+        description="How the human reviewed it: `web` (the Metrics tab) or `mcp` "
+        "(an approved MCP client call)."
+    )
+    review_client_id: str | None = Field(
+        description="client_id of the MCP client that applied or rejected it."
+    )
+    review_client_name: str | None = Field(
+        description="Name the reviewing MCP client declared for itself; "
+        "self-declared and not verified."
+    )
 
 
 class ChangeSetReviewOperation(ReviewModel):

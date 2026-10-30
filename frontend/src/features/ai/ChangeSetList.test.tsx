@@ -29,6 +29,9 @@ function listItem(overrides: Partial<AiChangeSetListItemDto>): AiChangeSetListIt
     reviewedByName: null,
     reviewedTime: null,
     reviewNote: null,
+    reviewedVia: null,
+    reviewClientId: null,
+    reviewClientName: null,
     ...overrides
   };
 }
@@ -90,6 +93,37 @@ describe("ChangeSetList", () => {
     expect(fetchChangeSetsMock).toHaveBeenLastCalledWith("acme", {}, expect.any(AbortSignal));
     expect(screen.getByText("Rejected")).toBeVisible();
     expect(screen.getByText("Showing every change set of the organisation.")).toBeVisible();
+  });
+
+  it("names the AI client of a change set reviewed through MCP", async () => {
+    fetchChangeSetsMock.mockResolvedValue([
+      listItem({
+        status: "applied",
+        reviewedBy: 8,
+        reviewedByName: "Rita Reviewer",
+        reviewedTime: "2026-10-28T08:00:00Z",
+        reviewedVia: "mcp",
+        reviewClientId: "client-review",
+        reviewClientName: "Claude Code"
+      }),
+      listItem({
+        id: "cs-web",
+        title: "Web review",
+        status: "rejected",
+        reviewedBy: 8,
+        reviewedByName: "Rita Reviewer",
+        reviewedTime: "2026-10-28T08:00:00Z",
+        reviewedVia: "web"
+      })
+    ]);
+
+    render(<ChangeSetList orgId="acme" scenario={null} onSelect={vi.fn()} />);
+
+    const list = await screen.findByRole("list", { name: "AI change sets" });
+    const [mcpItem, webItem] = await within(list).findAllByRole("listitem");
+    expect(mcpItem).toHaveTextContent("Reviewed through AI client Claude Code (MCP)");
+    expect(within(mcpItem).getByText("Claude Code").tagName).toBe("BDI");
+    expect(webItem).not.toHaveTextContent("Reviewed through");
   });
 
   it("lists every change set without a selected scenario and opens one", async () => {

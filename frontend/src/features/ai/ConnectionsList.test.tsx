@@ -42,7 +42,7 @@ function renderWithMcpDisabled() {
   const auth: AuthContextValue = {
     status: "authenticated",
     user: { id: 7, name: "Ada Admin", email: "ada@example.local", role: "consultant" },
-    features: { mcp: false },
+    features: { mcp: false, mcpChangeSetReview: false },
     authError: "",
     login: vi.fn(),
     logout: vi.fn(async () => undefined),
@@ -83,7 +83,17 @@ describe("ConnectionsList", () => {
     const writeRow = await screen.findByRole("listitem", { name: /^my-client_2/ });
     expect(within(writeRow).getByText("client-id-write")).toBeVisible();
     expect(within(writeRow).getByText("schatten.write")).toBeVisible();
+    expect(within(writeRow).getByText("Propose changes")).toBeVisible();
     expect(within(writeRow).getByText("Never")).toBeVisible();
+  });
+
+  it("labels write access as applying too when MCP change-set review is on", async () => {
+    fetchAiConnectionsMock.mockResolvedValue([writeConnection]);
+
+    render(<ConnectionsList changeSetReview />);
+
+    const writeRow = await screen.findByRole("listitem", { name: /^my-client_2/ });
+    expect(within(writeRow).getByText("Propose and apply changes")).toBeVisible();
   });
 
   it("renders the client name isolated and labelled as self-declared", async () => {

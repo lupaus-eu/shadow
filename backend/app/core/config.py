@@ -13,9 +13,7 @@ DEFAULT_DATABASE_URL = (
     "postgresql://schatten:schatten_dev_password@localhost:5432/schatten"
 )
 AppEnvironment = Literal["test", "development", "production"]
-ORIGIN_HOST_LABEL = re.compile(
-    r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$"
-)
+ORIGIN_HOST_LABEL = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$")
 LEGACY_IPV4_LABEL = re.compile(r"^(?:0[xX][0-9A-Fa-f]+|[0-9]+)$")
 LOCAL_CADDY_PEER_CIDRS = (ip_network("172.28.59.2/32"),)
 # ADR-015: loopback redirect URI allowlist entries carry a literal "{port}".
@@ -84,6 +82,11 @@ class Settings(StrictBaseModel):
         default=600, alias="OIDC_TRANSACTION_LIFETIME_SECONDS", ge=1
     )
     mcp_enabled: bool = Field(default=False, alias="MCP_ENABLED")
+    # ADR-015 amendment (TASK-069O): registers the write server's
+    # apply_change_set and reject_change_set. No effect without MCP_ENABLED.
+    mcp_change_set_review_enabled: bool = Field(
+        default=False, alias="MCP_CHANGE_SET_REVIEW_ENABLED"
+    )
     mcp_oauth_redirect_uris: tuple[str, ...] = Field(
         default=DEFAULT_MCP_OAUTH_REDIRECT_URIS, alias="MCP_OAUTH_REDIRECT_URIS"
     )
@@ -253,9 +256,7 @@ class Settings(StrictBaseModel):
             if public.scheme != "https" or allowed.scheme != "https":
                 raise ValueError("Production origins must use HTTPS")
             if public.port is not None or allowed.port is not None:
-                raise ValueError(
-                    "Production origins must not include an explicit port"
-                )
+                raise ValueError("Production origins must not include an explicit port")
             if self.allowed_origin != self.public_origin:
                 raise ValueError(
                     "Production APP_ALLOWED_ORIGIN must equal PUBLIC_ORIGIN"
@@ -318,9 +319,7 @@ class Settings(StrictBaseModel):
                 or parsed.query
                 or parsed.fragment
             ):
-                raise ValueError(
-                    f"{name} must use the exact direct Entra HTTPS origin"
-                )
+                raise ValueError(f"{name} must use the exact direct Entra HTTPS origin")
             path_parts = [part for part in parsed.path.split("/") if part]
             if not path_parts or path_parts[0].lower() in {
                 "common",
@@ -358,6 +357,11 @@ class Settings(StrictBaseModel):
         return f"{self.public_origin}/login"
 
     @property
+    def mcp_change_set_review_active(self) -> bool:
+        """Whether MCP clients can apply and reject change sets."""
+        return self.mcp_enabled and self.mcp_change_set_review_enabled
+
+    @property
     def session_cookie_name(self) -> str:
         return (
             "__Host-schatten-session"
@@ -388,6 +392,7 @@ def get_settings() -> Settings:
         "AUTH_SESSION_ACTIVITY_WRITE_SECONDS",
         "OIDC_TRANSACTION_LIFETIME_SECONDS",
         "MCP_ENABLED",
+        "MCP_CHANGE_SET_REVIEW_ENABLED",
         "MCP_OAUTH_REDIRECT_URIS",
         "MCP_OAUTH_AUTHORIZATION_REQUEST_LIFETIME_SECONDS",
         "MCP_OAUTH_AUTHORIZATION_CODE_LIFETIME_SECONDS",
@@ -536,7 +541,6 @@ def _is_literal_origin_host(hostname: str) -> bool:
         if all(LEGACY_IPV4_LABEL.fullmatch(label) is not None for label in labels):
             return False
         return len(hostname) <= 253 and all(
-            ORIGIN_HOST_LABEL.fullmatch(label) is not None
-            for label in labels
+            ORIGIN_HOST_LABEL.fullmatch(label) is not None for label in labels
         )
     return True

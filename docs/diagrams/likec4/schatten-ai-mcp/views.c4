@@ -6,7 +6,7 @@ views {
 
   view index {
     title 'Schatten AI via MCP - System Context (C4 L1)'
-    description 'Accepted ADR-015 design, not implemented yet. Green = new (planned); blue, gray and amber = existing. The user chats in their own AI client; the AI reads Schatten and stages change sets through MCP; a human applies them in Schatten.'
+    description 'Accepted ADR-015 design, not implemented yet. Green = new (planned); blue, gray and amber = existing. The user chats in their own AI client; the AI reads Schatten and stages change sets through MCP; a human applies them in Schatten or approves the AI client\'s apply.'
 
     include
       user,
@@ -39,7 +39,7 @@ views {
 
   view backendComponents of schatten.backend {
     title 'Schatten AI via MCP - Backend Components (C4 L3)'
-    description 'Accepted ADR-015 design, not implemented yet. Green = new (planned); blue, gray and amber = existing. No MCP tool applies changes. Only the cookie-session review API, used by a human, applies a change set.'
+    description 'Accepted ADR-015 design, not implemented yet. Green = new (planned); blue, gray and amber = existing. A change set is applied only by a human decision: the cookie-session review API in the Metrics tab, or the MCP write service\'s apply_change_set behind MCP_CHANGE_SET_REVIEW_ENABLED, approved in the client.'
 
     include *
   }
@@ -91,7 +91,7 @@ views {
 
   dynamic view generateFlow {
     title 'Generate A Model And Timeseries (Human-Applied Change Set)'
-    description 'Accepted ADR-015 design, not implemented yet. Green = new (planned); blue, gray and amber = existing. The LLM picks generator parameters, never values. Write tools only stage; the human apply in the Metrics tab is the only path to business data.'
+    description 'Accepted ADR-015 design, not implemented yet. Green = new (planned); blue, gray and amber = existing. The LLM picks generator parameters, never values. Write tools stage; a human applies in the Metrics tab here, or in the AI client (see reviewInChatFlow).'
 
     autoLayout TopBottom
 
@@ -111,6 +111,26 @@ views {
     user -> schatten.spa 'Reviews change set in the Metrics AI panel'
     schatten.spa -> schatten.backend.reviewApi 'POST apply (session + CSRF + Origin)'
     schatten.backend.reviewApi -> schatten.backend.changeSetEngine 'Lock, check reviewFingerprint, re-validate, apply'
+    schatten.backend.changeSetEngine -> schatten.backend.domainServices 'Same cores, one transaction'
+    schatten.backend.domainServices -> schatten.db 'Commit once'
+  }
+
+  dynamic view reviewInChatFlow {
+    title 'Apply A Change Set From The AI Client (MCP Change-Set Review)'
+    description 'ADR-015 amendment of 2026-10-29 (TASK-069O). Green = new (planned); blue, gray and amber = existing. Only with MCP_CHANGE_SET_REVIEW_ENABLED. The AI shows the review and acts only on the user\'s explicit decision; the client asks the user to approve the call.'
+
+    autoLayout TopBottom
+
+    user -> aiClient.localClient 'Asks to review the staged change set'
+    aiClient.localClient -> aiVendor.llm 'Prompt + MCP tool definitions'
+    aiClient.localClient -> schatten.backend.mcpAuth 'get_change_set_review (Bearer, schatten.read)'
+    schatten.backend.mcpAuth -> schatten.backend.mcpRead 'Principal with schatten.read'
+    schatten.backend.mcpRead -> schatten.backend.changeSetEngine 'Recompute replacements and review_fingerprint'
+    aiClient.localClient -> user 'Shows operations and replaced data, asks for a decision'
+    user -> aiClient.localClient 'Tells it to apply, approves the apply_change_set call'
+    aiClient.localClient -> schatten.backend.mcpAuth 'apply_change_set with review_fingerprint (Bearer, schatten.write)'
+    schatten.backend.mcpAuth -> schatten.backend.mcpWrite 'Tool registered only with the switch on'
+    schatten.backend.mcpWrite -> schatten.backend.changeSetEngine 'Lock, check fingerprint, re-validate, apply; reviewed_via mcp'
     schatten.backend.changeSetEngine -> schatten.backend.domainServices 'Same cores, one transaction'
     schatten.backend.domainServices -> schatten.db 'Commit once'
   }

@@ -230,8 +230,9 @@ in the env file. They contain no secret.
 
 | Setting | Production value | Contract |
 | --- | --- | --- |
-| `MCP_ENABLED` | `false` | Feature flag. With `false` the MCP endpoints `/api/mcp/read` and `/api/mcp/write` and the discovery, registration, authorization, consent, token and revoke endpoints are not registered and return 404, and the session response reports `features.mcp=false`. The `/api/v1/ai/connections` API and the admin per-user revocation stay registered for ADR-015's incident procedure. Enabling it needs TASK-069O's separate human approval; `verify-production-compose.sh` asserts `false` |
-| `MCP_OAUTH_REDIRECT_URIS` | claude.ai and claude.com callbacks, `http://127.0.0.1:{port}/callback`, `http://[::1]:{port}/callback`, `http://localhost:{port}/callback` | Space- or comma-separated allowlist. Exact entries must be HTTPS without userinfo, query, fragment or wildcard. Loopback entries keep the literal `{port}` placeholder. Startup fails on any other entry. TASK-069O trims the loopback entries to those real clients use |
+| `MCP_ENABLED` | `false` | Feature flag. With `false` the MCP endpoints `/api/mcp/read` and `/api/mcp/write` and the discovery, registration, authorization, consent, token and revoke endpoints are not registered and return 404, and the session response reports `features.mcp=false`. The `/api/v1/ai/connections` API and the admin per-user revocation stay registered for ADR-015's incident procedure. Enabling it needs TASK-069P's separate human approval; `verify-production-compose.sh` asserts `false` |
+| `MCP_CHANGE_SET_REVIEW_ENABLED` | `false` | ADR-015 amendment (TASK-069O). With `true`, and only with `MCP_ENABLED=true`, the MCP write server also registers `apply_change_set` and `reject_change_set`, so MCP clients can apply or reject submitted change sets on their User's approval, and the session reports `features.mcpChangeSetReview=true`. The backend reads it at startup and builds the write server's tool list then, so a change takes effect only after the backend is restarted through the approved deployment procedure. Turning it on later gives existing write grants these tools without new consent; enable it before or together with MCP, or tell users. Setting it to `false` and restarting the backend removes the tools on the next request and keeps staging. Enabling it in production belongs to TASK-069P's approved rollout. |
+| `MCP_OAUTH_REDIRECT_URIS` | claude.ai and claude.com callbacks, `http://127.0.0.1:{port}/callback`, `http://[::1]:{port}/callback`, `http://localhost:{port}/callback` | Space- or comma-separated allowlist. Exact entries must be HTTPS without userinfo, query, fragment or wildcard. Loopback entries keep the literal `{port}` placeholder. Startup fails on any other entry. TASK-069P trims the loopback entries to those real clients use |
 | `MCP_OAUTH_AUTHORIZATION_REQUEST_LIFETIME_SECONDS` | `600` | Pending authorization request lifetime (1 to 3600) |
 | `MCP_OAUTH_AUTHORIZATION_CODE_LIFETIME_SECONDS` | `60` | Single-use authorization code lifetime (1 to 600) |
 | `MCP_OAUTH_ACCESS_TOKEN_LIFETIME_SECONDS` | `3600` | Opaque access token lifetime (1 to 86400), capped at the grant's expiry |
@@ -258,7 +259,7 @@ though `fastapi run` configures only the uvicorn loggers.
 The `register`, `token` and `revoke` buckets are higher than `authorize`
 because vendor connector brokers call them from shared egress addresses.
 The OAuth and MCP limiters are separate from the login limiter, and all assume
-one backend replica. TASK-069O verifies the defaults with real clients.
+one backend replica. TASK-069P verifies the defaults with real clients.
 
 ## Host Setup And Build/Release Contract
 

@@ -736,10 +736,11 @@ in a worker thread holding a token of the shared capacity limiter.
 
 `tests/test_mcp_write_tools.py` (TASK-069J) calls the write tools and the
 change-set read tools the same way over in-memory SQLite. It covers the tool
-listing (exactly the six staging tools, no apply or reject tool) and their
-annotations, the instructions and docstrings, the full create, add, validate,
-submit workflow with the recorded grant, client and creator and the review URL,
-that no business table changes before a human apply, per-operation validation
+listing (with `MCP_CHANGE_SET_REVIEW_ENABLED` off exactly the six staging
+tools, no apply or reject tool) and their annotations, the instructions and
+docstrings, the full create, add, validate, submit workflow with the recorded
+grant, client and creator and the review URL, that no business table changes
+before a human apply, per-operation validation
 results (`ok`, the first error, then `not_run`) stored and returned, the
 informational replacement flags that are not stored, rejected edits of a
 submitted, discarded or another User's change set (another grant of the
@@ -747,10 +748,26 @@ creating User may edit), the operation and value limits, the tool-boundary
 title, rationale, NUL and payload-size limits, unknown change sets and deleted
 organisations, the statement timeout on every write transaction, a database
 timeout as a retryable tool error, and `list_change_sets` filtering and
-truncation. `tests/test_mcp_auth.py` also checks over HTTP that a write token
-stages a change set for its own grant and client and that a read-only token
-(another resource, or a write grant without the effective write scope) cannot
-call any write tool.
+truncation. For TASK-069O's MCP change-set review it builds the write server
+with the switch on and covers the two extra destructive tools, the review
+instructions, the staging tools' switch-dependent descriptions (the switch-off
+wording unchanged, and a `REVIEW_WORDING` sentence missing from a docstring
+failing the build), `get_change_set_review` (replacements recomputed against current
+data, a fingerprint equal to the review API's, a timeout as a retryable error),
+an apply of another User's change set that creates the business rows with the
+reviewer as actor and records `mcp` and the client, a stale or malformed
+fingerprint, apply and reject of a draft, an operation failure that marks the
+change set failed with the MCP channel, reject notes (trimmed, blank, NUL,
+too long) and the retryable lock errors. `tests/test_mcp_auth.py` also checks
+over HTTP that a write token stages a change set for its own grant and client,
+that a read-only token (another resource, or a write grant without the
+effective write scope) cannot call any write tool, including apply and reject,
+and that the switch adds the two tools to the write server's list. The engine
+module checks that apply and reject record their review channel and that the
+channel constraints hold, the review API tests that it records `web`, the
+migration module migration 019's backfill, constraints and exact down
+migration, and the change-set PostgreSQL module that a concurrent MCP and web
+apply applies once.
 
 ```bash
 cd backend

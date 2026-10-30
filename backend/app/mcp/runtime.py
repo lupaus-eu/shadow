@@ -15,10 +15,12 @@ from dataclasses import dataclass
 
 import anyio
 import anyio.to_thread
-from fastapi import HTTPException
+from fastapi import HTTPException, status
 from fastmcp.exceptions import ToolError
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
+from app.api.v1.ai_change_sets import engine
 from app.api.v1.mcp_oauth.token_service import McpPrincipal
 from app.mcp.auth import current_principal
 
@@ -50,6 +52,27 @@ class McpToolRuntime:
             raise ToolError(str(exc.detail), log_level=logging.INFO) from None
         except Exception as exc:
             raise _internal_error(exc) from None
+
+
+def busy_on_timeout[T](
+    work: Callable[[Session, McpPrincipal], T],
+) -> Callable[[Session, McpPrincipal], T]:
+    """Report a lock or statement timeout as a retryable tool error."""
+
+    def run(session: Session, principal: McpPrincipal) -> T:
+        try:
+            return work(session, principal)
+        except DBAPIError as exc:
+            sqlstate = getattr(exc.orig, "sqlstate", None)
+            if sqlstate not in {engine.LOCK_NOT_AVAILABLE, engine.QUERY_CANCELED}:
+                raise
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="The change set is busy or the database timed out; "
+                "try again shortly.",
+            ) from exc
+
+    return run
 
 
 def _internal_error(exc: BaseException) -> ToolError:

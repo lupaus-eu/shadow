@@ -1,5 +1,5 @@
 // Schatten AI via MCP - C4 model (ADR-015)
-// Accepted design; implementation pending TASK-069B..TASK-069O.
+// Accepted design; implementation pending TASK-069B..TASK-069P.
 
 model {
 
@@ -144,7 +144,7 @@ model {
           color green
         }
         technology 'FastMCP, /api/mcp/write, schatten.write'
-        description 'Stages draft change sets: create, add, validate, submit, discard. No apply tool.'
+        description 'Stages draft change sets: create, add, validate, submit, discard. With MCP_CHANGE_SET_REVIEW_ENABLED also applies or rejects a submitted change set that the human approves in the client.'
       }
       changeSetEngine = component 'Change-set engine' {
         #new
@@ -160,7 +160,7 @@ model {
           color green
         }
         technology '/api/v1/organisations/{org}/ai/change-sets'
-        description 'Human list, inspect, apply and reject. Session + CSRF.'
+        description 'Human list, inspect, apply and reject in the Metrics tab. Session + CSRF.'
       }
       generator = component 'Timeseries generator' {
         #new
@@ -231,7 +231,7 @@ model {
   }
   schatten.backend.restApi -> schatten.backend.domainServices 'Calls'
   schatten.backend.consentApi -> schatten.backend.oauthServer 'Decides requests, revokes grants'
-  schatten.backend.reviewApi -> schatten.backend.changeSetEngine 'Human apply or reject'
+  schatten.backend.reviewApi -> schatten.backend.changeSetEngine 'Human apply or reject (web)'
 
   // MCP side
   schatten.backend.mcpAuth -> schatten.backend.oauthServer 'verify_access_token'
@@ -240,8 +240,8 @@ model {
   schatten.backend.mcpRead -> schatten.backend.domainServices 'Reads through existing services'
   schatten.backend.mcpRead -> schatten.backend.generator 'Preview, persists nothing'
   schatten.backend.mcpRead -> schatten.backend.skills 'Serves prompts'
-  schatten.backend.mcpRead -> schatten.backend.changeSetEngine 'Lists and reads change sets'
-  schatten.backend.mcpWrite -> schatten.backend.changeSetEngine 'Stage, dry-run, submit'
+  schatten.backend.mcpRead -> schatten.backend.changeSetEngine 'Lists and reads change sets and their reviews'
+  schatten.backend.mcpWrite -> schatten.backend.changeSetEngine 'Stage, dry-run, submit; apply or reject when enabled (mcp)'
   schatten.backend.changeSetEngine -> schatten.backend.generator 'Freezes values on submit'
   schatten.backend.changeSetEngine -> schatten.backend.domainServices 'Calls *_in_transaction cores'
 

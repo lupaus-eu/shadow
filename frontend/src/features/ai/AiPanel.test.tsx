@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fetchAiChangeSets, fetchAiConnections } from "../../api/ai";
 import AiPanel from "./AiPanel";
@@ -22,6 +22,7 @@ function renderPanel(options: Partial<AiPanelOptions> = {}) {
       scenario={{ id: "future", name: "Future plan" }}
       options={{
         mcpEnabled: true,
+        mcpChangeSetReview: false,
         changeSetKey: null,
         onChangeSetKeyChange: vi.fn(),
         ...options
@@ -72,6 +73,24 @@ describe("AiPanel", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Close AI panel" }));
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("describes the write connection by whether MCP change-set review is on", () => {
+    renderPanel();
+    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+    expect(screen.getByText("Write (proposals only)")).toBeVisible();
+    expect(
+      screen.getByText(/nothing changes until a person applies the change set here/)
+    ).toBeVisible();
+    cleanup();
+
+    renderPanel({ mcpChangeSetReview: true });
+    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+    expect(screen.getByText("Write (propose, apply and reject)")).toBeVisible();
+    expect(
+      screen.getByText(/the client can apply or reject a change set awaiting review/)
+    ).toBeVisible();
+    expect(screen.queryByText("Write (proposals only)")).not.toBeInTheDocument();
   });
 
   it("shows the MCP URLs with copy buttons and the Claude Code commands", async () => {

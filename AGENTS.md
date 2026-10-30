@@ -131,16 +131,23 @@ TASK-069M's Metrics tab AI panel (connect instructions, connections and
 change-set review with apply and reject, `frontend/src/features/ai/AiPanel.tsx`)
 and TASK-069N's Schatten skills, Claude Code plugin and repository marketplace
 (`backend/app/mcp/plugin/`, `.claude-plugin/marketplace.json`), read-server MCP
-prompts and skill zip download are implemented; the MCP and public OAuth
-endpoints and the skill zip download are registered only with
-`MCP_ENABLED=true`, off by default. The rest is pending TASK-069O. Users chat in their own MCP client on
+prompts and skill zip download and TASK-069O's MCP change-set review
+(ADR-015 amendment of 2026-10-29: the read tool `get_change_set_review`, the
+write tools `apply_change_set` and `reject_change_set` behind
+`MCP_CHANGE_SET_REVIEW_ENABLED`, off by default, and the review channel of
+migration 019) are implemented; the MCP and public OAuth endpoints and the
+skill zip download are registered only with `MCP_ENABLED=true`, off by
+default. The rest is pending TASK-069P (end-to-end QA, runbook and production
+enablement, formerly TASK-069O). Users chat in their own MCP client on
 their own AI subscription; Schatten never calls an LLM or stores LLM keys.
 FastAPI hosts `/api/mcp/read` (`schatten.read`) and `/api/mcp/write`
 (`schatten.write`) and acts as OAuth 2.1 authorization server over the existing
-Entra login, without changing the Entra registration. The write service only
-stages AI change sets; **no MCP tool may apply changes** and a human applies or
-rejects each change set in the Metrics tab. No worker, scheduler or container is
-added. ADR-015 approved the `fastmcp` backend dependency, which TASK-069G added
+Entra login, without changing the Entra registration. The write service stages
+AI change sets. **A human decides every apply and reject**: in the Metrics tab,
+or, with `MCP_CHANGE_SET_REVIEW_ENABLED=true`, by approving the MCP client's
+`apply_change_set` or `reject_change_set` call; no other MCP tool may apply
+changes, and every review records its channel (`web` or `mcp`). No worker,
+scheduler or container is added. ADR-015 approved the `fastmcp` backend dependency, which TASK-069G added
 (`fastmcp>=4.1.4,<5`). The feature's C4 model uses LikeC4
 (`docs/diagrams/likec4/`); PlantUML remains the default elsewhere.
 

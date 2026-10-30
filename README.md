@@ -180,9 +180,10 @@ uv run pyright
 
 Schatten itself never calls an LLM: you chat in your own MCP client on your
 own AI subscription, and the client proposes changes as change sets that a
-person applies or rejects in the Metrics tab
-([ADR-015](docs/decisions/ADR-015-ai-via-mcp.md)). The feature is behind
-`MCP_ENABLED` (off by default); when it is on, the Metrics tab's AI panel
+person applies or rejects in the Metrics tab or, with
+`MCP_CHANGE_SET_REVIEW_ENABLED`, in the chat by approving the client's apply
+or reject call ([ADR-015](docs/decisions/ADR-015-ai-via-mcp.md)). The feature
+is behind `MCP_ENABLED` (off by default); when it is on, the Metrics tab's AI panel
 Connect section shows these steps for the current Schatten.
 
 - Claude Code: install the Schatten plugin, which adds the MCP servers

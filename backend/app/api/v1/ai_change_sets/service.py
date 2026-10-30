@@ -38,6 +38,8 @@ from app.api.v1.ai_change_sets.schemas import (
     NodeReplacement,
     OperationError,
     OperationReplacement,
+    ReplacementReport,
+    ReviewChannelName,
     TimeserieReplacement,
 )
 from app.api.v1.org_states import org_states_service
@@ -127,22 +129,44 @@ def change_set_summary(session: Session, change_set: AiChangeSet) -> ChangeSetSu
     return _summary(*row)
 
 
-def change_set_detail(session: Session, change_set: AiChangeSet) -> ChangeSetDetail:
-    summary = change_set_summary(session, change_set)
-    return ChangeSetDetail(
-        **summary.model_dump(),
-        operations=_operation_details(_operation_rows(session, change_set)),
-        validation_result=(
-            ExecutionResult.model_validate(change_set.validation_result)
-            if change_set.validation_result is not None
-            else None
-        ),
-        applied_result=(
-            ApplyOutcome.model_validate(change_set.applied_result)
-            if change_set.applied_result is not None
-            else None
-        ),
+def organisation_key_of(session: Session, change_set_key: str) -> str:
+    """The organisation key of a change set in an active organisation, else 404."""
+    organisation_key = session.scalar(
+        select(Organisation.organisation_key)
+        .join(AiChangeSet, AiChangeSet.organisation_id == Organisation.organisation_id)
+        .where(
+            AiChangeSet.change_set_key == change_set_key,
+            Organisation.deleted_time.is_(None),
+        )
     )
+    if organisation_key is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Change set not found.",
+        )
+    return organisation_key
+
+
+def change_set_detail(session: Session, change_set: AiChangeSet) -> ChangeSetDetail:
+    return _detail(
+        change_set,
+        change_set_summary(session, change_set),
+        _operation_rows(session, change_set),
+    )
+
+
+def change_set_review(
+    session: Session, change_set_key: str, *, settings: Settings
+) -> tuple[ChangeSetDetail, ReplacementReport]:
+    """The detail with the replacement report, as the MCP review returns them.
+
+    Loaded and recomputed as `review_detail` does, so the report's
+    `review_fingerprint` is the one apply compares.
+    """
+    change_set, summary, rows, report = _load_review(
+        session, change_set_key, organisation_key=None, settings=settings
+    )
+    return _detail(change_set, summary, rows), report
 
 
 def user_names(session: Session, user_ids: Iterable[int | None]) -> dict[int, str]:
@@ -179,10 +203,48 @@ def review_detail(
 ) -> ChangeSetReviewDetail:
     """The review detail with replacement flags recomputed against current data.
 
+    It is loaded as `_load_review` describes. A stored operation that no
+    longer parses raises.
+    """
+    change_set, summary, rows, report = _load_review(
+        session, change_set_key, organisation_key=organisation_key, settings=settings
+    )
+    names = user_names(session, (summary.created_by, summary.reviewed_by))
+    return ChangeSetReviewDetail(
+        **review_list_item(summary, names).model_dump(),
+        operations=[
+            _review_operation(row, replacement)
+            for row, replacement in zip(rows, report.operations, strict=True)
+        ],
+        review_fingerprint=report.review_fingerprint,
+        validation_result=(
+            ReviewExecutionResult.model_validate(change_set.validation_result)
+            if change_set.validation_result is not None
+            else None
+        ),
+        applied_result=(
+            ReviewApplyOutcome.model_validate(change_set.applied_result)
+            if change_set.applied_result is not None
+            else None
+        ),
+    )
+
+
+def _load_review(
+    session: Session,
+    change_set_key: str,
+    *,
+    organisation_key: str | None,
+    settings: Settings,
+) -> tuple[
+    AiChangeSet, ChangeSetSummary, list[AiChangeSetOperation], ReplacementReport
+]:
+    """The change set, its summary, operation rows and replacement report.
+
     Every read, the lookup included, runs under the change-set statement
     timeout. The change set, its summary and its operation rows come from one
     statement, and the flags are computed from exactly those rows, so a draft
-    edited meanwhile cannot make any part of the detail disagree. A stored
+    edited meanwhile cannot make any part of the result disagree. A stored
     operation that no longer parses raises.
     """
     engine.set_statement_timeout(session, settings)
@@ -208,21 +270,24 @@ def review_detail(
         settings=settings,
         operations=[engine.staged_operation(row) for row in rows],
     )
-    names = user_names(session, (summary.created_by, summary.reviewed_by))
-    return ChangeSetReviewDetail(
-        **review_list_item(summary, names).model_dump(),
-        operations=[
-            _review_operation(row, replacement)
-            for row, replacement in zip(rows, report.operations, strict=True)
-        ],
-        review_fingerprint=report.review_fingerprint,
+    return change_set, summary, rows, report
+
+
+def _detail(
+    change_set: AiChangeSet,
+    summary: ChangeSetSummary,
+    rows: Sequence[AiChangeSetOperation],
+) -> ChangeSetDetail:
+    return ChangeSetDetail(
+        **summary.model_dump(),
+        operations=_operation_details(rows),
         validation_result=(
-            ReviewExecutionResult.model_validate(change_set.validation_result)
+            ExecutionResult.model_validate(change_set.validation_result)
             if change_set.validation_result is not None
             else None
         ),
         applied_result=(
-            ReviewApplyOutcome.model_validate(change_set.applied_result)
+            ApplyOutcome.model_validate(change_set.applied_result)
             if change_set.applied_result is not None
             else None
         ),
@@ -347,6 +412,9 @@ def _summary(
         reviewed_by=change_set.reviewed_by,
         reviewed_time=change_set.reviewed_time,
         review_note=change_set.review_note,
+        reviewed_via=cast(ReviewChannelName | None, change_set.reviewed_via),
+        review_client_id=change_set.review_client_id,
+        review_client_name=change_set.review_client_name,
     )
 
 

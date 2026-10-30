@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-069O/review-003",
+  "task": {
+    "id": "TASK-069O",
+    "path": "tasks/TASK-069O-mcp-change-set-review.md"
+  },
+  "round": 3,
+  "reviewed_at": "2026-10-30T09:16:53Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": {
+    "number": 122,
+    "url": "https://github.com/reflector-oy/schatten/pull/122"
+  },
+  "source": {
+    "base_sha": "b4c46c199be654551a753bb045cff3f51bde749e",
+    "head_sha": "3da18e7b4f2ceb17048dcd2ab12065fa8607dbb9",
+    "comparison": "b4c46c199be654551a753bb045cff3f51bde749e...3da18e7b4f2ceb17048dcd2ab12065fa8607dbb9",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "clean",
+    "summary": "Round 3 reviews 3da18e7, which changes only the MCP_CHANGE_SET_REVIEW_ENABLED row of the deployment document to fix the round 2 finding. The row now says that the backend reads the setting at startup and builds the write server's tool list then, so a change takes effect only after a restart through the approved deployment procedure, and that setting it to false and restarting removes the tools and keeps staging. This matches the code: the settings are cached for the process and the MCP servers are built once when the application is created. The other places that describe turning the switch off, ADR-015's incident procedure and TASK-069P's runbook requirements, already pair it with a restart. No code changed since round 2, whose backend checks still apply, and the record validation passes. Nothing new was found.",
+    "findings": [],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-069O/review-002",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "The deployment settings row now states that the switch is read at startup and takes effect only after the backend is restarted through the approved deployment procedure, as ADR-015's incident procedure does.",
+        "validated_by": {
+          "review_id": "TASK-069O/review-003",
+          "commit": "3da18e7b4f2ceb17048dcd2ab12065fa8607dbb9"
+        }
+      }
+    ]
+  }
+}

@@ -356,8 +356,8 @@ Related Documents:
 
 # AI Domain
 
-Status: accepted design in ADR-015; TASK-069B through TASK-069N are
-implemented and the rest is pending TASK-069O. The earlier document-AI candidate
+Status: accepted design in ADR-015, amended 2026-10-29; TASK-069B through
+TASK-069O are implemented and the rest is pending TASK-069P. The earlier document-AI candidate
 (classification, summaries, extraction) is retained in `docs/domains/AI.md` as
 an unplanned candidate outside this scope.
 
@@ -410,7 +410,8 @@ never write their tables directly. No other domain depends on AI Domain.
 
 Primary APIs:
 
-- `/api/mcp/read` and `/api/mcp/write` (bearer token, no apply tool)
+- `/api/mcp/read` and `/api/mcp/write` (bearer token; the write server's
+  apply and reject tools only with `MCP_CHANGE_SET_REVIEW_ENABLED`)
 - `/.well-known/oauth-*` and `/api/oauth/*`
 - `/api/v1/ai/oauth/consent`, `/api/v1/ai/connections`, `/api/v1/ai/users/{user_id}/connections/revoke`, `/api/v1/ai/skills`
 - `/api/v1/organisations/{organisation_key}/ai/change-sets`

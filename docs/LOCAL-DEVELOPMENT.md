@@ -63,7 +63,7 @@ docker compose --env-file .env --env-file .env.entra.local exec -T local-caddy \
   caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
 ```
 
-## AI via MCP settings (TASK-069E, TASK-069F, TASK-069G, TASK-069N)
+## AI via MCP settings (TASK-069E, TASK-069F, TASK-069G, TASK-069N, TASK-069O)
 
 MCP is off by default. `docker-compose.yml` passes these backend settings with
 the defaults shown in `.env.example`; override them in `.env` (no secrets):
@@ -71,6 +71,7 @@ the defaults shown in `.env.example`; override them in `.env` (no secrets):
 | Setting | Default | Meaning |
 | --- | --- | --- |
 | `MCP_ENABLED` | `false` | With `false`, the MCP endpoints `/api/mcp/read` and `/api/mcp/write`, OAuth discovery, `/api/oauth/register`, `/api/oauth/authorize`, `/api/oauth/token`, `/api/oauth/revoke`, the `/api/v1/ai/oauth/consent` API and the skill zip download `/api/v1/ai/skills/{name}.zip` return 404 and `GET /api/v1/auth/session` reports `features.mcp=false`; the `/api/v1/ai/connections` API stays available |
+| `MCP_CHANGE_SET_REVIEW_ENABLED` | `false` | With `true` (and `MCP_ENABLED=true`) the write server also lists `apply_change_set` and `reject_change_set`, and the session reports `features.mcpChangeSetReview=true` (ADR-015 amendment) |
 | `MCP_OAUTH_REDIRECT_URIS` | claude.ai and claude.com callbacks plus `http://127.0.0.1:{port}/callback`, `http://[::1]:{port}/callback`, `http://localhost:{port}/callback` | Redirect URI allowlist; `{port}` is literal |
 | `MCP_OAUTH_AUTHORIZATION_REQUEST_LIFETIME_SECONDS`, `MCP_OAUTH_AUTHORIZATION_CODE_LIFETIME_SECONDS` | `600`, `60` | Pending request and code lifetimes |
 | `MCP_OAUTH_ACCESS_TOKEN_LIFETIME_SECONDS`, `MCP_OAUTH_REFRESH_TOKEN_IDLE_LIFETIME_SECONDS`, `MCP_OAUTH_GRANT_LIFETIME_SECONDS` | `3600`, `604800`, `2592000` | Access token lifetime, refresh token idle timeout and absolute grant lifetime; no token outlives its grant |
@@ -113,11 +114,22 @@ With both connected, ask Claude Code to stage a small change set, for example an
 event in the `reality` scenario: it calls `create_change_set`,
 `add_operations`, `validate_change_set` and `submit_change_set` and returns the
 review URL `https://app.localhost/schatten/<org>/metrics?changeSet=<key>`.
-`get_change_set` on `schatten-read` shows the submitted change set. Nothing is
-applied by MCP: a human opens the review URL, which opens the Metrics tab AI
-panel on the change set (TASK-069M), and applies or rejects it there through
-the review API `/api/v1/organisations/<org>/ai/change-sets/<key>/apply` or
-`/reject` (TASK-069K).
+`get_change_set` on `schatten-read` shows the submitted change set. With
+`MCP_CHANGE_SET_REVIEW_ENABLED=false` nothing is applied by MCP: a human opens
+the review URL, which opens the Metrics tab AI panel on the change set
+(TASK-069M), and applies or rejects it there through the review API
+`/api/v1/organisations/<org>/ai/change-sets/<key>/apply` or `/reject`
+(TASK-069K).
+
+To try the in-chat review (TASK-069O), also set
+`MCP_CHANGE_SET_REVIEW_ENABLED=true` in `.env`, recreate the backend and
+reconnect `schatten-write` in `/mcp` so that Claude Code reloads its tool
+list. Ask Claude Code to review the submitted change set: it calls
+`get_change_set_review` on `schatten-read` and shows the operations and any
+replaced data. Tell it to apply or reject; Claude Code asks for permission
+before `apply_change_set` or `reject_change_set` (do not add them to an allow
+rule). The Metrics tab then shows the change set as reviewed through the AI
+client.
 
 An unauthenticated request shows the discovery challenge:
 
@@ -150,7 +162,7 @@ claude plugin install schatten@schatten
 
 The plugin's own servers (`plugin:schatten:schatten-read` and
 `plugin:schatten:schatten-write` in `/mcp`) connect to production, where MCP
-stays off until TASK-069O; disable them in `/mcp` for local work.
+stays off until TASK-069P; disable them in `/mcp` for local work.
 `claude --plugin-dir backend/app/mcp/plugin plugin details schatten` (or
 `claude plugin details schatten@schatten` once installed) lists the skills
 `schatten-model-building` and `schatten-timeseries-generation` and both
@@ -159,7 +171,8 @@ team with a goal measured by a monthly revenue metric and two years of
 generated revenue. Claude Code should call `get_type_catalog` first, preview
 the generator spec with `preview_generated_timeserie`, stage, validate and
 submit a change set, and return the review URL without claiming that anything
-was applied.
+was applied. With the in-chat review enabled it should also offer to review
+the change set in the chat and apply it only when you say so.
 
 The read server's prompts `model_building` and `timeseries_generation` serve
 the same `SKILL.md` bodies; Claude Code offers them as

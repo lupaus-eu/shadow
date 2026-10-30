@@ -9,8 +9,10 @@ from datetime import date as dt_date
 from pydantic import Field
 
 from app.api.v1.ai_change_sets.schemas import (
+    ChangeSetDetail,
     ChangeSetStatus,
     ChangeSetSummary,
+    OperationReplacement,
     OperationResult,
     ReplacementReport,
 )
@@ -120,5 +122,26 @@ class ChangeSetSubmission(StrictBaseModel):
     )
     review_url: str | None = Field(
         description="Where a human reviews and applies or rejects the submitted "
-        "change set; null when it stayed a draft."
+        "change set in Schatten; null when it stayed a draft."
     )
+
+
+class ChangeSetReview(ChangeSetDetail):
+    replacements: list[OperationReplacement] = Field(
+        description="Per operation in order: whether it replaces data that "
+        "existed before the change set (`replaces_existing`) and a `summary` of "
+        "the current data it replaces, recomputed against current data now."
+    )
+    review_fingerprint: str = Field(
+        description="Hash of the replacement flags, summaries and checksums. "
+        "apply_change_set takes it and fails with review_stale when the "
+        "replaced data has changed since."
+    )
+
+
+class ChangeSetApplied(StrictBaseModel):
+    change_set: ChangeSetSummary
+    operations: list[OperationResult] = Field(
+        description="Per-operation results with the created or changed keys."
+    )
+    refs: dict[str, str] = Field(description="Each `$ref` symbol's created key.")

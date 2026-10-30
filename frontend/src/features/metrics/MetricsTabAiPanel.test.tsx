@@ -38,6 +38,9 @@ const changeSetDetail: AiChangeSetDetailDto = {
   reviewedByName: null,
   reviewedTime: null,
   reviewNote: null,
+  reviewedVia: null,
+  reviewClientId: null,
+  reviewClientName: null,
   operations: [
     {
       position: 0,
@@ -82,6 +85,7 @@ function MetricsHarness(props: {
       orgId="acme"
       ai={{
         mcpEnabled: props.mcpEnabled,
+        mcpChangeSetReview: false,
         changeSetKey,
         onChangeSetKeyChange: (key) => {
           props.onChangeSetKeyChange(key);

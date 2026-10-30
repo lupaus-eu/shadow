@@ -1,7 +1,7 @@
 {
   "name": "schatten",
-  "version": "0.1.0",
-  "description": "Build Schatten organisation models and realistic timeseries with AI. Connects the Schatten MCP read and write servers and adds the model-building and timeseries-generation skills. Changes are only proposed: a person applies them in Schatten.",
+  "version": "0.2.0",
+  "description": "Build Schatten organisation models and realistic timeseries with AI. Connects the Schatten MCP read and write servers and adds the model-building and timeseries-generation skills. Changes are only proposed: a person reviews and applies them, in Schatten or in the chat when the server allows it.",
   "author": {
     "name": "Reflector"
   },

@@ -1,8 +1,11 @@
 # ADR-015: AI Via MCP With Human-Applied Change Sets
 
-Status: Accepted design; TASK-069B through TASK-069N implemented, TASK-069O pending
+Status: Accepted design, amended 2026-10-29 (MCP change-set review,
+TASK-069O); TASK-069B through TASK-069O implemented, TASK-069P pending
 
 Date: 2026-10-21
+
+Amended: 2026-10-29 ([MCP Change-Set Review](#mcp-change-set-review))
 
 ---
 
@@ -32,6 +35,24 @@ records these developer decisions:
 - The architecture is documented as a C4 model in LikeC4, including a
   deployment view of how MCP is used.
 
+Amendment (2026-10-29, `tasks/TASK-069O-mcp-change-set-review.md`): the
+developer asked that users can also apply and reject submitted change sets
+from their MCP client, such as Claude Code or Claude Desktop, in addition to
+the Metrics tab. This replaces the decision that no MCP tool can apply
+changes. The developer decided that:
+
+- the write service gains apply and reject tools, registered only when an
+  operator switch `MCP_CHANGE_SET_REVIEW_ENABLED` is on (default off); OAuth,
+  scopes and resources are unchanged;
+- an MCP client may apply or reject any submitted change set of the
+  organisation, under the same rule as the Metrics tab;
+- the change set records whether it was reviewed through the web or through
+  MCP, and for MCP the reviewing client.
+
+A human still decides each apply and reject: in the Metrics tab, or by
+approving the client's tool call. See
+[MCP Change-Set Review](#mcp-change-set-review).
+
 Constraints from accepted decisions:
 
 - ADR-004: FastAPI is the trusted authorization boundary. Browser sessions are
@@ -55,7 +76,7 @@ Constraints from accepted decisions:
 This ADR is an accepted design. **No production MCP client can use Schatten
 yet**; with `MCP_ENABLED=true` (development only) a local MCP client can
 connect to the read service. The implementation is delivered by TASK-069B
-through TASK-069O; TASK-069B (the domain service transaction cores, which
+through TASK-069P; TASK-069B (the domain service transaction cores, which
 change no REST behaviour), TASK-069C (the deterministic timeseries generator,
 which adds no route), TASK-069D (the MCP OAuth schema, which adds no route),
 TASK-069E (discovery, registration, authorization request and consent API,
@@ -68,10 +89,13 @@ authentication, resource protection and the first read tools), TASK-069H
 change-set schema and engine, which add no tool or route) and TASK-069J (the
 change-set staging write tools and the change-set read tools; no tool applies
 a change set), TASK-069K (the always-registered cookie-session review API
-that applies or rejects a submitted change set) and TASK-069L (the SPA consent
+that applies or rejects a submitted change set), TASK-069L (the SPA consent
 page, the connections list component and the admin per-user revocation
-action) are implemented and the rest is pending.
-The feature stays disabled (`MCP_ENABLED=false`) until TASK-069O's separately
+action), TASK-069M (the Metrics tab AI panel), TASK-069N (skills, plugin and
+MCP prompts) and TASK-069O (the MCP change-set review tools behind
+`MCP_CHANGE_SET_REVIEW_ENABLED`, the review channel of migration 019 and this
+amendment) are implemented and the rest is pending.
+The feature stays disabled (`MCP_ENABLED=false`) until TASK-069P's separately
 approved production enablement.
 
 | Task | Delivers |
@@ -89,14 +113,15 @@ approved production enablement.
 | TASK-069L | SPA consent page and connections list (implemented) |
 | TASK-069M | Metrics tab AI panel and change-set review UI (implemented) |
 | TASK-069N | Skills, Claude Code plugin bundle, MCP prompts, skill zips (implemented) |
-| TASK-069O | End-to-end QA, runbook and approved production enablement |
+| TASK-069O | MCP change-set review: `get_change_set_review`, `apply_change_set`, `reject_change_set`, the switch and the review channel (amendment of 2026-10-29, implemented) |
+| TASK-069P | End-to-end QA, runbook and approved production enablement (was TASK-069O until 2026-10-29) |
 
 ## Provider Neutrality And No In-App LLM
 
 Schatten exposes MCP and OAuth 2.1 only. The user brings any MCP-capable
 client and AI subscription. Schatten has no in-app chat, never calls an LLM,
 never stores an LLM API key and has no vendor SDK. Claude clients are the
-first verified clients; TASK-069O also verifies at least one non-Claude MCP
+first verified clients; TASK-069P also verifies at least one non-Claude MCP
 client.
 
 ## Two MCP Services In The Existing FastAPI App
@@ -106,8 +131,8 @@ using the MCP Streamable HTTP transport:
 
 | Endpoint | Required scope | Purpose |
 | --- | --- | --- |
-| `/api/mcp/read` | `schatten.read` | Inspect organisations, scenarios, org states, type catalog, graph, timeseries, events and change sets; preview generated series; MCP prompts |
-| `/api/mcp/write` | `schatten.write` | Create, edit, validate, submit and discard **draft change sets** only |
+| `/api/mcp/read` | `schatten.read` | Inspect organisations, scenarios, org states, type catalog, graph, timeseries, events, change sets and change-set reviews; preview generated series; MCP prompts |
+| `/api/mcp/write` | `schatten.write` | Create, edit, validate, submit and discard **draft change sets**; with `MCP_CHANGE_SET_REVIEW_ENABLED=true` also apply or reject **submitted change sets** ([MCP Change-Set Review](#mcp-change-set-review)) |
 
 - Both servers run `stateless_http=True` with `json_response=True`. No MCP
   session state, server-sent event stream or long-running request is kept.
@@ -124,12 +149,17 @@ using the MCP Streamable HTTP transport:
   response gains a `features.mcp` flag, and the SPA hides the consent page,
   connect instructions and skill links when it is false; the connections list
   and the Metrics AI panel stay visible only when they have rows to show.
+  `MCP_CHANGE_SET_REVIEW_ENABLED` has no effect while `MCP_ENABLED` is false;
+  the session's `features.mcpChangeSetReview` is true only when both are on.
 - Read tools are annotated `readOnlyHint`, `idempotentHint` and
   `openWorldHint=False`. Write tools are annotated `openWorldHint=False`, with
-  `destructiveHint` on removal and discard.
-- **Neither server has an apply tool.** No MCP tool, prompt or resource can
-  change business data. Write tools change only draft change-set rows owned by
-  the AI domain.
+  `destructiveHint` on removal, discard, apply and reject.
+- **Only `apply_change_set` changes business data through MCP**, only through
+  the change-set engine's apply, and only while
+  `MCP_CHANGE_SET_REVIEW_ENABLED` is on. No other MCP tool, prompt or resource
+  can change business data. The staging tools change only draft change-set
+  rows owned by the AI domain; `reject_change_set` changes only the review
+  state of a submitted change set.
 - Tools call existing domain service functions and reuse existing response
   schemas; they do not duplicate query logic or write other domains' tables.
 - Users administration, session revocation, prediction requests and every
@@ -218,7 +248,7 @@ Rules:
     Accepted trade-off: a client cannot register until its name is changed if
     the name contains non-ASCII characters, or ASCII punctuation outside the
     set, such as `'`, `&`, `@`, `,`, `#`, `!`, `[` or `]`. Names such as
-    `Jonatan's client` or `R&D tool` are therefore rejected. TASK-069O
+    `Jonatan's client` or `R&D tool` are therefore rejected. TASK-069P
     verifies that the real clients' names fit;
   - at most 10 redirect URIs of at most 2,048 characters each;
   - other metadata is ignored.
@@ -234,7 +264,7 @@ Rules:
     the entry's host, the port is an explicit number from 1 to 65535, the path
     is exactly the entry's path, and there is no userinfo, query or fragment.
     `localhost` entries exist only because local MCP clients use them; RFC
-    8252 section 8.3 prefers IP literals, and TASK-069O verifies the real
+    8252 section 8.3 prefers IP literals, and TASK-069P verifies the real
     clients' redirect URIs and trims the default allowlist accordingly.
   - Every other URI is rejected with `invalid_redirect_uri`. This includes a
     URI whose authority contains `@`, a percent-encoded or trailing-dot host,
@@ -305,7 +335,7 @@ Rules:
 - Accepted consequence: when one client registration serves several
   concurrent sessions of the same User and resource, re-authorizing in one
   session signs the others out, because the reused grant's earlier tokens are
-  revoked. TASK-069O verifies the effect with the real clients and records it
+  revoked. TASK-069P verifies the effect with the real clients and records it
   in the runbook.
 - **Grant deletion and references.** Lazy cleanup deletes revoked or expired
   grants, as described in
@@ -499,16 +529,21 @@ The incident procedure needs no manual database change:
 
 1. An operator sets `MCP_ENABLED=false` and restarts the backend through the
    approved deployment procedure. All MCP and OAuth endpoints then return 404,
-   so no token works and no new grant can be issued.
+   so no token works and no new grant can be issued. When only applies or
+   rejects through MCP are suspicious, setting
+   `MCP_CHANGE_SET_REVIEW_ENABLED=false` instead removes those tools on the
+   next request and keeps staging.
 2. While MCP is disabled, an `admin` revokes the grants of every affected User
    through the per-user revocation endpoint (or soft-deletes the User), and
    Users may revoke their own grants. The connections and review APIs stay
    registered for this.
-3. Humans reject any suspicious staged change sets in the Metrics tab.
-4. MCP is re-enabled only with the separate human approval that TASK-069O
+3. Humans reject any suspicious staged change sets in the Metrics tab. The
+   review list shows which change sets were applied or rejected through MCP
+   and by which client.
+4. MCP is re-enabled only with the separate human approval that TASK-069P
    defines for enablement.
 
-TASK-069O documents this procedure in the runbook.
+TASK-069P documents this procedure in the runbook.
 
 ## AI Change Sets
 
@@ -570,11 +605,18 @@ create_derived_metric, create_event
 - **Submit** re-validates and **freezes generated values** together with the
   generator version. A submitted change set is immutable. Submit returns the
   review URL `<PUBLIC_ORIGIN>/schatten/<org>/metrics?changeSet=<key>`.
-- **Human review is required.** Apply and reject happen only in the Metrics
-  tab through cookie-session endpoints with CSRF and exact Origin
-  (`/api/v1/organisations/{organisation_key}/ai/change-sets/...`). Both roles
-  may review, including the creator: the AI acts on the creator's behalf and
-  the human apply is the gate between AI output and business data.
+- **Human review is required.** A human decides each apply and reject, in
+  one of two ways:
+  - in the Metrics tab, through cookie-session endpoints with CSRF and exact
+    Origin (`/api/v1/organisations/{organisation_key}/ai/change-sets/...`);
+  - with `MCP_CHANGE_SET_REVIEW_ENABLED=true`, by approving the MCP client's
+    call of `apply_change_set` or `reject_change_set` (see
+    [MCP Change-Set Review](#mcp-change-set-review)).
+
+  Both roles may review, including the creator: the AI acts on the creator's
+  behalf and the human decision is the gate between AI output and business
+  data. Both ways use the same engine, the same `reviewFingerprint` check and
+  the same reviewer audit.
 - **Apply** runs in this order, in one transaction:
   1. lock the change set `FOR UPDATE` under a short, configurable PostgreSQL
      `lock_timeout` (default 5 seconds). Both timeouts apply to the lock wait,
@@ -588,8 +630,8 @@ create_derived_metric, create_event
      services' `*_in_transaction` cores;
   6. commit once.
 
-  The reviewer is the actor for the created business rows. A concurrent apply
-  applies once; others get 409.
+  The reviewer is the actor for the created business rows. A concurrent apply,
+  through either channel, applies once; others get 409.
   - **The step alone decides whether the status changes.** An error in steps
     1 to 3 never changes the status, and an error in steps 4 to 6 marks the
     change set `failed`, whatever its error type or SQLSTATE. The same lock
@@ -667,6 +709,63 @@ create_derived_metric, create_event
   tables directly**. Domain validation, audit columns and derived-metric
   recalculation therefore stay the same as for REST.
 
+## MCP Change-Set Review
+
+Added by the 2026-10-29 amendment and implemented by TASK-069O. It lets an MCP
+client do what the Metrics tab review does, on behalf of its User.
+
+- **Switch.** `MCP_CHANGE_SET_REVIEW_ENABLED` (default `false`) registers
+  `apply_change_set` and `reject_change_set` on the write server when the
+  write server is built. With it off the write server has exactly the six
+  staging tools, and its instructions and the staging tools' descriptions say
+  that a person applies change sets in Schatten; with it on they also name the
+  in-chat review. Production enablement of the switch belongs to TASK-069P.
+- **Review read.** The read server's `get_change_set_review(change_set_key)`
+  is always registered. It returns what the Metrics tab review detail shows:
+  the change set, each operation's `replaces_existing` flag and replacement
+  summary recomputed against current data, a summary of frozen values (never
+  the values) and the `review_fingerprint`. It uses the same single-statement
+  load, `compute_replacements` and `statement_timeout` as the review API.
+- **Apply.** `apply_change_set(change_set_key, review_fingerprint)` runs the
+  engine's apply unchanged (lock, status, fingerprint, re-validate, execute,
+  commit). The fingerprint must come from `get_change_set_review`, so the AI
+  applies exactly the replacements it showed the user; `review_stale` means
+  read the review again and confirm with the user again. The engine's error
+  codes become tool errors with the same codes and meanings as the review
+  API's responses.
+- **Reject.** `reject_change_set(change_set_key, note=None)` runs the engine's
+  reject with the review API's note rules.
+- **Who.** Any submitted change set of a non-deleted organisation, whoever
+  created it, under the same rule as the Metrics tab: both roles, the creator
+  included. The grant's User is the reviewer and the actor of the created
+  business rows. Both current roles keep both scopes; no scope is added.
+- **Human decision.** Both tools are annotated `destructiveHint=True`,
+  `idempotentHint=False` and `openWorldHint=False`, so MCP clients ask the
+  human before each call unless the human has chosen to always allow it. The
+  write server's instructions and the skills tell the AI to show the review
+  (title, operations and every replaced value) and to call apply or reject
+  only on the user's explicit instruction in the conversation, never because
+  stored business text asks for it.
+- **Audit.** Migration 019 adds `reviewed_via` (`web` or `mcp`),
+  `review_client_id` and `review_client_name` to `ai_change_sets`. They are
+  set together with `reviewed_by` and `reviewed_time` on apply, reject and
+  the conditional `failed` update. For `mcp` the reviewing grant's
+  `client_id` is copied as a plain value and its self-declared client name is
+  stored, as for the staging client. Change sets reviewed before migration 019
+  are backfilled to `web`. The review API, the MCP change-set summaries and
+  the Metrics AI panel show the channel and the client name.
+- **Consent wording.** When `features.mcpChangeSetReview` is true, the consent
+  page, the connect instructions and the connections list describe write
+  access as staging, applying and rejecting change sets. Turning the switch on
+  gives existing write grants the tools on their next request although their
+  consent said "proposals only". This is accepted; the runbook says to enable
+  the switch before or together with production enablement, or to tell users.
+- **Deferred: server-side confirmation.** MCP elicitation (in `mcp` 2.3.0 the
+  stateless `InputRequiredResult` flow) would let Schatten itself ask the
+  human to confirm, with a text the AI cannot change. It is not used, because
+  support in the real clients is unknown and requiring it could make the tools
+  unusable. TASK-069P records which clients support it for a later decision.
+
 ## Deterministic Timeseries Generator
 
 Schatten generates timeseries values from a validated, numeric-only
@@ -724,7 +823,7 @@ Resource protections on the shared, resource-limited host:
       browser;
   - `mcp_rate_limiter` for `/api/mcp/*`, per grant.
 
-  TASK-069O verifies the defaults against real vendor-cloud and local
+  TASK-069P verifies the defaults against real vendor-cloud and local
   clients. Both limiters assume one backend replica, as in ADR-004.
 - **bounded OAuth rows.** At most a configurable number of live pending
   authorization requests per client (default 20) and in total (default
@@ -764,7 +863,7 @@ Resource protections on the shared, resource-limited host:
     - Accepted trade-off: sustained registration at the allowed rate can fill
       the cap and block new client registrations until stale clients age out
       (up to 30 days). Existing clients and grants keep working. The
-      immediate operator remedy, documented in the TASK-069O runbook, is to
+      immediate operator remedy, documented in the TASK-069P runbook, is to
       raise the cap through configuration. Lowering the registration rate
       limit only slows refilling and does not unblock a full cap.
   - A client that registers again gets a new `client_id`.
@@ -802,8 +901,15 @@ product and security decision:
 - users are expected to use AI subscriptions their organisation approves.
 
 Business text returned by read tools is untrusted input to the AI and may try
-to steer it (prompt injection). Because no MCP tool can apply changes, the
-worst outcome is a staged change set that a human must still review.
+to steer it (prompt injection). With `MCP_CHANGE_SET_REVIEW_ENABLED=false` no
+MCP tool can apply changes, so the worst outcome is a staged change set that a
+human must still review. With it on, a steered AI can also call
+`apply_change_set` or `reject_change_set` on any submitted change set of the
+organisation, including another User's. The call still needs the human's
+approval in the client, the current review fingerprint and a change set that
+passes re-validation, and the review channel and client are recorded. A human
+who approves the call without reading it applies the change set; this is an
+accepted risk of the amendment.
 Tokens, codes, request ids and tool arguments are never logged; see
 [Pending Request Id Handling](#pending-request-id-handling) for the Caddy and
 backend log filters.
@@ -845,6 +951,8 @@ Views:
 - [developmentMcp](../diagrams/generated/likec4-developmentMcp.png) (deployment)
 - [connectFlow](../diagrams/generated/likec4-connectFlow.png) (dynamic)
 - [generateFlow](../diagrams/generated/likec4-generateFlow.png) (dynamic)
+- [reviewInChatFlow](../diagrams/generated/likec4-reviewInChatFlow.png)
+  (dynamic, the 2026-10-29 amendment)
 
 ---
 
@@ -856,9 +964,20 @@ Views:
 - **One MCP service with mixed scopes:** rejected. Separate read and write
   services let users connect read-only clients and make the write surface
   explicit.
-- **An MCP apply tool, with or without confirmation:** rejected. AI clients may
-  act on untrusted text; applying business changes needs a human decision in
-  Schatten.
+- **An MCP apply tool, with or without confirmation:** rejected on
+  2026-10-21, because AI clients may act on untrusted text. **Accepted by the
+  2026-10-29 amendment** with the constraints in
+  [MCP Change-Set Review](#mcp-change-set-review): an operator switch, the
+  client's tool approval, the review fingerprint and the review audit.
+- **A separate MCP review server and scope (amendment):** not chosen. It would
+  let each user opt in per connection, but needs a third OAuth resource, its
+  discovery, consent and plugin configuration, and a third connector per user.
+  The operator switch and per-tool client permissions cover the need.
+- **MCP review limited to the caller's own change sets (amendment):** not
+  chosen. The developer kept the Metrics tab rule that any reviewer may
+  decide any submitted change set.
+- **Server-side confirmation through MCP elicitation (amendment):** deferred
+  until real client support is known (TASK-069P).
 - **Direct writes from MCP tools:** rejected for the same reason, and because
   multi-step model creation must be all-or-nothing.
 - **Background jobs for MCP or for change-set apply:** rejected. ADR-012 allows
@@ -880,8 +999,11 @@ Benefits:
   Schatten handling LLM keys or costs.
 - MCP access is tied to existing Users, roles and Entra login; role changes,
   user deletion and revocation take effect on the next call.
-- Business data changes only through a reviewed, atomic, audited human apply
+- Business data changes only through a reviewed, atomic, audited apply that a
+  human decides, in the Metrics tab or by approving the MCP client's call, and
   that uses the same domain services as REST.
+- With the switch on, users can review, apply and reject in the same chat
+  that staged the change set.
 - Generated data is reproducible from its spec and seed.
 - No new runtime service, worker, port or Entra change.
 
@@ -910,6 +1032,13 @@ Costs, risks and accepted trade-offs:
   their per-target checksums after the review load makes apply fail with `409
   review_stale`, except within the short accepted window inside apply's own
   transaction.
+- With `MCP_CHANGE_SET_REVIEW_ENABLED=true` the human gate for an MCP apply is
+  the client's tool approval, which a user can set to always allow. A
+  prompt-injected AI and a human who approves without reading can apply a
+  submitted change set, including another User's. The fingerprint,
+  re-validation, audit channel and switch are the mitigations.
+- Turning the switch on widens existing write grants without new consent (see
+  [MCP Change-Set Review](#mcp-change-set-review)).
 - One new backend dependency (`fastmcp` or the fallback `mcp`).
 - A second diagram tool (LikeC4) is used for this feature.
 
@@ -920,15 +1049,19 @@ Costs, risks and accepted trade-offs:
 - Follow the task order in [Scope And Status](#scope-and-status). Each task
   implements only its own scope; dependencies other than those approved here
   need separate approval.
-- Never add an MCP tool, prompt or resource that applies a change set or
-  writes business tables.
+- Only `apply_change_set` may apply a change set through MCP, only through
+  the engine's `apply_change_set` with the review fingerprint, and only while
+  `MCP_CHANGE_SET_REVIEW_ENABLED` is on. Never add any other MCP tool, prompt
+  or resource that applies or rejects a change set or writes business tables.
+- Keep `MCP_CHANGE_SET_REVIEW_ENABLED=false` by default. Every apply and
+  reject records its review channel.
 - Never store plaintext tokens, codes or request ids in the `mcp_oauth_*`
   tables, and never log them or tool arguments.
 - Never accept the session cookie on `/api/mcp/*` or an MCP token on
   `/api/v1`.
 - Change sets use other domains' `*_in_transaction` cores only.
 - Keep `MCP_ENABLED=false` by default. Production enablement needs separate
-  human approval under TASK-069O.
+  human approval under TASK-069P.
 - If the implementation differs from the LikeC4 model, update the model and
   its PNG exports in the same task.
 
@@ -936,9 +1069,11 @@ Costs, risks and accepted trade-offs:
 
 # Follow-Up
 
-- TASK-069B through TASK-069O implement this design.
+- TASK-069B through TASK-069P implement this design and its amendment.
 - Client ID Metadata Documents, more operation types (for example edge and
   event patches) and further roles are separate future decisions.
+- A server-side confirmation of MCP apply and reject through elicitation is a
+  separate future decision, after TASK-069P has recorded client support.
 - Reassess per-grant rate limiting and the capacity limiter before running
   more than one backend replica.
 
@@ -954,3 +1089,4 @@ Costs, risks and accepted trade-offs:
 - `docs/concepts/AI_CHANGE_SET.md`
 - `docs/diagrams/likec4/README.md`
 - `tasks/TASK-069A-ai-mcp-architecture.md`
+- `tasks/TASK-069O-mcp-change-set-review.md`

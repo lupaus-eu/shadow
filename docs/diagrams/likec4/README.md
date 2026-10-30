@@ -30,6 +30,7 @@ Views of `schatten-ai-mcp` and their committed exports:
 | `developmentMcp` | Deployment, development | `docs/diagrams/generated/likec4-developmentMcp.png` |
 | `connectFlow` | Dynamic: connect an AI client | `docs/diagrams/generated/likec4-connectFlow.png` |
 | `generateFlow` | Dynamic: generate and apply a change set | `docs/diagrams/generated/likec4-generateFlow.png` |
+| `reviewInChatFlow` | Dynamic: apply a change set from the AI client (TASK-069O) | `docs/diagrams/generated/likec4-reviewInChatFlow.png` |
 
 Elements are tagged `#new` (accepted in ADR-015, not implemented yet) or
 `#existing`. `#new` elements are green in every view.
@@ -88,4 +89,4 @@ npx -y likec4@1.60.0 start docs/diagrams/likec4/schatten-ai-mcp
 - Keep the model in sync with ADR-015, `docs/domains/AI.md` and
   `ARCHITECTURE.md`. When a TASK-069 implementation differs from the model,
   update the model in that task.
-- When a `#new` element is implemented, TASK-069O retags it `#existing`.
+- When a `#new` element is implemented, TASK-069P retags it `#existing`.

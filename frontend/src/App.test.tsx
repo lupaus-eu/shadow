@@ -42,6 +42,8 @@ function mockSchattenApi(options?: {
   sessionStatus?: number;
   logoutUrl?: string | null;
   mcpEnabled?: boolean;
+  mcpChangeSetReview?: boolean;
+  consentScope?: string;
 }) {
   let cleanedFutureStates = false;
   let scenarioListRequestCount = 0;
@@ -87,7 +89,14 @@ function mockSchattenApi(options?: {
             role: options?.authRole ?? "admin"
           },
           csrfToken: "app-csrf-token",
-          ...(options?.mcpEnabled ? { features: { mcp: true } } : {})
+          ...(options?.mcpEnabled
+            ? {
+                features: {
+                  mcp: true,
+                  mcpChangeSetReview: options.mcpChangeSetReview ?? false
+                }
+              }
+            : {})
         })
       );
     }
@@ -99,7 +108,7 @@ function mockSchattenApi(options?: {
           clientNameSelfDeclared: true,
           redirectIsLoopback: false,
           redirectHost: "claude.ai",
-          scope: "schatten.read",
+          scope: options?.consentScope ?? "schatten.read",
           resource: "https://app.localhost/api/mcp/read",
           expiresTime: "2026-10-28T10:10:00Z"
         })
@@ -698,6 +707,22 @@ describe("Schatten UI shell", () => {
         headers: expect.objectContaining({ "X-CSRF-Token": "app-csrf-token" })
       })
     );
+  });
+
+  it("explains write access from the session's MCP change-set review flag", async () => {
+    mockSchattenApi({
+      mcpEnabled: true,
+      mcpChangeSetReview: true,
+      consentScope: "schatten.write"
+    });
+
+    renderAt("/ai/authorize?request=pending-id");
+
+    expect(
+      await screen.findByRole("heading", {
+        name: "Write access: propose, apply and reject changes"
+      })
+    ).toBeVisible();
   });
 
   it("shows the consent page as not available when the session has no MCP feature", async () => {

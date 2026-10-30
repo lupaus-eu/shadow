@@ -27,23 +27,31 @@ and TASK-069M (the Metrics tab AI panel, see
 and TASK-069N (the skills, the Claude Code plugin, the MCP prompts and the
 skill zips, see
 [Skills And Distribution (TASK-069N)](#skills-and-distribution-task-069n))
-are implemented and the rest is pending TASK-069O. The MCP endpoints, the
+and TASK-069O (the MCP change-set review of the 2026-10-29 ADR-015
+amendment, see [MCP Change-Set Review (TASK-069O)](#mcp-change-set-review-task-069o))
+are implemented and the rest is pending TASK-069P. The MCP endpoints, the
 public OAuth endpoints, the consent API and the skill zip download are
 registered only with `MCP_ENABLED=true`, which is off by default and in
 production; the connections and change-set review APIs are always registered.
+The MCP apply and reject tools are registered only with
+`MCP_CHANGE_SET_REVIEW_ENABLED=true` as well, also off by default and in
+production.
 
 ## Purpose
 
 AI Domain hallitsee sitä, miten käyttäjän oma AI-asiakas (esimerkiksi Claude
 Desktop, claude.ai tai Claude Code) käyttää Schattenia MCP:n kautta, ja sitä,
-miten AI:n ehdottamat muutokset päätyvät ihmisen hyväksymänä business-dataan.
+miten AI:n ehdottamat muutokset päätyvät ihmisen hyväksymänä business-dataan:
+Schattenin Metrics-välilehdellä tai ihmisen hyväksymällä MCP-klientin
+kutsulla.
 
 AI Domain owns:
 
 - the OAuth 2.1 authorization server data for MCP clients (clients, pending
   authorization requests, grants and tokens);
 - AI change sets: staged, typed operations proposed by an AI client and
-  applied or rejected by a human in Schatten; and
+  applied or rejected by a human, in Schatten or by approving the AI client's
+  call; and
 - the deterministic timeseries generator contract used by previews and change
   sets.
 
@@ -80,8 +88,9 @@ Owns:
 Provides:
 
 - MCP read service `/api/mcp/read` (scope `schatten.read`)
-- MCP write service `/api/mcp/write` (scope `schatten.write`), which only
-  stages draft change sets
+- MCP write service `/api/mcp/write` (scope `schatten.write`), which stages
+  draft change sets and, with `MCP_CHANGE_SET_REVIEW_ENABLED`, applies or
+  rejects submitted ones on the human's approval
 - OAuth discovery, registration, authorization, token and revocation endpoints
 - consent and connections APIs for the SPA
 - change-set review API for the Metrics tab (apply, reject)
@@ -100,18 +109,29 @@ Does NOT Own:
 
 # Domain Rules
 
-## Rule 1: No MCP Tool Applies Changes
+## Rule 1: Only A Human-Approved Apply Changes Business Data
 
-The MCP write service creates, edits, validates, submits and discards draft
-change sets only. No MCP tool, prompt or resource applies a change set or
-writes another domain's data. **A human apply in Schatten is always required.**
+The MCP staging tools create, edit, validate, submit and discard draft change
+sets only. Only `apply_change_set`, registered with
+`MCP_CHANGE_SET_REVIEW_ENABLED=true`, applies a change set through MCP, and
+only through the engine's apply. No other MCP tool, prompt or resource applies
+or rejects a change set or writes another domain's data. **A human decision is
+always required** (Rule 2).
 
-## Rule 2: Human Review In Schatten
+## Rule 2: Human Review In Schatten Or In The AI Client
 
-Apply and reject happen only through cookie-session endpoints with the session
-CSRF token and exact Origin, used by the Metrics tab AI panel. Both `admin`
-and `consultant` may review, including the creator. The reviewer is the actor
-for the business rows the apply creates.
+A human applies or rejects each submitted change set in one of two ways:
+
+- in the Metrics tab AI panel, through cookie-session endpoints with the
+  session CSRF token and exact Origin; or
+- with `MCP_CHANGE_SET_REVIEW_ENABLED=true`, by approving the MCP client's
+  `apply_change_set` or `reject_change_set` call. Apply needs the
+  `review_fingerprint` of `get_change_set_review`.
+
+Both `admin` and `consultant` may review any submitted change set, including
+its creator. The reviewer is the actor for the business rows the apply
+creates, and every review records its channel (`web` or `mcp`, with the
+reviewing MCP client).
 
 ## Rule 3: Change Sets Use Domain Services
 
@@ -202,7 +222,9 @@ of an active grant are kept for reuse detection.
 ## Rule 9: Data Leaves Schatten By User Choice
 
 Business data read through MCP flows to the user's AI vendor. Consent text
-must say so, and users can grant read only and revoke grants.
+must say so, and users can grant read only and revoke grants. With MCP
+change-set review on, the write consent also says that the client can apply
+and reject change sets on the User's behalf.
 
 ---
 
@@ -767,7 +789,8 @@ validate, fix, submit, the `$ref` rules (only server-generated scenario,
 organisation state, event and derived metric keys; node, edge and timeserie
 keys are client-supplied and referred to verbatim), that the dry-run stops at
 the first failing operation and that nothing is applied until a human approves
-it in Schatten.
+it. TASK-069O adds `apply_change_set` and `reject_change_set`, see
+[MCP Change-Set Review (TASK-069O)](#mcp-change-set-review-task-069o).
 
 | Tool | Engine call | Result |
 | --- | --- | --- |
@@ -828,8 +851,9 @@ Any User may read any change set of an active organisation. An unknown change
 set, or one of a soft-deleted organisation, is `Change set not found.`.
 `ChangeSetSummary` has `id`, `organisation_key`, `scenario_key`, `title`,
 `rationale`, `status`, `operation_count`, `client_id`, `client_name`,
-`created_by`, `created_time`, `modified_time`, `reviewed_by`, `reviewed_time`
-and `review_note`.
+`created_by`, `created_time`, `modified_time`, `reviewed_by`, `reviewed_time`,
+`review_note` and (TASK-069O) `reviewed_via`, `review_client_id` and
+`review_client_name`.
 
 ## Change-Set Review API (TASK-069K)
 
@@ -935,8 +959,13 @@ Consent page `/ai/authorize` (`AuthorizePage.tsx`):
   - the requested access: "Read access" (the client can read what the User
     can see and cannot change anything) or "Write access: proposals only"
     (changes are only proposed, and nothing changes until a person reviews
-    and applies the change set in Schatten). An unknown scope is shown
-    verbatim with advice to deny;
+    and applies the change set in Schatten). With the session's
+    `features.mcpChangeSetReview` (TASK-069O) write access is "Write access:
+    propose, apply and reject changes" instead: on the User's instruction the
+    client can also apply or reject change sets awaiting review, including
+    other people's, the User is recorded as reviewer, and the client should
+    ask before each call. An unknown scope is shown verbatim with advice to
+    deny;
   - that data the client reads from Schatten is sent to the User's AI vendor,
     and that the connection lasts for a limited time (30 days by default)
     unless revoked. The grant lifetime is the deployment setting
@@ -1042,7 +1071,12 @@ frontmatter holding exactly `name` and `description`:
   lifetimes within node lifetimes, link timeseries to nodes following
   `timeserie_id_rule`, use `$ref` only for server-generated keys, follow the
   create → add → validate → fix → submit loop, and never claim that changes
-  are applied before a person applies them in Schatten.
+  are applied before a person applies them. When the write server lists the
+  apply tools (TASK-069O), it also teaches the in-chat review:
+  `get_change_set_review`, showing the operations and replaced data and
+  whether the user or another User staged it (`created_by` compared with
+  `whoami`'s `id`), waiting for the user's explicit decision, then
+  `apply_change_set` with the fingerprint or `reject_change_set`.
 - `schatten-timeseries-generation`: choosing `timeUnit`, `unit` and
   `valueUnit`, realistic trend, seasonality (including `peakOffset`), noise,
   bound and seed parameters with worked example specs, date alignment,
@@ -1075,6 +1109,62 @@ The same files are distributed three ways:
   generation spec schemas, so the skills stay current with the tool
   contracts.
 
+## MCP Change-Set Review (TASK-069O)
+
+The 2026-10-29 amendment of ADR-015 lets an MCP client apply and reject
+submitted change sets on behalf of its User, next to the Metrics tab review.
+
+- `get_change_set_review(change_set_key)` (read server, always registered,
+  read-only annotations) returns `ChangeSetReview`: everything
+  `get_change_set` returns plus `replacements` (per operation
+  `replaces_existing` and the summary of the current data it replaces) and
+  `review_fingerprint`. `service.change_set_review` loads the change set,
+  summary and operation rows in the review API's one statement
+  (`_load_review`) and recomputes `compute_replacements` under the change-set
+  statement timeout, so the fingerprint equals the review API's. A lock or
+  statement timeout is the retryable busy tool error.
+- With `MCP_CHANGE_SET_REVIEW_ENABLED=true` (and `MCP_ENABLED=true`) the write
+  server registers two more tools, annotated `destructiveHint=True`,
+  `idempotentHint=False` and `openWorldHint=False`, and its instructions
+  describe the in-chat review (`REVIEW_INSTRUCTIONS`). The staging tools'
+  descriptions also name it: `REVIEW_WORDING` replaces their "approved in
+  Schatten" sentences, and `submit_change_set` points to
+  `get_change_set_review`; a sentence missing from a docstring fails the
+  server build. With the switch off the two tools are not registered and the
+  instructions and staging tool docstrings say that a person applies in
+  Schatten.
+
+| Tool | Engine call | Result |
+| --- | --- | --- |
+| `apply_change_set(change_set_key, review_fingerprint)` | `apply_change_set` with `ReviewChannel.mcp(client_id, client_name)` | `ChangeSetApplied`: the summary, per-operation results with created keys, and `refs` |
+| `reject_change_set(change_set_key, note=None)` | `reject_change_set` with the same channel, then commit | `ChangeSetSummary` with status `rejected` |
+
+- Any submitted change set of a non-deleted organisation can be decided,
+  whoever created it, as in the Metrics tab. The organisation is looked up
+  from the change set (`service.organisation_key_of`). The grant's User is
+  the reviewer and the actor of the created rows.
+- `review_fingerprint` must be 64 lowercase hex characters. The `note` is at
+  most 2,000 characters, may not contain NUL and is trimmed, blank meaning
+  none.
+- The engine's `ChangeSetApplyError` becomes a tool error `<code>: <message>`
+  with the review API's codes: `review_stale` (read the review again and
+  confirm with the user), `not_submitted`, `apply_in_progress` and
+  `apply_unavailable` (retry), and `apply_failed`, which adds that the change
+  set is now failed and a corrected one must be staged. An unknown change set
+  is `Change set not found.`.
+- `ReviewChannel` (`engine.py`) is passed explicitly to apply, reject and the
+  conditional `failed` update. The review API passes `web`. Migration 019 adds
+  `reviewed_via`, `review_client_id` and `review_client_name`, backfills
+  `web` for change sets reviewed before it, and checks that the channel is
+  set exactly with the review time and the client exactly for `mcp`. The
+  review API list and detail return them as `reviewedVia`, `reviewClientId`
+  and `reviewClientName`, and the Metrics AI panel shows "Reviewed through AI
+  client (MCP)" with the self-declared client name.
+- The session's `features.mcpChangeSetReview` is true only when both settings
+  are on. It switches the consent page's write explanation, the connect
+  instructions and the connections list's write badge ("Propose and apply
+  changes").
+
 ## MCP Tools
 
 Read service (`readOnlyHint`, `idempotentHint`, `openWorldHint=False`):
@@ -1092,6 +1182,7 @@ list_events(organisation_key, scenario_key)
 preview_generated_timeserie(spec)
 list_change_sets(organisation_key, status, scenario_key)
 get_change_set(change_set_key)
+get_change_set_review(change_set_key)
 ```
 
 Read service MCP prompts (TASK-069N), served from the skills' `SKILL.md`
@@ -1106,9 +1197,11 @@ remove_operation(change_set_key, position)       destructiveHint
 validate_change_set(change_set_key)              idempotentHint
 submit_change_set(change_set_key)
 discard_change_set(change_set_key)               destructiveHint
+apply_change_set(change_set_key, review_fingerprint)   destructiveHint, only with MCP_CHANGE_SET_REVIEW_ENABLED
+reject_change_set(change_set_key, note)          destructiveHint, only with MCP_CHANGE_SET_REVIEW_ENABLED
 ```
 
-There is no apply tool.
+No other tool applies or rejects a change set.
 
 ---
 
@@ -1228,6 +1321,11 @@ Referenced By:
 5. A human reviews the change set in the Metrics tab, which flags operations
    that replace existing values, and applies or rejects it. Apply creates the
    business rows atomically.
+6. Alternatively, with `MCP_CHANGE_SET_REVIEW_ENABLED=true`, the AI reads
+   `get_change_set_review`, shows the user the operations and the data they
+   replace, and, on the user's explicit instruction, calls `apply_change_set`
+   with the fingerprint or `reject_change_set`; the client asks the user to
+   approve the call.
 
 ---
 
@@ -1246,7 +1344,10 @@ When implementing AI Domain features:
 
 Avoid:
 
-- adding an apply tool or any MCP write to business tables;
+- adding any MCP tool other than `apply_change_set` that applies a change
+  set, or any MCP write to business tables outside the engine's apply;
+- registering the apply or reject tools without the switch, or applying
+  without the review fingerprint;
 - calling an LLM or storing LLM credentials;
 - adding background workers, queues or schedulers;
 - logging tokens, codes, request ids or tool arguments;
