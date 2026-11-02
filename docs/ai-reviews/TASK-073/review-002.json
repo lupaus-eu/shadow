@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-073/review-002",
+  "task": {
+    "id": "TASK-073",
+    "path": "tasks/TASK-073-emsign-ca-trust-refresh.md"
+  },
+  "round": 2,
+  "reviewed_at": "2026-11-02T15:10:00Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": {
+    "number": 126,
+    "url": "https://github.com/reflector-oy/schatten/pull/126"
+  },
+  "source": {
+    "base_sha": "2bf49b72e2881940a2124f29c569e75003c89c74",
+    "head_sha": "c0f33c631aff80820785d9003d88eb9ae51df808",
+    "comparison": "2bf49b72e2881940a2124f29c569e75003c89c74...c0f33c631aff80820785d9003d88eb9ae51df808",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Round 2 reviews c0f33c6, focusing on the changes since c34c301: the python:3.12-slim re-pin, the task text, and the runtime QA script's dind address lookup, which now reads the default bridge network's per-network address instead of the deprecated top-level field. That field made PR 126's CI fail on the runner's Docker. The new python pin is the tag's current index digest, with Python 3.12.16. The dind container joins the default bridge network because it is started without a network option on the runner's daemon, and a missing entry makes the template fail rather than return a wrong address. No other script, deploy tool or compose file uses deprecated top-level NetworkSettings fields. The CI script fix is documented in the task as a developer-requested scope addition. The reviewer could not run the script against an Engine without the top-level fields; a full local run on Docker 28 passed, and PR 126's CI will confirm. Both round-1 findings are fixed; one new low-severity finding predates this PR.",
+    "findings": [
+      {
+        "id": "F-003",
+        "category": "bug",
+        "severity": "low",
+        "summary": "A failed or empty dind address lookup does not stop the runtime QA script where it fails, and the certificate-persistence check could compare two empty fingerprints.",
+        "rationale": "The address helper is called inside command substitutions used as arguments, where set -e does not apply, so a lookup error becomes an empty curl resolve or openssl connect address. That is the confusing symptom seen on PR 126. The earlier HTTPS health check fails first, so there is no live false pass. The pattern predates this PR.",
+        "recommendation": "Resolve the address once after the daemon starts, fail clearly if it is empty or not an IPv4 address, and optionally fail on an empty fingerprint; a follow-up task is acceptable.",
+        "locations": [
+          {
+            "path": ".github/scripts/verify-production-runtime.sh",
+            "line": 102
+          },
+          {
+            "path": ".github/scripts/verify-production-runtime.sh",
+            "line": 429
+          },
+          {
+            "path": ".github/scripts/verify-production-runtime.sh",
+            "line": 659
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-073/review-001",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "The backend Dockerfile now pins the python:3.12-slim tag's current index digest, whose linux/amd64 image has Python 3.12.16.",
+        "validated_by": {
+          "review_id": "TASK-073/review-002",
+          "commit": "c0f33c631aff80820785d9003d88eb9ae51df808"
+        }
+      },
+      {
+        "record_id": "TASK-073/review-001",
+        "finding_id": "F-002",
+        "disposition": "fixed",
+        "rationale": "The task's verification heading now names both verification dates.",
+        "validated_by": {
+          "review_id": "TASK-073/review-002",
+          "commit": "c0f33c631aff80820785d9003d88eb9ae51df808"
+        }
+      }
+    ]
+  }
+}

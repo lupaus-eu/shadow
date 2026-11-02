@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-073/review-001",
+  "task": {
+    "id": "TASK-073",
+    "path": "tasks/TASK-073-emsign-ca-trust-refresh.md"
+  },
+  "round": 1,
+  "reviewed_at": "2026-11-02T13:20:00Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "2bf49b72e2881940a2124f29c569e75003c89c74",
+    "head_sha": "c34c30182458c8f79903cb6023a3ce2d1f7bfe6a",
+    "comparison": "2bf49b72e2881940a2124f29c569e75003c89c74...c34c30182458c8f79903cb6023a3ce2d1f7bfe6a",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Round 1 reviews c34c301. Every change maps to a TASK-073 requirement, with no dependency or uv.lock change. The new uv 0.13.4, node:22-bookworm-slim (Node 22.23.4) and caddy:2.11.7-alpine pins are multi-arch index digests of their tags, and the images contain the claimed versions. The Caddy 2.11.7 image still needs the file-capability workaround, and the workaround leaves no capability on the binary. The image runs as 10001 and no longer contains the emSign ECC G3 root. Both Caddyfiles validate, and the CI production frontend check script passes against a locally built image. uv lock --check with uv 0.13.4 passes, and the setup-uv version input is valid. The old pins remain only in the task text and in historical QA evidence, which should stay unchanged. The reviewer did not build the backend production image, run the test suites, see CI or check the production release. Two info-level findings, nothing blocking.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "documentation",
+        "severity": "info",
+        "summary": "The python:3.12-slim pin is no longer the tag's current index digest because upstream re-pushed the index after the pin was taken.",
+        "rationale": "The linux/amd64 manifest in the pinned index is identical to the current tag's, so the UpCloud amd64 build gets the same Python 3.12.16 image. Only other-architecture entries differ. The pin is valid and met the task's current-digest requirement when it was taken.",
+        "recommendation": "No change needed. Optionally re-pin to the current index before merge.",
+        "locations": [
+          {
+            "path": "backend/Dockerfile",
+            "line": 1
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "documentation",
+        "severity": "info",
+        "summary": "The task's verification results heading is dated 2026-10-30 but also contains the 2026-11-02 Caddy results.",
+        "rationale": "The heading date no longer covers every entry under it. This is cosmetic and does not misstate what was verified.",
+        "recommendation": "Optionally retitle the heading to include both dates.",
+        "locations": [
+          {
+            "path": "tasks/TASK-073-emsign-ca-trust-refresh.md",
+            "line": 156
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": []
+  }
+}

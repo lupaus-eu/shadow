@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-073/review-004",
+  "task": {
+    "id": "TASK-073",
+    "path": "tasks/TASK-073-emsign-ca-trust-refresh.md"
+  },
+  "round": 4,
+  "reviewed_at": "2026-11-02T18:05:00Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": {
+    "number": 126,
+    "url": "https://github.com/reflector-oy/schatten/pull/126"
+  },
+  "source": {
+    "base_sha": "2bf49b72e2881940a2124f29c569e75003c89c74",
+    "head_sha": "734ea518d56d6352e41eaf0f8c391faf1ec939aa",
+    "comparison": "2bf49b72e2881940a2124f29c569e75003c89c74...734ea518d56d6352e41eaf0f8c391faf1ec939aa",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "clean",
+    "summary": "Round 4 reviews 734ea51, focusing on the runtime QA script and task text since 4345f51. A failing first certificate fingerprint pipeline now stops with its own failure message under pipefail, and the empty-output guard still covers a pipeline that succeeds with no output. The wait loop after the dind restart now fails on its last attempt, like the loop after the first start, so it cannot fall through silently. bash -n and shellcheck at warning severity pass. A harness under the script's shell options showed both failure paths exit with their message, and a daemon that comes back lets the run continue. The task text describes both fixes accurately, and no regression was found. The reviewer did not run the full script or a real daemon restart; the developer's full local run on Docker 28 passed.",
+    "findings": [],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-073/review-003",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "The first fingerprint assignment now fails with an explicit message when the TLS pipeline fails, before the empty-output guard.",
+        "validated_by": {
+          "review_id": "TASK-073/review-004",
+          "commit": "734ea518d56d6352e41eaf0f8c391faf1ec939aa"
+        }
+      },
+      {
+        "record_id": "TASK-073/review-003",
+        "finding_id": "F-002",
+        "disposition": "fixed",
+        "rationale": "The post-restart wait loop now fails with a clear message on its last attempt, matching the startup loop.",
+        "validated_by": {
+          "review_id": "TASK-073/review-004",
+          "commit": "734ea518d56d6352e41eaf0f8c391faf1ec939aa"
+        }
+      }
+    ]
+  }
+}

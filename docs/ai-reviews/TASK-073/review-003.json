@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-073/review-003",
+  "task": {
+    "id": "TASK-073",
+    "path": "tasks/TASK-073-emsign-ca-trust-refresh.md"
+  },
+  "round": 3,
+  "reviewed_at": "2026-11-02T16:40:00Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": {
+    "number": 126,
+    "url": "https://github.com/reflector-oy/schatten/pull/126"
+  },
+  "source": {
+    "base_sha": "2bf49b72e2881940a2124f29c569e75003c89c74",
+    "head_sha": "4345f51edac10aaf2ffaf16d39818652c0959548",
+    "comparison": "2bf49b72e2881940a2124f29c569e75003c89c74...4345f51edac10aaf2ffaf16d39818652c0959548",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Round 3 reviews 4345f51, focusing on the runtime QA script change since c0f33c6. The dind bridge address is now resolved and validated right after the daemon starts and again right after its restart. Every later use reads the current value, so none can be stale, and nothing still calls the old helper name. A harness under the script's shell options confirmed that a failed lookup stops the whole run with a clear message, and an empty or placeholder value fails the IPv4 check. bash -n and shellcheck at warning severity pass, and the task text describes the change accurately. The reviewer did not run the full script or a real daemon restart; the developer's full local run on Docker 28 passed. F-003 is fixed. One low and one info finding remain, both diagnostic quality only.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "bug",
+        "severity": "low",
+        "summary": "If the TLS connection fails when the first certificate fingerprint is taken, the run stops without a FAIL message before the new empty-fingerprint guard runs.",
+        "rationale": "Under pipefail, a failing openssl pipeline makes the assignment fail, and errexit stops the script. There is no ERR trap, so the run stops without saying why. The guard only covers a pipeline that succeeds with empty output. The run still stops, so this weakens diagnostics only.",
+        "recommendation": "Append an explicit failure message to the first fingerprint assignment, as the address lookup already does, or accept as is.",
+        "locations": [
+          {
+            "path": ".github/scripts/verify-production-runtime.sh",
+            "line": 666
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "bug",
+        "severity": "info",
+        "summary": "The wait loop after the dind restart does not fail on timeout, unlike the loop after the first start.",
+        "rationale": "The address lookup queries the host daemon, so it succeeds even if the inner daemon never comes back. The run would then stop later in the health wait with a less precise message. This behaviour predates this PR.",
+        "recommendation": "Optionally fail with a clear message when the post-restart wait loop times out.",
+        "locations": [
+          {
+            "path": ".github/scripts/verify-production-runtime.sh",
+            "line": 680
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-073/review-002",
+        "finding_id": "F-003",
+        "disposition": "fixed",
+        "rationale": "The address is resolved and validated after the daemon starts and after its restart, a failed or non-IPv4 lookup stops the run with a clear message, and an empty first fingerprint fails explicitly.",
+        "validated_by": {
+          "review_id": "TASK-073/review-003",
+          "commit": "4345f51edac10aaf2ffaf16d39818652c0959548"
+        }
+      }
+    ]
+  }
+}

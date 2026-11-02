@@ -97,7 +97,15 @@ for attempt in $(seq 1 60); do
   [[ "${attempt}" == 60 ]] && fail "isolated daemon did not start"
   sleep 1
 done
-dind_ip() { env -u DOCKER_HOST docker inspect --format '{{.NetworkSettings.IPAddress}}' "${dind}"; }
+# Per-network address: newer Engines no longer return the deprecated top-level
+# NetworkSettings.IPAddress. Resolved here, not inside later arguments, so a
+# failed lookup stops the run instead of becoming an empty address.
+resolve_dind_ip() {
+  dind_ip="$(env -u DOCKER_HOST docker inspect --format '{{(index .NetworkSettings.Networks "bridge").IPAddress}}' "${dind}")" \
+    || fail "could not inspect the isolated daemon's bridge address"
+  [[ "${dind_ip}" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]] || fail "isolated daemon has no IPv4 bridge address: '${dind_ip}'"
+}
+resolve_dind_ip
 for image in "${cli_image}" "${postgres_image}" "${ofelia_image}"; do
   docker pull --quiet "${image}" >/dev/null
 done
@@ -424,16 +432,16 @@ step "Published ports, TLS, redirect, headers and proxy trust"
 published="$(docker ps --format '{{.Label "com.docker.compose.service"}} {{.Ports}}' | awk 'NF > 1 && $0 ~ /->/')"
 [[ "$(wc -l <<<"${published}")" == 1 && "${published}" == frontend* ]] || fail "only frontend publishes ports: ${published}"
 grep -q '0.0.0.0:80->80/tcp' <<<"${published}" && grep -q '0.0.0.0:443->443/tcp' <<<"${published}" || fail "80/443 bindings"
-https() { curl --silent --show-error --insecure --resolve "app.example.test:443:$(dind_ip)" "$@"; }
+https() { curl --silent --show-error --insecure --resolve "app.example.test:443:${dind_ip}" "$@"; }
 [[ "$(https https://app.example.test/health)" == OK ]] || fail "HTTPS health"
 headers="$(https --dump-header - --output /dev/null https://app.example.test/)"
 for header in 'strict-transport-security: max-age=31536000' 'x-frame-options: DENY' "content-security-policy: default-src 'self'"; do
   grep -qi "^${header}" <<<"${headers}" || fail "missing header ${header}"
 done
-redirect="$(curl --silent --output /dev/null --write-out '%{http_code} %{redirect_url}' --resolve "app.example.test:80:$(dind_ip)" http://app.example.test/login)"
+redirect="$(curl --silent --output /dev/null --write-out '%{http_code} %{redirect_url}' --resolve "app.example.test:80:${dind_ip}" http://app.example.test/login)"
 [[ "${redirect}" == "308 https://app.example.test/login" ]] || fail "HTTP redirect: ${redirect}"
 https https://app.example.test/workspace/deep-link | grep -q '<div id="root"></div>' || fail "SPA fallback"
-issuer="$(echo | openssl s_client -connect "$(dind_ip):443" -servername app.example.test 2>/dev/null | openssl x509 -noout -issuer)"
+issuer="$(echo | openssl s_client -connect "${dind_ip}:443" -servername app.example.test 2>/dev/null | openssl x509 -noout -issuer)"
 grep -q 'Caddy Local Authority' <<<"${issuer}" || fail "internal QA certificate issuer: ${issuer}"
 status="$(https --output /dev/null --write-out '%{http_code}' \
   --header 'X-Schatten-Client-IP: 203.0.113.40' --header 'X-Forwarded-For: 203.0.113.30' \
@@ -654,8 +662,9 @@ done
 pass "key/credential/permission/disk-full/overlap failures publish nothing; 7-day retention prunes only job-owned files"
 
 step "Persistence across container replacement"
-fingerprint() { echo | openssl s_client -connect "$(dind_ip):443" -servername app.example.test 2>/dev/null | openssl x509 -noout -fingerprint -sha256; }
-cert_before="$(fingerprint)"
+fingerprint() { echo | openssl s_client -connect "${dind_ip}:443" -servername app.example.test 2>/dev/null | openssl x509 -noout -fingerprint -sha256; }
+cert_before="$(fingerprint)" || fail "could not read the certificate fingerprint before container replacement"
+[[ -n "${cert_before}" ]] || fail "no certificate fingerprint before container replacement"
 migrations_before="$(compose_release "${dir_one}" exec -T database sh -c 'psql -X -A -t -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT count(*) FROM schema_migrations"')"
 compose_release "${dir_one}" up --detach --no-build --pull never --no-deps --force-recreate database frontend >>"${log_file}" 2>&1
 wait_for_healthy "${dir_one}" database && wait_for_healthy "${dir_one}" frontend || fail "replaced containers unhealthy"
@@ -667,7 +676,13 @@ step "Host reboot simulation (daemon restart)"
 migration_started="$(docker inspect --format '{{.State.StartedAt}}' "$(compose_release "${dir_one}" ps --all --quiet migration)")"
 # Clean shutdown like a host reboot: the daemon stops its containers first.
 env -u DOCKER_HOST docker restart --time 120 "${dind}" >/dev/null
-for attempt in $(seq 1 60); do docker version >/dev/null 2>&1 && break; sleep 1; done
+for attempt in $(seq 1 60); do
+  docker version >/dev/null 2>&1 && break
+  [[ "${attempt}" == 60 ]] && fail "isolated daemon did not come back after restart"
+  sleep 1
+done
+# The bridge address can change when the daemon container restarts.
+resolve_dind_ip
 for service in database backend prediction-worker frontend; do
   wait_for_healthy "${dir_one}" "${service}" 90 || fail "${service} did not recover after restart"
 done

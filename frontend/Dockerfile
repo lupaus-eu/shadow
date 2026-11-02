@@ -1,4 +1,4 @@
-FROM docker.io/library/node:22-bookworm-slim@sha256:43ac6c60b8f89723f746e8a92ce91abd5017e627ce1ddfe4238355d3a30b772c AS base
+FROM docker.io/library/node:22-bookworm-slim@sha256:4b150b48b4116e2a22f2c39cc27025fbf4f153e2078fd3b14d159fdb5c7279da AS base
 
 WORKDIR /app
 
@@ -22,7 +22,7 @@ FROM deps AS build
 COPY . .
 RUN pnpm build
 
-FROM docker.io/library/caddy:2.11.4-alpine@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648 AS production
+FROM docker.io/library/caddy:2.11.7-alpine@sha256:e70b164da81ef698b3ad19af799ea6086ce6d9e48ed4079eb9fe26f6fbf14ee5 AS production
 
 # Drop the upstream file capability: no-new-privileges with cap_drop ALL refuses
 # to execute capability-bearing binaries. Compose instead allows ports 80/443
