@@ -203,8 +203,8 @@ non-canonical, port-bearing, malformed or wildcard origin rejection, loopback
 health, HTTP -> HTTPS redirect, SPA fallback, wrong-Host rejection on 80 and
 443, forwarded-header replacement with the actual peer address, no HTTP/3
 advertisement, HSTS, Referrer-Policy, nosniff, frame denial, enforced CSP and
-selective callback query redaction plus CSRF-header redaction while retaining
-ordinary request metadata.
+selective callback query redaction, including Entra's `session_state`, plus
+CSRF-header redaction while retaining ordinary request metadata.
 
 Automated checks do not replace provider/browser verification. Run simulated
 direct-Entra OIDC and local Caddy checks from
@@ -879,9 +879,11 @@ uv run pytest tests/test_auth_api.py tests/test_auth_provider.py \
 
 The configuration check covers loopback ingress, no Authentik services, exact
 HTTPS origin, secure cookie setting, direct Entra claim policy, fixed Caddy peer
-and leaf-only certificate mount. The backend suite covers exact issuer, missing
+and leaf-only certificate mount, and that the local Caddyfile redacts the CSRF
+header and `session_state`. The backend suite covers exact issuer, missing
 email, no `email_verified` dependency, guarded first linking, existing identity,
-sessions, CSRF, logout, spoofed forwarded headers and callback-log redaction.
+sessions, CSRF, logout, spoofed forwarded headers and callback-log redaction,
+including `session_state`.
 The local provisioning tests cover seeded/populated database preservation,
 validation, conflicts and deleted users without identities, sessions or role
 changes.

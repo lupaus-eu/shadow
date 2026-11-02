@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-070/review-001",
+  "task": {
+    "id": "TASK-070",
+    "path": "tasks/TASK-070-session-state-log-redaction.md"
+  },
+  "round": 1,
+  "reviewed_at": "2026-10-30T14:31:00Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "84ca37df2232638eb620a0d567b40ca86f054ae7",
+    "head_sha": "2f2cfe0ea0fad4b9711c5923ffef365cf75cd1b9",
+    "comparison": "84ca37df2232638eb620a0d567b40ca86f054ae7...2f2cfe0ea0fad4b9711c5923ffef365cf75cd1b9",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Round 1 reviews 2f2cfe0. Every change maps to a TASK-070 requirement, with no scope creep or new dependency. Both Caddyfiles add an exact-name replace rule for session_state, which Caddy's query filter applies independently of the state rule. The backend regex keeps all ten previously redacted keys, now redacts session_state case-insensitively including empty and percent-encoded values, leaves keys that merely contain session_state alone, and state= still cannot match inside session_state=. Both new backend test cases fail when the old regex is patched back in. The production frontend image check fails if session_state leaks, none of its secret markers is a substring of another, and its string concatenation and shell continuations are correct. ruff check, ruff format --check on the touched backend files, the auth and MCP OAuth log-filter tests, bash -n and a Python compile check pass. The ADR-004, DEPLOYMENT, LOCAL-DEVELOPMENT and TESTING wording matches the behaviour. The reviewer did not run Docker, so the local Caddy probe and the production image check were not re-run by the reviewer. Two low-severity findings remain.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "missing_test",
+        "severity": "low",
+        "summary": "The production frontend check's fixed-string marker state=REDACTED now always matches inside session_state=REDACTED.",
+        "rationale": "The probe request now carries session_state alongside state, and the expected-marker loop greps fixed strings without a separator. If the state rule regressed to dropping the key instead of replacing it, the metadata-retention check would no longer notice. A leaked state value is still caught by the secret marker check, so severity is low. The same overlap already existed for token=REDACTED inside access_token and refresh_token markers.",
+        "recommendation": "Anchor the expected markers on a preceding query separator so each key is matched exactly.",
+        "locations": [
+          {
+            "path": ".github/scripts/verify-production-frontend.sh",
+            "line": 115
+          },
+          {
+            "path": ".github/scripts/verify-production-frontend-client.py",
+            "line": 27
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "The OIDC login sequence diagram's Caddy note still lists only the four original callback keys.",
+        "rationale": "The task requires updating the documentation that lists the redacted query keys, and AGENTS.md requires keeping PlantUML sources and generated SVGs in sync when a change affects a workflow diagram. The completed historical authentication QA checklist also lists four keys but is evidence and should stay unchanged.",
+        "recommendation": "Add session_state to the diagram note and regenerate the SVG.",
+        "locations": [
+          {
+            "path": "docs/diagrams/sequence-oidc-login.puml",
+            "line": 32
+          },
+          {
+            "path": "docs/diagrams/generated/sequence-oidc-login.svg"
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": []
+  }
+}

@@ -504,7 +504,8 @@ def test_access_log_filter_removes_complete_callback_query() -> None:
         (
             "192.0.2.1",
             "GET",
-            "/api/v1/auth/callback?code=secret&state=state&email=user@example.com",
+            "/api/v1/auth/callback?code=secret&session_state=secret-session"
+            "&state=state&email=user@example.com",
             "1.1",
             303,
         ),
@@ -516,6 +517,38 @@ def test_access_log_filter_removes_complete_callback_query() -> None:
     assert rendered.endswith('GET /api/v1/auth/callback HTTP/1.1" 303')
     assert "secret" not in rendered
     assert "user@example.com" not in rendered
+
+
+@pytest.mark.parametrize(
+    ("path", "expected"),
+    [
+        (
+            "/api/v1/auth/login?session_state=SECRETSESSION&visible=kept",
+            "/api/v1/auth/login?session_state=REDACTED&visible=kept",
+        ),
+        (
+            "/login?visible=kept&SESSION_STATE=SECRETSESSION",
+            "/login?visible=kept&SESSION_STATE=REDACTED",
+        ),
+    ],
+)
+def test_access_log_filter_redacts_entra_session_state(
+    path: str, expected: str
+) -> None:
+    record = logging.LogRecord(
+        "uvicorn.access",
+        logging.INFO,
+        "",
+        0,
+        '%s - "%s %s HTTP/%s" %d',
+        ("192.0.2.1", "GET", path, "1.1", 200),
+        None,
+    )
+
+    assert SensitiveQueryFilter().filter(record)
+    rendered = record.getMessage()
+    assert f"GET {expected} HTTP/1.1" in rendered
+    assert "SECRETSESSION" not in rendered
 
 
 def test_identity_linking_rejects_missing_or_conflicting_candidates(

@@ -501,13 +501,13 @@ All `/api/v1/auth` responses, including redirects and errors, carry
 intermediary.
 
 Caddy access logging retains normal request metadata but replaces every value
-of the query keys `code`, `state`, `error` and `error_description` with
-`REDACTED` on every path. It retains credential-header redaction and never logs
-cookies or authorization values. FastAPI does not log callback query strings
-and never logs those four values, provider tokens, PKCE verifiers, client
-secrets, raw session or pre-authentication cookies, CSRF tokens or personal
-email. Error responses contain generic local codes and messages, not provider
-descriptions.
+of the query keys `code`, `state`, `error`, `error_description` and Entra's
+`session_state` with `REDACTED` on every path. It retains credential-header
+redaction and never logs cookies or authorization values. FastAPI does not log
+callback query strings and never logs those values, provider tokens, PKCE
+verifiers, client secrets, raw session or pre-authentication cookies, CSRF
+tokens or personal email. Error responses contain generic local codes and
+messages, not provider descriptions.
 
 ## Browser Security Headers
 

@@ -25,7 +25,8 @@ with socket.create_connection((HOST, 443), timeout=5) as probe:
 
 response, body = request(
     "/api/headers?code=secret-code&state=secret-state&error=secret-error&"
-    "error_description=secret-description&visible=kept",
+    "error_description=secret-description&session_state=secret-session-state&"
+    "visible=kept",
     headers={
         "Forwarded": "for=203.0.113.30;proto=http;host=evil.test",
         "X-Forwarded-For": "203.0.113.30, 198.51.100.10",

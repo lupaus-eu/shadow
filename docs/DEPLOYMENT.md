@@ -818,13 +818,13 @@ backup safeguards are not permission to auto-baseline or overwrite existing data
 
 Caddy access logs retain useful method, path, query, status, client and timing
 metadata. Its query filter replaces every value for `code`, `state`, `error`,
-`error_description`, ADR-015's pending request id carriers `request` and
-`return_to`, and OAuth token parameters a client might misplace in a query
-string (`token`, `access_token`, `refresh_token`, `code_verifier`), with
-`REDACTED` on every path. The log filter also replaces the
-`Location` response header (authorization redirects carry request ids, codes
-and the Entra `state`), the `X-Csrf-Token` request header and, explicitly, the
-`Authorization` request header. Default Caddy credential-header redaction
+`error_description`, Entra's `session_state`, ADR-015's pending request id
+carriers `request` and `return_to`, and OAuth token parameters a client might
+misplace in a query string (`token`, `access_token`, `refresh_token`,
+`code_verifier`), with `REDACTED` on every path. The log filter also replaces
+the `Location` response header (authorization redirects carry request ids,
+codes and the Entra `state`), the `X-Csrf-Token` request header and,
+explicitly, the `Authorization` request header. Default Caddy credential-header redaction
 remains enabled; do not enable `log_credentials`. The backend access-log
 filter redacts the same query keys.
 

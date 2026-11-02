@@ -3,8 +3,8 @@ import re
 
 _SENSITIVE_QUERY_VALUE = re.compile(
     r"(?i)(?P<prefix>(?:^|[?&])"
-    r"(?:code|state|error|error_description|request|return_to|token|"
-    r"access_token|refresh_token|code_verifier)=)[^&\s]*"
+    r"(?:code|state|error|error_description|session_state|request|return_to|"
+    r"token|access_token|refresh_token|code_verifier)=)[^&\s]*"
 )
 
 

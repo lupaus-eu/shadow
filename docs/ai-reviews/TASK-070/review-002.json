@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-070/review-002",
+  "task": {
+    "id": "TASK-070",
+    "path": "tasks/TASK-070-session-state-log-redaction.md"
+  },
+  "round": 2,
+  "reviewed_at": "2026-10-30T14:52:00Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "84ca37df2232638eb620a0d567b40ca86f054ae7",
+    "head_sha": "f6e477b6c5e18a6815131bd9121c16a90ca605d8",
+    "comparison": "84ca37df2232638eb620a0d567b40ca86f054ae7...f6e477b6c5e18a6815131bd9121c16a90ca605d8",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "clean",
+    "summary": "Round 2 reviews f6e477b, which touches only the production frontend check's expected-marker grep, the OIDC login sequence diagram source and its regenerated SVG, and the TASK-070 file; the whole branch remains coherent. The reviewer replayed the committed marker loop against Caddy-style JSON access-log lines with sorted, re-encoded queries: it passes with every key present and fails on the matching marker when state, token, session_state, code or visible is dropped, whereas the previous fixed-string grep still passed with state dropped. None of the twelve markers contains an extended-regex special character, and each follows a query separator, so token= no longer matches inside access_token= or refresh_token= either. The implementer also ran the check against real Caddy containers: it passes on the built production frontend image and fails on a variant whose state rule deletes the key instead of replacing it. The SVG's embedded source decodes to the new diagram source, only the note text changed, and the note stays clear of the FastAPI lifeline and the next arrow label. git diff --check and bash -n pass, and the backend is unchanged since round 1, whose full backend run gave 1226 passed and 76 skipped. No new findings.",
+    "findings": [],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-070/review-001",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "The expected markers are now matched after a query separator with an extended regex, so state=REDACTED cannot be satisfied by session_state=REDACTED; a state rule that deletes the key now fails the check, as shown both by the reviewer's replay and by a real Caddy run.",
+        "validated_by": {
+          "review_id": "TASK-070/review-002",
+          "commit": "f6e477b6c5e18a6815131bd9121c16a90ca605d8"
+        }
+      },
+      {
+        "record_id": "TASK-070/review-001",
+        "finding_id": "F-002",
+        "disposition": "fixed",
+        "rationale": "The OIDC login sequence diagram's Caddy note lists session_state, the SVG was regenerated with the repository renderer and matches the source, and the task file lists the diagram.",
+        "validated_by": {
+          "review_id": "TASK-070/review-002",
+          "commit": "f6e477b6c5e18a6815131bd9121c16a90ca605d8"
+        }
+      }
+    ]
+  }
+}

@@ -43,5 +43,6 @@ PY
 
 grep -Fq 'wss://app.localhost' "${REPOSITORY_ROOT}/local/Caddyfile"
 grep -Fq 'request>headers>X-Csrf-Token replace REDACTED' "${REPOSITORY_ROOT}/local/Caddyfile"
+grep -Fq 'replace session_state REDACTED' "${REPOSITORY_ROOT}/local/Caddyfile"
 grep -Fq 'clientPort: 443' "${REPOSITORY_ROOT}/frontend/vite.config.ts"
 printf 'Local Caddy/direct-Entra Compose, TLS mount, proxy, and loopback checks passed.\n'

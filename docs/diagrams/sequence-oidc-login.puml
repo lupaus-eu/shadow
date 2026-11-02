@@ -31,8 +31,9 @@ Provider --> Browser : Redirect with code + state
 Browser -> Caddy : GET /api/v1/auth/callback?code=...&state=...
 note right of Caddy
   Access log replaces code, state,
-  error and error_description values
-  with REDACTED.
+  error, error_description and
+  session_state values with
+  REDACTED.
 end note
 Caddy -> API : Callback with fixed proxy headers
 API -> DB : Atomically consume browser-bound transaction

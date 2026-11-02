@@ -15,6 +15,8 @@
 				replace state REDACTED
 				replace error REDACTED
 				replace error_description REDACTED
+				# Entra's login session identifier on the callback.
+				replace session_state REDACTED
 				# ADR-015: MCP OAuth pending request ids.
 				replace request REDACTED
 				replace return_to REDACTED
