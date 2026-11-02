@@ -674,6 +674,30 @@ def test_authenticated_get_and_delete_are_not_supported_statelessly(
     assert client.put("/api/mcp/read", headers=headers).status_code == 405
 
 
+@pytest.mark.parametrize("with_token", [True, False])
+@pytest.mark.parametrize("server", SERVERS)
+@pytest.mark.parametrize("method", ["GET", "POST"])
+def test_trailing_slash_is_not_redirected(
+    client: TestClient,
+    session_factory: sessionmaker[Session],
+    server: str,
+    method: str,
+    with_token: bool,
+) -> None:
+    headers = dict(MCP_HEADERS)
+    if with_token:
+        token, _ = _issue_token(session_factory, server)
+        headers["Authorization"] = f"Bearer {token}"
+
+    response = client.request(
+        method, f"/api/mcp/{server}/", headers=headers, follow_redirects=False
+    )
+
+    assert response.status_code == 404
+    assert "location" not in response.headers
+    assert response.headers["cache-control"] == "no-store"
+
+
 @contextmanager
 def _captured_logs() -> Generator[io.StringIO, None, None]:
     """Capture what the root and the non-propagating fastmcp loggers emit."""

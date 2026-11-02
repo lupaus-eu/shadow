@@ -720,7 +720,9 @@ unknown, repeated and other-resource tokens, `403 insufficient_scope` with a
 stubbed `ROLE_SCOPES` mapping, a role change acting on the next call, expired
 and revoked tokens and grants and a soft-deleted User, per-grant limiting by
 `mcp_rate_limiter` while `auth_rate_limiter` and `oauth_rate_limiter` are never
-called, the `MCP_ENABLED=false` 404s, the stateless 405s, that an MCP token is
+called, the `MCP_ENABLED=false` 404s, the stateless 405s, trailing-slash MCP
+paths answering 404 without `Location` and with `no-store`, with and without a
+token (TASK-071), that an MCP token is
 not accepted on `/api/v1`, and that neither tokens nor tool arguments reach the
 root or `fastmcp` logs. Concurrent `whoami` calls by two Users, over a
 file-backed SQLite database because the in-memory one shares one connection,
@@ -882,8 +884,9 @@ HTTPS origin, secure cookie setting, direct Entra claim policy, fixed Caddy peer
 and leaf-only certificate mount, and that the local Caddyfile redacts the CSRF
 header and `session_state`. The backend suite covers exact issuer, missing
 email, no `email_verified` dependency, guarded first linking, existing identity,
-sessions, CSRF, logout, spoofed forwarded headers and callback-log redaction,
-including `session_state`.
+sessions, CSRF, logout, spoofed forwarded headers, callback-log redaction
+including `session_state`, and trailing-slash paths answering 404 instead of a
+redirect (TASK-071).
 The local provisioning tests cover seeded/populated database preservation,
 validation, conflicts and deleted users without identities, sessions or role
 changes.

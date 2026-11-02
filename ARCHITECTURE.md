@@ -360,6 +360,13 @@ Status: initial direction
 
 Backend toteutetaan FastAPI:lla. API-tyyli on alustavasti HTTP/JSON.
 
+Reittien polut ovat tarkkoja eivätkä pääty kauttaviivaan. FastAPI ei
+uudelleenohjaa loppukauttaviivallista polkua (`redirect_slashes=False`,
+TASK-071), vaan vastaa `404` ilman `Location`-headeria. Starlette rakentaisi
+uudelleenohjauksen pyynnön schemestä ja Hostista, ja Caddyn takana FastAPI
+näkee `http`:n; ADR-004:n mukaan uudelleenohjaukset rakennetaan vain kiinteästä
+public originista.
+
 Endpointien nimeämiskäytäntö, request/response-malli, virheformaatti ja versionointikäytäntö täsmennetään ensimmäisissä API-taskeissa.
 
 Alustava virheformaattisuositus:
@@ -618,7 +625,8 @@ Accepted design:
   `schatten.write`), stateless with JSON responses. `create_app()` builds
   them, registers exact GET, POST and DELETE routes wrapped in `McpBearerAuth`
   (not `app.mount`, which redirects to a trailing slash) and runs both session
-  managers in one combined lifespan. **Only `apply_change_set`, behind
+  managers in one combined lifespan. The trailing-slash spelling
+  `/api/mcp/<server>/` answers 404 without `Location` (TASK-071). **Only `apply_change_set`, behind
   `MCP_CHANGE_SET_REVIEW_ENABLED`, applies changes through MCP.**
 - Schatten is its own OAuth 2.1 authorization server: discovery, Dynamic
   Client Registration limited by a redirect URI allowlist, mandatory PKCE

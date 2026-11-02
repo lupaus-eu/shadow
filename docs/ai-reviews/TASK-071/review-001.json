@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-071/review-001",
+  "task": {
+    "id": "TASK-071",
+    "path": "tasks/TASK-071-api-trailing-slash-redirect.md"
+  },
+  "round": 1,
+  "reviewed_at": "2026-10-30T14:21:51Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "84ca37df2232638eb620a0d567b40ca86f054ae7",
+    "head_sha": "99b54ae50e17af839ac46378ae2302a2650ac1a6",
+    "comparison": "84ca37df2232638eb620a0d567b40ca86f054ae7...99b54ae50e17af839ac46378ae2302a2650ac1a6",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "The change implements TASK-071 within scope: create_app() builds FastAPI with redirect_slashes disabled, two parametrised regression tests and three documentation edits were added, and no dependency, Caddyfile, Compose, Dockerfile, uvicorn command line or proxy-trust setting changed. In the installed FastAPI 0.138.1 and Starlette 1.3.1 the slash-redirect fallback runs only in the top-level app router; included routers and the exact MCP routes are served by it, so the one flag covers every route. Building the app with MCP enabled and requesting all 161 registered route and method combinations with a trailing slash gave 404 without Location for each; no registered route ends in a slash. Turning the flag back on made all 8 new test cases fail with 307, and the working tree was restored afterwards. A short-lived uvicorn server with the fastapi CLI's proxy-header defaults, reached from a non-loopback interface with Caddy's Host and forwarded headers, answered 404 without Location on the MCP read and write, auth session and health slash paths and kept no-store on the API paths; with the redirect re-enabled the same requests got a 307 to an http Location. No frontend API call, MCP connect instruction, plugin MCP configuration, Caddy route, health check or documented URL uses a trailing slash. Other backend redirects and Location headers come from the fixed public origin, the IdP authorization URL, validated registered OAuth redirect targets or a relative path. The two test files, the full backend suite (1232 passed, 76 skipped without the PostgreSQL integration environment), ruff check and pyright passed; ruff format check lists 16 files outside this diff, and CI runs only ruff check. The API Design paragraph in ARCHITECTURE.md, the AI domain MCP Servers addition and the TESTING.md authentication coverage sentence are accurate. Two documentation gaps are recorded as findings. Noted for human judgement and not recorded as findings: the MCP test covers only the with-token case although routing precedes the bearer wrapper and a tokenless probe also got 404 without Location; the tests guard the app-level flag but not a future mounted sub-app with its own redirect default; and the existing ruff format debt is out of scope.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "The AI Via MCP section of ARCHITECTURE.md was not updated although the task's documentation list names it.",
+        "rationale": "The bullet on the MCP routes still explains only why app.mount is avoided. The general API Design paragraph covers the MCP routes, so the section is incomplete rather than wrong.",
+        "recommendation": "Add a clause saying the trailing-slash spelling answers 404 without Location, or trim the task's documentation list.",
+        "locations": [
+          {
+            "path": "ARCHITECTURE.md",
+            "line": 626
+          },
+          {
+            "path": "tasks/TASK-071-api-trailing-slash-redirect.md",
+            "line": 141
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "documentation",
+        "severity": "info",
+        "summary": "The MCP Server Harness coverage list in docs/TESTING.md does not mention the new MCP trailing-slash test.",
+        "rationale": "That paragraph lists what the MCP auth tests cover, including the MCP-disabled 404s and the stateless 405s, but omits the new case. The task asked only for the authentication coverage paragraph.",
+        "recommendation": "Add trailing-slash MCP paths answering 404 without Location and with no-store to the list.",
+        "locations": [
+          {
+            "path": "docs/TESTING.md",
+            "line": 715
+          },
+          {
+            "path": "backend/tests/test_mcp_auth.py",
+            "line": 679
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": []
+  }
+}

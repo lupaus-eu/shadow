@@ -482,6 +482,19 @@ def test_forwarded_client_header_is_accepted_only_from_configured_caddy_peer(
     assert response.status_code == 200
 
 
+@pytest.mark.parametrize("path", ["/health/", "/api/v1/auth/session/"])
+@pytest.mark.parametrize("method", ["GET", "POST"])
+def test_trailing_slash_is_not_redirected(
+    client: TestClient, path: str, method: str
+) -> None:
+    # A slash redirect builds Location from the scheme FastAPI sees, which is
+    # http behind Caddy (TASK-071).
+    response = client.request(method, path, headers={"X-Forwarded-Proto": "https"})
+
+    assert response.status_code == 404
+    assert "location" not in response.headers
+
+
 def test_fixed_window_rate_limiter_is_bounded_and_resets() -> None:
     limiter = FixedWindowRateLimiter(max_entries=1)
     first_window = datetime(2026, 8, 15, 10, 0, tzinfo=UTC)

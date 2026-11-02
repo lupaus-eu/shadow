@@ -616,7 +616,12 @@ The code is in `backend/app/mcp/`: `endpoints.py` builds both servers,
   (`json_response=True`). It registers the exact routes `/api/mcp/read` and
   `/api/mcp/write` for GET, POST and DELETE, outside the OpenAPI schema, each
   wrapped in `McpBearerAuth`. `app.mount` is not used, because it redirects
-  `/api/mcp/<server>` to a trailing slash. One combined lifespan runs both
+  `/api/mcp/<server>` to a trailing slash. Nor does the app redirect
+  `/api/mcp/<server>/` back (TASK-071): FastAPI is created with
+  `redirect_slashes=False`, so the slash spelling answers 404 without
+  `Location`, also with a valid token, and a client never resends its token to
+  a redirect target built from the `http` scheme FastAPI sees behind Caddy.
+  One combined lifespan runs both
   session managers; the OIDC provider initialisation in it stays skipped in the
   test environment, which now also runs the lifespan. Stateless servers keep
   no MCP session or server-sent event stream, so an authenticated GET or DELETE

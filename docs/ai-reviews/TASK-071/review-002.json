@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-071/review-002",
+  "task": {
+    "id": "TASK-071",
+    "path": "tasks/TASK-071-api-trailing-slash-redirect.md"
+  },
+  "round": 2,
+  "reviewed_at": "2026-10-30T14:25:00Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "84ca37df2232638eb620a0d567b40ca86f054ae7",
+    "head_sha": "dd887e7f8a2b67beb0291b0a3e47b8ad4a95b512",
+    "comparison": "84ca37df2232638eb620a0d567b40ca86f054ae7...dd887e7f8a2b67beb0291b0a3e47b8ad4a95b512",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "clean",
+    "summary": "Round 2 reviewed the round 1 fix commit and re-checked the whole branch from the base. The AI Via MCP bullet in ARCHITECTURE.md now says the trailing-slash MCP spelling answers 404 without Location, and the MCP Server Harness list in docs/TESTING.md names the trailing-slash 404, no-Location and no-store cases with and without a token; both match the code and tests. The MCP trailing-slash test now covers GET and POST on both servers with and without a valid token, with redirect-following off. The auth and MCP auth test files pass (84 tests). Turning the app-level flag back on made all 12 trailing-slash cases fail, and the working tree was restored afterwards. Ruff check passes, the changed Python files are formatted and pyright reports 0 errors. The branch still changes no dependency, Caddyfile, Compose, Dockerfile or proxy-trust code, and no round 2 change touches application code, so the round 1 conclusions on route coverage, trailing-slash dependencies and request-derived redirects still hold. Noted as cosmetic and not a finding: one edited ARCHITECTURE.md line exceeds 80 characters, as about 20 existing lines there do, and CI does not lint Markdown.",
+    "findings": [],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-071/review-001",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "The AI Via MCP bullet now says the trailing-slash spelling answers 404 without Location, as the task's documentation list requires.",
+        "validated_by": {
+          "review_id": "TASK-071/review-002",
+          "commit": "dd887e7f8a2b67beb0291b0a3e47b8ad4a95b512"
+        }
+      },
+      {
+        "record_id": "TASK-071/review-001",
+        "finding_id": "F-002",
+        "disposition": "fixed",
+        "rationale": "The MCP Server Harness coverage list now names the trailing-slash cases with and without a token, matching the parametrised test.",
+        "validated_by": {
+          "review_id": "TASK-071/review-002",
+          "commit": "dd887e7f8a2b67beb0291b0a3e47b8ad4a95b512"
+        }
+      }
+    ]
+  }
+}

@@ -72,7 +72,9 @@ def create_app(
                 )
             yield
 
-    app = FastAPI(title="Schatten API", lifespan=lifespan)
+    # A slash redirect would build Location from the request's scheme and Host,
+    # and FastAPI sees http behind Caddy. Trailing-slash paths answer 404.
+    app = FastAPI(title="Schatten API", lifespan=lifespan, redirect_slashes=False)
     app.state.settings = resolved_settings
     app.state.oidc_provider = resolved_provider
     app.state.auth_rate_limiter = FixedWindowRateLimiter()
