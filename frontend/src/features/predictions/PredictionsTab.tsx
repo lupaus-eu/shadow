@@ -40,6 +40,7 @@ import {
   requestDurations,
   requestNoticeMessage
 } from "./predictionRequestPresentation";
+import Alert from "../../components/Alert";
 
 type EventOption = EventDto & {
   selectionId: string;
@@ -85,6 +86,15 @@ function usesManualSeasonalPeriod(metric: PredictionPreflightMetricDto): boolean
 // The backend rejects any other period, so a kept one would fail every later request.
 function isValidManualSeasonalPeriod(value: number): boolean {
   return Number.isInteger(value) && value >= 2;
+}
+
+// The input's invalid marker uses this too, so it does not depend on the closable error.
+function confidenceLevelProblem(value: string): string | null {
+  if (!/^\d+$/.test(value))
+    return "Enter a whole-number prediction interval level from 50 through 99.";
+  const level = Number(value);
+  if (level < 50 || level > 99) return "Prediction interval level must be from 50 through 99.";
+  return null;
 }
 
 function toggleSet(set: Set<string>, value: string): Set<string> {
@@ -608,17 +618,9 @@ function PredictionsWorkspace(props: { orgId: string }) {
   }
 
   function selectedConfidenceLevel(): number | null {
-    if (!/^\d+$/.test(confidenceLevel)) {
-      setConfidenceLevelError("Enter a whole-number prediction interval level from 50 through 99.");
-      return null;
-    }
-    const value = Number(confidenceLevel);
-    if (value < 50 || value > 99) {
-      setConfidenceLevelError("Prediction interval level must be from 50 through 99.");
-      return null;
-    }
-    setConfidenceLevelError("");
-    return value;
+    const problem = confidenceLevelProblem(confidenceLevel);
+    setConfidenceLevelError(problem ?? "");
+    return problem ? null : Number(confidenceLevel);
   }
 
   function updateConfidenceLevel(value: string) {
@@ -791,17 +793,15 @@ function PredictionsWorkspace(props: { orgId: string }) {
     return (
       <section className="predictions-tab">
         <h1 className="page-title">Predictions</h1>
-        <div className="alert alert--danger" role="alert">
-          <p className="alert__title">Predictions could not be loaded</p>
-          <p className="alert__text">{error}</p>
-          <button
-            className="btn btn--secondary"
-            type="button"
-            onClick={() => setRefreshVersion((current) => current + 1)}
-          >
-            Try again
-          </button>
-        </div>
+        <Alert
+          key={error}
+          variant="danger"
+          role="alert"
+          title="Predictions could not be loaded"
+          message={error}
+          onRetry={() => setRefreshVersion((current) => current + 1)}
+          retryLabel="Try again"
+        />
       </section>
     );
 
@@ -846,9 +846,11 @@ function PredictionsWorkspace(props: { orgId: string }) {
             }}
           />
           {!targetScenarios.length ? (
-            <p className="alert alert--info" role="status">
-              No active scenarios are available for prediction.
-            </p>
+            <Alert
+              variant="info"
+              role="status"
+              message="No active scenarios are available for prediction."
+            />
           ) : null}
           <div className="predictions-date-grid">
             <label className="form-row">
@@ -887,9 +889,11 @@ function PredictionsWorkspace(props: { orgId: string }) {
             />
           </div>
           {invalidDates ? (
-            <p className="alert alert--danger" role="alert">
-              The start date must be earlier than the end date.
-            </p>
+            <Alert
+              variant="danger"
+              role="alert"
+              message="The start date must be earlier than the end date."
+            />
           ) : null}
           <fieldset className="predictions-fieldset" disabled={submitting}>
             <legend className="form-label form-label--required">Observation cutoff</legend>
@@ -928,7 +932,7 @@ function PredictionsWorkspace(props: { orgId: string }) {
                   ? "prediction-interval-help prediction-interval-error"
                   : "prediction-interval-help"
               }
-              aria-invalid={confidenceLevelError ? "true" : undefined}
+              aria-invalid={confidenceLevelProblem(confidenceLevel) ? "true" : undefined}
               className="input"
               type="number"
               min="50"
@@ -945,9 +949,13 @@ function PredictionsWorkspace(props: { orgId: string }) {
             </span>
           </label>
           {confidenceLevelError ? (
-            <p id="prediction-interval-error" className="alert alert--danger" role="alert">
-              {confidenceLevelError}
-            </p>
+            <Alert
+              id="prediction-interval-error"
+              variant="danger"
+              role="alert"
+              message={confidenceLevelError}
+              onDismiss={() => setConfidenceLevelError("")}
+            />
           ) : null}
           {/* Eligibility depends on models only through whether seasonal-naive or SARIMA is selected
             (ADR-014), and the point limit not at all, so only a change of that class invalidates preflight. */}
@@ -987,28 +995,25 @@ function PredictionsWorkspace(props: { orgId: string }) {
             </button>
           </div>
           {formError ? (
-            <p className="alert alert--danger" role="alert">
-              {formError}
-            </p>
+            <Alert
+              variant="danger"
+              role="alert"
+              message={formError}
+              onDismiss={() => setFormError("")}
+            />
           ) : null}
           {submissionNotices.map((notice) => (
-            <div
+            <Alert
               key={notice.id}
-              className={`alert alert--${notice.state === "failed" ? "danger" : "info"} prediction-notice`}
+              variant={notice.state === "failed" ? "danger" : "info"}
               role={notice.state === "failed" ? "alert" : "status"}
-            >
-              <button
-                className="prediction-notice__dismiss"
-                type="button"
-                aria-label={`Dismiss prediction request “${notice.name}” notice`}
-                onClick={() =>
-                  setSubmissionNotices((current) => current.filter((item) => item.id !== notice.id))
-                }
-              >
-                <span aria-hidden="true">×</span>
-              </button>
-              <p className="alert__text">{requestNoticeMessage(notice)}</p>
-            </div>
+              className="prediction-notice"
+              message={requestNoticeMessage(notice)}
+              dismissLabel={`Dismiss prediction request “${notice.name}” notice`}
+              onDismiss={() =>
+                setSubmissionNotices((current) => current.filter((item) => item.id !== notice.id))
+              }
+            />
           ))}
           {preflight ? (
             <PreflightResults
@@ -1034,6 +1039,8 @@ function PredictionsWorkspace(props: { orgId: string }) {
           loading={requestLoading}
           refreshError={requestRefreshError}
           actionError={requestActionError}
+          onClearRefreshError={() => setRequestRefreshError("")}
+          onClearActionError={() => setRequestActionError("")}
           cancellingRequestIds={cancellingRequestIds}
           onCancel={(request) => void handleCancelPredictionRequest(request)}
         />
@@ -1126,9 +1133,12 @@ function PredictionsWorkspace(props: { orgId: string }) {
           </div>
         </div>
         {currentReality?.error ? (
-          <p className="alert alert--danger" role="alert">
-            {currentReality.error}
-          </p>
+          <Alert
+            key={currentReality.error}
+            variant="danger"
+            role="alert"
+            message={currentReality.error}
+          />
         ) : null}
         {includeReality && realityScenario && !currentReality ? (
           <p role="status">Loading current Reality data…</p>
@@ -1166,6 +1176,8 @@ function PredictionRequests(props: {
   loading: boolean;
   refreshError: string;
   actionError: string;
+  onClearRefreshError: () => void;
+  onClearActionError: () => void;
   cancellingRequestIds: Set<string>;
   onCancel: (request: PredictionRequestSummaryDto) => void;
 }) {
@@ -1196,14 +1208,20 @@ function PredictionRequests(props: {
         output.
       </p>
       {props.refreshError ? (
-        <p className="alert alert--danger" role="alert">
-          {props.refreshError}
-        </p>
+        <Alert
+          variant="danger"
+          role="alert"
+          message={props.refreshError}
+          onDismiss={props.onClearRefreshError}
+        />
       ) : null}
       {props.actionError ? (
-        <p className="alert alert--danger" role="alert">
-          {props.actionError}
-        </p>
+        <Alert
+          variant="danger"
+          role="alert"
+          message={props.actionError}
+          onDismiss={props.onClearActionError}
+        />
       ) : null}
       {props.loading ? (
         <p role="status">Loading prediction requests…</p>
@@ -1398,9 +1416,11 @@ function PreflightResults(props: {
           </div>
         ))
       ) : (
-        <p className="alert alert--info" role="status">
-          No forecastable metrics were found for the selected scenarios and date range.
-        </p>
+        <Alert
+          variant="info"
+          role="status"
+          message="No forecastable metrics were found for the selected scenarios and date range."
+        />
       )}
     </section>
   );

@@ -164,6 +164,11 @@ describe("ConnectionsList", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Revocation failed (500).");
     expect(await within(row).findByRole("button", { name: "Confirm revoke" })).toBeEnabled();
     expect(screen.getByRole("listitem", { name: /^Claude/ })).toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss Revocation failed notice" }));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    fireEvent.click(within(row).getByRole("button", { name: "Confirm revoke" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Revocation failed (500).");
   });
 
   it("shows load failure, empty and retry states", async () => {

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { createOrganisation, fetchOrganisations } from "../api/organisations";
 import type { OrganisationDto } from "../api/organisations";
+import Alert from "../components/Alert";
 
 function sortOrganisations(items: OrganisationDto[]): OrganisationDto[] {
   return [...items].sort((a, b) =>
@@ -152,17 +153,23 @@ export default function HomePage() {
         </div>
 
         {loadError ? (
-          <div className="alert alert--danger" role="alert">
-            <p className="alert__title">API error</p>
-            <p className="alert__text">{loadError}</p>
-          </div>
+          <Alert
+            variant="danger"
+            role="alert"
+            title="API error"
+            message={loadError}
+            onDismiss={() => setLoadError("")}
+          />
         ) : null}
 
         {createError ? (
-          <div className="alert alert--danger" role="alert">
-            <p className="alert__title">Create error</p>
-            <p className="alert__text">{createError}</p>
-          </div>
+          <Alert
+            variant="danger"
+            role="alert"
+            title="Create error"
+            message={createError}
+            onDismiss={() => setCreateError("")}
+          />
         ) : null}
       </section>
     </main>

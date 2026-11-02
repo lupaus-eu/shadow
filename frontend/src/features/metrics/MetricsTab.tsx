@@ -19,6 +19,7 @@ import { useWorkspaceSelection } from "../../workspace/WorkspaceSelectionContext
 import AiPanel from "../ai/AiPanel";
 import type { AiPanelOptions } from "../ai/AiPanel";
 import AiPanelToggle from "../ai/AiPanelToggle";
+import Alert from "../../components/Alert";
 
 type DraftState = Record<string, Record<string, string>>;
 type SavingRowsState = Record<string, boolean>;
@@ -1371,21 +1372,15 @@ function MetricsNotice(props: {
   message: string;
   onClose: () => void;
 }) {
-  const dismissLabel = `Dismiss ${props.title} notice`;
-
   return (
-    <div className={`alert alert--${props.variant} metrics-notice`} role={props.role}>
-      <button
-        className="metrics-notice__dismiss"
-        type="button"
-        aria-label={dismissLabel}
-        onClick={props.onClose}
-      >
-        <span aria-hidden="true">×</span>
-      </button>
-      <p className="alert__title">{props.title}</p>
-      <p className="alert__text">{props.message}</p>
-    </div>
+    <Alert
+      variant={props.variant}
+      role={props.role}
+      className="metrics-notice"
+      title={props.title}
+      message={props.message}
+      onDismiss={props.onClose}
+    />
   );
 }
 

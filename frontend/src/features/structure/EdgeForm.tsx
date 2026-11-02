@@ -7,6 +7,7 @@ import type {
   GraphEdgeUpdateRequest,
   GraphNodeDto
 } from "../../api/orgTwinStructure";
+import Alert from "../../components/Alert";
 
 export type EdgeFormCreatePayload = Omit<GraphEdgeCreateRequest, "attributes" | "id">;
 
@@ -27,6 +28,7 @@ export default function EdgeForm(props: {
   onCreate?: (payload: EdgeFormCreatePayload) => Promise<void>;
   onUpdate?: (payload: GraphEdgeUpdateRequest) => Promise<void>;
   onDelete?: () => Promise<void>;
+  lifetime?: { targetDate: string; ending: boolean };
 }) {
   const defaultEdgeTypeId = props.edgeTypes[0]?.id ?? "";
   const [name, setName] = useState(props.edge?.name ?? "");
@@ -59,6 +61,8 @@ export default function EdgeForm(props: {
     !targetNodeId ||
     hasSelfReferenceSelection;
   const canDelete = isEdit && props.onDelete;
+  const deleteDate = props.edge?.deleteDate ?? null;
+  const removedInOrgState = Boolean(deleteDate) && deleteDate === props.lifetime?.targetDate;
   const showNoAllowedEdgeTypes =
     !isEdit &&
     hasNodeChoices &&
@@ -107,6 +111,12 @@ export default function EdgeForm(props: {
           {props.title}
         </h2>
       </div>
+      {deleteDate ? (
+        <p className="muted structure-lifetime-note">
+          Exists until {deleteDate}.
+          {props.lifetime?.ending ? " Not shown in later org states." : ""}
+        </p>
+      ) : null}
       {!isEdit && props.nodeClickHint ? <p className="muted">{props.nodeClickHint}</p> : null}
       {!hasNodeChoices && !showNoAllowedEdgeTypes ? (
         <p className="muted">Create nodes and load edge type metadata before saving edges.</p>
@@ -213,9 +223,12 @@ export default function EdgeForm(props: {
           />
         </div>
         {formError ? (
-          <div className="alert alert--danger" role="alert">
-            <p className="alert__text">{formError}</p>
-          </div>
+          <Alert
+            variant="danger"
+            role="alert"
+            onDismiss={() => setFormError("")}
+            message={formError}
+          />
         ) : null}
         <div className="form-actions">
           <span title={submitTooltip}>
@@ -232,13 +245,19 @@ export default function EdgeForm(props: {
               <button
                 className="btn btn--danger"
                 type="button"
-                disabled={props.saving}
+                disabled={props.saving || removedInOrgState}
+                aria-describedby={removedInOrgState ? `${props.idPrefix}-removed-note` : undefined}
                 onClick={() => setConfirmingDelete(true)}
               >
                 Delete selected edge
               </button>
             ) : null}
           </div>
+          {removedInOrgState ? (
+            <p id={`${props.idPrefix}-removed-note`} className="muted">
+              Already removed in this org state.
+            </p>
+          ) : null}
           {confirmingDelete ? (
             <div className="delete-confirmation" role="alertdialog">
               <p>Are you sure you want to delete the selected edge?</p>

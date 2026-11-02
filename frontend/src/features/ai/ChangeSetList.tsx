@@ -4,6 +4,7 @@ import type { AiChangeSetListItemDto } from "../../api/ai";
 import type { WorkspaceScenarioSummary } from "../../workspace/WorkspaceSelectionContext";
 import ChangeSetStatusBadge from "./ChangeSetStatusBadge";
 import { formatAiTimestamp } from "./aiPresentation";
+import Alert from "../../components/Alert";
 
 function messageFromError(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error";
@@ -109,20 +110,15 @@ export default function ChangeSetList(props: {
 
       {loading && changeSets.length === 0 ? <p className="muted">Loading change sets...</p> : null}
       {loadError ? (
-        <div className="alert alert--danger" role="alert">
-          <p className="alert__title">Change sets API error</p>
-          <p className="alert__text">{loadError}</p>
-          <div className="form-actions">
-            <button
-              className="btn btn--secondary btn--compact"
-              type="button"
-              onClick={() => void loadChangeSets()}
-              disabled={loading}
-            >
-              Retry
-            </button>
-          </div>
-        </div>
+        <Alert
+          key={loadError}
+          variant="danger"
+          role="alert"
+          title="Change sets API error"
+          message={loadError}
+          onRetry={() => void loadChangeSets()}
+          retryDisabled={loading}
+        />
       ) : null}
       {!loading && !loadError && changeSets.length === 0 ? (
         <p className="muted">No change sets.</p>

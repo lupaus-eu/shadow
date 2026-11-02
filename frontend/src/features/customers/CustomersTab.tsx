@@ -22,6 +22,7 @@ import type {
   CustomerDto,
   CustomerStatus
 } from "../../api/customers";
+import Alert from "../../components/Alert";
 
 const optional = (value: string) => value.trim() || null;
 const errorMessage = (error: unknown) => (error instanceof Error ? error.message : "Unknown error");
@@ -41,25 +42,20 @@ function ErrorAlert(props: {
   message: string;
   retry?: () => void;
   busy?: boolean;
+  onClose?: () => void;
 }) {
   if (!props.message) return null;
   return (
-    <div className="alert alert--danger" role="alert">
-      <p className="alert__title">{props.title ?? "Action error"}</p>
-      <p className="alert__text">{props.message}</p>
-      {props.retry ? (
-        <div className="form-actions">
-          <button
-            className="btn btn--secondary btn--compact"
-            type="button"
-            onClick={props.retry}
-            disabled={props.busy}
-          >
-            Retry
-          </button>
-        </div>
-      ) : null}
-    </div>
+    <Alert
+      key={props.message}
+      variant="danger"
+      role="alert"
+      title={props.title ?? "Action error"}
+      message={props.message}
+      onDismiss={props.onClose}
+      onRetry={props.retry}
+      retryDisabled={props.busy}
+    />
   );
 }
 
@@ -352,7 +348,7 @@ export default function CustomersTab() {
                       <option value="active">Active</option>
                       <option value="archived">Archived</option>
                     </select>
-                    <ErrorAlert message={actionError} />
+                    <ErrorAlert message={actionError} onClose={() => setActionError("")} />
                     <div className="form-actions">
                       <button
                         className="btn btn--primary"
@@ -425,7 +421,7 @@ export default function CustomersTab() {
                 onName={setCreateName}
                 onEmail={setCreateEmail}
               />
-              <ErrorAlert message={createError} />
+              <ErrorAlert message={createError} onClose={() => setCreateError("")} />
               <div className="form-actions">
                 <button
                   className="btn btn--primary"
@@ -662,7 +658,7 @@ function ContactsPanel({ customerId }: { customerId: number }) {
           </button>
         ))}
       </div>
-      <ErrorAlert message={actionError} />
+      <ErrorAlert message={actionError} onClose={() => setActionError("")} />
       <div className="child-forms">
         <form aria-label="Create contact" onSubmit={create}>
           <h3>Create contact</h3>
@@ -978,7 +974,7 @@ function AddressesPanel({ customerId }: { customerId: number }) {
           </button>
         ))}
       </div>
-      <ErrorAlert message={actionError} />
+      <ErrorAlert message={actionError} onClose={() => setActionError("")} />
       <div className="child-forms">
         <form aria-label="Create address" onSubmit={create}>
           <h3>Create address</h3>

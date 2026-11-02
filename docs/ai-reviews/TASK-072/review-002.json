@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-072/review-002",
+  "task": {
+    "id": "TASK-072",
+    "path": "tasks/TASK-072-graph-ending-elements-and-closable-alerts.md"
+  },
+  "round": 2,
+  "reviewed_at": "2026-11-02T09:21:18Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "bb82b0729d52f7c6847cd5dbeb79354c59d77228",
+    "head_sha": "2945a6703e3546c1a3e36e5388d3300dec3ac9ea",
+    "comparison": "bb82b0729d52f7c6847cd5dbeb79354c59d77228...2945a6703e3546c1a3e36e5388d3300dec3ac9ea",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "clean",
+    "summary": "Round 2 reviews the branch rebased onto main bb82b07 and the round 1 fix commit 2945a67. The rebase applied without conflicts; main's TASK-070 and TASK-071 changes touch only backend, deployment and documentation files, and the two docs/TESTING.md edits land in separate sections. Alert now takes onRetry, retryLabel and retryDisabled: it renders the Retry button itself and, after a self-hiding alert is closed, leaves a compact Retry button with the caller's placement class. The load errors with Retry in eight components (the scenario and org-state dropdowns, change sets, change set detail, AI connections, Users, the three Customers lists and the Predictions page) use it, and each owner clears its error at the start of every load, so a repeated failure with the same message shows the alert again. The dropdown and Predictions page Retry buttons are now compact like the others; the dropdown spacing and the closed state were checked in a temporary static preview with the app stylesheets. The prediction-interval input derives aria-invalid from the value through the same check that submission uses, so closing the error keeps the marker and it now also appears before a submit. Alert takes boxClassName and the Summary error uses it with its own box, label and Retry button. The branch remains frontend-only with no dependency, API or migration change. The frontend format check, lint, all 433 tests and the build pass. Noted and not a finding: closing a self-hiding alert removes the focused close button and focus returns to the page, as in round 1.",
+    "findings": [],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-072/review-001",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "The developer chose the compact Retry option. A closed load error with Retry now leaves a compact Retry button, covered by the Alert, workspace dropdown and Users tests.",
+        "validated_by": {
+          "review_id": "TASK-072/review-002",
+          "commit": "2945a6703e3546c1a3e36e5388d3300dec3ac9ea"
+        }
+      },
+      {
+        "record_id": "TASK-072/review-001",
+        "finding_id": "F-002",
+        "disposition": "fixed",
+        "rationale": "The interval input's invalid marker is derived from the value, and the Predictions test checks that it stays after closing the error and clears for a valid value.",
+        "validated_by": {
+          "review_id": "TASK-072/review-002",
+          "commit": "2945a6703e3546c1a3e36e5388d3300dec3ac9ea"
+        }
+      },
+      {
+        "record_id": "TASK-072/review-001",
+        "finding_id": "F-003",
+        "disposition": "accepted_risk",
+        "rationale": "The developer decided that the extra org-state request per Structure load is not an issue at the moment.",
+        "validated_by": {
+          "review_id": "TASK-072/review-002",
+          "commit": "2945a6703e3546c1a3e36e5388d3300dec3ac9ea"
+        }
+      },
+      {
+        "record_id": "TASK-072/review-001",
+        "finding_id": "F-004",
+        "disposition": "fixed",
+        "rationale": "The Summary error renders through Alert with boxClassName, so it uses the shared close button instead of repeating its markup.",
+        "validated_by": {
+          "review_id": "TASK-072/review-002",
+          "commit": "2945a6703e3546c1a3e36e5388d3300dec3ac9ea"
+        }
+      }
+    ]
+  }
+}

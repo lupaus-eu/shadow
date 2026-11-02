@@ -3,6 +3,7 @@ import { AiApiError, fetchAiConnections, revokeAiConnection } from "../../api/ai
 import type { AiConnectionDto } from "../../api/ai";
 import SelfDeclaredClientName from "./SelfDeclaredClientName";
 import { aiScopeLabel, formatAiTimestamp } from "./aiPresentation";
+import Alert from "../../components/Alert";
 
 function messageFromError(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error";
@@ -112,35 +113,36 @@ export default function ConnectionsList(props: { changeSetReview?: boolean }) {
 
       {loading && connections.length === 0 ? <p className="muted">Loading connections...</p> : null}
       {loadError ? (
-        <div className="alert alert--danger" role="alert">
-          <p className="alert__title">Connections API error</p>
-          <p className="alert__text">{loadError}</p>
-          <div className="form-actions">
-            <button
-              className="btn btn--secondary btn--compact"
-              type="button"
-              onClick={refresh}
-              disabled={loading}
-            >
-              Retry
-            </button>
-          </div>
-        </div>
+        <Alert
+          key={loadError}
+          variant="danger"
+          role="alert"
+          title="Connections API error"
+          message={loadError}
+          onRetry={refresh}
+          retryDisabled={loading}
+        />
       ) : null}
       {!loading && !loadError && connections.length === 0 ? (
         <p className="muted">No connected AI clients.</p>
       ) : null}
       {actionError ? (
-        <div className="alert alert--danger" role="alert">
-          <p className="alert__title">Revocation failed</p>
-          <p className="alert__text">{actionError}</p>
-        </div>
+        <Alert
+          variant="danger"
+          role="alert"
+          title="Revocation failed"
+          message={actionError}
+          onDismiss={() => setActionError("")}
+        />
       ) : null}
       {actionSuccess ? (
-        <div className="alert alert--info" role="status">
-          <p className="alert__title">Connection revoked</p>
-          <p className="alert__text">{actionSuccess}</p>
-        </div>
+        <Alert
+          variant="info"
+          role="status"
+          title="Connection revoked"
+          message={actionSuccess}
+          onDismiss={() => setActionSuccess("")}
+        />
       ) : null}
 
       {connections.length > 0 ? (

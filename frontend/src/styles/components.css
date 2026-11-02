@@ -253,6 +253,42 @@
   overflow-wrap: anywhere;
 }
 
+.alert--dismissible {
+  position: relative;
+  padding-right: var(--space-10);
+}
+
+.alert__dismiss {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  display: inline-grid;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.alert__dismiss:hover {
+  background: rgb(0 0 0 / 8%);
+}
+
+.alert__dismiss:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.alert-retry {
+  margin-top: var(--space-2);
+}
+
 .context-chip {
   display: inline-flex;
   align-items: center;
@@ -836,9 +872,7 @@
 }
 
 .prediction-notice {
-  position: relative;
   min-width: 0;
-  padding-right: var(--space-10);
   overflow-wrap: anywhere;
 }
 

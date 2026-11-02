@@ -181,6 +181,20 @@ const graph: GraphDto = {
   ]
 };
 
+const noEnding: ReadonlySet<string> = new Set();
+
+const endingGraph: GraphDto = {
+  ...graph,
+  nodes: graph.nodes.map((node) =>
+    node.id === "node_ceo" ? { ...node, createDate: "2026-01-01", deleteDate: "2026-02-01" } : node
+  ),
+  edges: graph.edges.map((edge) =>
+    edge.id === "edge_visible"
+      ? { ...edge, createDate: "2026-01-01", deleteDate: "2026-02-01" }
+      : edge
+  )
+};
+
 const catalog: GraphTypeCatalogDto = {
   nodeTypes: [
     {
@@ -270,6 +284,8 @@ describe("GraphViewer", () => {
         graph={graph}
         catalog={catalog}
         visibleNodeTypeIds={new Set(["nt_person"])}
+        endingNodeIds={noEnding}
+        endingEdgeIds={noEnding}
         selected={null}
         centerNodeRequest={null}
         fitRequestId={1}
@@ -327,6 +343,8 @@ describe("GraphViewer", () => {
         graph={graph}
         catalog={catalog}
         visibleNodeTypeIds={new Set(["nt_person"])}
+        endingNodeIds={noEnding}
+        endingEdgeIds={noEnding}
         selected={null}
         centerNodeRequest={null}
         fitRequestId={1}
@@ -355,6 +373,8 @@ describe("GraphViewer", () => {
         graph={graph}
         catalog={catalog}
         visibleNodeTypeIds={new Set(["nt_person"])}
+        endingNodeIds={noEnding}
+        endingEdgeIds={noEnding}
         selected={null}
         centerNodeRequest={null}
         fitRequestId={1}
@@ -375,6 +395,8 @@ describe("GraphViewer", () => {
       graph,
       catalog,
       visibleNodeTypeIds: new Set(["nt_person"]),
+      endingNodeIds: noEnding,
+      endingEdgeIds: noEnding,
       selected: { kind: "node" as const, id: "node_ceo" },
       onSelect: vi.fn(),
       onNodePositionChange: vi.fn(),
@@ -407,6 +429,8 @@ describe("GraphViewer", () => {
         graph={graph}
         catalog={catalog}
         visibleNodeTypeIds={new Set(["nt_person"])}
+        endingNodeIds={noEnding}
+        endingEdgeIds={noEnding}
         selected={null}
         centerNodeRequest={null}
         fitRequestId={2}
@@ -464,6 +488,8 @@ describe("GraphViewer", () => {
         graph={graph}
         catalog={catalog}
         visibleNodeTypeIds={new Set(["nt_person"])}
+        endingNodeIds={noEnding}
+        endingEdgeIds={noEnding}
         selected={null}
         centerNodeRequest={null}
         fitRequestId={2}
@@ -493,5 +519,188 @@ describe("GraphViewer", () => {
       top: "12px",
       visibility: "visible"
     });
+  });
+
+  it("marks ending nodes and edges and shows the key", async () => {
+    render(
+      <GraphViewer
+        graph={endingGraph}
+        catalog={catalog}
+        visibleNodeTypeIds={new Set(["nt_person"])}
+        endingNodeIds={new Set(["node_ceo"])}
+        endingEdgeIds={new Set(["edge_visible"])}
+        selected={null}
+        centerNodeRequest={null}
+        fitRequestId={1}
+        onSelect={vi.fn()}
+        onNodePositionChange={vi.fn()}
+        onViewportCenterChange={vi.fn()}
+      />
+    );
+
+    await waitFor(() => expect(cytoscapeMock.cyAdd).toHaveBeenCalled());
+    const elements = cytoscapeMock.cyAdd.mock.calls.at(-1)?.[0] as Array<{
+      data: Record<string, string>;
+    }>;
+    expect(elements.map((element) => element.data)).toEqual([
+      expect.objectContaining({
+        id: "node_ceo",
+        label: "Person:\nCEO",
+        ending: "true",
+        endDate: "2026-02-01"
+      }),
+      expect.objectContaining({
+        id: "edge_visible",
+        name: "Visible edge",
+        label: "Reports to:\nVisible edge",
+        ending: "true",
+        endDate: "2026-02-01"
+      })
+    ]);
+    expect(screen.getByText("Ends in this state")).toBeInTheDocument();
+
+    const options = vi.mocked(cytoscape).mock.calls.at(-1)?.[0] as unknown as {
+      style: Array<{ selector: string; style: Record<string, unknown> }>;
+    };
+    const styles = options.style;
+    const selectors = styles.map((entry) => entry.selector);
+    expect(selectors.indexOf('node[ending = "true"]')).toBeGreaterThan(-1);
+    expect(selectors.indexOf('edge[ending = "true"]')).toBeGreaterThan(-1);
+    expect(selectors.indexOf('node[ending = "true"]')).toBeLessThan(selectors.indexOf(":selected"));
+    expect(styles.find((entry) => entry.selector === 'node[ending = "true"]')?.style).toEqual(
+      expect.objectContaining({ "border-style": "dashed", color: "#736c5e" })
+    );
+    const endingNodeStyle = styles.find((entry) => entry.selector === 'node[ending = "true"]');
+    expect(endingNodeStyle?.style).not.toHaveProperty("font-size");
+    expect(styles.find((entry) => entry.selector === 'edge[ending = "true"]')?.style).toEqual(
+      expect.objectContaining({
+        "line-color": "#9ca3af",
+        "line-style": "dashed",
+        "target-arrow-color": "#9ca3af",
+        "source-arrow-color": "#9ca3af",
+        "text-events": "yes"
+      })
+    );
+  });
+
+  it("does not mark elements that do not end in the selected state", async () => {
+    render(
+      <GraphViewer
+        graph={endingGraph}
+        catalog={catalog}
+        visibleNodeTypeIds={new Set(["nt_person"])}
+        endingNodeIds={noEnding}
+        endingEdgeIds={noEnding}
+        selected={null}
+        centerNodeRequest={null}
+        fitRequestId={1}
+        onSelect={vi.fn()}
+        onNodePositionChange={vi.fn()}
+        onViewportCenterChange={vi.fn()}
+      />
+    );
+
+    await waitFor(() => expect(cytoscapeMock.cyAdd).toHaveBeenCalled());
+    const elements = cytoscapeMock.cyAdd.mock.calls.at(-1)?.[0] as Array<{
+      data: Record<string, string>;
+    }>;
+    expect(elements.map((element) => [element.data.label, element.data.ending])).toEqual([
+      ["Person:\nCEO", "false"],
+      ["Reports to:\nVisible edge", "false"]
+    ]);
+    expect(screen.queryByText("Ends in this state")).not.toBeInTheDocument();
+  });
+
+  it("updates existing elements when they start ending", async () => {
+    const baseProps = {
+      graph: endingGraph,
+      catalog,
+      visibleNodeTypeIds: new Set(["nt_person"]),
+      endingEdgeIds: noEnding,
+      selected: null,
+      centerNodeRequest: null,
+      fitRequestId: 1,
+      onSelect: vi.fn(),
+      onNodePositionChange: vi.fn(),
+      onViewportCenterChange: vi.fn()
+    };
+    const { rerender } = render(<GraphViewer {...baseProps} endingNodeIds={noEnding} />);
+    await waitFor(() => expect(cytoscapeMock.cyAdd).toHaveBeenCalled());
+
+    rerender(<GraphViewer {...baseProps} endingNodeIds={new Set(["node_ceo"])} />);
+
+    await waitFor(() =>
+      expect(cytoscapeMock.cyData).toHaveBeenCalledWith("node_ceo", "ending", "true")
+    );
+    expect(cytoscapeMock.cyData).toHaveBeenCalledWith("node_ceo", "endDate", "2026-02-01");
+  });
+
+  it("shows the end date of an ending node on hover", async () => {
+    render(
+      <GraphViewer
+        graph={endingGraph}
+        catalog={catalog}
+        visibleNodeTypeIds={new Set(["nt_person"])}
+        endingNodeIds={new Set(["node_ceo"])}
+        endingEdgeIds={noEnding}
+        selected={null}
+        centerNodeRequest={null}
+        fitRequestId={1}
+        onSelect={vi.fn()}
+        onNodePositionChange={vi.fn()}
+        onViewportCenterChange={vi.fn()}
+      />
+    );
+
+    cytoscapeMock.trigger(
+      "mouseover",
+      {
+        id: () => "node_ceo",
+        data: (key: string) =>
+          ({ name: "CEO", description: "", endDate: "2026-02-01" })[
+            key as "name" | "description" | "endDate"
+          ],
+        renderedPosition: () => ({ x: 180, y: 220 })
+      },
+      "node"
+    );
+
+    const tooltip = await screen.findByRole("tooltip");
+    expect(tooltip).toHaveTextContent("Exists until 2026-02-01. Not shown in later org states.");
+    expect(tooltip.querySelector(".graph-viewer__popover-description")).toBeNull();
+  });
+
+  it("shows the end date of an ending edge on hover and nothing for other edges", async () => {
+    render(
+      <GraphViewer
+        graph={endingGraph}
+        catalog={catalog}
+        visibleNodeTypeIds={new Set(["nt_person"])}
+        endingNodeIds={noEnding}
+        endingEdgeIds={new Set(["edge_visible"])}
+        selected={null}
+        centerNodeRequest={null}
+        fitRequestId={1}
+        onSelect={vi.fn()}
+        onNodePositionChange={vi.fn()}
+        onViewportCenterChange={vi.fn()}
+      />
+    );
+    const edgeTarget = (endDate: string) => ({
+      id: () => "edge_visible",
+      data: (key: string) => ({ name: "Visible edge", endDate })[key as "name" | "endDate"],
+      renderedMidpoint: () => ({ x: 240, y: 260 })
+    });
+
+    cytoscapeMock.trigger("mouseover", edgeTarget(""), "edge");
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+
+    cytoscapeMock.trigger("mouseover", edgeTarget("2026-02-01"), "edge");
+    const tooltip = await screen.findByRole("tooltip");
+    expect(tooltip).toHaveTextContent("Visible edge");
+    expect(tooltip).toHaveTextContent("Exists until 2026-02-01. Not shown in later org states.");
+
+    cytoscapeMock.trigger("mouseout", edgeTarget("2026-02-01"), "edge");
+    await waitFor(() => expect(screen.queryByRole("tooltip")).not.toBeInTheDocument());
   });
 });

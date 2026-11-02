@@ -18,6 +18,7 @@ import {
   type WorkspaceOrgStateSummary,
   useWorkspaceSelection
 } from "../../workspace/WorkspaceSelectionContext";
+import Alert from "../../components/Alert";
 
 type DetailMode = "scenario" | "state";
 type ScenarioAction = "edit" | "delete" | null;
@@ -757,10 +758,13 @@ export default function ScenariosTab(props: { orgId: string }) {
             <h3 className="secondary-title">Scenarios</h3>
             {loadingScenarios ? <p className="muted">Loading scenarios...</p> : null}
             {scenarioError ? (
-              <div className="alert alert--danger" role="alert">
-                <p className="alert__title">Scenario API error</p>
-                <p className="alert__text">{scenarioError}</p>
-              </div>
+              <Alert
+                key={scenarioError}
+                variant="danger"
+                role="alert"
+                title="Scenario API error"
+                message={scenarioError}
+              />
             ) : null}
 
             {!loadingScenarios && !scenarioError && scenarios.length === 0 ? (
@@ -847,7 +851,9 @@ export default function ScenariosTab(props: { orgId: string }) {
             confirming={cleanConfirming}
             cleaning={cleaningStates}
             message={cleanMessage}
+            onClearMessage={() => setCleanMessage("")}
             error={cleanError}
+            onClearError={() => setCleanError("")}
             onConfirm={() => void onCleanStatesConfirm()}
             onCancel={() => setCleanConfirming(false)}
           />
@@ -861,6 +867,7 @@ export default function ScenariosTab(props: { orgId: string }) {
                 editDescription={scenarioEditDescription}
                 deleteConfirmation={scenarioDeleteConfirmation}
                 error={scenarioActionError}
+                onClearError={() => setScenarioActionError("")}
                 saving={saving}
                 onEditNameChange={setScenarioEditName}
                 onEditDescriptionChange={setScenarioEditDescription}
@@ -879,6 +886,7 @@ export default function ScenariosTab(props: { orgId: string }) {
                 name={forkName}
                 description={forkDescription}
                 error={forkError}
+                onClearError={() => setForkError("")}
                 saving={saving}
                 loadingOrgStates={
                   forkSourceScenarioId === selectedScenarioDto?.id
@@ -902,6 +910,7 @@ export default function ScenariosTab(props: { orgId: string }) {
                 editTargetDate={stateEditTargetDate}
                 deleteConfirmation={orgStateDeleteConfirmation}
                 error={orgStateActionError}
+                onClearError={() => setOrgStateActionError("")}
                 saving={saving}
                 onEditNameChange={setStateEditName}
                 onEditDescriptionChange={setStateEditDescription}
@@ -917,6 +926,7 @@ export default function ScenariosTab(props: { orgId: string }) {
                 description={stateCreateDescription}
                 targetDate={stateCreateTargetDate}
                 error={stateCreateError}
+                onClearError={() => setStateCreateError("")}
                 saving={saving}
                 onNameChange={setStateCreateName}
                 onDescriptionChange={setStateCreateDescription}
@@ -937,6 +947,8 @@ function CleanStatesFeedback(props: {
   cleaning: boolean;
   message: string;
   error: string;
+  onClearError: () => void;
+  onClearMessage: () => void;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
@@ -970,12 +982,15 @@ function CleanStatesFeedback(props: {
         </div>
       ) : null}
       {props.message ? (
-        <div className="alert alert--info" role="status">
-          <p className="alert__title">States cleaned</p>
-          <p className="alert__text">{props.message}</p>
-        </div>
+        <Alert
+          variant="info"
+          role="status"
+          title="States cleaned"
+          message={props.message}
+          onDismiss={props.onClearMessage}
+        />
       ) : null}
-      <ActionError message={props.error} />
+      <ActionError message={props.error} onClose={props.onClearError} />
     </div>
   );
 }
@@ -992,10 +1007,13 @@ function InlineOrgStateList(props: {
       <p className="eyebrow scenario-inline-states__heading">STATES</p>
       {props.loading ? <p className="muted">Loading org states...</p> : null}
       {props.error ? (
-        <div className="alert alert--danger" role="alert">
-          <p className="alert__title">Org state API error</p>
-          <p className="alert__text">{props.error}</p>
-        </div>
+        <Alert
+          key={props.error}
+          variant="danger"
+          role="alert"
+          title="Org state API error"
+          message={props.error}
+        />
       ) : null}
 
       {!props.loading && !props.error && props.orgStates.length === 0 ? (
@@ -1034,6 +1052,7 @@ function ScenarioDetail(props: {
   editDescription: string;
   deleteConfirmation: string;
   error: string;
+  onClearError: () => void;
   saving: boolean;
   onEditNameChange: (value: string) => void;
   onEditDescriptionChange: (value: string) => void;
@@ -1072,7 +1091,7 @@ function ScenarioDetail(props: {
               onNameChange={props.onEditNameChange}
               onDescriptionChange={props.onEditDescriptionChange}
             />
-            <ActionError message={props.error} />
+            <ActionError message={props.error} onClose={props.onClearError} />
             <ActionButtons
               submitLabel="Save scenario"
               saving={props.saving}
@@ -1098,7 +1117,7 @@ function ScenarioDetail(props: {
                 onChange={(event) => props.onDeleteConfirmationChange(event.target.value)}
                 autoComplete="off"
               />
-              <ActionError message={props.error} />
+              <ActionError message={props.error} onClose={props.onClearError} />
               <div className="form-actions">
                 <button
                   className="btn btn--danger"
@@ -1132,6 +1151,7 @@ function ForkScenarioForm(props: {
   name: string;
   description: string;
   error: string;
+  onClearError: () => void;
   saving: boolean;
   loadingOrgStates: boolean;
   onSourceScenarioChange: (scenario: ScenarioDto) => void;
@@ -1202,7 +1222,7 @@ function ForkScenarioForm(props: {
         disabled={!props.scenario}
         optionalLabels
       />
-      <ActionError message={props.error} />
+      <ActionError message={props.error} onClose={props.onClearError} />
       <div className="form-actions">
         <button className="btn btn--primary" type="submit" disabled={disabled}>
           {props.saving ? "Saving..." : "Fork scenario"}
@@ -1220,6 +1240,7 @@ function OrgStateDetail(props: {
   editTargetDate: string;
   deleteConfirmation: string;
   error: string;
+  onClearError: () => void;
   saving: boolean;
   onEditNameChange: (value: string) => void;
   onEditDescriptionChange: (value: string) => void;
@@ -1264,7 +1285,7 @@ function OrgStateDetail(props: {
               onDescriptionChange={props.onEditDescriptionChange}
               onTargetDateChange={props.onEditTargetDateChange}
             />
-            <ActionError message={props.error} />
+            <ActionError message={props.error} onClose={props.onClearError} />
             <ActionButtons
               submitLabel="Save state"
               saving={props.saving}
@@ -1306,6 +1327,7 @@ function CreateOrgStateForm(props: {
   description: string;
   targetDate: string;
   error: string;
+  onClearError: () => void;
   saving: boolean;
   onNameChange: (value: string) => void;
   onDescriptionChange: (value: string) => void;
@@ -1334,7 +1356,7 @@ function CreateOrgStateForm(props: {
         onTargetDateChange={props.onTargetDateChange}
         disabled={!props.scenario}
       />
-      <ActionError message={props.error} />
+      <ActionError message={props.error} onClose={props.onClearError} />
       <div className="form-actions">
         <button
           className="btn btn--primary"
@@ -1442,13 +1464,16 @@ function OrgStateFields(props: {
   );
 }
 
-function ActionError(props: { message: string }) {
+function ActionError(props: { message: string; onClose: () => void }) {
   if (!props.message) return null;
   return (
-    <div className="alert alert--danger" role="alert">
-      <p className="alert__title">Action error</p>
-      <p className="alert__text">{props.message}</p>
-    </div>
+    <Alert
+      variant="danger"
+      role="alert"
+      title="Action error"
+      message={props.message}
+      onDismiss={props.onClose}
+    />
   );
 }
 

@@ -9,6 +9,7 @@ import {
 } from "../api/organisations";
 import type { OrganisationDto } from "../api/organisations";
 import { WORKSPACE_TABS } from "../workspace/workspaceTabs";
+import Alert from "./Alert";
 
 type OrganisationAction = "rename" | "delete" | "create" | null;
 
@@ -424,10 +425,14 @@ export default function OrganisationDropdown(props: OrganisationDropdownProps) {
           </div>
 
           {loadError ? (
-            <div className="alert alert--danger organisation-dropdown__alert" role="alert">
-              <p className="alert__title">Organisation load error</p>
-              <p className="alert__text">{loadError}</p>
-            </div>
+            <Alert
+              key={loadError}
+              variant="danger"
+              role="alert"
+              className="organisation-dropdown__alert"
+              title="Organisation load error"
+              message={loadError}
+            />
           ) : null}
 
           {action === "rename" && currentOrganisation ? (
@@ -447,7 +452,7 @@ export default function OrganisationDropdown(props: OrganisationDropdownProps) {
                 onChange={(event) => setRenameName(event.target.value)}
                 disabled={busy}
               />
-              <ActionError message={actionError} />
+              <ActionError message={actionError} onClose={() => setActionError("")} />
               <div className="form-actions">
                 <button
                   className="btn btn--secondary btn--compact"
@@ -491,7 +496,7 @@ export default function OrganisationDropdown(props: OrganisationDropdownProps) {
                 autoComplete="off"
                 disabled={busy}
               />
-              <ActionError message={actionError} />
+              <ActionError message={actionError} onClose={() => setActionError("")} />
               <div className="form-actions">
                 <button
                   className="btn btn--secondary btn--compact"
@@ -530,7 +535,7 @@ export default function OrganisationDropdown(props: OrganisationDropdownProps) {
                 placeholder="Organisation name"
                 disabled={busy}
               />
-              <ActionError message={actionError} />
+              <ActionError message={actionError} onClose={() => setActionError("")} />
               <div className="form-actions">
                 <button
                   className="btn btn--secondary btn--compact"
@@ -568,12 +573,16 @@ export default function OrganisationDropdown(props: OrganisationDropdownProps) {
   );
 }
 
-function ActionError(props: { message: string }) {
+function ActionError(props: { message: string; onClose: () => void }) {
   if (!props.message) return null;
   return (
-    <div className="alert alert--danger organisation-dropdown__alert" role="alert">
-      <p className="alert__text">{props.message}</p>
-    </div>
+    <Alert
+      variant="danger"
+      role="alert"
+      className="organisation-dropdown__alert"
+      message={props.message}
+      onDismiss={props.onClose}
+    />
   );
 }
 

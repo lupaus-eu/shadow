@@ -9,6 +9,7 @@ import {
   updateUser
 } from "../../api/users";
 import type { UserDto, UserRole } from "../../api/users";
+import Alert from "../../components/Alert";
 
 function sortUsers(items: UserDto[]): UserDto[] {
   return [...items].sort((left, right) => {
@@ -279,20 +280,15 @@ export default function UsersTab(props: {
             <h2 className="secondary-title">Active users</h2>
             {loading && users.length === 0 ? <p className="muted">Loading users...</p> : null}
             {listError ? (
-              <div className="alert alert--danger" role="alert">
-                <p className="alert__title">User API error</p>
-                <p className="alert__text">{listError}</p>
-                <div className="form-actions">
-                  <button
-                    className="btn btn--secondary btn--compact"
-                    type="button"
-                    onClick={() => void loadUsers()}
-                    disabled={loading}
-                  >
-                    Retry
-                  </button>
-                </div>
-              </div>
+              <Alert
+                key={listError}
+                variant="danger"
+                role="alert"
+                title="User API error"
+                message={listError}
+                onRetry={() => void loadUsers()}
+                retryDisabled={loading}
+              />
             ) : null}
             {!loading && !listError && users.length === 0 ? (
               <p className="muted">No active users available.</p>
@@ -346,12 +342,15 @@ export default function UsersTab(props: {
                       onEmailChange={setEditEmail}
                       onRoleChange={setEditRole}
                     />
-                    <ActionError message={actionError} />
+                    <ActionError message={actionError} onClose={() => setActionError("")} />
                     {actionSuccess ? (
-                      <div className="alert alert--info" role="status">
-                        <p className="alert__title">{actionSuccess.title}</p>
-                        <p className="alert__text">{actionSuccess.text}</p>
-                      </div>
+                      <Alert
+                        variant="info"
+                        role="status"
+                        title={actionSuccess.title}
+                        message={actionSuccess.text}
+                        onDismiss={() => setActionSuccess(null)}
+                      />
                     ) : null}
                     <div className="form-actions">
                       <button
@@ -539,7 +538,7 @@ export default function UsersTab(props: {
                 onEmailChange={setCreateEmail}
                 onRoleChange={setCreateRole}
               />
-              <ActionError message={createError} />
+              <ActionError message={createError} onClose={() => setCreateError("")} />
               <div className="form-actions">
                 <button
                   className="btn btn--primary"
@@ -613,12 +612,15 @@ function UserFields(props: {
   );
 }
 
-function ActionError(props: { message: string }) {
+function ActionError(props: { message: string; onClose: () => void }) {
   if (!props.message) return null;
   return (
-    <div className="alert alert--danger" role="alert">
-      <p className="alert__title">Action error</p>
-      <p className="alert__text">{props.message}</p>
-    </div>
+    <Alert
+      variant="danger"
+      role="alert"
+      title="Action error"
+      message={props.message}
+      onDismiss={props.onClose}
+    />
   );
 }

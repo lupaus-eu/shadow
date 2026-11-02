@@ -48,6 +48,19 @@ task is implemented.
 - [ ] Refresh the page and verify the node update persisted.
 - [ ] Delete the node.
 - [ ] Refresh the page and verify the deleted node no longer appears.
+- [ ] With org states on 2026-01-01, 2026-02-01 and 2026-03-01, create a node
+      with an edge in the first state and delete the node in the second state.
+- [ ] In the second state, verify the node is faded with a dashed border and a
+      lighter label at the normal font size, without an end-date line, its
+      edge is a gray dashed line whose label has no end-date line, the graph
+      shows the `Ends in this state` key and the node list shows an `Ends`
+      badge.
+- [ ] Hover the node and verify the popover says it exists until 2026-02-01.
+- [ ] Hover the edge's label box and verify the same popover with the edge name.
+- [ ] Select the node and verify the edit form shows the end date and Delete is
+      disabled with `Already removed in this org state.`
+- [ ] Verify the node looks normal in the first state and is not shown in the
+      third state.
 
 ---
 

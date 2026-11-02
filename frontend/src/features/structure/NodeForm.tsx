@@ -6,6 +6,7 @@ import type {
   GraphNodeUpdateRequest,
   NodeTypeMetadataDto
 } from "../../api/orgTwinStructure";
+import Alert from "../../components/Alert";
 
 export type NodeFormCreatePayload = Omit<GraphNodeCreateRequest, "attributes" | "id" | "position">;
 
@@ -21,6 +22,7 @@ export default function NodeForm(props: {
   onCreate?: (payload: NodeFormCreatePayload) => Promise<void>;
   onUpdate?: (payload: GraphNodeUpdateRequest) => Promise<void>;
   onDelete?: () => Promise<void>;
+  lifetime?: { targetDate: string; ending: boolean };
 }) {
   const defaultNodeTypeId = props.nodeTypes[0]?.id ?? "";
   const [name, setName] = useState(props.node?.name ?? "");
@@ -34,6 +36,8 @@ export default function NodeForm(props: {
   const hasNodeTypes = props.nodeTypes.length > 0;
   const isEdit = Boolean(props.node);
   const canDelete = isEdit && props.onDelete;
+  const deleteDate = props.node?.deleteDate ?? null;
+  const removedInOrgState = Boolean(deleteDate) && deleteDate === props.lifetime?.targetDate;
   const formDisabled = props.disabled || props.saving || !hasNodeTypes;
   const submitDisabled = formDisabled || !name.trim() || !nodeTypeId;
   const nodeTypeHelp = useMemo(() => {
@@ -77,6 +81,12 @@ export default function NodeForm(props: {
           {props.title}
         </h2>
       </div>
+      {deleteDate ? (
+        <p className="muted structure-lifetime-note">
+          Exists until {deleteDate}.
+          {props.lifetime?.ending ? " Not shown in later org states." : ""}
+        </p>
+      ) : null}
       {nodeTypeHelp ? <p className="muted">{nodeTypeHelp}</p> : null}
       <form onSubmit={submit}>
         <div className="form-row">
@@ -122,9 +132,12 @@ export default function NodeForm(props: {
           />
         </div>
         {formError ? (
-          <div className="alert alert--danger" role="alert">
-            <p className="alert__text">{formError}</p>
-          </div>
+          <Alert
+            variant="danger"
+            role="alert"
+            onDismiss={() => setFormError("")}
+            message={formError}
+          />
         ) : null}
         <div className="form-actions">
           <button className="btn btn--primary" type="submit" disabled={submitDisabled}>
@@ -139,13 +152,19 @@ export default function NodeForm(props: {
               <button
                 className="btn btn--danger"
                 type="button"
-                disabled={props.saving}
+                disabled={props.saving || removedInOrgState}
+                aria-describedby={removedInOrgState ? `${props.idPrefix}-removed-note` : undefined}
                 onClick={() => setConfirmingDelete(true)}
               >
                 Delete selected node
               </button>
             ) : null}
           </div>
+          {removedInOrgState ? (
+            <p id={`${props.idPrefix}-removed-note`} className="muted">
+              Already removed in this org state.
+            </p>
+          ) : null}
           {confirmingDelete ? (
             <div className="delete-confirmation" role="alertdialog">
               <p>Are you sure you want to delete the selected node?</p>

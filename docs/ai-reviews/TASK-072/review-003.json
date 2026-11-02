@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-072/review-003",
+  "task": {
+    "id": "TASK-072",
+    "path": "tasks/TASK-072-graph-ending-elements-and-closable-alerts.md"
+  },
+  "round": 3,
+  "reviewed_at": "2026-11-02T10:09:24Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "bb82b0729d52f7c6847cd5dbeb79354c59d77228",
+    "head_sha": "05b52200e879b33d4607460efb74e2374153e454",
+    "comparison": "bb82b0729d52f7c6847cd5dbeb79354c59d77228...05b52200e879b33d4607460efb74e2374153e454",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Round 3 reviews the three commits from the developer's manual review (8e1032d, aed87aa and 05b5220) and re-checks the branch from main bb82b07, which has not moved. Ending nodes and edges no longer get an end-date label line, so the two-line node label fits the node box again; the ending node style sets no font size or weight of its own and keeps the normal 12px label, which a real Cytoscape render confirmed. Ending node and edge labels use a lighter color. Ending edges, including those the backend ends together with their node, are gray dashed lines with gray arrows whatever their edge type's line style, and the selection color still overrides them. Hovering an ending edge, or its label box through text-events, shows the node popover's end-date line with the edge name at the edge midpoint; other edges get no popover, and a real Cytoscape check showed that only the ending edge's label box fires the hover. A side effect, noted and not a finding, is that a tap on an ending edge's label now selects that edge, while a tap on another edge's label still reaches the canvas as before. The task file, domain document and QA checklist describe the new display. The branch remains frontend-only with no dependency, API or migration change. The frontend format check, lint, all 434 tests and the build pass. The developer's manual testing at the local app found no issues. One low finding remains on the contrast of the lighter label color.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "regression",
+        "severity": "low",
+        "summary": "The lighter ending label color has less than the 4.5:1 contrast that WCAG AA asks for 12px text.",
+        "rationale": "The ending node label is measured against the default node fill at the ending fill opacity, and the ending edge label against its white label box. The node label gives about 4.0:1 on a white canvas and 3.9:1 on the page canvas color, the edge label about 4.4:1, and darker node type colors lower it further. The round 2 label had about 7.5:1. The developer asked for a lighter color and found it fine in manual testing.",
+        "recommendation": "Use a slightly darker gray, for example one around 4.7:1 on the default fill, or record the lighter color as an accepted risk.",
+        "locations": [
+          {
+            "path": "frontend/src/features/structure/GraphViewer.tsx",
+            "line": 21
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": []
+  }
+}

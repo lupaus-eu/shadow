@@ -2004,6 +2004,8 @@ describe("Schatten UI shell", () => {
 
     expect(await screen.findByText("Event API error")).toBeInTheDocument();
     expect(screen.getByText(/API request failed \(500\)/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss Event API error notice" }));
+    expect(screen.queryByText("Event API error")).not.toBeInTheDocument();
   });
 
   it("shows event mutation errors", async () => {
@@ -2027,5 +2029,10 @@ describe("Schatten UI shell", () => {
 
     expect(await screen.findByText("Action error")).toBeInTheDocument();
     expect(screen.getByText(/API request failed \(500\)/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss Action error notice" }));
+    expect(screen.queryByText("Action error")).not.toBeInTheDocument();
+    fireEvent.click(within(createEventForm).getByRole("button", { name: "Create event" }));
+    expect(await screen.findByText("Action error")).toBeInTheDocument();
   });
 });

@@ -154,4 +154,14 @@ describe("ChangeSetList", () => {
     expect(await screen.findByText("No change sets.")).toBeVisible();
     await waitFor(() => expect(fetchChangeSetsMock).toHaveBeenCalledTimes(2));
   });
+
+  it("closes the load error", async () => {
+    fetchChangeSetsMock.mockRejectedValue(new Error("Failed to fetch AI change sets (503)."));
+
+    render(<ChangeSetList orgId="acme" scenario={null} onSelect={vi.fn()} />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("(503)");
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss Change sets API error notice" }));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
 });

@@ -361,6 +361,10 @@
   justify-self: start;
 }
 
+.context-dropdown__alert .form-actions {
+  margin-top: 0;
+}
+
 .context-dropdown__footer {
   display: flex;
   justify-content: flex-end;
@@ -697,6 +701,20 @@
   margin-left: calc(28px + var(--space-2));
 }
 
+.structure-ending-badge {
+  margin-left: var(--space-2);
+  padding: 0 var(--space-2);
+  border: 1px dashed var(--color-danger-500);
+  border-radius: var(--radius-full);
+  color: var(--color-danger-500);
+  font-size: var(--text-meta-size);
+  font-weight: 600;
+}
+
+.structure-lifetime-note {
+  margin-bottom: var(--space-3);
+}
+
 .structure-type-count {
   flex: 0 0 auto;
   color: var(--color-text-secondary);
@@ -755,6 +773,23 @@
   background: var(--color-bg-surface);
 }
 
+.graph-viewer__key {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-meta-size);
+}
+
+.graph-viewer__key-swatch {
+  width: 22px;
+  height: 14px;
+  border: 2px dashed var(--color-danger-500);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-inset);
+}
+
 .graph-viewer__canvas-shell {
   position: relative;
   min-height: 0;
@@ -797,6 +832,11 @@
   overflow: hidden;
   overflow-wrap: anywhere;
   -webkit-box-orient: vertical;
+}
+
+.graph-viewer__popover .graph-viewer__popover-ending {
+  margin-top: var(--space-1);
+  color: var(--color-danger-500);
 }
 
 .graph-viewer__empty {
@@ -1010,41 +1050,9 @@
 }
 
 .metrics-notice {
-  position: relative;
   width: fit-content;
   min-width: 300px;
   max-width: 100%;
-  padding-right: var(--space-10);
-}
-
-.metrics-notice__dismiss,
-.prediction-notice__dismiss {
-  position: absolute;
-  top: var(--space-2);
-  right: var(--space-2);
-  display: inline-grid;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  place-items: center;
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--color-text-secondary);
-  cursor: pointer;
-  font-size: 20px;
-  line-height: 1;
-}
-
-.metrics-notice__dismiss:hover,
-.prediction-notice__dismiss:hover {
-  background: rgb(0 0 0 / 8%);
-}
-
-.metrics-notice__dismiss:focus-visible,
-.prediction-notice__dismiss:focus-visible {
-  outline: none;
-  box-shadow: var(--focus-ring);
 }
 
 .metrics-loading {
@@ -1622,6 +1630,7 @@
 
 .summary-state--error {
   display: flex;
+  padding-right: var(--space-10);
   align-items: center;
   justify-content: space-between;
   gap: var(--space-4);

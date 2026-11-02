@@ -99,6 +99,9 @@ describe("CustomersTab", () => {
     vi.mocked(api.fetchCustomers).mockRejectedValueOnce(new Error("Customers unavailable."));
     render(<CustomersTab />);
     expect(await screen.findByText("Customers unavailable.")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Dismiss Customer list error notice" })
+    ).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await screen.findByText("No customers match the current search.");
 

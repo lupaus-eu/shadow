@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent, PointerEvent } from "react";
 import { fetchEvents } from "../../api/events";
+import Alert from "../../components/Alert";
 import type { EventDto } from "../../api/events";
 import { fetchGraphHistory, fetchGraphTypeCatalog } from "../../api/orgTwinStructure";
 import type { GraphHistoryDto, GraphTypeCatalogDto } from "../../api/orgTwinStructure";
@@ -497,8 +498,14 @@ export default function SummaryTab(props: { orgId: string }) {
         </div>
       ) : null}
       {error ? (
-        <div className="summary-state summary-state--error" role="alert">
-          <p>{error}</p>
+        <Alert
+          variant="danger"
+          role="alert"
+          boxClassName="summary-state summary-state--error"
+          message={error}
+          onDismiss={() => setError("")}
+          dismissLabel="Dismiss summary error notice"
+        >
           <button
             className="btn btn--secondary"
             type="button"
@@ -506,7 +513,7 @@ export default function SummaryTab(props: { orgId: string }) {
           >
             Retry
           </button>
-        </div>
+        </Alert>
       ) : null}
       {!loading && !error && data && allRows.length === 0 ? (
         <div className="summary-state" role="status">

@@ -94,6 +94,21 @@ describe("UsersTab", () => {
     expect(fetchUsersMock).toHaveBeenCalledTimes(2);
   });
 
+  it("closes the load error and keeps a compact Retry", async () => {
+    fetchUsersMock.mockRejectedValue(new Error("Users unavailable."));
+
+    render(<UsersTab />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Users unavailable.");
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss User API error notice" }));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.queryByText("No active users available.")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Users unavailable.");
+    expect(fetchUsersMock).toHaveBeenCalledTimes(2);
+  });
+
   it("creates a trimmed user and preserves the created selection", async () => {
     const created: UserDto = {
       id: 4,

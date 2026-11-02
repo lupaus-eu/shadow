@@ -425,7 +425,7 @@ describe("ChangeSetReview", () => {
 
     renderReview();
 
-    const errors = await screen.findByLabelText("Validation errors");
+    const errors = await screen.findByRole("region", { name: "Validation errors" });
     expect(errors).toHaveTextContent(
       "Apply failed in step execute: An event with this name already exists."
     );
@@ -438,6 +438,11 @@ describe("ChangeSetReview", () => {
     ).toBeVisible();
     expect(screen.getByText("Failed")).toBeVisible();
     expect(screen.queryByRole("button", { name: "Apply" })).not.toBeInTheDocument();
+
+    fireEvent.click(
+      within(errors).getByRole("button", { name: "Dismiss Validation errors notice" })
+    );
+    expect(screen.queryByLabelText("Validation errors")).not.toBeInTheDocument();
   });
 
   it("applies with the shown review fingerprint after confirmation and lists the created keys", async () => {
@@ -546,6 +551,11 @@ describe("ChangeSetReview", () => {
     expect(fetchDetailMock).toHaveBeenCalledTimes(2);
     expect(screen.queryByRole("button", { name: "Try again" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Apply" })).not.toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Dismiss The change set is rejected notice" })
+    );
+    expect(screen.queryByText("The change set is rejected")).not.toBeInTheDocument();
   });
 
   it("rejects with an optional note after confirmation", async () => {

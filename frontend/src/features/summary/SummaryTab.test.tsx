@@ -281,6 +281,18 @@ describe("SummaryTab", () => {
     expect(structureApi.fetchGraphHistory).toHaveBeenCalledTimes(2);
   });
 
+  it("closes the load error", async () => {
+    vi.mocked(structureApi.fetchGraphHistory).mockRejectedValueOnce(
+      new Error("History unavailable")
+    );
+    renderSummary();
+    expect(await screen.findByRole("alert")).toHaveTextContent("History unavailable");
+
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss summary error notice" }));
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
   it("applies filters, row visibility, collapsing, popovers, zoom, scrolling and resizing", async () => {
     const { container } = renderSummary();
     await screen.findByText("Alpha (Person)");

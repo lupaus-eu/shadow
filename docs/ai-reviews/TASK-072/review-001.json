@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-072/review-001",
+  "task": {
+    "id": "TASK-072",
+    "path": "tasks/TASK-072-graph-ending-elements-and-closable-alerts.md"
+  },
+  "round": 1,
+  "reviewed_at": "2026-10-30T15:22:48Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "84ca37df2232638eb620a0d567b40ca86f054ae7",
+    "head_sha": "13a60470f7f09dab5587df77a3c3f4a5c051a8fd",
+    "comparison": "84ca37df2232638eb620a0d567b40ca86f054ae7...13a60470f7f09dab5587df77a3c3f4a5c051a8fd",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Round 1 reviews 13a6047. The ending rule compares an element's delete date with the next org state of the scenario and falls back to the selected date when the org states cannot be loaded; the graph, popover, node list and edit forms show the end date, and Delete is disabled only when the element already ends on the selected date. Every alert except the Local program security note uses the shared Alert component with a close button; owner-state alerts clear their state and the rest hide themselves until their key changes. Before the commit the review restored the region landmark of the change-set validation errors, which the first conversion had dropped, and confirmed that a closed preflight notice reappears because changing any preflight input unmounts the results. No bug or security problem remains. The frontend format check, lint, all 430 tests and the build pass; the visuals were checked in a temporary preview page, not in the running local app. Four low findings remain; the developer decided to keep the load-error behaviour of F-001.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "regression",
+        "severity": "low",
+        "summary": "Closing a load error that contains a Retry button also hides Retry until the panel is reopened or the page is refreshed.",
+        "rationale": "Load errors with Retry hide themselves on close so that the area's empty-state message is not shown instead of the error. The error state stays set, so neither Retry nor the empty message is visible afterwards. This affects the dropdowns, Users, the Customers list, AI connections, change sets and the Predictions page error. The developer reviewed the behaviour and chose to keep it.",
+        "recommendation": "Record the developer decision as an accepted risk in the next round, or keep a compact Retry control after closing if users report it.",
+        "locations": [
+          {
+            "path": "frontend/src/components/OrgStateDropdown.tsx",
+            "line": 172
+          },
+          {
+            "path": "tasks/TASK-072-graph-ending-elements-and-closable-alerts.md",
+            "line": 160
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "regression",
+        "severity": "low",
+        "summary": "Closing the prediction-interval error also removes the input's invalid marker while the value is still invalid.",
+        "rationale": "The input's invalid marker is derived from the error state that closing clears. Submission validates the value again and blocks it, so no invalid request is sent, but assistive technology no longer reports the input as invalid until the next submit.",
+        "recommendation": "Derive the input's invalid marker from the value instead of from the error message, or accept the behaviour.",
+        "locations": [
+          {
+            "path": "frontend/src/features/predictions/PredictionsTab.tsx",
+            "line": 962
+          }
+        ]
+      },
+      {
+        "id": "F-003",
+        "category": "scope",
+        "severity": "info",
+        "summary": "Every Structure load now requests the scenario's org states, which the workspace org state dropdown already loads.",
+        "rationale": "The task specifies loading the org states with the graph. Sharing the list through the workspace selection context would avoid one request per load but changes shared workspace code beyond this task.",
+        "recommendation": "Consider sharing the org-state list through the workspace selection context in a separate task if the extra request matters.",
+        "locations": [
+          {
+            "path": "frontend/src/features/structure/StructureTab.tsx",
+            "line": 306
+          }
+        ]
+      },
+      {
+        "id": "F-004",
+        "category": "scope",
+        "severity": "info",
+        "summary": "The Summary error repeats the close button markup of the shared Alert component.",
+        "rationale": "The task keeps the Summary error's own box, so it uses the shared dismiss styling with its own button. A later change to the Alert close button would not reach it automatically.",
+        "recommendation": "Keep as is, or let Alert render into custom containers if more such boxes appear.",
+        "locations": [
+          {
+            "path": "frontend/src/features/summary/SummaryTab.tsx",
+            "line": 502
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": []
+  }
+}

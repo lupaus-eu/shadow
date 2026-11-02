@@ -12,6 +12,7 @@ import { useAuth } from "../../auth/AuthContext";
 import { navigateBrowser } from "../../auth/browserNavigation";
 import SelfDeclaredClientName from "./SelfDeclaredClientName";
 import { formatAiTimestamp } from "./aiPresentation";
+import Alert from "../../components/Alert";
 
 type Decision = "approve" | "deny";
 
@@ -233,10 +234,13 @@ function ConsentRequest(props: { requestId: string }) {
         </section>
 
         {decisionError ? (
-          <div className="alert alert--danger" role="alert">
-            <p className="alert__title">Decision failed</p>
-            <p className="alert__text">{decisionError}</p>
-          </div>
+          <Alert
+            variant="danger"
+            role="alert"
+            title="Decision failed"
+            message={decisionError}
+            onDismiss={() => setDecisionError("")}
+          />
         ) : null}
 
         <div className="form-actions">

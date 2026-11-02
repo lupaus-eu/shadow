@@ -773,8 +773,17 @@ describe("PredictionsTab", () => {
       fireEvent.change(confidenceLevel, { target: { value: invalidLevel } });
       fireEvent.click(screen.getByRole("button", { name: "Run preflight" }));
       expect(await screen.findByRole("alert")).toHaveTextContent(/whole-number|50 through 99/i);
+      expect(confidenceLevel).toHaveAttribute("aria-invalid", "true");
     }
     expect(api.preflightPredictions).toHaveBeenCalledTimes(2);
+
+    // Closing the error keeps the marker while the value stays invalid.
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss notice" }));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(confidenceLevel).toHaveAttribute("aria-invalid", "true");
+    expect(confidenceLevel).toHaveAttribute("aria-describedby", "prediction-interval-help");
+    fireEvent.change(confidenceLevel, { target: { value: "85" } });
+    expect(confidenceLevel).not.toHaveAttribute("aria-invalid");
   });
 
   it("renders available interval bands behind point lines with accessible bounds", async () => {
@@ -1431,6 +1440,10 @@ describe("PredictionsTab", () => {
 
     expect(api.createPrediction).not.toHaveBeenCalled();
     expect(api.preflightPredictions).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss notice" }));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Queue prediction" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Select at least one model.");
     fireEvent.click(within(models).getByLabelText("Average"));
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });

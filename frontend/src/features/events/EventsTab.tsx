@@ -3,6 +3,7 @@ import type { SubmitEvent } from "react";
 import { createEvent, deleteEvent, fetchEvents, updateEvent } from "../../api/events";
 import type { EventDto } from "../../api/events";
 import { useWorkspaceSelection } from "../../workspace/WorkspaceSelectionContext";
+import Alert from "../../components/Alert";
 
 function sortEvents(items: EventDto[]): EventDto[] {
   return [...items].sort((a, b) => {
@@ -249,10 +250,13 @@ export default function EventsTab(props: { orgId: string }) {
             )}
             {loadingEvents ? <p className="muted">Loading events...</p> : null}
             {eventsError ? (
-              <div className="alert alert--danger" role="alert">
-                <p className="alert__title">Event API error</p>
-                <p className="alert__text">{eventsError}</p>
-              </div>
+              <Alert
+                key={eventsError}
+                variant="danger"
+                role="alert"
+                title="Event API error"
+                message={eventsError}
+              />
             ) : null}
             {!loadingEvents && !eventsError && events.length === 0 ? (
               <p className="muted">No events available.</p>
@@ -295,6 +299,7 @@ export default function EventsTab(props: { orgId: string }) {
               editTargetDate={editTargetDate}
               editDetails={editDetails}
               error={actionError}
+              onClearError={() => setActionError("")}
               saving={saving}
               onEditNameChange={setEditName}
               onEditTargetDateChange={setEditTargetDate}
@@ -308,6 +313,7 @@ export default function EventsTab(props: { orgId: string }) {
               targetDate={createTargetDate}
               details={createDetails}
               error={createError}
+              onClearError={() => setCreateError("")}
               saving={saving}
               disabled={!selectedScenario}
               onNameChange={setCreateName}
@@ -329,6 +335,7 @@ function EventDetail(props: {
   editTargetDate: string;
   editDetails: string;
   error: string;
+  onClearError: () => void;
   saving: boolean;
   onEditNameChange: (value: string) => void;
   onEditTargetDateChange: (value: string) => void;
@@ -377,7 +384,7 @@ function EventDetail(props: {
               onTargetDateChange={props.onEditTargetDateChange}
               onDetailsChange={props.onEditDetailsChange}
             />
-            <ActionError message={props.error} />
+            <ActionError message={props.error} onClose={props.onClearError} />
             <div className="form-actions">
               <button
                 className="btn btn--primary"
@@ -437,6 +444,7 @@ function CreateEventForm(props: {
   targetDate: string;
   details: string;
   error: string;
+  onClearError: () => void;
   saving: boolean;
   disabled: boolean;
   onNameChange: (value: string) => void;
@@ -466,7 +474,7 @@ function CreateEventForm(props: {
         onTargetDateChange={props.onTargetDateChange}
         onDetailsChange={props.onDetailsChange}
       />
-      <ActionError message={props.error} />
+      <ActionError message={props.error} onClose={props.onClearError} />
       <div className="form-actions">
         <button
           className="btn btn--primary"
@@ -531,12 +539,15 @@ function EventFields(props: {
   );
 }
 
-function ActionError(props: { message: string }) {
+function ActionError(props: { message: string; onClose: () => void }) {
   if (!props.message) return null;
   return (
-    <div className="alert alert--danger" role="alert">
-      <p className="alert__title">Action error</p>
-      <p className="alert__text">{props.message}</p>
-    </div>
+    <Alert
+      variant="danger"
+      role="alert"
+      title="Action error"
+      message={props.message}
+      onDismiss={props.onClose}
+    />
   );
 }

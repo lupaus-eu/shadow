@@ -3,6 +3,7 @@ import type { KeyboardEvent } from "react";
 import { fetchOrgStates } from "../api/scenarios";
 import type { OrgStateDto } from "../api/scenarios";
 import { useWorkspaceSelection } from "../workspace/WorkspaceSelectionContext";
+import Alert from "./Alert";
 
 function sortOrgStates(items: OrgStateDto[]): OrgStateDto[] {
   return [...items].sort((left, right) => left.targetDate.localeCompare(right.targetDate));
@@ -167,17 +168,15 @@ export default function OrgStateDropdown(props: { orgId: string }) {
             <p className="muted context-dropdown__message">No org states available.</p>
           ) : null}
           {loadError ? (
-            <div className="alert alert--danger context-dropdown__alert" role="alert">
-              <p className="alert__title">Org state load error</p>
-              <p className="alert__text">{loadError}</p>
-              <button
-                className="btn btn--secondary"
-                type="button"
-                onClick={() => setRetryVersion((value) => value + 1)}
-              >
-                Retry
-              </button>
-            </div>
+            <Alert
+              key={loadError}
+              variant="danger"
+              role="alert"
+              className="context-dropdown__alert"
+              title="Org state load error"
+              message={loadError}
+              onRetry={() => setRetryVersion((value) => value + 1)}
+            />
           ) : null}
           <div className="context-dropdown__options">
             {orgStates.map((orgState) => {

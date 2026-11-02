@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -139,6 +139,7 @@ describe("AuthorizePage", () => {
 
     const notice = await screen.findByRole("note", { name: "Local program" });
     expect(notice).toHaveTextContent("goes to a program on this computer");
+    expect(within(notice).queryByRole("button")).not.toBeInTheDocument();
     expect(notice).toHaveTextContent("Local programs cannot be verified by name");
     expect(screen.getByText("A program on this computer")).toBeVisible();
     expect(document.body).not.toHaveTextContent("127.0.0.1");
@@ -304,6 +305,11 @@ describe("AuthorizePage", () => {
     expect(await screen.findByRole("button", { name: "Approve" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Deny" })).toBeEnabled();
     expect(navigateBrowserMock).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss Decision failed notice" }));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Network unavailable.");
   });
 
   it("aborts the consent request when unmounted", () => {

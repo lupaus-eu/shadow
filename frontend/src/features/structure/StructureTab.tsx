@@ -21,6 +21,8 @@ import type {
   GraphTypeCatalogDto,
   NodeTypeMetadataDto
 } from "../../api/orgTwinStructure";
+import { fetchOrgStates } from "../../api/scenarios";
+import Alert from "../../components/Alert";
 import { useWorkspaceSelection } from "../../workspace/WorkspaceSelectionContext";
 import EdgeForm from "./EdgeForm";
 import type { EdgeFormCreatePayload } from "./EdgeForm";
@@ -28,6 +30,7 @@ import GraphEditorToolbar, { EditorModeSelector } from "./GraphEditorToolbar";
 import type { StructureMode } from "./GraphEditorToolbar";
 import GraphViewer from "./GraphViewer";
 import type { GraphCenterRequest, GraphSelection } from "./GraphViewer";
+import { endsInOrgState, nextOrgStateTargetDate } from "./lifetime";
 import NodeForm from "./NodeForm";
 import type { NodeFormCreatePayload } from "./NodeForm";
 import NodeList from "./NodeList";
@@ -197,6 +200,8 @@ export default function StructureTab(props: { orgId: string }) {
   const [mode, setMode] = useState<StructureMode>("create");
   const [graph, setGraph] = useState<GraphDto | null>(null);
   const [catalog, setCatalog] = useState<GraphTypeCatalogDto | null>(null);
+  // undefined while the scenario's org states are unknown, null without a later org state.
+  const [nextTargetDate, setNextTargetDate] = useState<string | null | undefined>(undefined);
   const [selected, setSelected] = useState<GraphSelection | null>(null);
   const [centerNodeRequest, setCenterNodeRequest] = useState<GraphCenterRequest | null>(null);
   const [fitRequestId, setFitRequestId] = useState(0);
@@ -281,6 +286,7 @@ export default function StructureTab(props: { orgId: string }) {
       if (!selectedScenario || !selectedOrgState) {
         setGraph(null);
         setCatalog(null);
+        setNextTargetDate(undefined);
         setSelected(null);
         setCenterNodeRequest(null);
         setFitRequestId(0);
@@ -293,12 +299,17 @@ export default function StructureTab(props: { orgId: string }) {
         setLoading(true);
         setLoadError("");
         setActionError("");
-        const [nextGraph, nextCatalog] = await Promise.all([
+        const [nextGraph, nextCatalog, orgStates] = await Promise.all([
           fetchGraph(props.orgId, selectedScenario.id, selectedOrgState.id, signal),
-          fetchGraphTypeCatalog(props.orgId, selectedScenario.id, selectedOrgState.id, signal)
+          fetchGraphTypeCatalog(props.orgId, selectedScenario.id, selectedOrgState.id, signal),
+          // The ending markers fall back to the selected state's date without the org states.
+          fetchOrgStates(props.orgId, selectedScenario.id, signal).catch(() => null)
         ]);
         setGraph(nextGraph);
         setCatalog(nextCatalog);
+        setNextTargetDate(
+          orgStates ? nextOrgStateTargetDate(orgStates, selectedOrgState.targetDate) : undefined
+        );
         setSelected(null);
         setCenterNodeRequest(null);
         setCreateEdgeDraft(EMPTY_CREATE_EDGE_DRAFT);
@@ -319,6 +330,7 @@ export default function StructureTab(props: { orgId: string }) {
         setLoadError(messageFromError(error));
         setGraph(null);
         setCatalog(null);
+        setNextTargetDate(undefined);
         setSelected(null);
         setCenterNodeRequest(null);
         setCreateEdgeDraft(EMPTY_CREATE_EDGE_DRAFT);
@@ -657,6 +669,25 @@ export default function StructureTab(props: { orgId: string }) {
     () => edgeTypesForCreateSelection(graph, catalog, createEdgeDraft),
     [catalog, createEdgeDraft, graph]
   );
+  const targetDate = selectedOrgState?.targetDate ?? "";
+  const endingNodeIds = useMemo(
+    () =>
+      new Set(
+        (graph?.nodes ?? [])
+          .filter((node) => endsInOrgState(node.deleteDate, targetDate, nextTargetDate))
+          .map((node) => node.id)
+      ),
+    [graph, nextTargetDate, targetDate]
+  );
+  const endingEdgeIds = useMemo(
+    () =>
+      new Set(
+        (graph?.edges ?? [])
+          .filter((edge) => endsInOrgState(edge.deleteDate, targetDate, nextTargetDate))
+          .map((edge) => edge.id)
+      ),
+    [graph, nextTargetDate, targetDate]
+  );
 
   return (
     <div className="structure-tab">
@@ -669,22 +700,29 @@ export default function StructureTab(props: { orgId: string }) {
       />
 
       {loadError ? (
-        <div className="alert alert--danger" role="alert">
-          <p className="alert__title">Structure API error</p>
-          <p className="alert__text">{loadError}</p>
-        </div>
+        <Alert
+          variant="danger"
+          role="alert"
+          title="Structure API error"
+          onDismiss={() => setLoadError("")}
+          message={loadError}
+        />
       ) : null}
       {actionError ? (
-        <div className="alert alert--danger" role="alert">
-          <p className="alert__title">Structure save error</p>
-          <p className="alert__text">{actionError}</p>
-        </div>
+        <Alert
+          variant="danger"
+          role="alert"
+          title="Structure save error"
+          onDismiss={() => setActionError("")}
+          message={actionError}
+        />
       ) : null}
 
       <div className="structure-workspace">
         <NodeList
           nodes={nodes}
           nodeTypes={nodeTypes}
+          endingNodeIds={endingNodeIds}
           visibleNodeTypeIds={visibleNodeTypeIds}
           collapsedNodeTypeIds={collapsedNodeTypeIds}
           selectedNodeId={selected?.kind === "node" ? selected.id : null}
@@ -700,6 +738,8 @@ export default function StructureTab(props: { orgId: string }) {
           graph={graph}
           catalog={catalog}
           visibleNodeTypeIds={visibleNodeTypeIds}
+          endingNodeIds={endingNodeIds}
+          endingEdgeIds={endingEdgeIds}
           selected={selected}
           centerNodeRequest={centerNodeRequest}
           fitRequestId={fitRequestId}
@@ -796,6 +836,7 @@ export default function StructureTab(props: { orgId: string }) {
               title="Edit node"
               node={selectedNode}
               nodeTypes={nodeTypes}
+              lifetime={{ targetDate, ending: endingNodeIds.has(selectedNode.id) }}
               saving={isMutatingEntity}
               submitLabel="Save node"
               disabled={loading}
@@ -810,6 +851,7 @@ export default function StructureTab(props: { orgId: string }) {
               edge={selectedEdge}
               nodes={nodes}
               edgeTypes={edgeTypes}
+              lifetime={{ targetDate, ending: endingEdgeIds.has(selectedEdge.id) }}
               saving={isMutatingEntity}
               submitLabel="Save edge"
               disabled={loading}

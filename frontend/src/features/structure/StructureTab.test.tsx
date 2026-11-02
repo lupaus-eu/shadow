@@ -3,6 +3,7 @@ import type { ContextType } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as structureApi from "../../api/orgTwinStructure";
 import type { GraphDto, GraphTypeCatalogDto } from "../../api/orgTwinStructure";
+import * as scenariosApi from "../../api/scenarios";
 import * as timeseriesApi from "../../api/timeseries";
 import { WorkspaceSelectionContext } from "../../workspace/WorkspaceSelectionContext";
 import StructureTab from "./StructureTab";
@@ -23,6 +24,14 @@ vi.mock("../../api/orgTwinStructure", async (importOriginal) => {
   };
 });
 
+vi.mock("../../api/scenarios", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../api/scenarios")>();
+  return {
+    ...actual,
+    fetchOrgStates: vi.fn()
+  };
+});
+
 vi.mock("../../api/timeseries", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../api/timeseries")>();
   return {
@@ -36,6 +45,8 @@ vi.mock("../../api/timeseries", async (importOriginal) => {
 vi.mock("./GraphViewer", () => ({
   default: (props: {
     graph: GraphDto | null;
+    endingNodeIds: ReadonlySet<string>;
+    endingEdgeIds: ReadonlySet<string>;
     centerNodeRequest: { nodeId: string; requestId: number } | null;
     onSelect: (selection: { kind: "node" | "edge"; id: string } | null) => void;
     onNodePositionChange: (nodeId: string, position: { x: number; y: number }) => void;
@@ -48,6 +59,8 @@ vi.mock("./GraphViewer", () => ({
       <span data-testid="graph-edge-ids">
         {props.graph?.edges.map((edge) => edge.id).join(",") ?? ""}
       </span>
+      <span data-testid="ending-node-ids">{[...props.endingNodeIds].join(",")}</span>
+      <span data-testid="ending-edge-ids">{[...props.endingEdgeIds].join(",")}</span>
       <span data-testid="center-node-request">
         {props.centerNodeRequest
           ? `${props.centerNodeRequest.nodeId}:${props.centerNodeRequest.requestId}`
@@ -330,6 +343,7 @@ describe("StructureTab", () => {
     vi.clearAllMocks();
     vi.mocked(structureApi.fetchGraph).mockResolvedValue(graph);
     vi.mocked(structureApi.fetchGraphTypeCatalog).mockResolvedValue(catalog);
+    vi.mocked(scenariosApi.fetchOrgStates).mockResolvedValue([]);
     vi.mocked(structureApi.createGraphNode).mockResolvedValue({
       id: "node_operations",
       name: "Operations",
@@ -1068,5 +1082,149 @@ describe("StructureTab", () => {
       expect(screen.getByTestId("graph-edge-ids")).toBeEmptyDOMElement();
     });
     expect(structureApi.fetchGraph).toHaveBeenCalledTimes(1);
+  });
+
+  describe("elements that end in the selected org state", () => {
+    const orgStates = [
+      { id: "state_1", name: "State 1", description: "", targetDate: "2026-01-01" },
+      { id: "state_2", name: "State 2", description: "", targetDate: "2026-02-01" },
+      { id: "state_3", name: "State 3", description: "", targetDate: "2026-03-01" }
+    ];
+
+    function endingGraph(deleteDate: string): GraphDto {
+      return {
+        ...graph,
+        nodes: graph.nodes.map((node) => (node.id === "node_ceo" ? { ...node, deleteDate } : node)),
+        edges: graph.edges.map((edge) =>
+          edge.id === "edge_reports" ? { ...edge, createDate: "2026-01-01", deleteDate } : edge
+        )
+      };
+    }
+
+    function renderInState(index: number) {
+      const orgState = orgStates[index];
+      return renderStructureTab(
+        workspaceValue(
+          { id: "future", name: "Future" },
+          { id: orgState.id, name: orgState.name, targetDate: orgState.targetDate }
+        )
+      );
+    }
+
+    beforeEach(() => {
+      vi.mocked(scenariosApi.fetchOrgStates).mockResolvedValue(orgStates);
+      vi.mocked(structureApi.fetchGraph).mockResolvedValue(endingGraph("2026-02-01"));
+    });
+
+    it("marks a node and edge removed in the selected org state", async () => {
+      renderInState(1);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("ending-node-ids")).toHaveTextContent("node_ceo");
+        expect(screen.getByTestId("ending-edge-ids")).toHaveTextContent("edge_reports");
+      });
+      expect(scenariosApi.fetchOrgStates).toHaveBeenCalledWith(
+        "acme",
+        "future",
+        expect.any(AbortSignal)
+      );
+      const ceo = screen.getByRole("button", { name: /^CEO Ends 2026-02-01/ });
+      expect(within(ceo).getByText("Ends")).toHaveClass("structure-ending-badge");
+      expect(screen.getByRole("button", { name: "CFO Finance lead" })).toBeInTheDocument();
+    });
+
+    it("does not mark the node in an earlier org state", async () => {
+      renderInState(0);
+
+      await screen.findByRole("button", { name: "CEO Chief executive" });
+      expect(screen.getByTestId("ending-node-ids")).toBeEmptyDOMElement();
+      expect(screen.getByTestId("ending-edge-ids")).toBeEmptyDOMElement();
+    });
+
+    it("marks a node whose delete date falls before the next org state", async () => {
+      vi.mocked(structureApi.fetchGraph).mockResolvedValue(endingGraph("2026-01-15"));
+      renderInState(0);
+
+      await waitFor(() =>
+        expect(screen.getByTestId("ending-node-ids")).toHaveTextContent("node_ceo")
+      );
+    });
+
+    it("marks any node with a delete date when there is no later org state", async () => {
+      vi.mocked(structureApi.fetchGraph).mockResolvedValue(endingGraph("2026-04-01"));
+      renderInState(2);
+
+      await waitFor(() =>
+        expect(screen.getByTestId("ending-node-ids")).toHaveTextContent("node_ceo")
+      );
+    });
+
+    it("falls back to the selected date when the org states cannot be loaded", async () => {
+      vi.mocked(scenariosApi.fetchOrgStates).mockRejectedValue(new Error("Org states failed"));
+      vi.mocked(structureApi.fetchGraph).mockResolvedValue({
+        ...endingGraph("2026-02-01"),
+        edges: graph.edges.map((edge) => ({ ...edge, deleteDate: "2026-02-15" }))
+      });
+      renderInState(1);
+
+      await waitFor(() =>
+        expect(screen.getByTestId("ending-node-ids")).toHaveTextContent("node_ceo")
+      );
+      expect(screen.getByTestId("ending-edge-ids")).toBeEmptyDOMElement();
+      expect(screen.getByTestId("graph-node-ids")).toHaveTextContent("node_ceo");
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    });
+
+    it("disables Delete for a node already removed in the selected org state", async () => {
+      renderInState(1);
+
+      fireEvent.click(await screen.findByRole("button", { name: /^CEO Ends 2026-02-01/ }));
+
+      expect(
+        screen.getByText("Exists until 2026-02-01. Not shown in later org states.")
+      ).toBeInTheDocument();
+      const deleteButton = screen.getByRole("button", { name: "Delete selected node" });
+      expect(deleteButton).toBeDisabled();
+      expect(deleteButton).toHaveAccessibleDescription("Already removed in this org state.");
+    });
+
+    it("keeps Delete available for a node that ends after the selected org state", async () => {
+      vi.mocked(structureApi.fetchGraph).mockResolvedValue(endingGraph("2026-02-15"));
+      renderInState(1);
+
+      fireEvent.click(await screen.findByRole("button", { name: /^CEO Ends 2026-02-15/ }));
+
+      expect(
+        screen.getByText("Exists until 2026-02-15. Not shown in later org states.")
+      ).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Delete selected node" })).toBeEnabled();
+      expect(screen.queryByText("Already removed in this org state.")).not.toBeInTheDocument();
+    });
+
+    it("disables Delete for an edge already removed in the selected org state", async () => {
+      renderInState(1);
+      await screen.findByRole("region", { name: "Person nodes" });
+
+      fireEvent.click(screen.getByRole("button", { name: "Show & Edit" }));
+      fireEvent.click(screen.getByRole("button", { name: "Select reports edge" }));
+
+      expect(
+        screen.getByText("Exists until 2026-02-01. Not shown in later org states.")
+      ).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Delete selected edge" })).toBeDisabled();
+    });
+  });
+
+  it("closes the load error and shows it again when loading fails again", async () => {
+    vi.mocked(structureApi.fetchGraph).mockRejectedValue(new Error("Graph failed"));
+    renderStructureTab();
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Graph failed");
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss Structure API error notice" }));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Graph failed");
   });
 });

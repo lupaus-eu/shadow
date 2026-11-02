@@ -272,6 +272,21 @@ describe("workspace scenario and org state dropdowns", () => {
     expect(await screen.findByRole("button", { name: /Reality/ })).toBeInTheDocument();
   });
 
+  it("closes the scenario load error and keeps a compact Retry", async () => {
+    vi.mocked(scenariosApi.fetchScenarios).mockRejectedValue(new Error("Scenarios unavailable"));
+    vi.mocked(scenariosApi.fetchOrgStates).mockResolvedValue(realityStates);
+    renderDropdowns();
+
+    fireEvent.click(screen.getByRole("button", { name: "Change scenario" }));
+    expect(await screen.findByText("Scenarios unavailable")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss Scenario load error notice" }));
+
+    expect(screen.queryByText("Scenarios unavailable")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await screen.findByText("Scenarios unavailable")).toBeInTheDocument();
+    expect(scenariosApi.fetchScenarios).toHaveBeenCalledTimes(2);
+  });
+
   it("ignores a late org-state response from an abandoned draft scenario", async () => {
     const futureResponse = deferred<OrgStateDto[]>();
     vi.mocked(scenariosApi.fetchScenarios).mockResolvedValue(scenarios);

@@ -10,6 +10,7 @@ function nodeTypeLabel(type: NodeTypeMetadataDto | undefined, id: string): strin
 export default function NodeList(props: {
   nodes: GraphNodeDto[];
   nodeTypes: NodeTypeMetadataDto[];
+  endingNodeIds: ReadonlySet<string>;
   visibleNodeTypeIds: Set<string>;
   collapsedNodeTypeIds: Set<string>;
   selectedNodeId: string | null;
@@ -143,7 +144,15 @@ export default function NodeList(props: {
                           disabled={!isVisible}
                         >
                           <span className="entity-row__main">
-                            <span className="entity-row__title">{node.name}</span>
+                            <span className="entity-row__title">
+                              {node.name}
+                              {props.endingNodeIds.has(node.id) ? (
+                                <span className="structure-ending-badge">
+                                  Ends
+                                  <span className="visually-hidden"> {node.deleteDate}</span>
+                                </span>
+                              ) : null}
+                            </span>
                             <span className="clamped-description">{node.description || ""}</span>
                           </span>
                         </button>

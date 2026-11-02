@@ -1,4 +1,5 @@
 import { useAuth } from "./AuthContext";
+import Alert from "../components/Alert";
 
 export default function LoginPage(props: { returnTo: string; authenticationFailed?: boolean }) {
   const { authError, login } = useAuth();
@@ -15,10 +16,13 @@ export default function LoginPage(props: { returnTo: string; authenticationFaile
         </h1>
         <p className="muted">Sign in with your organisation account.</p>
         {message ? (
-          <div className="alert alert--danger" role="alert">
-            <p className="alert__title">Authentication error</p>
-            <p className="alert__text">{message}</p>
-          </div>
+          <Alert
+            key={message}
+            variant="danger"
+            role="alert"
+            title="Authentication error"
+            message={message}
+          />
         ) : null}
         <button className="btn btn--primary" type="button" onClick={() => login(props.returnTo)}>
           Sign in

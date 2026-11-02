@@ -18,6 +18,7 @@ import type {
   TimeserieTimeUnit,
   TimeserieValueUnit
 } from "../../api/timeseries";
+import Alert from "../../components/Alert";
 
 const TIME_UNIT_OPTIONS: TimeserieTimeUnit[] = ["day", "week", "month", "year"];
 const VALUE_UNIT_OPTIONS: TimeserieValueUnit[] = ["number", "string", "boolean"];
@@ -383,10 +384,13 @@ export default function TimeseriePanel(props: {
       ) : null}
 
       {panelError ? (
-        <div className="alert alert--danger" role="alert">
-          <p className="alert__title">Timeserie error</p>
-          <p className="alert__text">{panelError}</p>
-        </div>
+        <Alert
+          variant="danger"
+          role="alert"
+          title="Timeserie error"
+          message={panelError}
+          onDismiss={() => setPanelError("")}
+        />
       ) : null}
 
       <div className="timeserie-status-list">
@@ -667,9 +671,12 @@ function MissingTimeserieForm(props: {
         </div>
       </div>
       {formError ? (
-        <div className="alert alert--danger" role="alert">
-          <p className="alert__text">{formError}</p>
-        </div>
+        <Alert
+          variant="danger"
+          role="alert"
+          message={formError}
+          onDismiss={() => setFormError("")}
+        />
       ) : null}
       <div className="form-actions">
         <button className="btn btn--primary" type="submit" disabled={submitDisabled}>

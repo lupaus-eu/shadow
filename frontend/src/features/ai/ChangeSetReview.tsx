@@ -18,6 +18,7 @@ import {
   patchedFields
 } from "./changeSetOperations";
 import type { ChangeSetNames, OperationValue } from "./changeSetOperations";
+import Alert from "../../components/Alert";
 
 const MAX_VALUE_ROWS = 1_000;
 
@@ -230,20 +231,15 @@ export default function ChangeSetReview(props: {
 
       {loading && !detail ? <p className="muted">Loading change set...</p> : null}
       {loadError ? (
-        <div className="alert alert--danger" role="alert">
-          <p className="alert__title">Change set API error</p>
-          <p className="alert__text">{loadError}</p>
-          <div className="form-actions">
-            <button
-              className="btn btn--secondary btn--compact"
-              type="button"
-              onClick={() => void loadDetail()}
-              disabled={loading}
-            >
-              Retry
-            </button>
-          </div>
-        </div>
+        <Alert
+          key={loadError}
+          variant="danger"
+          role="alert"
+          title="Change set API error"
+          message={loadError}
+          onRetry={() => void loadDetail()}
+          retryDisabled={loading}
+        />
       ) : null}
 
       {detail && names ? (
@@ -320,6 +316,7 @@ export default function ChangeSetReview(props: {
             status={detail.status}
             pending={pending}
             onRetry={retry}
+            onDismiss={() => setNotice(null)}
           />
 
           <ValidationErrors detail={detail} />
@@ -441,6 +438,7 @@ function ReviewNoticeView(props: {
   status: AiChangeSetDetailDto["status"];
   pending: ReviewAction | null;
   onRetry: (action: ReviewAction) => void;
+  onDismiss: () => void;
 }) {
   const { notice } = props;
   if (!notice) return null;
@@ -449,9 +447,13 @@ function ReviewNoticeView(props: {
     const changed = notice.result.operations.filter((operation) => operation.key);
     const refs = Object.entries(notice.result.refs);
     return (
-      <div className="alert alert--info" role="status">
-        <p className="alert__title">Change set applied</p>
-        <p className="alert__text">The metrics grid was reloaded. Created or changed keys:</p>
+      <Alert
+        variant="info"
+        role="status"
+        title="Change set applied"
+        message="The metrics grid was reloaded. Created or changed keys:"
+        onDismiss={props.onDismiss}
+      >
         <ul className="ai-panel-review__keys" aria-label="Created or changed keys">
           {changed.map((operation) => (
             <li key={operation.position}>
@@ -472,38 +474,46 @@ function ReviewNoticeView(props: {
             </li>
           ))}
         </ul>
-      </div>
+      </Alert>
     );
   }
 
   if (notice.kind === "rejected") {
     return (
-      <div className="alert alert--info" role="status">
-        <p className="alert__title">Change set rejected</p>
-        <p className="alert__text">Nothing was applied.</p>
-      </div>
+      <Alert
+        variant="info"
+        role="status"
+        title="Change set rejected"
+        message="Nothing was applied."
+        onDismiss={props.onDismiss}
+      />
     );
   }
 
   if (notice.kind === "stale") {
     return (
-      <div className="alert alert--danger" role="alert">
-        <p className="alert__title">The replaced data changed</p>
-        <p className="alert__text">
-          The data this change set replaces changed after the review was loaded, so nothing was
-          applied. The review now shows the current data; check the warnings and confirm again.
-        </p>
-      </div>
+      <Alert
+        variant="danger"
+        role="alert"
+        title="The replaced data changed"
+        message={
+          "The data this change set replaces changed after the review was loaded, so nothing " +
+          "was applied. The review now shows the current data; check the warnings and confirm again."
+        }
+        onDismiss={props.onDismiss}
+      />
     );
   }
 
   if (notice.kind === "busy") {
     return (
-      <div className="alert alert--danger" role="alert">
-        <p className="alert__title">
-          {notice.action === "apply" ? "Apply did not run" : "Reject did not run"}
-        </p>
-        <p className="alert__text">{notice.message} Try again shortly.</p>
+      <Alert
+        variant="danger"
+        role="alert"
+        title={notice.action === "apply" ? "Apply did not run" : "Reject did not run"}
+        message={`${notice.message} Try again shortly.`}
+        onDismiss={props.onDismiss}
+      >
         <div className="form-actions">
           <button
             className="btn btn--secondary btn--compact"
@@ -514,26 +524,30 @@ function ReviewNoticeView(props: {
             Try again
           </button>
         </div>
-      </div>
+      </Alert>
     );
   }
 
   if (notice.kind === "conflict") {
     return (
-      <div className="alert alert--danger" role="alert">
-        <p className="alert__title">
-          The change set is {changeSetStatusLabel(props.status).toLowerCase()}
-        </p>
-        <p className="alert__text">{notice.message}</p>
-      </div>
+      <Alert
+        variant="danger"
+        role="alert"
+        title={`The change set is ${changeSetStatusLabel(props.status).toLowerCase()}`}
+        message={notice.message}
+        onDismiss={props.onDismiss}
+      />
     );
   }
 
   return (
-    <div className="alert alert--danger" role="alert">
-      <p className="alert__title">Review action failed</p>
-      <p className="alert__text">{notice.message}</p>
-    </div>
+    <Alert
+      variant="danger"
+      role="alert"
+      title="Review action failed"
+      message={notice.message}
+      onDismiss={props.onDismiss}
+    />
   );
 }
 
@@ -565,6 +579,16 @@ function ReplacementSummary(props: {
   );
 }
 
+function validationErrorsKey(
+  operationErrors: AiChangeSetOperationDto[],
+  applyErrorMessage: string
+): string {
+  return JSON.stringify([
+    applyErrorMessage,
+    operationErrors.map((operation) => [operation.position, operation.error?.message])
+  ]);
+}
+
 function ValidationErrors(props: { detail: AiChangeSetDetailDto }) {
   const { detail } = props;
   const operationErrors = detail.operations.filter((operation) => operation.error);
@@ -574,9 +598,15 @@ function ValidationErrors(props: { detail: AiChangeSetDetailDto }) {
     return null;
   }
 
+  // The errors come from the loaded change set, so the alert hides itself until they change.
   return (
-    <section className="alert alert--danger" aria-label="Validation errors">
-      <p className="alert__title">Validation errors</p>
+    <Alert
+      key={validationErrorsKey(operationErrors, applyError?.message ?? "")}
+      variant="danger"
+      role="region"
+      ariaLabel="Validation errors"
+      title="Validation errors"
+    >
       {applyError ? (
         <p className="alert__text">
           Apply failed
@@ -595,7 +625,7 @@ function ValidationErrors(props: { detail: AiChangeSetDetailDto }) {
       ) : !applyError ? (
         <p className="alert__text">The latest validation of this change set failed.</p>
       ) : null}
-    </section>
+    </Alert>
   );
 }
 

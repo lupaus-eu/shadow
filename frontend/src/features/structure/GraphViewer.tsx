@@ -17,6 +17,10 @@ export type GraphCenterRequest = { nodeId: string; requestId: number };
 
 const DEFAULT_NODE_COLOR = "#dbeafe";
 const DEFAULT_EDGE_COLOR = "#86efac";
+const ENDING_COLOR = "#c0342a";
+// Lighter than node text but still 4.5:1 against the faded default node fill.
+const ENDING_TEXT_COLOR = "#736c5e";
+const ENDING_EDGE_COLOR = "#9ca3af";
 const GRAPH_FIT_PADDING = 56;
 const GRAPH_NODE_WIDTH = 138;
 const GRAPH_NODE_HEIGHT = 60;
@@ -65,6 +69,28 @@ const GRAPH_STYLES = [
       "text-border-color": "#b8ae9b",
       "text-border-opacity": 1,
       "text-border-width": 1
+    }
+  },
+  {
+    selector: 'node[ending = "true"]',
+    style: {
+      "background-opacity": 0.45,
+      color: ENDING_TEXT_COLOR,
+      "border-width": 2,
+      "border-style": "dashed",
+      "border-color": ENDING_COLOR
+    }
+  },
+  {
+    selector: 'edge[ending = "true"]',
+    style: {
+      "line-color": ENDING_EDGE_COLOR,
+      "line-style": "dashed",
+      "target-arrow-color": ENDING_EDGE_COLOR,
+      "source-arrow-color": ENDING_EDGE_COLOR,
+      color: ENDING_TEXT_COLOR,
+      // Hovering the label box shows the end-date popover too.
+      "text-events": "yes"
     }
   },
   {
@@ -344,6 +370,8 @@ export default function GraphViewer(props: {
   graph: GraphDto | null;
   catalog: GraphTypeCatalogDto | null;
   visibleNodeTypeIds: Set<string>;
+  endingNodeIds: ReadonlySet<string>;
+  endingEdgeIds: ReadonlySet<string>;
   selected: GraphSelection | null;
   centerNodeRequest: GraphCenterRequest | null;
   fitRequestId: number;
@@ -361,9 +389,10 @@ export default function GraphViewer(props: {
   const onSelectRef = useRef(props.onSelect);
   const onNodePositionChangeRef = useRef(props.onNodePositionChange);
   const onViewportCenterChangeRef = useRef(props.onViewportCenterChange);
-  const [hoveredNode, setHoveredNode] = useState<{
+  const [hoveredElement, setHoveredElement] = useState<{
     name: string;
     description: string;
+    endDate: string;
     x: number;
     y: number;
   } | null>(null);
@@ -390,6 +419,7 @@ export default function GraphViewer(props: {
 
     const nodeElements: ElementDefinition[] = visibleNodes.map((node, index) => {
       const nodeType = nodeTypes.get(node.nodeTypeId);
+      const endDate = props.endingNodeIds.has(node.id) ? node.deleteDate : null;
       return {
         group: "nodes",
         data: {
@@ -398,7 +428,9 @@ export default function GraphViewer(props: {
           description: node.description ?? "",
           label: buildInstanceLabel(typeDisplayName(nodeType, node.nodeTypeId), node.name),
           color: nodeType?.color || DEFAULT_NODE_COLOR,
-          shape: cytoscapeShape(nodeType?.shape)
+          shape: cytoscapeShape(nodeType?.shape),
+          ending: endDate ? "true" : "false",
+          endDate: endDate ?? ""
         },
         position: node.position ?? fallbackPosition(index)
       };
@@ -410,22 +442,35 @@ export default function GraphViewer(props: {
       )
       .map((edge) => {
         const edgeType = edgeTypes.get(edge.edgeTypeId);
+        const endDate = props.endingEdgeIds.has(edge.id) ? edge.deleteDate : null;
         return {
           group: "edges",
           data: {
             id: edge.id,
             source: edge.sourceNodeId,
             target: edge.targetNodeId,
+            name: edge.name,
             label: buildInstanceLabel(typeDisplayName(edgeType, edge.edgeTypeId), edge.name),
             lineStyle: edgeLineStyle(edgeType?.style),
             sourceArrow: edgeArrow(edgeType?.sourceEnd),
-            targetArrow: edgeArrow(edgeType?.targetEnd)
+            targetArrow: edgeArrow(edgeType?.targetEnd),
+            ending: endDate ? "true" : "false",
+            endDate: endDate ?? ""
           }
         };
       });
 
     return [...nodeElements, ...edgeElements];
-  }, [props.catalog, props.graph, props.visibleNodeTypeIds]);
+  }, [
+    props.catalog,
+    props.endingEdgeIds,
+    props.endingNodeIds,
+    props.graph,
+    props.visibleNodeTypeIds
+  ]);
+  const hasEndingElements = elements.some(
+    (element) => (element.data as { ending?: string }).ending === "true"
+  );
 
   function fitGraph(cy: Core) {
     cy.resize();
@@ -436,13 +481,13 @@ export default function GraphViewer(props: {
   useLayoutEffect(() => {
     const shell = canvasShellRef.current;
     const popover = popoverRef.current;
-    if (!hoveredNode || !shell || !popover) return;
+    if (!hoveredElement || !shell || !popover) return;
 
     const shellRect = shell.getBoundingClientRect();
     const popoverRect = popover.getBoundingClientRect();
     const { left, top } = placePopover(
-      hoveredNode.x,
-      hoveredNode.y,
+      hoveredElement.x,
+      hoveredElement.y,
       shellRect.width,
       shellRect.height,
       popoverRect.width,
@@ -452,7 +497,7 @@ export default function GraphViewer(props: {
     popover.style.left = `${left}px`;
     popover.style.top = `${top}px`;
     popover.style.visibility = "visible";
-  }, [hoveredNode]);
+  }, [hoveredElement]);
 
   useEffect(() => {
     if (!containerRef.current || cyRef.current) return;
@@ -470,15 +515,35 @@ export default function GraphViewer(props: {
     const updateHoveredNode = (event: EventObject) => {
       const node = event.target as NodeSingular;
       const description = String(node.data("description") ?? "").trim();
-      if (!description) {
-        setHoveredNode(null);
+      const endDate = String(node.data("endDate") ?? "");
+      if (!description && !endDate) {
+        setHoveredElement(null);
         return;
       }
 
       const position = node.renderedPosition();
-      setHoveredNode({
+      setHoveredElement({
         name: String(node.data("name") ?? node.id()),
         description,
+        endDate,
+        x: position.x,
+        y: position.y
+      });
+    };
+    // Only ending edges get a popover; it sits at the midpoint, where the label is.
+    const updateHoveredEdge = (event: EventObject) => {
+      const edge = event.target as EdgeSingular;
+      const endDate = String(edge.data("endDate") ?? "");
+      if (!endDate) {
+        setHoveredElement(null);
+        return;
+      }
+
+      const position = edge.renderedMidpoint();
+      setHoveredElement({
+        name: String(edge.data("name") || edge.id()),
+        description: "",
+        endDate,
         x: position.x,
         y: position.y
       });
@@ -486,7 +551,7 @@ export default function GraphViewer(props: {
 
     cy.on("tap", (event: EventObject) => {
       if (event.target === cy) {
-        setHoveredNode(null);
+        setHoveredElement(null);
         onSelectRef.current(null);
       }
     });
@@ -499,14 +564,16 @@ export default function GraphViewer(props: {
     cy.on("dragfree", "node", (event: EventObject) => {
       const node = event.target as NodeSingular;
       const position = node.position();
-      setHoveredNode(null);
+      setHoveredElement(null);
       onNodePositionChangeRef.current(node.id(), {
         x: position.x,
         y: position.y
       });
     });
     cy.on("mouseover mousemove", "node", updateHoveredNode);
-    cy.on("mouseout", "node", () => setHoveredNode(null));
+    cy.on("mouseout", "node", () => setHoveredElement(null));
+    cy.on("mouseover mousemove", "edge", updateHoveredEdge);
+    cy.on("mouseout", "edge", () => setHoveredElement(null));
     cy.on("pan zoom resize", notifyViewportCenter);
 
     cyRef.current = cy;
@@ -609,6 +676,12 @@ export default function GraphViewer(props: {
         <button className="btn btn--secondary btn--compact" type="button" onClick={fit}>
           Zoom to Fit
         </button>
+        {hasEndingElements ? (
+          <p className="graph-viewer__key">
+            <span className="graph-viewer__key-swatch" aria-hidden="true" />
+            Ends in this state
+          </p>
+        ) : null}
       </div>
       <div
         className="graph-viewer__canvas-shell"
@@ -616,7 +689,7 @@ export default function GraphViewer(props: {
         data-testid="graph-canvas-shell"
       >
         <div className="graph-viewer__canvas" ref={containerRef} data-testid="graph-canvas" />
-        {hoveredNode ? (
+        {hoveredElement ? (
           <div
             className="graph-viewer__popover"
             role="tooltip"
@@ -627,8 +700,15 @@ export default function GraphViewer(props: {
               visibility: "hidden"
             }}
           >
-            <p className="graph-viewer__popover-title">{hoveredNode.name}</p>
-            <p className="graph-viewer__popover-description">{hoveredNode.description}</p>
+            <p className="graph-viewer__popover-title">{hoveredElement.name}</p>
+            {hoveredElement.description ? (
+              <p className="graph-viewer__popover-description">{hoveredElement.description}</p>
+            ) : null}
+            {hoveredElement.endDate ? (
+              <p className="graph-viewer__popover-ending">
+                Exists until {hoveredElement.endDate}. Not shown in later org states.
+              </p>
+            ) : null}
           </div>
         ) : null}
       </div>

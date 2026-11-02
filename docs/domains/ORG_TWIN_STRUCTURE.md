@@ -83,6 +83,18 @@ deletion applies a compatible logical end date to connected edges.
 Persistence `deleted_time` is also used for scenario deletion and cleanup
 propagation.
 
+The Structure UI marks elements that are visible in the selected organisation
+state but not in the next one: `delete_date` is set and either the scenario has
+no later organisation state or `delete_date` is before the next state's
+`target_date`. If the organisation states cannot be loaded, only elements with
+`delete_date` equal to the selected `target_date` are marked. Marked nodes are
+faded with a dashed border and show their end date in the popover, node list
+and edit form; marked edges, including those ended with their node, are gray
+dashed lines and show their end date in the popover and edit form. Delete is
+disabled when `delete_date` already equals the selected `target_date`. This
+display uses the existing `createDate` and `deleteDate` response fields and does
+not change the API.
+
 ## Graph Snapshot Copy
 
 When Organisation States Domain copies a scenario, Organisation Twin Structure

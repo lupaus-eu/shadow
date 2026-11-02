@@ -45,6 +45,11 @@ Expected:
 - manual verification for visible behavior
 - update snapshots or component tests if project uses them
 
+Alert banners use the shared `frontend/src/components/Alert.tsx`, whose close
+button, compact Retry after closing and custom box are covered by
+`Alert.test.tsx`. A new alert gets a dismiss test that closes it and, for an
+error, shows it again when the same failure repeats.
+
 ## Domain Logic Change
 
 Expected:
@@ -1029,6 +1034,10 @@ pnpm lint
 pnpm test -- StructureTab GraphViewer
 pnpm build
 ```
+
+`lifetime.test.ts`, `GraphViewer.test.tsx` and `StructureTab.test.tsx` cover
+the marking of elements that end in the selected organisation state, including
+the next-state comparison, the org-state load fallback and the disabled Delete.
 
 Run the full frontend test suite when shared API client, workspace selection or
 tab rendering behavior changes:

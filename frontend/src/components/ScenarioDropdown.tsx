@@ -3,6 +3,7 @@ import type { KeyboardEvent } from "react";
 import { fetchOrgStates, fetchScenarios } from "../api/scenarios";
 import type { OrgStateDto, ScenarioDto } from "../api/scenarios";
 import { useWorkspaceSelection } from "../workspace/WorkspaceSelectionContext";
+import Alert from "./Alert";
 
 function sortOrgStates(items: OrgStateDto[]): OrgStateDto[] {
   return [...items].sort((left, right) => left.targetDate.localeCompare(right.targetDate));
@@ -321,13 +322,15 @@ export default function ScenarioDropdown(props: { orgId: string }) {
 
 function LoadError(props: { title: string; message: string; onRetry: () => void }) {
   return (
-    <div className="alert alert--danger context-dropdown__alert" role="alert">
-      <p className="alert__title">{props.title}</p>
-      <p className="alert__text">{props.message}</p>
-      <button className="btn btn--secondary" type="button" onClick={props.onRetry}>
-        Retry
-      </button>
-    </div>
+    <Alert
+      key={props.message}
+      variant="danger"
+      role="alert"
+      className="context-dropdown__alert"
+      title={props.title}
+      message={props.message}
+      onRetry={props.onRetry}
+    />
   );
 }
 
