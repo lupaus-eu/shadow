@@ -201,6 +201,7 @@ deployment, DNS/TLS, Entra setup and database initialization remain pending.
 Follow the runbook as updated by H3 and `docs/AI-DEVELOPMENT-WORKFLOW.md` approval boundaries.
 Do not execute this task merely because its specification exists. Record only
 operations/checks actually performed; leave blocked/unperformed checks pending.
-Keep evidence in the relevant QA/deployment record without identity or credential
-payloads. Any eventual Step 13 review follows `docs/AI-REVIEW-RECORDS.md` under
+Keep evidence in the F record
+[FIRST-PRODUCTION-ROLLOUT.md](../docs/qa/FIRST-PRODUCTION-ROLLOUT.md) without
+identity or credential payloads. Any eventual Step 13 review follows `docs/AI-REVIEW-RECORDS.md` under
 `docs/ai-reviews/TASK-059F/`.

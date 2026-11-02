@@ -15,8 +15,10 @@ On 2026-09-28 TASK-059E reran `.github/scripts/verify-production-worker.sh`
 logs) against a migrated disposable PostgreSQL 18 database, and the disposable
 runtime harness verified exactly one healthy worker after first install,
 releases, rollback and daemon restart. See
-[UPCLOUD-RUNBOOK-QA.md](UPCLOUD-RUNBOOK-QA.md). The production prediction-flow
-smoke is pending F under the [runbook](../PRODUCTION-RUNBOOK.md#7-narrow-production-smoke).
+[UPCLOUD-RUNBOOK-QA.md](UPCLOUD-RUNBOOK-QA.md). F ran the production
+prediction-flow smoke under the [runbook](../PRODUCTION-RUNBOOK.md#7-narrow-production-smoke)
+for the first release; see
+[FIRST-PRODUCTION-ROLLOUT.md](FIRST-PRODUCTION-ROLLOUT.md#8-narrow-production-smoke-7).
 
 ## Preconditions
 

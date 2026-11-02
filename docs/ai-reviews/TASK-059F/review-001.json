@@ -1,0 +1,282 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-059F/review-001",
+  "task": {
+    "id": "TASK-059F",
+    "path": "tasks/TASK-059F-first-production-rollout.md"
+  },
+  "round": 1,
+  "reviewed_at": "2026-11-02T13:48:54Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": {
+    "number": 127,
+    "url": "https://github.com/reflector-oy/schatten/pull/127"
+  },
+  "source": {
+    "base_sha": "84ca37df2232638eb620a0d567b40ca86f054ae7",
+    "head_sha": "726b8935688a5c7fe815bbba7b44a7d16e024ea5",
+    "comparison": "84ca37df2232638eb620a0d567b40ca86f054ae7...726b8935688a5c7fe815bbba7b44a7d16e024ea5",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Round 1 reviews 726b893, a documentation-only change: the new F record docs/qa/FIRST-PRODUCTION-ROLLOUT.md and one link each in the production runbook and the task. The record was checked against its own recording rules, the task, the runbook, DEPLOYMENT.md, ADR-013 and ARCHITECTURE.md. No secret, private key, passphrase, personal name or email, operator IP address, cloud-init user-data or raw authentication log is recorded; the only address is the reserved documentation address the runbook command uses. All in-document and cross-document anchors resolve. Local facts are consistent: the release ID matches the commit and build time, the recorded tool hashes match the release commit, the v0.1.0 tag object points to the release commit and the Compose image digests match. The runbook and task edits only add links, so nothing is out of scope, and tests do not apply to documentation. No bug or security problem blocks the release; the findings are recording gaps: unverified main protection, a release approval dated before the freeze it should follow, top-level documents that still say the rollout is pending F, and smaller label, qualifier and reference inconsistencies in the record.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "documentation",
+        "severity": "medium",
+        "summary": "main branch protection is not verified and its admin-bypass value is not recorded, without a deviation row, while the source-delivery acceptance item is ticked.",
+        "rationale": "The task and runbook 2.2 step 6 require F to record main's protection, whether required approvals apply and whether administrators can bypass it, and ADR-013 rests source integrity on that protection, which matters more because the deploy secrets are repository-wide. The record says no ruleset applies, classic protection was not visible to the operator and the settings were configured by the repository admin, but gives no bypass value and uses a Reported status that the recording rules reserve for the cloud-init baseline. Section 10 logs the environment deviation but not this gap.",
+        "recommendation": "Record the actual push, force-push, deletion and bypass settings from the repository admin, or add a section 10 row for the unverified protection with its acceptance and qualify the source-delivery acceptance item.",
+        "locations": [
+          {
+            "path": "docs/qa/FIRST-PRODUCTION-ROLLOUT.md",
+            "line": 185
+          },
+          {
+            "path": "docs/qa/FIRST-PRODUCTION-ROLLOUT.md",
+            "line": 395
+          },
+          {
+            "path": "docs/decisions/ADR-013-shared-entra-local-https-deployment.md",
+            "line": 324
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "documentation",
+        "severity": "medium",
+        "summary": "The first-release approval is dated before the CI check, build and freeze it should follow, and the TASK-059B scope confirmation after the deployment, with no deviation row.",
+        "rationale": "Runbook section 3 confirms CI and the real local Entra evidence for the exact commit before approval and freezes the release after it. The record's only release approval is dated 2026-10-01, the CI check, build and frozen image IDs are dated 2026-10-02, and the product owner confirmed that the TASK-059B evidence covers the release scope on 2026-10-30, after the 2026-10-02 installation, although section 3 of the record says that confirmation comes before release approval.",
+        "recommendation": "If the approval of the frozen release was confirmed after 2026-10-02, record that date; otherwise add a section 10 row stating that the change approval preceded the freeze and the scope confirmation followed the deployment, and who accepted that.",
+        "locations": [
+          {
+            "path": "docs/qa/FIRST-PRODUCTION-ROLLOUT.md",
+            "line": 64
+          },
+          {
+            "path": "docs/qa/FIRST-PRODUCTION-ROLLOUT.md",
+            "line": 242
+          },
+          {
+            "path": "docs/PRODUCTION-RUNBOOK.md",
+            "line": 583
+          }
+        ]
+      },
+      {
+        "id": "F-003",
+        "category": "documentation",
+        "severity": "medium",
+        "summary": "AGENTS.md, ARCHITECTURE.md, DEPLOYMENT.md and ADR-013 still say the rollout is pending F or that no production operation has been performed.",
+        "rationale": "The record shows the release accepted and tagged v0.1.0 on 2026-11-02. AGENTS.md is the first source of truth and its documentation rules require updates when deployment changes; DEPLOYMENT.md states outright that no production operation has been performed.",
+        "recommendation": "Update these status statements to say F is complete with a pointer to the F record and v0.1.0, in this change or as an explicitly recorded follow-up.",
+        "locations": [
+          {
+            "path": "AGENTS.md",
+            "line": 110
+          },
+          {
+            "path": "ARCHITECTURE.md",
+            "line": 21
+          },
+          {
+            "path": "docs/DEPLOYMENT.md",
+            "line": 23
+          },
+          {
+            "path": "docs/decisions/ADR-013-shared-entra-local-https-deployment.md",
+            "line": 221
+          }
+        ]
+      },
+      {
+        "id": "F-004",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "Several rows are marked Verified (F) although their observation says not performed, not captured, reported or not exercised on the host.",
+        "rationale": "The recording rules define Verified (F) as observed on the real host or provider. The optional root key login, the build resource observations, the root key holder and the non-overlap lock behaviour are marked Verified (F) without such an observation.",
+        "recommendation": "Use Not performed, Pending or Tested (E) as appropriate, or split the observed part of the row from the rest.",
+        "locations": [
+          {
+            "path": "docs/qa/FIRST-PRODUCTION-ROLLOUT.md",
+            "line": 144
+          },
+          {
+            "path": "docs/qa/FIRST-PRODUCTION-ROLLOUT.md",
+            "line": 150
+          },
+          {
+            "path": "docs/qa/FIRST-PRODUCTION-ROLLOUT.md",
+            "line": 261
+          },
+          {
+            "path": "docs/qa/FIRST-PRODUCTION-ROLLOUT.md",
+            "line": 308
+          }
+        ]
+      },
+      {
+        "id": "F-005",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "The record uses the status labels Accepted deviation, Recorded and Reported (accepted by product owner), which its label table does not define.",
+        "rationale": "The recording rules say skipped or blocked items stay Pending and the status line says unperformed entries are marked Pending, but no row is Pending any more: the deferred 2.7 items and other exceptions use labels outside the table, so a reader scanning for Pending would conclude everything was done.",
+        "recommendation": "Add Accepted deviation and Recorded to the label table with a pointer to section 10, or keep deferred items Pending with the deviation noted.",
+        "locations": [
+          {
+            "path": "docs/qa/FIRST-PRODUCTION-ROLLOUT.md",
+            "line": 30
+          },
+          {
+            "path": "docs/qa/FIRST-PRODUCTION-ROLLOUT.md",
+            "line": 216
+          }
+        ]
+      },
+      {
+        "id": "F-006",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "Three ticked acceptance items omit exceptions their evidence shows, unlike the Entra item, which lists its deferrals.",
+        "rationale": "The hardening item says verified before schedules were enabled while section 6 cites the activation gate's verification after activation; the baseline item says only authorized changes while section 10 logs a mistaken, reverted package install; the smoke item does not mention that smoke item 4 was not run in production.",
+        "recommendation": "Add a short qualifier with a link to section 10 to each of the three items.",
+        "locations": [
+          {
+            "path": "docs/qa/FIRST-PRODUCTION-ROLLOUT.md",
+            "line": 387
+          },
+          {
+            "path": "docs/qa/FIRST-PRODUCTION-ROLLOUT.md",
+            "line": 389
+          },
+          {
+            "path": "docs/qa/FIRST-PRODUCTION-ROLLOUT.md",
+            "line": 410
+          }
+        ]
+      },
+      {
+        "id": "F-007",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "The failure-log row for the mistaken package install refers to step 3.6, which does not match the work done that day.",
+        "rationale": "Runbook section 3 step 6 compares the installed tools after the receive on 2026-10-02, while the row is dated 2026-10-01, when the clipboard was used for the fingerprint and key in 2.2 steps 5 and 6.",
+        "recommendation": "Correct the step reference, probably to 2.2 step 5 or 6.",
+        "locations": [
+          {
+            "path": "docs/qa/FIRST-PRODUCTION-ROLLOUT.md",
+            "line": 370
+          }
+        ]
+      },
+      {
+        "id": "F-008",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "Two departures from the runbook have no section 10 row: build resources were not watched, and smoke item 5 ran four weeks after the first installation.",
+        "rationale": "Runbook section 3 step 8 asks to watch the running application during the build, and section 4 step 13 runs the narrow smoke before the next-day check; the record notes the missing resource observations and dates smoke item 5 to 2026-10-30 without logging either as a deviation.",
+        "recommendation": "Add short deviation rows for both.",
+        "locations": [
+          {
+            "path": "docs/qa/FIRST-PRODUCTION-ROLLOUT.md",
+            "line": 261
+          },
+          {
+            "path": "docs/qa/FIRST-PRODUCTION-ROLLOUT.md",
+            "line": 334
+          }
+        ]
+      },
+      {
+        "id": "F-009",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "The GitHub environment deviation still says the first run may create an unrestricted production environment, and its reassessment trigger has no follow-up row.",
+        "rationale": "The workflow declares the production environment and the first run happened on 2026-10-02, so whether an unrestricted environment now exists can be checked and matters for the deviation; the reassessment before adding any collaborator is not listed in section 12.",
+        "recommendation": "Record whether the environment exists and its branch restriction, and add the reassessment to section 12.",
+        "locations": [
+          {
+            "path": "docs/qa/FIRST-PRODUCTION-ROLLOUT.md",
+            "line": 369
+          },
+          {
+            "path": ".github/workflows/deploy-production.yml",
+            "line": 47
+          }
+        ]
+      },
+      {
+        "id": "F-010",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "Runbook 2.1 still prescribes the provider firewall rule set that the record says breaks a stateless firewall, and the record omits the IPv6 scope of the TCP 22, 80 and 443 rules.",
+        "rationale": "The branch already edits the runbook, but 2.1 has no pointer to the corrected rule set, whose correction is only a potential follow-up. Runbook 2.1 asks for an explicit SSH-over-IPv6 decision, while the record states IPv4 and IPv6 coverage only for the reply, ICMP and DHCP rules.",
+        "recommendation": "Add a one-line warning in runbook 2.1 pointing to the record's 2.1 row until the follow-up is done, and record the IPv6 decision for TCP 22, 80 and 443.",
+        "locations": [
+          {
+            "path": "docs/PRODUCTION-RUNBOOK.md",
+            "line": 262
+          },
+          {
+            "path": "docs/qa/FIRST-PRODUCTION-ROLLOUT.md",
+            "line": 146
+          }
+        ]
+      },
+      {
+        "id": "F-011",
+        "category": "security",
+        "severity": "info",
+        "summary": "The stateless reply rules accept inbound packets by source port without a recorded destination-port restriction, so the provider firewall is not an independent second filter for such packets.",
+        "rationale": "UFW remains the effective stateful filter and only TCP 22, 80 and 443 are reachable, so exposure is limited, but readers may take the enabled provider firewall for defense in depth.",
+        "recommendation": "Note this dependence on UFW in the 2.1 row or the follow-up, and consider limiting the reply rules to the ephemeral destination port range.",
+        "locations": [
+          {
+            "path": "docs/qa/FIRST-PRODUCTION-ROLLOUT.md",
+            "line": 146
+          }
+        ]
+      },
+      {
+        "id": "F-012",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "The test organisation created in production during testing, and its smoke prediction, remain in the database without a recorded decision.",
+        "rationale": "Runbook section 7 allows isolated test records for the smoke, but AGENTS.md forbids test data in production and ADR-013 forbids example business data, so the record should say whether it stays as the designated isolated smoke record.",
+        "recommendation": "Record whether the organisation is retained as the designated isolated smoke record or removed through normal administration.",
+        "locations": [
+          {
+            "path": "docs/qa/FIRST-PRODUCTION-ROLLOUT.md",
+            "line": 282
+          },
+          {
+            "path": "docs/qa/FIRST-PRODUCTION-ROLLOUT.md",
+            "line": 334
+          }
+        ]
+      },
+      {
+        "id": "F-013",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "The release record's latest restore evidence names the newest file in a directory instead of the evidence file.",
+        "rationale": "Runbook section 11 lists the evidence file as a field; the newest file changes with the next rehearsal, and the backup it refers to has already been pruned.",
+        "recommendation": "Record the evidence file name, which is a non-secret identifier.",
+        "locations": [
+          {
+            "path": "docs/qa/FIRST-PRODUCTION-ROLLOUT.md",
+            "line": 355
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": []
+  }
+}

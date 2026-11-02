@@ -1,0 +1,274 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-059F/review-002",
+  "task": {
+    "id": "TASK-059F",
+    "path": "tasks/TASK-059F-first-production-rollout.md"
+  },
+  "round": 2,
+  "reviewed_at": "2026-11-02T15:34:21Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": {
+    "number": 127,
+    "url": "https://github.com/reflector-oy/schatten/pull/127"
+  },
+  "source": {
+    "base_sha": "237cc5e0e898886386949eac88ad24bfcd7df999",
+    "head_sha": "b94e85cc93e344549773e28288e9dcfcd2b9adf0",
+    "comparison": "237cc5e0e898886386949eac88ad24bfcd7df999...b94e85cc93e344549773e28288e9dcfcd2b9adf0",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Round 2 reviews b94e85c after the rebase onto main at 237cc5e: the F record with the round 1 fixes, a runbook 2.1 warning and status-line updates in AGENTS.md, ARCHITECTURE.md, README.md, DEPLOYMENT.md, ADR-013 and two QA checklists. Of the 13 round 1 findings, 8 are fixed and F-001, F-002, F-009 and F-011 are accepted risks with the accepting role and date recorded; F-012 stays open because the retention decision names no role. The status-line edits match the F record, every added link and anchor resolves and no forbidden data is recorded. The new findings are low or informational documentation gaps: a stale architecture diagram, decision and statement rows still labelled Verified (F), ADR-013 and DEPLOYMENT.md silent on the accepted GitHub deviations, the runbook label table out of step with the record, and contradictory admin-bypass wording. None blocks the release.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "The authentication topology diagram still says the rollout and activation are pending F.",
+        "rationale": "This change updates every textual status to say F performed the rollout, ARCHITECTURE.md embeds the generated diagram, and AGENTS.md requires the PlantUML source and generated SVG to be updated when a diagram is affected.",
+        "recommendation": "Update both labels to the F result and regenerate the SVG.",
+        "locations": [
+          {
+            "path": "docs/diagrams/component-authentication-topology.puml",
+            "line": 22
+          },
+          {
+            "path": "docs/diagrams/component-authentication-topology.puml",
+            "line": 59
+          },
+          {
+            "path": "docs/diagrams/generated/component-authentication-topology.svg"
+          },
+          {
+            "path": "ARCHITECTURE.md",
+            "line": 328
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "Several rows that record a role's decision, acknowledgement or own statement are still labelled Verified (F).",
+        "rationale": "The new label table defines Recorded as a role's decision and Reported as a role's own statement, and the root key holder row was relabelled on that basis, but the UpCloud account holder, its two-factor authentication, the recovery path acknowledgement, the shared Entra coupling acknowledgement, the TASK-059B scope decision and the failure-reporting confirmation keep Verified (F).",
+        "recommendation": "Relabel the decisions and acknowledgements as Recorded and the role statements as Reported, or keep Verified (F) only for an observed part.",
+        "locations": [
+          {
+            "path": "docs/qa/FIRST-PRODUCTION-ROLLOUT.md",
+            "line": 167
+          },
+          {
+            "path": "docs/qa/FIRST-PRODUCTION-ROLLOUT.md",
+            "line": 168
+          },
+          {
+            "path": "docs/qa/FIRST-PRODUCTION-ROLLOUT.md",
+            "line": 169
+          },
+          {
+            "path": "docs/qa/FIRST-PRODUCTION-ROLLOUT.md",
+            "line": 224
+          },
+          {
+            "path": "docs/qa/FIRST-PRODUCTION-ROLLOUT.md",
+            "line": 248
+          },
+          {
+            "path": "docs/qa/FIRST-PRODUCTION-ROLLOUT.md",
+            "line": 325
+          }
+        ]
+      },
+      {
+        "id": "F-003",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "ADR-013 and DEPLOYMENT.md still describe environment secrets limited to main and a protected main as in place, without pointing to the accepted deviations.",
+        "rationale": "Production uses repository secrets and main protection that is not independently verified, both accepted deviations whose reassessment before adding a collaborator is recorded only in the F record, while ADR-013 ranks above QA records and is what a repository admin adding a collaborator would read.",
+        "recommendation": "Add a one-sentence pointer to the F record's deviations and the collaborator trigger in ADR-013's GitHub-side controls and in DEPLOYMENT.md's environment section; whether a lasting deviation needs an ADR amendment is a human decision.",
+        "locations": [
+          {
+            "path": "docs/decisions/ADR-013-shared-entra-local-https-deployment.md",
+            "line": 327
+          },
+          {
+            "path": "docs/DEPLOYMENT.md",
+            "line": 398
+          },
+          {
+            "path": "docs/qa/FIRST-PRODUCTION-ROLLOUT.md",
+            "line": 375
+          }
+        ]
+      },
+      {
+        "id": "F-004",
+        "category": "documentation",
+        "severity": "info",
+        "summary": "The runbook's label table, which says it lists the labels of the runbook and the F record, no longer matches the F record.",
+        "rationale": "The F record now words Reported differently and adds Recorded, Not performed and Accepted deviation, and the runbook will be reused for later releases.",
+        "recommendation": "Add the three labels and the new Reported wording to the runbook table, or point the table to the F record's.",
+        "locations": [
+          {
+            "path": "docs/PRODUCTION-RUNBOOK.md",
+            "line": 35
+          },
+          {
+            "path": "docs/qa/FIRST-PRODUCTION-ROLLOUT.md",
+            "line": 32
+          }
+        ]
+      },
+      {
+        "id": "F-005",
+        "category": "documentation",
+        "severity": "info",
+        "summary": "The source-delivery acceptance item says the admin bypass is reported by the repository admin, while the 2.2 row and the failure log say it is not known.",
+        "rationale": "No bypass value is recorded anywhere, so the qualifier contradicts the rows it links to.",
+        "recommendation": "Say the settings were stated as configured by the repository admin, are not independently verified and the bypass value is not known.",
+        "locations": [
+          {
+            "path": "docs/qa/FIRST-PRODUCTION-ROLLOUT.md",
+            "line": 415
+          },
+          {
+            "path": "docs/qa/FIRST-PRODUCTION-ROLLOUT.md",
+            "line": 191
+          },
+          {
+            "path": "docs/qa/FIRST-PRODUCTION-ROLLOUT.md",
+            "line": 376
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-059F/review-001",
+        "finding_id": "F-001",
+        "disposition": "accepted_risk",
+        "rationale": "The 2.2 row is an Accepted deviation and a failure-log row records that the product owner, as repository admin, accepted the unverified main protection on 2026-10-01; the acceptance item is qualified and the reassessment is a follow-up.",
+        "validated_by": {
+          "review_id": "TASK-059F/review-002",
+          "commit": "b94e85cc93e344549773e28288e9dcfcd2b9adf0"
+        }
+      },
+      {
+        "record_id": "TASK-059F/review-001",
+        "finding_id": "F-002",
+        "disposition": "accepted_risk",
+        "rationale": "A failure-log row records the approval preceding the freeze and the scope confirmation following the deployment, accepted by the main developer on 2026-11-02; section 3 and the acceptance items point to it.",
+        "validated_by": {
+          "review_id": "TASK-059F/review-002",
+          "commit": "b94e85cc93e344549773e28288e9dcfcd2b9adf0"
+        }
+      },
+      {
+        "record_id": "TASK-059F/review-001",
+        "finding_id": "F-003",
+        "disposition": "fixed",
+        "rationale": "AGENTS.md, ARCHITECTURE.md, DEPLOYMENT.md, ADR-013, README.md and two QA checklists now say F performed the first rollout, consistent with the F record; the diagram is tracked as a new finding.",
+        "validated_by": {
+          "review_id": "TASK-059F/review-002",
+          "commit": "b94e85cc93e344549773e28288e9dcfcd2b9adf0"
+        }
+      },
+      {
+        "record_id": "TASK-059F/review-001",
+        "finding_id": "F-004",
+        "disposition": "fixed",
+        "rationale": "The four named rows are now Not performed, Reported and Tested (E); similar decision rows are tracked as a new finding.",
+        "validated_by": {
+          "review_id": "TASK-059F/review-002",
+          "commit": "b94e85cc93e344549773e28288e9dcfcd2b9adf0"
+        }
+      },
+      {
+        "record_id": "TASK-059F/review-001",
+        "finding_id": "F-005",
+        "disposition": "fixed",
+        "rationale": "The label table defines Recorded, Not performed and Accepted deviation with a pointer to the failure log, and the status note and recording rule mention them.",
+        "validated_by": {
+          "review_id": "TASK-059F/review-002",
+          "commit": "b94e85cc93e344549773e28288e9dcfcd2b9adf0"
+        }
+      },
+      {
+        "record_id": "TASK-059F/review-001",
+        "finding_id": "F-006",
+        "disposition": "fixed",
+        "rationale": "The hardening, baseline and smoke acceptance items carry qualifiers; the activation-gate wording matches deploy-release.",
+        "validated_by": {
+          "review_id": "TASK-059F/review-002",
+          "commit": "b94e85cc93e344549773e28288e9dcfcd2b9adf0"
+        }
+      },
+      {
+        "record_id": "TASK-059F/review-001",
+        "finding_id": "F-007",
+        "disposition": "fixed",
+        "rationale": "The failure-log row now refers to 2.2 step 6.",
+        "validated_by": {
+          "review_id": "TASK-059F/review-002",
+          "commit": "b94e85cc93e344549773e28288e9dcfcd2b9adf0"
+        }
+      },
+      {
+        "record_id": "TASK-059F/review-001",
+        "finding_id": "F-008",
+        "disposition": "fixed",
+        "rationale": "Failure-log rows now cover the unwatched build resources and the late smoke item 5.",
+        "validated_by": {
+          "review_id": "TASK-059F/review-002",
+          "commit": "b94e85cc93e344549773e28288e9dcfcd2b9adf0"
+        }
+      },
+      {
+        "record_id": "TASK-059F/review-001",
+        "finding_id": "F-009",
+        "disposition": "accepted_risk",
+        "rationale": "The record says the production environment exists and its deployment-branch setting was not observed; the main developer takes its main-only use as known, consistent with the workflow's main-only condition, and the collaborator reassessment is a follow-up.",
+        "validated_by": {
+          "review_id": "TASK-059F/review-002",
+          "commit": "b94e85cc93e344549773e28288e9dcfcd2b9adf0"
+        }
+      },
+      {
+        "record_id": "TASK-059F/review-001",
+        "finding_id": "F-010",
+        "disposition": "fixed",
+        "rationale": "Runbook 2.1 warns about the stateless firewall and links to the record's rule set, and the record states the IPv4 and IPv6 scope of TCP 22, 80 and 443.",
+        "validated_by": {
+          "review_id": "TASK-059F/review-002",
+          "commit": "b94e85cc93e344549773e28288e9dcfcd2b9adf0"
+        }
+      },
+      {
+        "record_id": "TASK-059F/review-001",
+        "finding_id": "F-011",
+        "disposition": "accepted_risk",
+        "rationale": "The 2.1 row states that UFW stays the effective filter for reply packets, the rule set was agreed by the product owner, and limiting the reply rules is a recorded follow-up.",
+        "validated_by": {
+          "review_id": "TASK-059F/review-002",
+          "commit": "b94e85cc93e344549773e28288e9dcfcd2b9adf0"
+        }
+      },
+      {
+        "record_id": "TASK-059F/review-001",
+        "finding_id": "F-013",
+        "disposition": "fixed",
+        "rationale": "The restore evidence file name is recorded in section 5 step 9 and the release record.",
+        "validated_by": {
+          "review_id": "TASK-059F/review-002",
+          "commit": "b94e85cc93e344549773e28288e9dcfcd2b9adf0"
+        }
+      }
+    ]
+  }
+}

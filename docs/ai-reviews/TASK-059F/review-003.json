@@ -1,0 +1,114 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-059F/review-003",
+  "task": {
+    "id": "TASK-059F",
+    "path": "tasks/TASK-059F-first-production-rollout.md"
+  },
+  "round": 3,
+  "reviewed_at": "2026-11-02T16:47:37Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": {
+    "number": 127,
+    "url": "https://github.com/reflector-oy/schatten/pull/127"
+  },
+  "source": {
+    "base_sha": "237cc5e0e898886386949eac88ad24bfcd7df999",
+    "head_sha": "6f0dbd8eb136ce9b406d186e70f58dd61b76f0c2",
+    "comparison": "237cc5e0e898886386949eac88ad24bfcd7df999...6f0dbd8eb136ce9b406d186e70f58dd61b76f0c2",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Round 3 reviews 6f0dbd8, focusing on the round 2 fixes to the F record, the runbook label table, DEPLOYMENT.md, ADR-013 and the authentication topology diagram. Round 1 F-012 and round 2 F-001 to F-005 are fixed: the rows use the labels as the table defines them, the runbook and F record label tables agree, ADR-013 and DEPLOYMENT.md point to the accepted GitHub deviations and the collaborator trigger, the admin-bypass wording is consistent and the retention decision names the main developer. An offline PlantUML 1.2026.6 render of the topology source is byte-identical to the committed SVG, every link and anchor in the changed files resolves and no forbidden data is recorded. One new low finding: the OIDC login sequence diagram, embedded next to the topology diagram, still says production setup is pending G/F. It does not block the release.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "The OIDC login sequence diagram's title still says production setup is pending G/F.",
+        "rationale": "This change updates every status statement, including the topology diagram fixed for review-002 F-001, to say F performed the first rollout; ARCHITECTURE.md embeds the sequence diagram directly below the topology diagram, and AGENTS.md requires the PlantUML source and generated SVG to be updated when a diagram is affected.",
+        "recommendation": "Change the title to the current state and regenerate the SVG with PlantUML 1.2026.6.",
+        "locations": [
+          {
+            "path": "docs/diagrams/sequence-oidc-login.puml",
+            "line": 2
+          },
+          {
+            "path": "docs/diagrams/generated/sequence-oidc-login.svg"
+          },
+          {
+            "path": "ARCHITECTURE.md",
+            "line": 330
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-059F/review-001",
+        "finding_id": "F-012",
+        "disposition": "fixed",
+        "rationale": "Section 5 step 12 records that the main developer decided on 2026-11-02 to retain the organisation as the designated isolated smoke record, and smoke item 5 refers to it.",
+        "validated_by": {
+          "review_id": "TASK-059F/review-003",
+          "commit": "6f0dbd8eb136ce9b406d186e70f58dd61b76f0c2"
+        }
+      },
+      {
+        "record_id": "TASK-059F/review-002",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "The title, production boundary and note of the topology diagram now state the F rollout, and an offline render of the source is byte-identical to the committed SVG.",
+        "validated_by": {
+          "review_id": "TASK-059F/review-003",
+          "commit": "6f0dbd8eb136ce9b406d186e70f58dd61b76f0c2"
+        }
+      },
+      {
+        "record_id": "TASK-059F/review-002",
+        "finding_id": "F-002",
+        "disposition": "fixed",
+        "rationale": "The decision and acknowledgement rows are labelled Recorded, the account holder's two-factor statement Reported, and Recorded now covers acknowledgements.",
+        "validated_by": {
+          "review_id": "TASK-059F/review-003",
+          "commit": "6f0dbd8eb136ce9b406d186e70f58dd61b76f0c2"
+        }
+      },
+      {
+        "record_id": "TASK-059F/review-002",
+        "finding_id": "F-003",
+        "disposition": "fixed",
+        "rationale": "ADR-013's GitHub-side controls and DEPLOYMENT.md's production environment section name both deviations, link to the F record's failure log and require reassessment before adding any collaborator.",
+        "validated_by": {
+          "review_id": "TASK-059F/review-003",
+          "commit": "6f0dbd8eb136ce9b406d186e70f58dd61b76f0c2"
+        }
+      },
+      {
+        "record_id": "TASK-059F/review-002",
+        "finding_id": "F-004",
+        "disposition": "fixed",
+        "rationale": "The runbook label table lists the same seven labels with the same wording as the F record and links Not performed and Accepted deviation to the record's failure log.",
+        "validated_by": {
+          "review_id": "TASK-059F/review-003",
+          "commit": "6f0dbd8eb136ce9b406d186e70f58dd61b76f0c2"
+        }
+      },
+      {
+        "record_id": "TASK-059F/review-002",
+        "finding_id": "F-005",
+        "disposition": "fixed",
+        "rationale": "The acceptance item says the settings were stated as configured by the repository admin, are not independently verified and the admin bypass is not known, matching the 2.2 row and the failure log.",
+        "validated_by": {
+          "review_id": "TASK-059F/review-003",
+          "commit": "6f0dbd8eb136ce9b406d186e70f58dd61b76f0c2"
+        }
+      }
+    ]
+  }
+}

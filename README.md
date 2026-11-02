@@ -72,10 +72,12 @@ provides the integrated operator runbook
 ([docs/PRODUCTION-RUNBOOK.md](docs/PRODUCTION-RUNBOOK.md)) and disposable QA.
 TASK-059H1-H3 replace the host Git checkout with a manual "Deploy to
 production" GitHub Action, a manifest-verified receive and server `make`
-commands in `deploy/Makefile`; there is no Git on the server. Authorized setup
-and rollout are pending F.
+commands in `deploy/Makefile`; there is no Git on the server. TASK-059F
+performed the authorized setup and first production rollout (`v0.1.0`; see
+[docs/qa/FIRST-PRODUCTION-ROLLOUT.md](docs/qa/FIRST-PRODUCTION-ROLLOUT.md)).
 Volumes are not backups; release requires completed backup identifiers and
-successful restore-rehearsal evidence. Production backup activation is pending F.
+successful restore-rehearsal evidence. F activated the production backups on
+2026-10-02.
 
 ## Optional Make Convenience
 

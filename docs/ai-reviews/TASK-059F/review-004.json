@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-059F/review-004",
+  "task": {
+    "id": "TASK-059F",
+    "path": "tasks/TASK-059F-first-production-rollout.md"
+  },
+  "round": 4,
+  "reviewed_at": "2026-11-02T16:58:47Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": {
+    "number": 127,
+    "url": "https://github.com/reflector-oy/schatten/pull/127"
+  },
+  "source": {
+    "base_sha": "237cc5e0e898886386949eac88ad24bfcd7df999",
+    "head_sha": "1989a19800def2efc93da6b3a8dcb75843dc742e",
+    "comparison": "237cc5e0e898886386949eac88ad24bfcd7df999...1989a19800def2efc93da6b3a8dcb75843dc742e",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Round 4 reviews 1989a19, whose only non-record change since round 3 is the title of the OIDC login sequence diagram and its generated SVG. The new title matches the topology diagram and the status lines, and an offline render with the project's pinned renderer (PlantUML 1.2024.8) is byte-identical to the committed SVG, so round 3 F-001 is fixed. Every link and anchor in the changed files resolves and no other stale pending-F status remains in the touched or embedded files. One new low finding: the same diagram's note still says the release adapter remains until G, which G removed and which contradicts the new title. It does not block the release.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "The OIDC login sequence diagram's note still says the release adapter remains until G, although G removed the Coolify adapter.",
+        "rationale": "TASK-059G fixed the same wording in the topology diagram but not here; AGENTS.md, DEPLOYMENT.md and the topology note say the adapter is removed, the diagram's new title says local and production are implemented, and ARCHITECTURE.md embeds the diagram next to the topology diagram.",
+        "recommendation": "State the current runtime in the note, matching the topology diagram's notes, and regenerate the SVG with the project renderer.",
+        "locations": [
+          {
+            "path": "docs/diagrams/sequence-oidc-login.puml",
+            "line": 22
+          },
+          {
+            "path": "docs/diagrams/generated/sequence-oidc-login.svg"
+          },
+          {
+            "path": "ARCHITECTURE.md",
+            "line": 330
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-059F/review-003",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "The title now states local and production are implemented and the first production rollout F, v0.1.0, matching the topology diagram, and an offline render is byte-identical to the committed SVG.",
+        "validated_by": {
+          "review_id": "TASK-059F/review-004",
+          "commit": "1989a19800def2efc93da6b3a8dcb75843dc742e"
+        }
+      }
+    ]
+  }
+}

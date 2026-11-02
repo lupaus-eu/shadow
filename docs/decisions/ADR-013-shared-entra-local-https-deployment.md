@@ -1,7 +1,7 @@
 # ADR-013: Shared Entra Registration And Local HTTPS Deployment
 
 Status: Accepted; B/C/D/G/E/H1/H2/H3/J implemented; authorized setup and
-rollout pending TASK-059F
+first rollout performed by TASK-059F (`v0.1.0`, accepted 2026-11-02)
 
 Date: 2026-09-11
 
@@ -218,7 +218,8 @@ Revisit or replace Ofelia through a reviewed decision if it cannot be maintained
 securely, needs broader access, or no longer has required operational jobs.
 Moving PostgreSQL to a managed service does not itself retire maintenance or
 backup obligations: verify replacement scheduling and recovery evidence before
-disabling the existing jobs. Runtime and real scheduler activation remain pending.
+disabling the existing jobs. TASK-059F activated the runtime and the real
+scheduler on 2026-10-02 ([F record](../qa/FIRST-PRODUCTION-ROLLOUT.md)).
 
 ## Builds And Releases
 
@@ -335,6 +336,11 @@ run at a time and no secret output. H2 approved `appleboy/scp-action` v1.0.0
 `drone-scp` 1.8.0 binary from a mutable release at run time, the workflow
 verifies that binary's recorded SHA-256 before the upload and hands the action
 the verified file, so an unverified binary never receives the upload key.
+The first rollout (F) deviates from these controls: the deploy secrets are
+repository secrets and the `main` protection is not independently verified,
+both accepted deviations in the
+[F record's failure log](../qa/FIRST-PRODUCTION-ROLLOUT.md#10-failure-and-deviation-log);
+reassess them before adding any collaborator.
 
 H1 implements the manifest, receiver and Git-free build; H2 the upload gate and
 workflow; H3 the server Makefile and runbook. Creating the GitHub environment

@@ -18,10 +18,12 @@ The Coolify adapter and `docker-compose.release.yml` are removed. Local
 development uses loopback Caddy HTTPS and direct Entra (B); C/D provide the
 initialization commands. TASK-059E supplies the integrated, disposably tested
 operator procedure in [PRODUCTION-RUNBOOK.md](PRODUCTION-RUNBOOK.md) with
-evidence in [UPCLOUD-RUNBOOK-QA.md](qa/UPCLOUD-RUNBOOK-QA.md). F performs the
-separately approved host, DNS, tenant, backup activation and rollout by that
-runbook. No production operation has been performed. Backup identifiers and
-restore-rehearsal evidence remain release gates.
+evidence in [UPCLOUD-RUNBOOK-QA.md](qa/UPCLOUD-RUNBOOK-QA.md). F performed the
+separately approved host, DNS, tenant, backup activation and first rollout by
+that runbook: release `20261002T085353Z-0db661289165`, accepted and tagged
+`v0.1.0` on 2026-11-02, with its evidence, accepted deviations and follow-ups
+in [FIRST-PRODUCTION-ROLLOUT.md](qa/FIRST-PRODUCTION-ROLLOUT.md). Backup
+identifiers and restore-rehearsal evidence remain release gates.
 
 The ADR-013 amendment of 2026-09-29 (TASK-059H) replaces the host Git checkout
 and GitHub deploy key with a manual "Deploy to production" GitHub Action that
@@ -403,6 +405,11 @@ only; environment secrets, not repository secrets):
 | `SSH_KEY` | Private half of the dedicated upload key (Ed25519, no passphrase); never the `deploy` key |
 | `SSH_PORT` | `22` |
 | `SSH_FINGERPRINT` | `SHA256:...` of the host's **ECDSA** key: `ssh-keygen -l -E sha256 -f /etc/ssh/ssh_host_ecdsa_key.pub`. `drone-scp` 1.8.0 (Go x/crypto 0.37.0) prefers ECDSA P-256 over RSA and Ed25519, so with Ubuntu's default host keys the Ed25519 fingerprint fails with `host key fingerprint mismatch` |
+
+The first rollout (F) deviates: the secrets are repository secrets and the
+`main` protection is not independently verified, both accepted deviations in
+the [F record's failure log](qa/FIRST-PRODUCTION-ROLLOUT.md#10-failure-and-deviation-log).
+Reassess them before adding any collaborator.
 
 `deploy/bin/upload-gate`, installed root-owned as `/usr/local/bin/upload-gate`,
 is the forced command of the upload key. It matches the whole

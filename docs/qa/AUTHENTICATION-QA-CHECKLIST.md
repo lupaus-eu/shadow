@@ -131,8 +131,9 @@ TASK-059E did not repeat the live browser run above; that TASK-059B record
 remains the separately recorded real local direct-Entra evidence. Before each
 production release F confirms that it still covers the release's
 authentication scope, or records a new authorized run. Local success does not
-establish production DNS, TLS or client-secret correctness, and the production
-gate and smoke below remain pending F.
+establish production DNS, TLS or client-secret correctness. F recorded the
+production gate and smoke for the first release in
+[FIRST-PRODUCTION-ROLLOUT.md](FIRST-PRODUCTION-ROLLOUT.md).
 
 On 2026-09-28 E reran the automated/simulated boundary with no tenant secrets
 (details in [UPCLOUD-RUNBOOK-QA.md](UPCLOUD-RUNBOOK-QA.md)):

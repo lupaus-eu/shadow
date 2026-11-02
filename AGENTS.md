@@ -77,7 +77,7 @@ Source delivery is amended by TASK-059H: a manual, `main`-only "Deploy to
 production" GitHub Action copies the exact commit and a source manifest to a
 dedicated upload-only account; builds run on UpCloud from the manifest-verified
 source. Git is not used on the server and there is no GitHub deploy key; H1-H3
-implement this and F performs the GitHub/host setup.
+implement this and F performed the GitHub/host setup.
 GitHub Actions/GHCR is a possible later build location with the same image contract.
 
 Initial release requires daily encrypted on-server PostgreSQL backups in
@@ -107,7 +107,10 @@ manifest/receiver/build, the upload gate and workflow, and the server
 TASK-059J amends ADR-013 to admit `deploy` and key-only root over SSH from any
 address (`AllowUsers deploy root schatten-upload`, `PermitRootLogin
 prohibit-password`) with UpCloud disk-move recovery, and updates `audit-host`.
-Authorized setup and rollout remain pending F.
+TASK-059F performed the authorized setup and the first production rollout:
+release `20261002T085353Z-0db661289165`, accepted and tagged `v0.1.0` on
+2026-11-02, with its evidence, accepted deviations and follow-ups in
+`docs/qa/FIRST-PRODUCTION-ROLLOUT.md`.
 The non-user metamodel seed is approved production reference data; development
 Users and example business data remain forbidden in production. First setup is
 migrations -> reference seed -> empty-users-table administrator bootstrap.

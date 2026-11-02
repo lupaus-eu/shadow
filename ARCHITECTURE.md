@@ -17,8 +17,9 @@ private Docker PostgreSQL 18. Daily encrypted on-server backups with 7-day
 retention and backup/restore evidence are required. The reference-data seed,
 empty-users-table administrator bootstrap, production runtime, build/release and
 backup/scheduler tooling, integrated QA and the operator runbook
-(`docs/PRODUCTION-RUNBOOK.md`) are implemented; production activation/rollout
-remain pending F.
+(`docs/PRODUCTION-RUNBOOK.md`) are implemented. TASK-059F performed the
+production activation and first rollout (`v0.1.0`, accepted 2026-11-02;
+[F record](docs/qa/FIRST-PRODUCTION-ROLLOUT.md)).
 
 Teknologiapino on päätetty ADR-001:ssä.
 
@@ -35,7 +36,7 @@ Päätetty tekninen perusrakenne:
 - local target: Caddy HTTPS, Vite, FastAPI, one prediction worker and PostgreSQL
 - production target: Docker Engine/Compose on UpCloud Ubuntu 26.04 LTS, Caddy
   public TLS and private PostgreSQL 18 with persistent storage (runtime
-  implemented by G; rollout pending F)
+  implemented by G; first rollout by F, `v0.1.0`)
 - release migrations: one-shot job using the same backend image as the API and
   prediction worker
 - derived metrics: Organisation States owns equations and materialized values;
@@ -915,8 +916,9 @@ disposable QA by TASK-059E (`docs/PRODUCTION-RUNBOOK.md`); source delivery
 without Git on the server amended by TASK-059H; manifest, receiver and Git-free
 build (H1), upload gate and "Deploy to production" workflow (H2), and server
 `deploy/Makefile`, `service` command and runbook (H3) implemented; operator
-SSH from any address with key-only root (J) amended and implemented; rollout
-pending F
+SSH from any address with key-only root (J) amended and implemented; first
+production rollout performed by F (`v0.1.0`, accepted 2026-11-02,
+`docs/qa/FIRST-PRODUCTION-ROLLOUT.md`)
 
 Use Docker Engine/Compose on an **UpCloud Ubuntu 26.04 LTS** server. Caddy
 serves built React and terminates public TLS directly at
@@ -984,8 +986,8 @@ coordinated application rollback only if compatible with migrated schema;
 use expand/contract changes. No automatic down migrations, volume deletion,
 database reset or restoration. Application rollback cannot recover lost data;
 first rollout has no previous stable release. Stop/escalate when rollback is
-unavailable. E integrates B/C/D/G in the runbook; F performs separately
-authorized setup/rollout.
+unavailable. E integrates B/C/D/G in the runbook; F performed the separately
+authorized setup and first rollout.
 
 ## Infrastructure Principles
 
@@ -1013,7 +1015,7 @@ ADR-003 Coolify Deployment And Release Migrations: deployment superseded by ADR-
 ADR-004 Authentication, Identity And Session Architecture: accepted
 ADR-005 Production-Only Deployment Environments: accepted
 ADR-006 Local Authentik TLS And Optional Entra Federation: target superseded by ADR-013
-ADR-013 Shared Entra Registration And Local HTTPS Deployment: accepted; source delivery H1-H3 implemented, rollout pending
+ADR-013 Shared Entra Registration And Local HTTPS Deployment: accepted; source delivery H1-H3 implemented, first rollout by TASK-059F (v0.1.0)
 ADR-015 AI Via MCP With Human-Applied Change Sets: accepted design, amended 2026-10-29; TASK-069B..TASK-069O implemented, TASK-069P pending
 ```
 

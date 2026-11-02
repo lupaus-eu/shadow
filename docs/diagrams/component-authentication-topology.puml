@@ -1,6 +1,6 @@
 @startuml
 !include <C4/C4_Container>
-title Schatten - Accepted ADR-013 Topology (local and production tooling implemented; rollout F pending)
+title Schatten - Accepted ADR-013 Topology (local and production implemented; first production rollout F, v0.1.0)
 
 System_Ext(entra, "Microsoft Entra ID", "One tenant; shared confidential Web registration\nShared permissions, consent, assignments and callbacks\nSeparate dev/prod secrets; exact tenant issuer\nopenid profile email; no Graph; email_verified not required")
 
@@ -19,7 +19,7 @@ System_Boundary(local, "Development - https://app.localhost") {
   Rel(local_worker, local_db, "Queue + advisory lock")
 }
 
-System_Boundary(prod, "UpCloud Ubuntu 26.04 LTS - Docker Engine / Compose (runtime G; rollout pending F)") {
+System_Boundary(prod, "UpCloud Ubuntu 26.04 LTS - Docker Engine / Compose (runtime G; first rollout F)") {
   Person(prod_browser, "Production browser")
   Container(caddy, "Frontend and TLS", "Caddy :80 / :443 + React", "https://schatten.lupaus.eu\nPersistent certificate/account storage")
   Container(prod_api, "Production API", "FastAPI :8000", "Direct Entra; production secret\nPrivate; database roles and sessions")
@@ -56,6 +56,6 @@ note bottom of caddy
   Backend health gates frontend readiness.
   Build on UpCloud; deploy frozen images without rebuild.
   Persistent volumes are not backups.
-  Backup tooling (G) and runbook QA (E) done; activation pending F.
+  Backup tooling (G) and runbook QA (E) done; activated by F on 2026-10-02.
 end note
 @enduml

@@ -11,7 +11,9 @@ architecture, configuration contract and tooling reference live in
 [DEPLOYMENT.md](DEPLOYMENT.md). The disposable verification behind the
 commands below is recorded in
 [UPCLOUD-RUNBOOK-QA.md](qa/UPCLOUD-RUNBOOK-QA.md) (E) and
-[SOURCE-DELIVERY-QA.md](qa/SOURCE-DELIVERY-QA.md) (H1-H3).
+[SOURCE-DELIVERY-QA.md](qa/SOURCE-DELIVERY-QA.md) (H1-H3). Real host and
+provider evidence goes into the F record,
+[FIRST-PRODUCTION-ROLLOUT.md](qa/FIRST-PRODUCTION-ROLLOUT.md).
 
 **This runbook authorizes nothing.** Every host, DNS, firewall, GitHub, Entra,
 backup-activation and production step is TASK-059F work and needs explicit
@@ -34,9 +36,12 @@ Evidence labels used in this runbook and the F record:
 
 | Label | Meaning |
 | --- | --- |
-| Reported | Operator-supplied configuration (the cloud-init baseline); not evidence |
-| Tested (E, H1-H3) | Exercised against disposable local infrastructure; see the QA records |
+| Reported | Operator-supplied information (the cloud-init baseline, a role's own statement); not evidence |
+| Tested (E, H1-H3, J) | Exercised against disposable local infrastructure; see the QA records |
 | Verified (F) | Observed on the real host/provider under approval and recorded by F |
+| Recorded | A decision or acknowledgement by the named role; nothing to observe |
+| Not performed | Not done: an optional check, or a required one whose gap is in the record's [failure log](qa/FIRST-PRODUCTION-ROLLOUT.md#10-failure-and-deviation-log) |
+| Accepted deviation | Not performed or not as this runbook requires; the gap and who accepted it are in the record's [failure log](qa/FIRST-PRODUCTION-ROLLOUT.md#10-failure-and-deviation-log) |
 | Pending | Not yet performed; never mark it complete without doing it |
 
 Always:
@@ -259,6 +264,11 @@ sudo ufw allow OpenSSH             # only if a source-restricted rule replaced i
 
 In the UpCloud provider firewall, allow TCP 22 from anywhere for IPv4 (and
 IPv6 only if SSH over IPv6 is intended) and TCP 80/443 publicly, nothing else.
+The provider firewall is stateless: with only these rules it blocks the
+replies to the host's own connections. Until this section is corrected, use
+the rule set in the
+[F record's 2.1 row](qa/FIRST-PRODUCTION-ROLLOUT.md#21-ssh-and-port-22-21) and
+enable the firewall last.
 Rerun `audit-host`: `root SSH is key-only`, password and keyboard-interactive
 login `ok`, `AllowUsers admits deploy from any address`, `AllowUsers admits
 root from any address`, `AllowUsers admits schatten-upload`, the main file's
