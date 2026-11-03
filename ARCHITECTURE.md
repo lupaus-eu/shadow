@@ -72,8 +72,9 @@ Päätetty tekninen perusrakenne:
   TASK-069K's cookie-session change-set review API, TASK-069L's SPA consent
   page and connections UI, TASK-069M's Metrics tab AI panel, TASK-069N's
   skills, Claude Code plugin, MCP prompts and skill zips and TASK-069O's MCP
-  change-set review behind `MCP_CHANGE_SET_REVIEW_ENABLED` are implemented;
-  the rest is pending TASK-069P (see
+  change-set review behind `MCP_CHANGE_SET_REVIEW_ENABLED` are implemented,
+  and TASK-069P verified the feature locally and documented its operation;
+  only the separately approved production enablement is pending (see
   [AI Via MCP](#ai-via-mcp))
 
 Tarkemmat toteutusyksityiskohdat täsmentyvät taskien ja tarvittaessa uusien ADR:ien kautta.
@@ -602,10 +603,18 @@ action in Users administration, with the API wrappers in
 [Metrics Tab AI Panel](#metrics-tab-ai-panel)) and TASK-069N (the skills,
 Claude Code plugin, MCP prompts and skill zips, see [AI Skills](#ai-skills))
 and TASK-069O (MCP change-set review, see
-[MCP Change-Set Review](#mcp-change-set-review)) are implemented; the rest is
-pending TASK-069P.
-Nothing else below is implemented yet, and the feature stays behind `MCP_ENABLED=false` until
-TASK-069P's separately approved production enablement.
+[MCP Change-Set Review](#mcp-change-set-review)) are implemented. TASK-069P
+verified the whole feature locally
+([AI-MCP-QA-CHECKLIST.md](docs/qa/AI-MCP-QA-CHECKLIST.md)), trimmed the
+default redirect URI allowlist to the claude.ai and claude.com callbacks and
+Claude Code's `http://localhost:{port}/callback`, and documented enable,
+disable, offboarding and the incident procedure in
+[PRODUCTION-RUNBOOK.md](docs/PRODUCTION-RUNBOOK.md) section 14. Production
+reads `MCP_ENABLED`, `MCP_CHANGE_SET_REVIEW_ENABLED` and
+`MCP_OAUTH_MAX_CLIENTS` from the protected env file (off and 10,000 when
+unset), and `deploy-release` refuses to turn MCP or its review on without a
+separate `--mcp-approval` reference. The feature is implemented and stays off
+in production until TASK-069P's separately approved production enablement.
 
 Users chat in their own MCP-capable AI client (Claude Desktop, claude.ai,
 Claude Code or another) on their own AI subscription. Schatten never calls an
@@ -1016,7 +1025,7 @@ ADR-004 Authentication, Identity And Session Architecture: accepted
 ADR-005 Production-Only Deployment Environments: accepted
 ADR-006 Local Authentik TLS And Optional Entra Federation: target superseded by ADR-013
 ADR-013 Shared Entra Registration And Local HTTPS Deployment: accepted; source delivery H1-H3 implemented, first rollout by TASK-059F (v0.1.0)
-ADR-015 AI Via MCP With Human-Applied Change Sets: accepted design, amended 2026-10-29; TASK-069B..TASK-069O implemented, TASK-069P pending
+ADR-015 AI Via MCP With Human-Applied Change Sets: accepted, amended 2026-10-29; implemented (TASK-069B..TASK-069P), production enablement pending approval
 ```
 
 ---

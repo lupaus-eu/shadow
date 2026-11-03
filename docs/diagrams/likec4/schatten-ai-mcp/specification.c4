@@ -1,6 +1,6 @@
 // Schatten AI via MCP - C4 model specification (ADR-015)
-// Tags: #new = accepted in ADR-015, not implemented yet (TASK-069B..O)
-//       #existing = implemented before ADR-015
+// Tags: #new = accepted but not implemented yet (none since TASK-069P)
+//       #existing = implemented
 //       #edgeLabel = deployment relation that labels a merged deployment edge
 
 specification {

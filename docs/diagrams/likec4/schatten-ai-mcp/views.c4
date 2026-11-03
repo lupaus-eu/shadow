@@ -1,12 +1,11 @@
 // Schatten AI via MCP - views (ADR-015)
-// Green elements are #new (accepted in ADR-015, not implemented yet);
-// blue, gray and amber elements are #existing.
+// Every element is implemented (#existing); colours follow the element kind.
 
 views {
 
   view index {
     title 'Schatten AI via MCP - System Context (C4 L1)'
-    description 'Accepted ADR-015 design, not implemented yet. Green = new (planned); blue, gray and amber = existing. The user chats in their own AI client; the AI reads Schatten and stages change sets through MCP; a human applies them in Schatten or approves the AI client\'s apply.'
+    description 'Implemented (TASK-069B..TASK-069P); MCP is off in production until its approved enablement. The user chats in their own AI client; the AI reads Schatten and stages change sets through MCP; a human applies them in Schatten or approves the AI client\'s apply.'
 
     include
       user,
@@ -21,7 +20,7 @@ views {
 
   view schattenContainers of schatten {
     title 'Schatten AI via MCP - Containers (C4 L2)'
-    description 'Accepted ADR-015 design, not implemented yet. Green = new (planned); blue, gray and amber = existing. MCP adds no container: the read and write MCP services and the OAuth server run inside the existing backend.'
+    description 'Implemented (TASK-069B..TASK-069P); MCP is off in production until its approved enablement. MCP adds no container: the read and write MCP services and the OAuth server run inside the existing backend.'
 
     include
       *,
@@ -39,14 +38,14 @@ views {
 
   view backendComponents of schatten.backend {
     title 'Schatten AI via MCP - Backend Components (C4 L3)'
-    description 'Accepted ADR-015 design, not implemented yet. Green = new (planned); blue, gray and amber = existing. A change set is applied only by a human decision: the cookie-session review API in the Metrics tab, or the MCP write service\'s apply_change_set behind MCP_CHANGE_SET_REVIEW_ENABLED, approved in the client.'
+    description 'Implemented (TASK-069B..TASK-069P); MCP is off in production until its approved enablement. A change set is applied only by a human decision: the cookie-session review API in the Metrics tab, or the MCP write service\'s apply_change_set behind MCP_CHANGE_SET_REVIEW_ENABLED, approved in the client.'
 
     include *
   }
 
   deployment view productionMcp {
     title 'Production MCP Deployment'
-    description 'Accepted ADR-015 design, not implemented yet. Green = new (planned); blue, gray and amber = existing. https://schatten.lupaus.eu on the UpCloud host. Vendor-cloud connectors and local clients reach the same Caddy ingress.'
+    description 'Implemented (TASK-069B..TASK-069P); MCP is off in production until its approved enablement. https://schatten.lupaus.eu on the UpCloud host. Vendor-cloud connectors and local clients reach the same Caddy ingress.'
 
     include production.**
     // Deployment views ignore `with { title }` (LikeC4 1.60.0); show the
@@ -59,7 +58,7 @@ views {
 
   deployment view developmentMcp {
     title 'Development MCP Deployment'
-    description 'Accepted ADR-015 design, not implemented yet. Green = new (planned); blue, gray and amber = existing. https://app.localhost on loopback. Vendor-cloud connectors cannot reach localhost; test locally with Claude Code.'
+    description 'Implemented (TASK-069B..TASK-069P); MCP is off in production until its approved enablement. https://app.localhost on loopback. Vendor-cloud connectors cannot reach localhost; test locally with Claude Code.'
 
     include development.**
     exclude development.devWorkstation.compose.localCaddy.localCaddyInstance -> development.devWorkstation.compose.devBackend.backend where not tag is #edgeLabel
@@ -69,7 +68,7 @@ views {
 
   dynamic view connectFlow {
     title 'Connect An AI Client (OAuth 2.1 + Consent)'
-    description 'Accepted ADR-015 design, not implemented yet. Green = new (planned); blue, gray and amber = existing. Schatten is the authorization server; the user signs in with the existing Entra login and approves consent in the SPA. The Entra registration does not change.'
+    description 'Implemented (TASK-069B..TASK-069P); MCP is off in production until its approved enablement. Schatten is the authorization server; the user signs in with the existing Entra login and approves consent in the SPA. The Entra registration does not change.'
 
     user -> aiClient.webChat 'Adds connector URL /api/mcp/read or /api/mcp/write'
     aiClient.webChat -> aiVendor.broker 'Register connector'
@@ -91,7 +90,7 @@ views {
 
   dynamic view generateFlow {
     title 'Generate A Model And Timeseries (Human-Applied Change Set)'
-    description 'Accepted ADR-015 design, not implemented yet. Green = new (planned); blue, gray and amber = existing. The LLM picks generator parameters, never values. Write tools stage; a human applies in the Metrics tab here, or in the AI client (see reviewInChatFlow).'
+    description 'Implemented (TASK-069B..TASK-069P); MCP is off in production until its approved enablement. The LLM picks generator parameters, never values. Write tools stage; a human applies in the Metrics tab here, or in the AI client (see reviewInChatFlow).'
 
     autoLayout TopBottom
 
@@ -117,7 +116,7 @@ views {
 
   dynamic view reviewInChatFlow {
     title 'Apply A Change Set From The AI Client (MCP Change-Set Review)'
-    description 'ADR-015 amendment of 2026-10-29 (TASK-069O). Green = new (planned); blue, gray and amber = existing. Only with MCP_CHANGE_SET_REVIEW_ENABLED. The AI shows the review and acts only on the user\'s explicit decision; the client asks the user to approve the call.'
+    description 'ADR-015 amendment of 2026-10-29 (TASK-069O), implemented. Only with MCP_CHANGE_SET_REVIEW_ENABLED. The AI shows the review and acts only on the user\'s explicit decision; the client asks the user to approve the call.'
 
     autoLayout TopBottom
 

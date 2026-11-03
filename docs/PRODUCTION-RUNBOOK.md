@@ -13,7 +13,9 @@ commands below is recorded in
 [UPCLOUD-RUNBOOK-QA.md](qa/UPCLOUD-RUNBOOK-QA.md) (E) and
 [SOURCE-DELIVERY-QA.md](qa/SOURCE-DELIVERY-QA.md) (H1-H3). Real host and
 provider evidence goes into the F record,
-[FIRST-PRODUCTION-ROLLOUT.md](qa/FIRST-PRODUCTION-ROLLOUT.md).
+[FIRST-PRODUCTION-ROLLOUT.md](qa/FIRST-PRODUCTION-ROLLOUT.md). Section 14 covers
+AI via MCP ([ADR-015](decisions/ADR-015-ai-via-mcp.md)), which stays disabled
+until its separately approved enablement.
 
 **This runbook authorizes nothing.** Every host, DNS, firewall, GitHub, Entra,
 backup-activation and production step is TASK-059F work and needs explicit
@@ -75,7 +77,7 @@ they run from (the release ID ends with the first 12 characters of its commit).
 | `$M check` | `check-host` |
 | `$M audit` | `audit-host` |
 | `$M build` | `build-release --source $S` |
-| `$M deploy RELEASE=<id> APPROVAL=<ref>` | `deploy-release <id> --approval <ref>` |
+| `$M deploy RELEASE=<id> APPROVAL=<ref> [MCP_APPROVAL=<ref>]` | `deploy-release <id> --approval <ref> [--mcp-approval <ref>]`; `MCP_APPROVAL` is required when the deploy turns MCP on (section 14) |
 | `$M first-install RELEASE=<id> APPROVAL=<ref>` | `deploy-release <id> --approval <ref> --first-install` |
 | `$M status` | `ops-status` |
 | `$M ps`, `$M logs [SERVICE=<service>]`, `$M stop`, `$M start` | `service ps\|logs\|stop\|start` for the current release (section 10) |
@@ -102,7 +104,9 @@ Never:
   prune`, down migrations, manual production SQL writes, the full development
   seed (`002_seed_development_data.sql`) or any restore onto production.
 - Deploy without a recorded human approval, or treat a merge to `main` as
-  approval.
+  approval. Turning on `MCP_ENABLED` or `MCP_CHANGE_SET_REVIEW_ENABLED` needs its
+  own recorded approval, which `deploy-release` requires as `--mcp-approval`
+  (section 14).
 - Execute, source or `make` anything inside `/opt/apps/schatten-upload`: the
   upload is data for `schatten-receive` only. Install Git, a deploy key or a
   checkout on the host.
@@ -480,6 +484,9 @@ SCHATTEN_BACKUP_PUBLIC_KEY=/opt/apps/schatten-config/backup-public-key.asc
 
 Leave `SCHATTEN_OFELIA_CONFIG`, `SCHATTEN_DOCKER_SOCKET` and
 `SCHATTEN_COMPOSE_OVERRIDE_FILE` unset: they exist for disposable QA only.
+Leave the optional AI via MCP keys `MCP_ENABLED`,
+`MCP_CHANGE_SET_REVIEW_ENABLED` and `MCP_OAUTH_MAX_CLIENTS` out as well: MCP
+is then off. Section 14 turns it on with its own approval.
 
 ### 2.4 Backup encryption key pair (offline)
 
@@ -1075,6 +1082,7 @@ identities or restored data:
 | First install: initialization status counts, initialized backup ID and its restore evidence | Section 4 |
 | Tester role, time, smoke results | Section 7 |
 | Prior stable annotated SemVer tag and its image IDs, or "none (first release)" | Release history |
+| `MCP_ENABLED`, `MCP_CHANGE_SET_REVIEW_ENABLED`, `MCP_OAUTH_MAX_CLIENTS` and the MCP approval reference when MCP was turned on | Deployment record `MCP_*`, `MCP_APPROVAL`; section 14 |
 
 Deployment records live in `/opt/apps/schatten-state/deployments/`. Stable tags
 are created only after acceptance by a human.
@@ -1119,3 +1127,225 @@ verification.
 | 2.8, 4-6 | `init-state`, `check-host`, `make build`, `make first-install`, `make deploy` and its guards, initialization, `make backup`/`restore`/`status`, gates and direct-command rollback on Engine 28.5.2 and 29.8.1 daemons, with Git absent from `PATH` | The real host and its resources |
 | 7 Smoke | Local simulated-OIDC suites | Production smoke |
 | 8-10 | Backups, failures, retention, passphrase restore, scheduler, cleanup, persistence, daemon restart; `make ps`/`logs`/`stop`/`start` keeping containers and volumes, with and without Ofelia (H3); the reboot lock refusing while a holder exists (with `echo` in place of `systemctl reboot`) | Real schedule runs, real reboot, certificate renewal |
+| 14 MCP | Enable, review-switch-only disable, full disable with the 404 surface, offboarding by soft delete and admin revocation, client cap, incident steps 1-4 and log redaction against the local stack; env-file switches, refused non-plain env-file lines and non-boolean rendered values, the `--mcp-approval` gate, the warning for a release that ignores the env file, the recorded values and `ops-status` in the disposable runtime (TASK-069P, [checklist](qa/AI-MCP-QA-CHECKLIST.md)) | The production redeploy, vendor-cloud connectors, real traffic |
+
+## 14. AI Via MCP: Enable, Disable, Offboarding And Incidents
+
+[ADR-015](decisions/ADR-015-ai-via-mcp.md) lets Users connect their own MCP
+client (claude.ai, Claude Desktop, Claude Code or another client) to
+`https://schatten.lupaus.eu/api/mcp/read` and `/api/mcp/write`. Schatten is the
+OAuth 2.1 server over the existing Entra login; the Entra registration does not
+change. Local evidence is in
+[AI-MCP-QA-CHECKLIST.md](qa/AI-MCP-QA-CHECKLIST.md); the production items there
+stay pending until the approved enablement records them.
+
+**Enabling MCP in production needs its own recorded human approval
+(TASK-069P).** A merge to `main` is not that approval.
+
+### 14.1 Settings
+
+Three MCP settings come from the protected env file
+(`/opt/apps/schatten-config/production.env`, 2.3); every other MCP setting is a
+literal value in `docker-compose.production.yml` and changes only through a
+reviewed release
+([configuration contract](DEPLOYMENT.md#ai-via-mcp-settings-task-069e-task-069f-task-069g-task-069p)).
+
+| Setting | Where, default | Effect |
+| --- | --- | --- |
+| `MCP_ENABLED` | Env file, `false` when unset | `false`: the MCP endpoints, discovery, registration, authorize, consent, token and revoke and the skill zips answer 404, so no token works and no grant is issued. The connections API, the admin revocation and the change-set review API stay available |
+| `MCP_CHANGE_SET_REVIEW_ENABLED` | Env file, `false` when unset | With `MCP_ENABLED=true`, `true` adds `apply_change_set` and `reject_change_set` to the write server. `false` keeps staging only |
+| `MCP_OAUTH_MAX_CLIENTS` | Env file, `10000` when unset | Client cap (14.5) |
+| `MCP_OAUTH_REDIRECT_URIS` | Compose: claude.ai and claude.com callbacks, `http://localhost:{port}/callback` | Redirect URI allowlist. The loopback entry is Claude Code's; TASK-069P removed the unused `127.0.0.1` and `[::1]` entries. Adding a client with another callback is a reviewed release |
+
+Write each as a plain `KEY=value` line. The two switches accept exactly `true`
+or `false`, and the cap a positive whole number; `$M check` reports any other
+value, or an `export`-prefixed, indented or `KEY: value` line, as an error and
+shows the values the next deploy applies. `deploy-release` also refuses a
+release that would give the backend any other value. The backend reads them at
+startup, so a change takes effect when the **current release is deployed
+again**:
+
+```bash
+$M deploy RELEASE=<current-release-id> APPROVAL=<ref> [MCP_APPROVAL=<ref>]
+```
+
+**Only releases built from a commit that includes TASK-069P read these keys.**
+Older releases, including the first production release `v0.1.0`, keep MCP off
+and the cap at 10,000 in their frozen Compose file. Deploying such a release
+keeps those values whatever the env file says: `deploy-release` then warns
+that the release ignores the env file's MCP settings, and its record shows
+what was deployed. So the first enablement, or a first cap change, deploys a
+newly built release (section 3) instead of the current one.
+
+This is a normal `deploy-release`: it needs the latest successful restore
+evidence, takes a pre-change backup and replaces API, worker and frontend
+(section 5). **Turning MCP on, or turning its change-set review on while MCP is
+on, is refused without `MCP_APPROVAL`** (`--mcp-approval`); turning either off,
+leaving them unchanged or changing only the cap needs no MCP approval. Each
+deployment record holds `MCP_ENABLED`, `MCP_CHANGE_SET_REVIEW_ENABLED`,
+`MCP_OAUTH_MAX_CLIENTS` and, when given, `MCP_APPROVAL`; `$M status` shows the
+deployed values and the env file's values.
+
+### 14.2 Enable (approved release)
+
+1. Record the approval and complete the
+   [enablement gate](qa/AI-MCP-QA-CHECKLIST.md#production-enablement-gate).
+2. **Enable the review switch together with MCP.** Turning
+   `MCP_CHANGE_SET_REVIEW_ENABLED` on later gives existing write grants the
+   apply and reject tools although their consent said "proposals only"; if it
+   is ever turned on later, tell the Users first.
+3. Add to the env file, then check:
+
+   ```text
+   MCP_ENABLED=true
+   MCP_CHANGE_SET_REVIEW_ENABLED=true
+   ```
+
+   ```bash
+   $M check    # shows: env file AI via MCP (applied by the next deploy of a release built from TASK-069P or later): MCP_ENABLED=true ...
+   ```
+
+4. Deploy a release that reads the env file (14.1) with both references, from
+   its verified source copy:
+   `$M deploy RELEASE=<release-id> APPROVAL=<ref> MCP_APPROVAL=<ref>`. While
+   the current release predates TASK-069P, deliver, build and approve a new
+   release first (section 3); otherwise use the current release. If
+   `deploy-release` warns that the release ignores the env file's MCP
+   settings, MCP stayed off: deploy a newer release instead.
+   Then run the narrow smoke (section 7) and the MCP smoke:
+   - `curl -sS https://schatten.lupaus.eu/.well-known/oauth-authorization-server`
+     returns issuer `https://schatten.lupaus.eu`;
+   - `curl -sS -o /dev/null -D - -X POST https://schatten.lupaus.eu/api/mcp/read`
+     returns `401` with `WWW-Authenticate: Bearer resource_metadata=...`;
+   - a designated account connects one client to both servers, approves the
+     consent pages and calls `whoami`, and stages and decides one change set in
+     an isolated test organisation;
+   - the remaining production items of the QA checklist, without load,
+     rate-limit or attack tests.
+5. Tell Users how to connect (README "Connect an AI client") and to reconnect
+   existing clients after the release.
+
+### 14.3 Disable
+
+- **Full disable:** set `MCP_ENABLED=false` in the env file (or remove the
+  line), then `$M deploy RELEASE=<current-release-id> APPROVAL=<ref>`; no MCP
+  approval is needed. Every MCP and OAuth endpoint then answers 404; grants
+  are kept but unusable.
+- **Apply and reject only:** set `MCP_CHANGE_SET_REVIEW_ENABLED=false` and
+  deploy the current release the same way. The write server loses the two
+  tools and keeps staging; humans still apply in the Metrics tab. Clients that
+  cached the tool list get "Unknown tool".
+- The redeploy keeps the release gates. If the latest restore evidence is
+  failed or missing, rehearse the newest backup first (8.3). If MCP must stop
+  before that is possible, `$M stop` takes the whole application down (10.2)
+  until the redeploy can run.
+- Re-enabling needs a new recorded approval and `MCP_APPROVAL` (14.2).
+
+### 14.4 Offboarding
+
+Disabling the Entra account alone does **not** end MCP access: a grant lives up
+to 30 days, renewed by refresh, without an Entra check (ADR-015 accepted
+trade-off). When a person leaves or loses access:
+
+1. soft-delete their Schatten User in the Users tab, which stops every MCP call
+   at once (the next call gets 401), **or**
+2. if the User must stay, use **Revoke AI connections** on the User in the
+   Users tab, which revokes all of the User's grants (`reason=admin_revoke`).
+
+Users can revoke their own connections in the connections list. Admin session
+revocation ends browser sessions only, not grants.
+
+### 14.5 Client Cap
+
+`MCP_OAUTH_MAX_CLIENTS` (10,000 non-deleted registered clients) bounds client
+rows. When it is full, `POST /api/oauth/register` answers 503
+`temporarily_unavailable` and the backend logs
+`MCP OAuth client registration refused: the cap of <n> non-deleted clients is
+reached`. Only new registrations are blocked; existing clients and grants keep
+working. Stale clients (no active grant, unused for 30 days) are cleaned up
+lazily. The immediate remedy is to raise `MCP_OAUTH_MAX_CLIENTS` in the env
+file and deploy the current release again (14.1; a release built before
+TASK-069P keeps 10,000, so deploy a newer one); no MCP approval is needed.
+Lowering the `register` rate limit only slows refilling and does not unblock a
+full cap.
+
+### 14.6 Incident Procedure
+
+Use it when MCP access or an MCP-applied change is suspicious. It needs no
+manual database change.
+
+1. **Stop MCP.** Full disable (14.3): `MCP_ENABLED=false` in the env file and
+   a redeploy of the current release. When only applies or rejects through MCP
+   are suspicious, set `MCP_CHANGE_SET_REVIEW_ENABLED=false` instead; staging
+   stays available.
+2. **Revoke.** An admin uses **Revoke AI connections** on every affected User
+   (or soft-deletes the User); Users may revoke their own connections. Both
+   work while MCP is disabled.
+3. **Review change sets.** Reject suspicious submitted change sets in the
+   Metrics tab AI panel, which works while MCP is disabled. Find change sets
+   applied or rejected through MCP by their "via <client> (MCP)" label, or with
+   the read service's `list_change_sets` (`reviewed_via`,
+   `review_client_name`) after re-enabling. Applied changes are corrected
+   through the normal UI; there is no automatic undo.
+4. **Re-enable** only with a new recorded human approval, given to the deploy
+   as `MCP_APPROVAL` (14.2).
+
+Record times, the release IDs, the affected change set keys and the number of
+revoked grants, without names, tokens or client ids.
+
+### 14.7 What To Check In Logs
+
+```bash
+BACKEND=$(docker ps -q --filter label=com.docker.compose.project=schatten --filter label=com.docker.compose.service=backend)
+CADDY=$(docker ps -q --filter label=com.docker.compose.project=schatten --filter label=com.docker.compose.service=frontend)
+docker logs --since 24h "$BACKEND" 2>&1 | grep -E 'MCP OAuth|AI change set'
+docker logs --since 24h "$CADDY" 2>&1 | grep -E '/api/oauth/|/api/mcp/' | grep -c '"status":429'
+```
+
+| Entry | Meaning |
+| --- | --- |
+| `MCP OAuth client registered: client_id=... self_declared_client_name=...` | A new client registration; the name is self-declared |
+| `MCP OAuth grant revoked: reason=... actor=... user_id=... grant_key=...` | `user_revoke`, `admin_revoke`, `code_reuse`, `refresh_token_reuse` and others; reuse reasons can mean a stolen token and deserve a look |
+| `MCP OAuth client registration refused: the cap of ...` | Client cap reached (14.5) |
+| `MCP OAuth lazy cleanup step ... skipped after a lock conflict` | Harmless; cleanup retries on a later request |
+| `AI change set <key> apply failed in step ...` | An apply rolled back; the change set is `failed` and the AI stages a new one |
+| Caddy `429` on `/api/oauth/*` or `/api/mcp/*` | A rate-limit bucket is full (per client address for OAuth, per grant for MCP) |
+
+The logs never contain tokens, authorization codes, pending request ids or tool
+arguments: Caddy replaces `request`, `return_to`, `code`, `state`, token query
+parameters, every `Authorization` request header and every `Location` response
+header with `REDACTED`. Seeing any such value is itself an incident. Summarize
+rather than paste log lines.
+
+### 14.8 Tool Schema Changes
+
+MCP tool results are strict (`additionalProperties: false`). Claude Code
+validates results against the output schema it cached when it connected, so
+after a release that adds a field to a tool result (TASK-069O added the review
+channel to every change-set summary) already-connected Claude Code sessions
+reject those results until they reconnect (`/mcp` in Claude Code). With every
+release that changes tool results, tell Users to reconnect their clients (in
+claude.ai and Claude Desktop, reconnect the connector). Whether vendor-cloud
+connectors cache schemas the same way is a pending production check.
+
+### 14.9 Observed Client Behaviour
+
+From the local run of 2026-10-30
+([checklist](qa/AI-MCP-QA-CHECKLIST.md)); production clients are pending.
+
+- **Approval of apply and reject.** The human decision is the client's tool
+  approval plus the user's instruction in the chat. Claude Code running in
+  auto mode called `apply_change_set` and `reject_change_set` **without a
+  prompt**; any setting that allows these tools without asking has the same
+  effect, and then only the user's instruction and the review fingerprint
+  stand between the AI and the data. Advise Users to keep these two tools on
+  "ask". Claude Code's default-mode prompt, Claude Desktop and claude.ai are
+  recorded at enablement.
+- **Concurrent sessions.** Claude Code uses one client registration per
+  configured server and reuses it on reconnect. Re-authorizing a client for the
+  same User and resource revokes that grant's earlier tokens, so another
+  session holding them is signed out until it reconnects (ADR-015 accepted
+  consequence). Whether vendor connectors share one `client_id` across Users is
+  recorded at enablement.
+- **Elicitation.** Claude Code 2.1.314 ships MCP elicitation support; Schatten
+  does not use it (ADR-015 defers server-side confirmation).

@@ -1,0 +1,98 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-069P/review-001",
+  "task": {
+    "id": "TASK-069P",
+    "path": "tasks/TASK-069P-ai-mcp-qa-rollout.md"
+  },
+  "round": 1,
+  "reviewed_at": "2026-11-02T18:08:24Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": {
+    "number": 128,
+    "url": "https://github.com/reflector-oy/schatten/pull/128"
+  },
+  "source": {
+    "base_sha": "bcc49a525e5a7710c42ffe9bbd37488cb6656e92",
+    "head_sha": "26bdb0f66ee1bdcc637e1769d7784b1b603e1369",
+    "comparison": "bcc49a525e5a7710c42ffe9bbd37488cb6656e92...26bdb0f66ee1bdcc637e1769d7784b1b603e1369",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Round 1 reviews 26bdb0f, the three TASK-069P commits rebased onto main at bcc49a5 (after the TASK-059F first production rollout, TASK-070, TASK-071, TASK-072 and TASK-073). The QA checklist covers every requirement of the task with local evidence or a pending label and a reason, and production items stay pending. The trimmed redirect URI default is consistent across Settings, both Compose files, .env.example and the docs, and the tests keep the IP-literal loopback entries covered through explicit configuration. Runbook section 14 and DEPLOYMENT.md describe enable, disable, offboarding, the client cap, the incident procedure, logs and tool schema changes. The scope note records the developer's env-file decision, and deploy-release, check-host, ops-status, the Makefile and both verification scripts implement it: unset values stay off, a disable needs only the release approval, turning MCP or its review on needs --mcp-approval, and every deployment record holds the values. service start uses docker start and cannot apply env-file changes outside deploy-release. The LikeC4 model is retagged #existing with matching descriptions, and AGENTS.md, ARCHITECTURE.md, ADR-015, the AI domain and README mark the feature implemented with production enablement pending. Backend ruff, the full pytest with the PostgreSQL integration suites and pyright, the frontend format check, lint, tests and build, the LikeC4 validation and the production Compose verification pass on the rebased head; the Docker runtime verification was not rerun locally and runs in CI. One finding is a bypass of the approval gate through non-canonical env-file lines, one is a runbook gap for the first enablement on the pre-TASK-069P production release, and one is checklist follow-ups that the rebase resolved.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "security",
+        "severity": "medium",
+        "summary": "The --mcp-approval gate can be bypassed by env-file lines that Compose reads but config_value does not, combined with a truthy value other than true.",
+        "rationale": "mcp_config_problem validates the env file through config_value, which only sees lines that start with KEY= and strips only double quotes. Compose's env-file parser also reads an export prefix, leading whitespace and the KEY: value form. deploy-release then compares the rendered MCP_ENABLED and MCP_CHANGE_SET_REVIEW_ENABLED values literally with true, while the backend's pydantic bool fields also accept yes, 1 and on. A local probe with Compose 5.1.0 confirmed that an export-prefixed yes, an indented 1 and the colon form with on pass the env-file check, render as yes, 1 and on, and are parsed as enabled by Settings. Such a deployment would turn MCP or its change-set review on without --mcp-approval and record a non-boolean value. It needs an operator to write the protected env file in that form; the canonical MCP_ENABLED=yes case is refused and covered by the runtime QA. The same gap lets a non-canonical MCP_OAUTH_MAX_CLIENTS reach the backend unvalidated, which fails the health gate instead.",
+        "recommendation": "Validate the values that release_mcp_state renders in deploy-release (exactly true or false, and a positive whole number for the cap) and refuse any other value; optionally refuse MCP_ keys in the env file that are not in the canonical KEY=value form. Add a runtime QA case with an export-prefixed or indented truthy value.",
+        "locations": [
+          {
+            "path": "deploy/bin/deploy-release",
+            "line": 79
+          },
+          {
+            "path": "deploy/lib/common.sh",
+            "line": 80
+          },
+          {
+            "path": ".github/scripts/verify-production-runtime.sh",
+            "line": 879
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "The runbook enables MCP by deploying the current release again, but the current production release predates TASK-069P and pins MCP off in its frozen Compose file.",
+        "rationale": "Production runs the v0.1.0 release of TASK-059F, built before this branch, whose frozen docker-compose.production.yml sets both MCP switches and the client cap as literals and ignores the env file; release_mcp_state handles this correctly. Runbook 14.1 and 14.2 step 4, the client cap remedy in 14.5, ADR-015's deployment note and the checklist's enablement gate all tell the operator to deploy the current release again, and check-host and ops-status describe the env-file values as applied by the next deploy. Following that procedure for the first enablement replaces the production containers, records MCP_ENABLED=false together with any MCP approval given, and leaves MCP off until the MCP smoke fails. The result fails safe but spends an approved production deployment and leaves a confusing record. The rollout landed on main after this branch was written.",
+        "recommendation": "State in runbook 14.1, 14.2 and 14.5, the enablement gate and ADR-015 that the env-file switches and cap take effect only for releases built from a commit that includes TASK-069P, so the first enablement deploys a newly built and approved release. Consider a warning in check-host, ops-status or deploy-release when the env file turns MCP on but the target release renders it off.",
+        "locations": [
+          {
+            "path": "docs/PRODUCTION-RUNBOOK.md",
+            "line": 1163
+          },
+          {
+            "path": "docs/PRODUCTION-RUNBOOK.md",
+            "line": 1197
+          },
+          {
+            "path": "docs/qa/AI-MCP-QA-CHECKLIST.md",
+            "line": 386
+          },
+          {
+            "path": "deploy/bin/check-host",
+            "line": 63
+          }
+        ]
+      },
+      {
+        "id": "F-003",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "The QA checklist still lists the trailing-slash scheme downgrade and the unredacted Entra session_state as open follow-ups, although the rebased branch contains their fixes.",
+        "rationale": "After the rebase onto bcc49a5 the branch contains TASK-071, which disables FastAPI's trailing-slash redirect, and TASK-070, which redacts session_state in both Caddyfiles and the backend log filter. Both tasks leave it to this branch to record the resolution in the checklist when it rebases onto them. Findings 1 and 2 of the checklist still say they are left to a follow-up.",
+        "recommendation": "Mark findings 1 and 2 as resolved by TASK-071 and TASK-070 without rewriting the 2026-10-30 evidence, and confirm them in the next local run or the production log inspection.",
+        "locations": [
+          {
+            "path": "docs/qa/AI-MCP-QA-CHECKLIST.md",
+            "line": 352
+          },
+          {
+            "path": "docs/qa/AI-MCP-QA-CHECKLIST.md",
+            "line": 360
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": []
+  }
+}

@@ -29,7 +29,10 @@ skill zips, see
 [Skills And Distribution (TASK-069N)](#skills-and-distribution-task-069n))
 and TASK-069O (the MCP change-set review of the 2026-10-29 ADR-015
 amendment, see [MCP Change-Set Review (TASK-069O)](#mcp-change-set-review-task-069o))
-are implemented and the rest is pending TASK-069P. The MCP endpoints, the
+are implemented, and TASK-069P verified the feature locally
+(`docs/qa/AI-MCP-QA-CHECKLIST.md`) and documented its operation
+(`docs/PRODUCTION-RUNBOOK.md` section 14); only the separately approved
+production enablement is pending. The MCP endpoints, the
 public OAuth endpoints, the consent API and the skill zip download are
 registered only with `MCP_ENABLED=true`, which is off by default and in
 production; the connections and change-set review APIs are always registered.

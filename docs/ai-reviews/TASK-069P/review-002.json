@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-069P/review-002",
+  "task": {
+    "id": "TASK-069P",
+    "path": "tasks/TASK-069P-ai-mcp-qa-rollout.md"
+  },
+  "round": 2,
+  "reviewed_at": "2026-11-02T18:43:04Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": {
+    "number": 128,
+    "url": "https://github.com/reflector-oy/schatten/pull/128"
+  },
+  "source": {
+    "base_sha": "bcc49a525e5a7710c42ffe9bbd37488cb6656e92",
+    "head_sha": "e85b08d9cc5a05dfec8414a5fe94f48832f81559",
+    "comparison": "bcc49a525e5a7710c42ffe9bbd37488cb6656e92...e85b08d9cc5a05dfec8414a5fe94f48832f81559",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "clean",
+    "summary": "Round 2 reviews e85b08d, which fixes the three round 1 findings in c7a7d0e and records their verification. The env-file check now refuses export-prefixed, indented, KEY: value and spaced-key lines for the three MCP keys, which Compose reads but config_value does not, while plain and double-quoted values pass. deploy-release refuses any release whose rendered backend values are not exactly true or false and a positive cap, so the approval gate compares exactly what the backend receives and no other truthy spelling can turn MCP or its review on without --mcp-approval. When the rendered values differ from the env file's, which in production only a release built before TASK-069P causes, deploy-release warns and the record shows what was deployed; the runbook, DEPLOYMENT.md, ADR-015, the enablement gate, check-host and ops-status now say that the first enablement deploys a newly built release, not v0.1.0. The checklist marks its trailing-slash and session_state observations resolved by TASK-071 and TASK-070 without rewriting the earlier evidence. A local probe of the helpers against real Compose renders of a current and a pre-TASK-069P Compose file, shellcheck over the CI script list, the Makefile help, the production Compose verification and the disposable runtime QA (99 checks, Engine 28.5.2, Compose 5.1.0) pass on c7a7d0e, and e85b08d changes only documentation. The backend and frontend checks of round 1 still apply because no backend or frontend file changed. No new bug, regression, security, test, documentation or scope problem was found.",
+    "findings": [],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-069P/review-001",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "mcp_config_problem refuses non-plain lines for the three MCP keys, and deploy-release refuses rendered values other than true or false and a positive whole number before the approval gate, so a truthy spelling the backend accepts can no longer bypass it. The runtime QA covers an export-prefixed switch, an indented switch, a KEY: value cap and a rendered yes.",
+        "validated_by": {
+          "review_id": "TASK-069P/review-002",
+          "commit": "e85b08d9cc5a05dfec8414a5fe94f48832f81559"
+        }
+      },
+      {
+        "record_id": "TASK-069P/review-001",
+        "finding_id": "F-002",
+        "disposition": "fixed",
+        "rationale": "The runbook 14.1, 14.2 and 14.5, DEPLOYMENT.md, ADR-015 and the enablement gate state that only releases built from TASK-069P on read the env file, so the first enablement deploys a newly built release. deploy-release warns when a release ignores the env file's MCP settings, check-host and ops-status qualify their wording, and the runtime QA deploys a release that pins MCP off and checks the warning, the record and the backend value.",
+        "validated_by": {
+          "review_id": "TASK-069P/review-002",
+          "commit": "e85b08d9cc5a05dfec8414a5fe94f48832f81559"
+        }
+      },
+      {
+        "record_id": "TASK-069P/review-001",
+        "finding_id": "F-003",
+        "disposition": "fixed",
+        "rationale": "Checklist observations 1 and 2 now name TASK-071 and TASK-070 with their commits as the resolution, keep the 2026-10-30 evidence unchanged and ask for confirmation in the next local run and the production log inspection.",
+        "validated_by": {
+          "review_id": "TASK-069P/review-002",
+          "commit": "e85b08d9cc5a05dfec8414a5fe94f48832f81559"
+        }
+      }
+    ]
+  }
+}

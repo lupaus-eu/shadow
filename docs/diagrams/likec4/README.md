@@ -32,8 +32,10 @@ Views of `schatten-ai-mcp` and their committed exports:
 | `generateFlow` | Dynamic: generate and apply a change set | `docs/diagrams/generated/likec4-generateFlow.png` |
 | `reviewInChatFlow` | Dynamic: apply a change set from the AI client (TASK-069O) | `docs/diagrams/generated/likec4-reviewInChatFlow.png` |
 
-Elements are tagged `#new` (accepted in ADR-015, not implemented yet) or
-`#existing`. `#new` elements are green in every view.
+Elements are tagged `#new` (accepted, not implemented yet) or `#existing`
+(implemented). TASK-069P retagged every ADR-015 element `#existing`, so no
+element is `#new` now; a future `#new` element is styled green in its own
+definition until its task retags it.
 
 Deployment views in `likec4@1.60.0` ignore `include ... with { title }`, so a
 merged deployment edge would show `[...]`. Such edges get one labelled
@@ -63,9 +65,9 @@ npx -y likec4@1.60.0 validate docs/diagrams/likec4/schatten-ai-mcp
 
 Export every view as `docs/diagrams/generated/likec4-<view>.png`. LikeC4 names
 exports `<view>.png`, so export to a temporary directory and add the prefix.
-`--description` renders each view's title and description (accepted ADR-015
-design, not implemented yet; green = new) above the diagram, so embedded PNGs
-carry that context:
+`--description` renders each view's title and description (implementation
+and production status) above the diagram, so embedded PNGs carry that
+context:
 
 ```bash
 OUT=$(mktemp -d)
@@ -89,4 +91,5 @@ npx -y likec4@1.60.0 start docs/diagrams/likec4/schatten-ai-mcp
 - Keep the model in sync with ADR-015, `docs/domains/AI.md` and
   `ARCHITECTURE.md`. When a TASK-069 implementation differs from the model,
   update the model in that task.
-- When a `#new` element is implemented, TASK-069P retags it `#existing`.
+- When a `#new` element is implemented, its task retags it `#existing`
+  (TASK-069P did so for the whole ADR-015 model).

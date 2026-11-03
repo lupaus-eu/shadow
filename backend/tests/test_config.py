@@ -263,8 +263,6 @@ def test_mcp_is_disabled_by_default_with_the_adr_015_allowlist() -> None:
     assert settings.mcp_oauth_redirect_uris == (
         "https://claude.ai/api/mcp/auth_callback",
         "https://claude.com/api/mcp/auth_callback",
-        "http://127.0.0.1:{port}/callback",
-        "http://[::1]:{port}/callback",
         "http://localhost:{port}/callback",
     )
     assert settings.mcp_oauth_authorization_request_lifetime_seconds == 600

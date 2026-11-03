@@ -44,7 +44,7 @@ services:
       OIDC_TRANSACTION_LIFETIME_SECONDS: ${OIDC_TRANSACTION_LIFETIME_SECONDS:-600}
       MCP_ENABLED: ${MCP_ENABLED:-false}
       MCP_CHANGE_SET_REVIEW_ENABLED: ${MCP_CHANGE_SET_REVIEW_ENABLED:-false}
-      MCP_OAUTH_REDIRECT_URIS: ${MCP_OAUTH_REDIRECT_URIS:-https://claude.ai/api/mcp/auth_callback https://claude.com/api/mcp/auth_callback http://127.0.0.1:{port}/callback http://[::1]:{port}/callback http://localhost:{port}/callback}
+      MCP_OAUTH_REDIRECT_URIS: ${MCP_OAUTH_REDIRECT_URIS:-https://claude.ai/api/mcp/auth_callback https://claude.com/api/mcp/auth_callback http://localhost:{port}/callback}
       MCP_OAUTH_AUTHORIZATION_REQUEST_LIFETIME_SECONDS: ${MCP_OAUTH_AUTHORIZATION_REQUEST_LIFETIME_SECONDS:-600}
       MCP_OAUTH_AUTHORIZATION_CODE_LIFETIME_SECONDS: ${MCP_OAUTH_AUTHORIZATION_CODE_LIFETIME_SECONDS:-60}
       MCP_OAUTH_ACCESS_TOKEN_LIFETIME_SECONDS: ${MCP_OAUTH_ACCESS_TOKEN_LIFETIME_SECONDS:-3600}

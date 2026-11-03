@@ -864,6 +864,81 @@ run "${bin}/deploy-release" "${release_two}" --approval qa-fix-forward
 [[ "$(cat "${opt}/apps/schatten-releases/current")" == "${release_two}" ]] || fail "fix-forward pointers"
 pass "evidence gate, failed-migration isolation, post-migration failure reporting, fix-forward and schema-compatible coordinated rollback without down migrations"
 
+step "AI via MCP switches from the env file (TASK-069P)"
+set_mcp_env() {
+  sed -i -E '/^[[:space:]]*(export[[:space:]]+)?MCP_/d' "${env_file}"
+  local pair
+  for pair in "$@"; do printf '%s\n' "${pair}" >>"${env_file}"; done
+}
+latest_record() { find "${opt}/apps/schatten-state/deployments" -name "*-${release_two}.env" | sort | tail -n 1; }
+# The backend environment holds secrets: match exact lines, never print it.
+backend_env_has() {
+  docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' \
+    "$(compose_release "${dir_two}" ps --quiet backend)" | grep -qx "$1"
+}
+set_mcp_env MCP_ENABLED=yes
+expect_failure "an invalid MCP switch blocks deployment" 'MCP_ENABLED must be true or false' \
+  "${bin}/deploy-release" "${release_two}" --approval qa-mcp-invalid
+expect_failure "check-host reports an invalid MCP switch" 'MCP_ENABLED must be true or false' \
+  "${bin}/check-host" --allow-os-mismatch
+# Compose reads these forms too, and the backend takes yes, 1 and on as true.
+set_mcp_env 'export MCP_ENABLED=yes'
+expect_failure "an export-prefixed MCP switch blocks deployment" 'MCP_ENABLED must be a plain MCP_ENABLED=<value> line' \
+  "${bin}/deploy-release" "${release_two}" --approval qa-mcp-export
+set_mcp_env '  MCP_CHANGE_SET_REVIEW_ENABLED=1'
+expect_failure "check-host reports an indented MCP switch" 'MCP_CHANGE_SET_REVIEW_ENABLED must be a plain' \
+  "${bin}/check-host" --allow-os-mismatch
+set_mcp_env 'MCP_OAUTH_MAX_CLIENTS: 20000'
+expect_failure "a KEY: value MCP cap blocks deployment" 'MCP_OAUTH_MAX_CLIENTS must be a plain' \
+  "${bin}/deploy-release" "${release_two}" --approval qa-mcp-colon
+set_mcp_env
+# A release whose Compose file sets a backend MCP value itself, simulated by an
+# override on top of the QA override.
+mcp_override="${qa_root}/qa-override-mcp.yml"
+set_release_mcp() {
+  awk -v line="$1" '{ print } /^  backend:$/ { backend = 1 } backend && /^    environment:$/ { print "      " line; backend = 0 }' \
+    "${override}" >"${mcp_override}"
+}
+set_release_mcp 'MCP_ENABLED: "yes"'
+expect_failure "a rendered MCP switch other than true or false blocks deployment" 'only true or false and a positive whole number are allowed' \
+  env SCHATTEN_COMPOSE_OVERRIDE_FILE="${mcp_override}" "${bin}/deploy-release" "${release_two}" --approval qa-mcp-rendered
+set_mcp_env MCP_ENABLED=true MCP_OAUTH_MAX_CLIENTS=20000
+expect_failure "turning MCP on needs its own approval" 'needs --mcp-approval' \
+  "${bin}/deploy-release" "${release_two}" --approval qa-mcp-on
+run op deploy RELEASE="${release_two}" APPROVAL=qa-mcp-on MCP_APPROVAL=qa-mcp-approval
+record="$(latest_record)"
+grep -qx 'MCP_ENABLED=true' "${record}" && grep -qx 'MCP_APPROVAL=qa-mcp-approval' "${record}" \
+  && grep -qx 'MCP_OAUTH_MAX_CLIENTS=20000' "${record}" || fail "MCP enablement record"
+backend_env_has MCP_ENABLED=true && backend_env_has MCP_OAUTH_MAX_CLIENTS=20000 \
+  || fail "backend did not get the MCP settings from the env file"
+set_mcp_env MCP_ENABLED=true MCP_CHANGE_SET_REVIEW_ENABLED=true
+expect_failure "turning MCP change-set review on needs its own approval" 'needs --mcp-approval' \
+  "${bin}/deploy-release" "${release_two}" --approval qa-review-on
+run "${bin}/deploy-release" "${release_two}" --approval qa-review-on --mcp-approval qa-review-approval
+backend_env_has MCP_CHANGE_SET_REVIEW_ENABLED=true || fail "backend did not get the review switch"
+run "${bin}/deploy-release" "${release_two}" --approval qa-mcp-unchanged
+grep -q '^MCP_APPROVAL=' "$(latest_record)" && fail "an unchanged MCP state recorded an MCP approval"
+set_mcp_env
+run "${bin}/deploy-release" "${release_two}" --approval qa-mcp-off
+grep -qx 'MCP_ENABLED=false' "$(latest_record)" || fail "MCP disable record"
+backend_env_has MCP_ENABLED=false && backend_env_has MCP_CHANGE_SET_REVIEW_ENABLED=false \
+  || fail "backend kept MCP on after the switch was removed"
+status_output="$("${bin}/ops-status" 2>&1)" || fail "ops-status"
+grep -q 'deployed: MCP_ENABLED=false' <<<"${status_output}" || fail "ops-status MCP state"
+# A release built before TASK-069P pins MCP off and ignores the env file:
+# deploying it keeps MCP off, needs no MCP approval and warns.
+set_release_mcp 'MCP_ENABLED: "false"'
+set_mcp_env MCP_ENABLED=true
+pinned_output="$(env SCHATTEN_COMPOSE_OVERRIDE_FILE="${mcp_override}" "${bin}/deploy-release" "${release_two}" --approval qa-mcp-pinned 2>&1)" \
+  || { printf '%s\n' "${pinned_output}" | tee -a "${log_file}" | tail -n 20 >&2; fail "deploying a release that pins MCP off"; }
+printf '%s\n' "${pinned_output}" >>"${log_file}"
+grep -q 'ignores the MCP settings' <<<"${pinned_output}" || fail "no warning for a release that ignores the env file"
+grep -qx 'MCP_ENABLED=false' "$(latest_record)" && ! grep -q '^MCP_APPROVAL=' "$(latest_record)" \
+  || fail "record of a release that pins MCP off"
+backend_env_has MCP_ENABLED=false || fail "a release that pins MCP off got MCP_ENABLED from the env file"
+set_mcp_env
+pass "MCP switches and client cap come from the env file; turning MCP or its review on needs --mcp-approval, an unchanged state or a disable does not"
+
 step "Secret leakage scan"
 all_logs="$(cat "${log_file}"; for id in $(docker ps --all --quiet); do docker logs "${id}" 2>&1; done)"
 for secret in "${db_password}" "${client_secret}" "${key_passphrase}" qa-bootstrap-admin@example.test; do

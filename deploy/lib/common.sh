@@ -75,6 +75,74 @@ pointer_value() {
   fi
 }
 
+# ADR-015 switches and client cap (TASK-069P) come from the protected env file;
+# unset means the Compose defaults (off, 10000). Prints the first problem.
+mcp_config_problem() {
+  local key value lines
+  # Compose also reads export-prefixed, indented and KEY: value lines, which
+  # config_value does not see, so only plain KEY=value lines are allowed.
+  for key in MCP_ENABLED MCP_CHANGE_SET_REVIEW_ENABLED MCP_OAUTH_MAX_CLIENTS; do
+    lines="$(grep -E "^[[:space:]]*(export[[:space:]]+)?${key}[[:space:]]*[:=]" "${SCHATTEN_ENV_FILE}" || true)"
+    if [[ -n "${lines}" ]] && grep -qvE "^${key}=" <<<"${lines}"; then
+      printf '%s must be a plain %s=<value> line' "${key}" "${key}"
+      return
+    fi
+  done
+  for key in MCP_ENABLED MCP_CHANGE_SET_REVIEW_ENABLED; do
+    value="$(config_value "${key}" false)"
+    if [[ "${value}" != true && "${value}" != false ]]; then
+      printf '%s must be true or false' "${key}"
+      return
+    fi
+  done
+  value="$(config_value MCP_OAUTH_MAX_CLIENTS 10000)"
+  [[ "${value}" =~ ^[1-9][0-9]{0,8}$ ]] || printf 'MCP_OAUTH_MAX_CLIENTS must be a positive whole number'
+}
+
+# The MCP settings a release's backend gets, as KEY=value lines. Releases built
+# before TASK-069P pin them in Compose and ignore the env file. The rendered
+# configuration holds secrets and is only parsed, never printed.
+release_mcp_state() {
+  compose_release "$1" config --format json | python3 -c '
+import json, sys
+environment = json.load(sys.stdin)["services"]["backend"].get("environment", {})
+defaults = {
+    "MCP_ENABLED": "false",
+    "MCP_CHANGE_SET_REVIEW_ENABLED": "false",
+    "MCP_OAUTH_MAX_CLIENTS": "10000",
+}
+for key, default in defaults.items():
+    print(key + "=" + str(environment.get(key) or default))
+'
+}
+
+# The MCP settings the env file asks for, in release_mcp_state's format. A
+# release that renders other values ignores the env file.
+env_mcp_state() {
+  printf 'MCP_ENABLED=%s\nMCP_CHANGE_SET_REVIEW_ENABLED=%s\nMCP_OAUTH_MAX_CLIENTS=%s\n' \
+    "$(config_value MCP_ENABLED false)" "$(config_value MCP_CHANGE_SET_REVIEW_ENABLED false)" \
+    "$(config_value MCP_OAUTH_MAX_CLIENTS 10000)"
+}
+
+# The newest successful deployment record, or nothing.
+last_deployment_record() {
+  local file
+  while IFS= read -r file; do
+    if grep -qx 'STATUS=succeeded' "${file}"; then
+      printf '%s' "${file}"
+      return
+    fi
+  done < <(find "${SCHATTEN_STATE_DIR}/deployments" -maxdepth 1 -type f -name '*.env' 2>/dev/null | sort -r)
+}
+
+record_value() {
+  local file="$1" key="$2" default="${3-}" value=""
+  if [[ -n "${file}" ]]; then
+    value="$(grep -E "^${key}=" "${file}" | tail -n 1 | cut -d= -f2- || true)"
+  fi
+  printf '%s' "${value:-${default}}"
+}
+
 # Run Compose from a frozen release directory with a minimal environment so
 # stray operator shell variables cannot override the protected configuration.
 compose_release() {

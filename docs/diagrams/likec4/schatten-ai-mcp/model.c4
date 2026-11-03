@@ -1,65 +1,45 @@
 // Schatten AI via MCP - C4 model (ADR-015)
-// Accepted design; implementation pending TASK-069B..TASK-069P.
+// Implemented by TASK-069B..TASK-069P; MCP stays off in production until
+// its separately approved enablement.
 
 model {
 
   user = actor 'Schatten user' {
     #existing
-    description 'Admin or consultant. Uses Schatten in the browser. New (ADR-015): chats in their own AI client on their own AI subscription.'
+    description 'Admin or consultant. Uses Schatten in the browser. Since ADR-015: chats in their own AI client on their own AI subscription.'
   }
 
   aiClient = externalSystem 'AI client' {
-    #new
-    style {
-      color green
-    }
+    #existing
     description 'User-chosen MCP-capable client. Schatten never calls an LLM and stores no LLM keys.'
 
     webChat = externalContainer 'claude.ai web chat' {
-      #new
-      style {
-        color green
-      }
+      #existing
       technology 'Web app, remote MCP connector'
       description 'Chat in the browser. Its connector calls MCP from the vendor cloud.'
     }
     desktopApp = externalContainer 'Claude Desktop' {
-      #new
-      style {
-        color green
-      }
+      #existing
       technology 'Desktop app, custom connector'
       description 'Desktop chat. Custom connectors are brokered by the vendor cloud.'
     }
     localClient = externalContainer 'Claude Code / other local MCP client' {
-      #new
-      style {
-        color green
-      }
+      #existing
       technology 'CLI, Streamable HTTP MCP client'
       description 'Calls MCP directly from the workstation. Also used for local development.'
     }
   }
 
   aiVendor = externalSystem 'AI vendor cloud' {
-    #new
-    style {
-      color green
-    }
+    #existing
     description 'The user’s AI vendor, for example Anthropic. Receives business data read through MCP.'
 
     llm = externalContainer 'LLM inference' {
-      #new
-      style {
-        color green
-      }
+      #existing
       description 'Runs the model on the user’s subscription. Decides which MCP tools to call.'
     }
     broker = externalContainer 'Remote connector broker' {
-      #new
-      style {
-        color green
-      }
+      #existing
       technology 'OAuth 2.1 public client, MCP client'
       description 'Runs remote connectors for web and desktop chat: OAuth, token storage and MCP calls.'
     }
@@ -72,24 +52,24 @@ model {
 
   schatten = system 'Schatten' {
     #existing
-    description 'Organisation twin modelling, metrics and forecasting. New (ADR-015): OAuth 2.1 authorization server and MCP server for AI clients.'
+    description 'Organisation twin modelling, metrics and forecasting. Since ADR-015: OAuth 2.1 authorization server and MCP server for AI clients.'
 
     spa = webapp 'React SPA' {
       #existing
       technology 'React, TypeScript, Vite'
-      description 'Workspace UI. New (ADR-015): consent page /ai/authorize and Metrics tab AI panel for change-set review.'
+      description 'Workspace UI. Since ADR-015: consent page /ai/authorize and Metrics tab AI panel for change-set review.'
     }
 
     caddy = container 'Caddy ingress' {
       #existing
       technology 'Caddy'
-      description 'Only public ingress. Serves the SPA and proxies /api. New (ADR-015): also proxies /.well-known/oauth-*; redacts Authorization and pending request ids in logs.'
+      description 'Only public ingress. Serves the SPA and proxies /api. Since ADR-015: also proxies /.well-known/oauth-*; redacts Authorization and pending request ids in logs.'
     }
 
     backend = container 'Backend API' {
       #existing
       technology 'Python, FastAPI, SQLAlchemy'
-      description 'Trusted application layer. Hosts the REST API and session login. New (ADR-015): the OAuth authorization server and both MCP services in the same process.'
+      description 'Trusted application layer. Hosts the REST API and session login. Since ADR-015: the OAuth authorization server and both MCP services in the same process.'
 
       restApi = component 'REST business API' {
         #existing
@@ -104,77 +84,50 @@ model {
       domainServices = component 'Domain services' {
         #existing
         technology 'Python services'
-        description 'Organisation States and Twin Structure services. New (ADR-015): flush-only *_in_transaction cores (TASK-069B).'
+        description 'Organisation States and Twin Structure services. Since ADR-015: flush-only *_in_transaction cores (TASK-069B).'
       }
       oauthServer = component 'MCP OAuth authorization server' {
-        #new
-        style {
-          color green
-        }
+        #existing
         technology '/.well-known/oauth-*, /api/oauth/*'
         description 'Discovery, Dynamic Client Registration (allowlist), authorize, token (PKCE S256), refresh rotation, revoke. Opaque hashed tokens.'
       }
       consentApi = component 'Consent and connections API' {
-        #new
-        style {
-          color green
-        }
+        #existing
         technology '/api/v1/ai/oauth, /api/v1/ai/connections, /api/v1/ai/users/{user_id}/connections/revoke'
         description 'Approve or deny pending requests; list and revoke own grants; admin revokes all grants of a User. Session + CSRF.'
       }
       mcpAuth = component 'McpBearerAuth and limits' {
-        #new
-        style {
-          color green
-        }
+        #existing
         technology 'ASGI middleware'
         description 'Per request: hash token, check grant, resource and User, re-read role, intersect scopes. Rate limit per grant, capacity limiter.'
       }
       mcpRead = component 'MCP read service' {
-        #new
-        style {
-          color green
-        }
+        #existing
         technology 'FastMCP, /api/mcp/read, schatten.read'
         description 'Read-only tools, generator preview, change-set inspection and skill prompts.'
       }
       mcpWrite = component 'MCP write service' {
-        #new
-        style {
-          color green
-        }
+        #existing
         technology 'FastMCP, /api/mcp/write, schatten.write'
         description 'Stages draft change sets: create, add, validate, submit, discard. With MCP_CHANGE_SET_REVIEW_ENABLED also applies or rejects a submitted change set that the human approves in the client.'
       }
       changeSetEngine = component 'Change-set engine' {
-        #new
-        style {
-          color green
-        }
+        #existing
         technology 'Python'
         description 'Resolves $ref, dry-run with rollback, freezes values on submit, atomic apply.'
       }
       reviewApi = component 'Change-set review API' {
-        #new
-        style {
-          color green
-        }
+        #existing
         technology '/api/v1/organisations/{org}/ai/change-sets'
         description 'Human list, inspect, apply and reject in the Metrics tab. Session + CSRF.'
       }
       generator = component 'Timeseries generator' {
-        #new
-        style {
-          color green
-        }
+        #existing
         technology 'numpy'
         description 'Deterministic, seeded, spec-based values. The LLM chooses parameters, never values.'
       }
       skills = component 'Skills and MCP prompts' {
-        #new
-        style {
-          color green
-        }
+        #existing
         technology 'SKILL.md'
         description 'One source for the Claude Code plugin, skill zips (GET /api/v1/ai/skills/{name}.zip) and MCP prompts.'
       }
@@ -189,7 +142,7 @@ model {
     db = database 'PostgreSQL 18' {
       #existing
       technology 'PostgreSQL'
-      description 'Business tables. New (ADR-015): mcp_oauth_* and ai_change_sets*.'
+      description 'Business tables. Since ADR-015: mcp_oauth_* and ai_change_sets*.'
     }
   }
 

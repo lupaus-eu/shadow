@@ -84,7 +84,13 @@ def session_factory() -> Iterator[sessionmaker[Session]]:
 
 
 def _settings(**overrides: object) -> Settings:
-    return Settings.model_validate({"MCP_ENABLED": True, **overrides})
+    return Settings.model_validate(
+        {
+            "MCP_ENABLED": True,
+            "MCP_OAUTH_REDIRECT_URIS": "http://127.0.0.1:{port}/callback",
+            **overrides,
+        }
+    )
 
 
 @contextmanager

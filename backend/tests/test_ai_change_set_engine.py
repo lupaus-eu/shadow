@@ -1228,7 +1228,7 @@ def test_settings_require_statement_timeout_longer_than_lock_timeout() -> None:
 def test_lazy_cleanup_nulls_the_grant_and_keeps_the_audit_record() -> None:
     factory = _factory(foreign_keys=True)
     organisation_key = _create_organisation(factory)
-    redirect_uri = "http://127.0.0.1:33418/callback"
+    redirect_uri = "http://localhost:33418/callback"
     resource = "http://testserver/api/mcp/write"
     verifier = "v" * 64
     with factory() as session:

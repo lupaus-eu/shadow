@@ -5,8 +5,11 @@
 #   deploy-release <release-id> --approval <reference> --first-install [--enable-scheduler]
 #   deploy-release <release-id> --approval <reference> [--restore-evidence <file>] [--enable-scheduler]
 #   deploy-release <release-id> --approval <reference> --rollback --confirm-schema-compatible [--restore-evidence <file>]
+#   Every form also takes --mcp-approval <reference>.
 #
-# Gates, in order: verified image IDs, successful restore-rehearsal evidence
+# Gates, in order: verified image IDs, valid MCP settings and, when the
+# deployment turns MCP or its change-set review on, an --mcp-approval
+# reference (ADR-015, TASK-069P), successful restore-rehearsal evidence
 # (except first install, which rehearses after initialization), healthy
 # database, completed pre-change backup, successful migration (skipped for a
 # schema-compatible rollback), healthy API/worker/frontend, exactly one worker
@@ -20,6 +23,7 @@ bin_dir="$(dirname "$(readlink -f "$0")")"
 release_id="${1:-}"
 shift || true
 approval=""
+mcp_approval=""
 restore_evidence=""
 first_install=false
 rollback=false
@@ -28,6 +32,7 @@ enable_scheduler=false
 while (( $# > 0 )); do
   case "$1" in
     --approval) approval="${2:-}"; shift 2 ;;
+    --mcp-approval) mcp_approval="${2:-}"; shift 2 ;;
     --restore-evidence) restore_evidence="${2:-}"; shift 2 ;;
     --first-install) first_install=true; shift ;;
     --rollback) rollback=true; shift ;;
@@ -38,6 +43,8 @@ while (( $# > 0 )); do
 done
 [[ -n "${approval}" ]] || die "--approval <reference> is required: releases need explicit human approval"
 [[ "${approval}" =~ ^[A-Za-z0-9._:/#-]{1,120}$ ]] || die "--approval must be a short non-personal reference"
+[[ -z "${mcp_approval}" || "${mcp_approval}" =~ ^[A-Za-z0-9._:/#-]{1,120}$ ]] \
+  || die "--mcp-approval must be a short non-personal reference"
 [[ "${first_install}" == false || "${rollback}" == false ]] || die "--first-install and --rollback are exclusive"
 [[ "${rollback}" == false || "${schema_confirmed}" == true ]] \
   || die "--rollback requires --confirm-schema-compatible after reviewing expand/contract compatibility"
@@ -54,6 +61,35 @@ directory="$(release_dir "${release_id}")"
 verify_release_images "${directory}"
 previous_current="$(pointer_value current)"
 
+# ADR-015 (TASK-069P): the env file switches MCP and its change-set review.
+# Turning either on needs its own recorded approval; turning them off needs
+# only the release approval, so an incident disable is never blocked.
+mcp_problem="$(mcp_config_problem)"
+[[ -z "${mcp_problem}" ]] || die "${mcp_problem} in ${SCHATTEN_ENV_FILE}"
+mcp_state="$(release_mcp_state "${directory}")" || die "Could not read the MCP settings of ${release_id}"
+mcp_enabled="$(sed -n 's/^MCP_ENABLED=//p' <<<"${mcp_state}")"
+mcp_review="$(sed -n 's/^MCP_CHANGE_SET_REVIEW_ENABLED=//p' <<<"${mcp_state}")"
+mcp_max_clients="$(sed -n 's/^MCP_OAUTH_MAX_CLIENTS=//p' <<<"${mcp_state}")"
+# The backend also reads yes, 1 or on as true, so the gate below holds only for
+# exactly the values it compares.
+[[ "${mcp_enabled}" =~ ^(true|false)$ && "${mcp_review}" =~ ^(true|false)$ \
+  && "${mcp_max_clients}" =~ ^[1-9][0-9]{0,8}$ ]] \
+  || die "${release_id} would give the backend MCP_ENABLED=${mcp_enabled}, MCP_CHANGE_SET_REVIEW_ENABLED=${mcp_review} and MCP_OAUTH_MAX_CLIENTS=${mcp_max_clients}; only true or false and a positive whole number are allowed"
+if [[ "$(env_mcp_state)" != "${mcp_state}" ]]; then
+  log "WARNING: ${release_id} ignores the MCP settings of ${SCHATTEN_ENV_FILE} (it predates TASK-069P) and deploys with $(tr '\n' ' ' <<<"${mcp_state}")"
+fi
+# Records written before TASK-069P lack these keys; production MCP was off.
+previous_record="$(last_deployment_record)"
+previous_mcp_enabled="$(record_value "${previous_record}" MCP_ENABLED false)"
+previous_mcp_review="$(record_value "${previous_record}" MCP_CHANGE_SET_REVIEW_ENABLED false)"
+mcp_turned_on=false
+if [[ "${mcp_enabled}" == true ]] && { [[ "${previous_mcp_enabled}" != true ]] \
+  || [[ "${mcp_review}" == true && "${previous_mcp_review}" != true ]]; }; then
+  mcp_turned_on=true
+fi
+[[ "${mcp_turned_on}" == false || -n "${mcp_approval}" ]] \
+  || die "This deployment turns on MCP or its change-set review (MCP_ENABLED=${mcp_enabled}, MCP_CHANGE_SET_REVIEW_ENABLED=${mcp_review}); it needs --mcp-approval <reference> (docs/PRODUCTION-RUNBOOK.md section 14)"
+
 record_file="${SCHATTEN_STATE_DIR}/deployments/$(date -u +%Y%m%dT%H%M%SZ)-${release_id}.env"
 record() { printf '%s=%s\n' "$1" "$2" >>"${record_file}"; }
 mode=release
@@ -67,6 +103,10 @@ record FRONTEND_IMAGE_ID "$(release_value "${directory}" FRONTEND_IMAGE_ID)"
 record MODE "${mode}"
 record APPROVAL "${approval}"
 record PREVIOUS_RELEASE "${previous_current:-none}"
+record MCP_ENABLED "${mcp_enabled}"
+record MCP_CHANGE_SET_REVIEW_ENABLED "${mcp_review}"
+record MCP_OAUTH_MAX_CLIENTS "${mcp_max_clients}"
+[[ -n "${mcp_approval}" ]] && record MCP_APPROVAL "${mcp_approval}"
 [[ -n "${SCHATTEN_COMPOSE_OVERRIDE_FILE:-}" ]] && record QA_COMPOSE_OVERRIDE "${SCHATTEN_COMPOSE_OVERRIDE_FILE}"
 
 # Set once new-release application containers may have replaced the old ones.

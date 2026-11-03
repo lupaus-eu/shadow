@@ -87,13 +87,13 @@ services:
       AUTH_SESSION_ABSOLUTE_LIFETIME_SECONDS: "28800"
       AUTH_SESSION_ACTIVITY_WRITE_SECONDS: "300"
       OIDC_TRANSACTION_LIFETIME_SECONDS: "600"
-      # ADR-015: MCP stays disabled until TASK-069P's separately approved
-      # production enablement.
-      MCP_ENABLED: "false"
-      # ADR-015 amendment (TASK-069O): MCP apply and reject stay off until
-      # TASK-069P's approved enablement.
-      MCP_CHANGE_SET_REVIEW_ENABLED: "false"
-      MCP_OAUTH_REDIRECT_URIS: https://claude.ai/api/mcp/auth_callback https://claude.com/api/mcp/auth_callback http://127.0.0.1:{port}/callback http://[::1]:{port}/callback http://localhost:{port}/callback
+      # ADR-015 (TASK-069P): the protected env file switches MCP and its
+      # change-set review; unset means off. Turning either on needs its own
+      # approval, which deploy-release enforces (--mcp-approval); see
+      # docs/PRODUCTION-RUNBOOK.md section 14.
+      MCP_ENABLED: ${MCP_ENABLED:-false}
+      MCP_CHANGE_SET_REVIEW_ENABLED: ${MCP_CHANGE_SET_REVIEW_ENABLED:-false}
+      MCP_OAUTH_REDIRECT_URIS: https://claude.ai/api/mcp/auth_callback https://claude.com/api/mcp/auth_callback http://localhost:{port}/callback
       MCP_OAUTH_AUTHORIZATION_REQUEST_LIFETIME_SECONDS: "600"
       MCP_OAUTH_AUTHORIZATION_CODE_LIFETIME_SECONDS: "60"
       MCP_OAUTH_ACCESS_TOKEN_LIFETIME_SECONDS: "3600"
@@ -105,7 +105,8 @@ services:
       MCP_OAUTH_REVOKE_RATE_LIMIT_PER_MINUTE: "60"
       MCP_OAUTH_MAX_PENDING_REQUESTS_PER_CLIENT: "20"
       MCP_OAUTH_MAX_PENDING_REQUESTS: "1000"
-      MCP_OAUTH_MAX_CLIENTS: "10000"
+      # ADR-015's client cap remedy: raise it in the env file and redeploy.
+      MCP_OAUTH_MAX_CLIENTS: ${MCP_OAUTH_MAX_CLIENTS:-10000}
       MCP_TOOL_CONCURRENCY: "4"
       MCP_RATE_LIMIT_PER_MINUTE: "120"
       AI_CHANGE_SET_STATEMENT_TIMEOUT_MS: "30000"

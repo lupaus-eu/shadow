@@ -186,7 +186,10 @@ person applies or rejects in the Metrics tab or, with
 `MCP_CHANGE_SET_REVIEW_ENABLED`, in the chat by approving the client's apply
 or reject call ([ADR-015](docs/decisions/ADR-015-ai-via-mcp.md)). The feature
 is behind `MCP_ENABLED` (off by default); when it is on, the Metrics tab's AI panel
-Connect section shows these steps for the current Schatten.
+Connect section shows these steps for the current Schatten. Production stays
+off until its separately approved enablement
+([runbook section 14](docs/PRODUCTION-RUNBOOK.md#14-ai-via-mcp-enable-disable-offboarding-and-incidents));
+local evidence is in [the QA checklist](docs/qa/AI-MCP-QA-CHECKLIST.md).
 
 - Claude Code: install the Schatten plugin, which adds the MCP servers
   `https://schatten.lupaus.eu/api/mcp/read` and `/api/mcp/write` and the
@@ -198,13 +201,18 @@ Connect section shows these steps for the current Schatten.
   ```
 
   Then run `/mcp`, authenticate each server and approve the access in
-  Schatten.
+  Schatten. Keep `apply_change_set` and `reject_change_set` on "ask": in auto
+  mode, or once these tools are allowed without asking, Claude Code applies
+  and rejects without asking you.
+  Reconnect with `/mcp` after a Schatten release that changes tool results.
 - claude.ai and Claude Desktop: add the read and write URLs as two custom
   connectors (Settings, Connectors), and upload the two skill zips from the
   Connect section under Customize, Skills (code execution must be on).
 - Other MCP clients: add both URLs and use the read server's MCP prompts
   `model_building` and `timeseries_generation`, which carry the same skill
-  text.
+  text. The client's OAuth callback must be on the redirect URI allowlist
+  (`MCP_OAUTH_REDIRECT_URIS`); by default only the claude.ai and claude.com
+  callbacks and `http://localhost:{port}/callback` are allowed.
 
 The skills live in `backend/app/mcp/plugin/skills/`. Local use against
 `https://app.localhost` is described in

@@ -214,6 +214,7 @@ rendered `docker compose config` output into evidence.
 | Optional `SCHATTEN_BACKUP_DIR`, `SCHATTEN_BACKUP_UID`/`GID` | Defaults `/opt/postgres-backups`, `10002:10002` |
 | Optional `SCHATTEN_STATE_DIR`, `SCHATTEN_RELEASES_DIR` | Defaults `/opt/apps/schatten-state`, `/opt/apps/schatten-releases` |
 | `SCHATTEN_OFELIA_CONFIG`, `SCHATTEN_DOCKER_SOCKET` | Leave unset in production (release job file, `/var/run/docker.sock`); disposable QA only. `verify-runtime-hardening` still checks the mounted job file |
+| Optional `MCP_ENABLED`, `MCP_CHANGE_SET_REVIEW_ENABLED`, `MCP_OAUTH_MAX_CLIENTS` | AI via MCP (ADR-015, TASK-069P): exactly `true`/`false` (default `false`) and a positive client cap (default `10000`). Unset keeps MCP off. Plain `KEY=value` lines only. Applied by deploying the current release again, if it is built from TASK-069P or later; turning MCP or its review on needs `deploy-release --mcp-approval` ([AI Via MCP Settings](#ai-via-mcp-settings-task-069e-task-069f-task-069g-task-069p)) |
 | Optional `SCHATTEN_EDGE_SUBNET`, `SCHATTEN_EDGE_IP_RANGE`, `SCHATTEN_CADDY_IPV4` | Defaults `172.30.59.0/24`, `172.30.59.128/25`, `172.30.59.2`; change together only on subnet conflict, keeping the Caddy address outside the dynamic range |
 
 `TRUSTED_CADDY_PEER_CIDRS` is derived in Compose as the fixed Caddy address
@@ -225,16 +226,30 @@ and ACME account state persist in the `schatten_caddy_data` volume.
 Production retains secure cookies, `APP_ENV=production`, disabled CORS, the
 existing RS256/session/transaction limits and same-origin API behavior.
 
-### AI Via MCP Settings (TASK-069E, TASK-069F, TASK-069G)
+### AI Via MCP Settings (TASK-069E, TASK-069F, TASK-069G, TASK-069P)
 
-ADR-015's MCP OAuth settings are fixed in `docker-compose.production.yml`, not
-in the env file. They contain no secret.
+ADR-015's MCP OAuth settings contain no secret. `MCP_ENABLED`,
+`MCP_CHANGE_SET_REVIEW_ENABLED` and `MCP_OAUTH_MAX_CLIENTS` come from the
+protected env file (TASK-069P), so an operator turns MCP on or off, or raises
+the client cap, by editing it and deploying the current release again. Only
+releases built from a commit that includes TASK-069P read these keys; older
+ones, including `v0.1.0`, pin MCP off and the cap at 10,000, and
+`deploy-release` warns when the release it deploys ignores the env file's MCP
+settings, so the first enablement deploys a newly built release. All
+other MCP settings are fixed in `docker-compose.production.yml` and change only
+through a reviewed release. Turning MCP or its change-set review on needs
+TASK-069P's recorded human approval, which `deploy-release` enforces: such a
+deployment is refused without `--mcp-approval <reference>`, and every
+deployment record holds the three values and that reference. Enable, disable, offboarding, the client cap, the
+incident procedure and what to check in logs are in
+[the runbook](PRODUCTION-RUNBOOK.md#14-ai-via-mcp-enable-disable-offboarding-and-incidents);
+the local evidence is in [AI-MCP-QA-CHECKLIST.md](qa/AI-MCP-QA-CHECKLIST.md).
 
 | Setting | Production value | Contract |
 | --- | --- | --- |
-| `MCP_ENABLED` | `false` | Feature flag. With `false` the MCP endpoints `/api/mcp/read` and `/api/mcp/write` and the discovery, registration, authorization, consent, token and revoke endpoints are not registered and return 404, and the session response reports `features.mcp=false`. The `/api/v1/ai/connections` API and the admin per-user revocation stay registered for ADR-015's incident procedure. Enabling it needs TASK-069P's separate human approval; `verify-production-compose.sh` asserts `false` |
-| `MCP_CHANGE_SET_REVIEW_ENABLED` | `false` | ADR-015 amendment (TASK-069O). With `true`, and only with `MCP_ENABLED=true`, the MCP write server also registers `apply_change_set` and `reject_change_set`, so MCP clients can apply or reject submitted change sets on their User's approval, and the session reports `features.mcpChangeSetReview=true`. The backend reads it at startup and builds the write server's tool list then, so a change takes effect only after the backend is restarted through the approved deployment procedure. Turning it on later gives existing write grants these tools without new consent; enable it before or together with MCP, or tell users. Setting it to `false` and restarting the backend removes the tools on the next request and keeps staging. Enabling it in production belongs to TASK-069P's approved rollout. |
-| `MCP_OAUTH_REDIRECT_URIS` | claude.ai and claude.com callbacks, `http://127.0.0.1:{port}/callback`, `http://[::1]:{port}/callback`, `http://localhost:{port}/callback` | Space- or comma-separated allowlist. Exact entries must be HTTPS without userinfo, query, fragment or wildcard. Loopback entries keep the literal `{port}` placeholder. Startup fails on any other entry. TASK-069P trims the loopback entries to those real clients use |
+| `MCP_ENABLED` | Env file; `false` when unset | Feature flag. With `false` the MCP endpoints `/api/mcp/read` and `/api/mcp/write` and the discovery, registration, authorization, consent, token and revoke endpoints are not registered and return 404, and the session response reports `features.mcp=false`. The `/api/v1/ai/connections` API and the admin per-user revocation stay registered for ADR-015's incident procedure. Turning it on needs TASK-069P's separate human approval (`--mcp-approval`); a disable needs only the release approval (runbook 14.3). `verify-production-compose.sh` asserts the `${MCP_ENABLED:-false}` interpolation and its `false` default |
+| `MCP_CHANGE_SET_REVIEW_ENABLED` | Env file; `false` when unset | ADR-015 amendment (TASK-069O). With `true`, and only with `MCP_ENABLED=true`, the MCP write server also registers `apply_change_set` and `reject_change_set`, so MCP clients can apply or reject submitted change sets on their User's approval, and the session reports `features.mcpChangeSetReview=true`. The backend reads it at startup and builds the write server's tool list then, so a change takes effect when the current release is deployed again. Turning it on while MCP is on needs `--mcp-approval`. Turning it on later gives existing write grants these tools without new consent; enable it together with MCP, or tell users. Setting it to `false` and redeploying removes the tools and keeps staging. |
+| `MCP_OAUTH_REDIRECT_URIS` | claude.ai and claude.com callbacks, `http://localhost:{port}/callback` | Space- or comma-separated allowlist. Exact entries must be HTTPS without userinfo, query, fragment or wildcard. Loopback entries keep the literal `{port}` placeholder; `127.0.0.1`, `[::1]` and `localhost` hosts are supported. Startup fails on any other entry. TASK-069P trimmed the default to the loopback entry a verified client uses (Claude Code's `localhost` callback); the vendor callbacks are confirmed at production enablement |
 | `MCP_OAUTH_AUTHORIZATION_REQUEST_LIFETIME_SECONDS` | `600` | Pending authorization request lifetime (1 to 3600) |
 | `MCP_OAUTH_AUTHORIZATION_CODE_LIFETIME_SECONDS` | `60` | Single-use authorization code lifetime (1 to 600) |
 | `MCP_OAUTH_ACCESS_TOKEN_LIFETIME_SECONDS` | `3600` | Opaque access token lifetime (1 to 86400), capped at the grant's expiry |
@@ -246,7 +261,7 @@ in the env file. They contain no secret.
 | `MCP_OAUTH_REVOKE_RATE_LIMIT_PER_MINUTE` | `60` | `revoke` bucket per client IP (`/api/oauth/revoke`) |
 | `MCP_OAUTH_MAX_PENDING_REQUESTS_PER_CLIENT` | `20` | Live undecided authorization requests per client; may not exceed the total |
 | `MCP_OAUTH_MAX_PENDING_REQUESTS` | `1000` | Live undecided authorization requests in total |
-| `MCP_OAUTH_MAX_CLIENTS` | `10000` | Non-deleted registered clients; beyond it `register` answers 503 and logs a warning. Raising it is the operator remedy (ADR-015) |
+| `MCP_OAUTH_MAX_CLIENTS` | Env file; `10000` when unset | Non-deleted registered clients; beyond it `register` answers 503 and logs a warning. Raising it in the env file and redeploying the current release is the operator remedy (ADR-015); no MCP approval is needed |
 | `MCP_TOOL_CONCURRENCY` | `4` | Tokens of the one `anyio.CapacityLimiter` shared by MCP bearer verification and tool database work in worker threads (1 to 64). `validate_change_set` and `submit_change_set` hold two database connections per token (the tool's own and the dry-run's), and the pool is shared with the REST API (SQLAlchemy default: 5 plus 10 overflow), so keep twice the setting well below the pool size |
 | `MCP_RATE_LIMIT_PER_MINUTE` | `120` | Requests per grant and minute on `/api/mcp/*`, counted by the separate in-process `mcp_rate_limiter`; beyond it `429` |
 | `AI_CHANGE_SET_STATEMENT_TIMEOUT_MS` | `30000` | PostgreSQL `statement_timeout` for change-set dry-runs, apply and the review's replacement recomputation (1 to 600,000); must be longer than the lock timeout |
@@ -261,7 +276,10 @@ though `fastapi run` configures only the uvicorn loggers.
 The `register`, `token` and `revoke` buckets are higher than `authorize`
 because vendor connector brokers call them from shared egress addresses.
 The OAuth and MCP limiters are separate from the login limiter, and all assume
-one backend replica. TASK-069P verifies the defaults with real clients.
+one backend replica. TASK-069P verified every bucket, the per-grant MCP limit,
+the client cap and login isolation locally with Claude Code and a scripted
+client; their fit with real vendor-cloud traffic is recorded at production
+enablement.
 
 ## Host Setup And Build/Release Contract
 

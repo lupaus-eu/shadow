@@ -91,9 +91,11 @@ assert backend["environment"]["APP_ALLOWED_ORIGIN"] == "https://app.example.test
 assert backend["environment"]["SESSION_COOKIE_SECURE"] == "true"
 assert backend["environment"]["OIDC_SCOPES"] == "openid profile email"
 assert backend["environment"]["OIDC_REQUIRE_VERIFIED_EMAIL"] == "false"
-# ADR-015: production MCP enablement needs separate TASK-069P approval.
+# ADR-015: MCP and its change-set review stay off unless the protected env
+# file switches them on (TASK-069P); the client cap defaults to 10000.
 assert backend["environment"]["MCP_ENABLED"] == "false"
 assert backend["environment"]["MCP_CHANGE_SET_REVIEW_ENABLED"] == "false"
+assert backend["environment"]["MCP_OAUTH_MAX_CLIENTS"] == "10000"
 caddy_ip = services["frontend"]["networks"]["edge"]["ipv4_address"]
 assert backend["environment"]["TRUSTED_CADDY_PEER_CIDRS"] == f"{caddy_ip}/32"
 import ipaddress
@@ -180,4 +182,21 @@ for missing_name in "${!values[@]}"; do
   fi
 done
 
-echo "Production Compose requires every release, database, auth and scheduler setting and preserves private ports, hardening, isolation and migration gates."
+# The MCP switches and cap come only from the env file, with safe defaults;
+# a literal value would bypass deploy-release's --mcp-approval gate.
+for line in 'MCP_ENABLED: ${MCP_ENABLED:-false}' \
+  'MCP_CHANGE_SET_REVIEW_ENABLED: ${MCP_CHANGE_SET_REVIEW_ENABLED:-false}' \
+  'MCP_OAUTH_MAX_CLIENTS: ${MCP_OAUTH_MAX_CLIENTS:-10000}'; do
+  grep -qxF "      ${line}" docker-compose.production.yml \
+    || { echo "Production Compose must set ${line}" >&2; exit 1; }
+done
+render "${compose_env[@]}" MCP_ENABLED=true MCP_CHANGE_SET_REVIEW_ENABLED=true MCP_OAUTH_MAX_CLIENTS=20000 \
+  | python3 -c '
+import json, sys
+environment = json.load(sys.stdin)["services"]["backend"]["environment"]
+assert environment["MCP_ENABLED"] == "true"
+assert environment["MCP_CHANGE_SET_REVIEW_ENABLED"] == "true"
+assert environment["MCP_OAUTH_MAX_CLIENTS"] == "20000"
+'
+
+echo "Production Compose requires every release, database, auth and scheduler setting and preserves private ports, hardening, isolation and migration gates; MCP stays off unless the env file switches it on."

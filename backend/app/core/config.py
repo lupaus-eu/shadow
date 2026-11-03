@@ -21,11 +21,11 @@ MCP_LOOPBACK_REDIRECT_ENTRY = re.compile(
     r"^http://(?P<host>127\.0\.0\.1|\[::1\]|localhost):\{port\}"
     r"(?P<path>/[^?#{}\s\\%]*)$"
 )
+# TASK-069P: the only loopback entry a verified client uses is Claude Code's
+# localhost callback. IP-literal entries stay supported through configuration.
 DEFAULT_MCP_OAUTH_REDIRECT_URIS = (
     "https://claude.ai/api/mcp/auth_callback",
     "https://claude.com/api/mcp/auth_callback",
-    "http://127.0.0.1:{port}/callback",
-    "http://[::1]:{port}/callback",
     "http://localhost:{port}/callback",
 )
 

@@ -54,6 +54,17 @@ for key in POSTGRES_DB POSTGRES_USER POSTGRES_PASSWORD DATABASE_URL OIDC_DISCOVE
   SCHATTEN_BACKUP_PUBLIC_KEY; do
   [[ -n "$(config_value "${key}")" ]] || error "env file does not set ${key}"
 done
+mcp_problem="$(mcp_config_problem)"
+if [[ -n "${mcp_problem}" ]]; then
+  error "env file: ${mcp_problem}"
+else
+  mcp_enabled="$(config_value MCP_ENABLED false)"
+  mcp_review="$(config_value MCP_CHANGE_SET_REVIEW_ENABLED false)"
+  ok "env file AI via MCP (applied by the next deploy of a release built from TASK-069P or later): MCP_ENABLED=${mcp_enabled} MCP_CHANGE_SET_REVIEW_ENABLED=${mcp_review} MCP_OAUTH_MAX_CLIENTS=$(config_value MCP_OAUTH_MAX_CLIENTS 10000)"
+  if [[ "${mcp_review}" == true && "${mcp_enabled}" != true ]]; then
+    warn "MCP_CHANGE_SET_REVIEW_ENABLED=true has no effect while MCP_ENABLED=false"
+  fi
+fi
 
 socket_gid="$(config_value DOCKER_SOCKET_GID)"
 if [[ -S "${SCHATTEN_DOCKER_SOCKET}" ]]; then

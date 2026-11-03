@@ -34,6 +34,22 @@ if [[ -n "${latest}" ]]; then
 else
   printf '  none\n'
 fi
+printf '\nAI via MCP (ADR-015):\n'
+last_record="$(last_deployment_record)"
+mcp_keys='^(MCP_ENABLED|MCP_CHANGE_SET_REVIEW_ENABLED|MCP_OAUTH_MAX_CLIENTS)='
+if [[ -n "${last_record}" ]] && grep -qE "${mcp_keys}" "${last_record}"; then
+  printf '  deployed: %s\n' "$(grep -E "${mcp_keys}" "${last_record}" | tr '\n' ' ')"
+else
+  printf '  deployed: not recorded (a deployment before TASK-069P; MCP was off)\n'
+fi
+if [[ -z "$(mcp_config_problem)" ]]; then
+  printf '  env file: MCP_ENABLED=%s MCP_CHANGE_SET_REVIEW_ENABLED=%s MCP_OAUTH_MAX_CLIENTS=%s (applied by the next deploy of a release built from TASK-069P or later)\n' \
+    "$(config_value MCP_ENABLED false)" "$(config_value MCP_CHANGE_SET_REVIEW_ENABLED false)" \
+    "$(config_value MCP_OAUTH_MAX_CLIENTS 10000)"
+else
+  printf '  env file: %s\n' "$(mcp_config_problem)"
+fi
+
 printf '\nscheduler (last 48h):\n'
 if [[ -n "$(docker ps --quiet --filter label=com.docker.compose.project=schatten --filter label=com.docker.compose.service=ofelia)" ]]; then
   docker logs --since 48h "$(docker ps --quiet --filter label=com.docker.compose.project=schatten --filter label=com.docker.compose.service=ofelia)" 2>&1 \

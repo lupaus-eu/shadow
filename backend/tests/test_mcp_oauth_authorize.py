@@ -59,8 +59,23 @@ def session_factory() -> Iterator[sessionmaker[Session]]:
     engine.dispose()
 
 
+# Every loopback host the matcher supports, not only the trimmed default.
+TEST_REDIRECT_URIS = (
+    "https://claude.ai/api/mcp/auth_callback "
+    "https://claude.com/api/mcp/auth_callback "
+    "http://127.0.0.1:{port}/callback http://[::1]:{port}/callback "
+    "http://localhost:{port}/callback"
+)
+
+
 def _settings(**overrides: object) -> Settings:
-    return Settings.model_validate({"MCP_ENABLED": True, **overrides})
+    return Settings.model_validate(
+        {
+            "MCP_ENABLED": True,
+            "MCP_OAUTH_REDIRECT_URIS": TEST_REDIRECT_URIS,
+            **overrides,
+        }
+    )
 
 
 @contextmanager

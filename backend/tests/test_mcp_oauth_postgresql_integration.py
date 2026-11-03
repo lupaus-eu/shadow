@@ -44,8 +44,10 @@ from app.core.migrations import UpCommand, execute_command
 
 TEST_DATABASE_ENV = "MIGRATION_TEST_DATABASE_URL"
 TOKEN_LOGGER = "app.api.v1.mcp_oauth.token_service"
-SETTINGS = Settings.model_validate({"MCP_ENABLED": True})
 REDIRECT_URI = "http://127.0.0.1:33418/callback"
+SETTINGS = Settings.model_validate(
+    {"MCP_ENABLED": True, "MCP_OAUTH_REDIRECT_URIS": "http://127.0.0.1:{port}/callback"}
+)
 READ_RESOURCE = "http://testserver/api/mcp/read"
 VERIFIER = "v" * 64
 CHALLENGE = (
@@ -453,6 +455,7 @@ def test_total_pending_cap_serialises_authorizes_for_different_clients(
     settings = Settings.model_validate(
         {
             "MCP_ENABLED": True,
+            "MCP_OAUTH_REDIRECT_URIS": "http://127.0.0.1:{port}/callback",
             "MCP_OAUTH_MAX_PENDING_REQUESTS_PER_CLIENT": 1,
             "MCP_OAUTH_MAX_PENDING_REQUESTS": 1,
         }

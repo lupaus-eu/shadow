@@ -72,7 +72,7 @@ the defaults shown in `.env.example`; override them in `.env` (no secrets):
 | --- | --- | --- |
 | `MCP_ENABLED` | `false` | With `false`, the MCP endpoints `/api/mcp/read` and `/api/mcp/write`, OAuth discovery, `/api/oauth/register`, `/api/oauth/authorize`, `/api/oauth/token`, `/api/oauth/revoke`, the `/api/v1/ai/oauth/consent` API and the skill zip download `/api/v1/ai/skills/{name}.zip` return 404 and `GET /api/v1/auth/session` reports `features.mcp=false`; the `/api/v1/ai/connections` API stays available |
 | `MCP_CHANGE_SET_REVIEW_ENABLED` | `false` | With `true` (and `MCP_ENABLED=true`) the write server also lists `apply_change_set` and `reject_change_set`, and the session reports `features.mcpChangeSetReview=true` (ADR-015 amendment) |
-| `MCP_OAUTH_REDIRECT_URIS` | claude.ai and claude.com callbacks plus `http://127.0.0.1:{port}/callback`, `http://[::1]:{port}/callback`, `http://localhost:{port}/callback` | Redirect URI allowlist; `{port}` is literal |
+| `MCP_OAUTH_REDIRECT_URIS` | claude.ai and claude.com callbacks plus `http://localhost:{port}/callback` (Claude Code) | Redirect URI allowlist; `{port}` is literal. A local client with another loopback callback, such as OpenCode's `http://127.0.0.1:{port}/mcp/oauth/callback`, needs its own entry in `.env` |
 | `MCP_OAUTH_AUTHORIZATION_REQUEST_LIFETIME_SECONDS`, `MCP_OAUTH_AUTHORIZATION_CODE_LIFETIME_SECONDS` | `600`, `60` | Pending request and code lifetimes |
 | `MCP_OAUTH_ACCESS_TOKEN_LIFETIME_SECONDS`, `MCP_OAUTH_REFRESH_TOKEN_IDLE_LIFETIME_SECONDS`, `MCP_OAUTH_GRANT_LIFETIME_SECONDS` | `3600`, `604800`, `2592000` | Access token lifetime, refresh token idle timeout and absolute grant lifetime; no token outlives its grant |
 | `MCP_OAUTH_REGISTER_RATE_LIMIT_PER_MINUTE`, `..._AUTHORIZE_...`, `..._TOKEN_...`, `..._REVOKE_...` | `30`, `20`, `300`, `60` | Per-IP buckets of the separate `oauth_rate_limiter` |
@@ -162,7 +162,7 @@ claude plugin install schatten@schatten
 
 The plugin's own servers (`plugin:schatten:schatten-read` and
 `plugin:schatten:schatten-write` in `/mcp`) connect to production, where MCP
-stays off until TASK-069P; disable them in `/mcp` for local work.
+stays off until its separately approved enablement (TASK-069P); disable them in `/mcp` for local work.
 `claude --plugin-dir backend/app/mcp/plugin plugin details schatten` (or
 `claude plugin details schatten@schatten` once installed) lists the skills
 `schatten-model-building` and `schatten-timeseries-generation` and both

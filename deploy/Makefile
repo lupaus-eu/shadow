@@ -20,7 +20,7 @@ BIN := $(DEPLOY_DIR)/bin
 
 # Values reach the commands through the environment, never through the
 # recipe text, so they cannot inject shell syntax.
-export RELEASE APPROVAL SERVICE BACKUP KEY PASSPHRASE
+export RELEASE APPROVAL MCP_APPROVAL SERVICE BACKUP KEY PASSPHRASE
 
 # $(call require,VAR,usage) stops with a usage message when VAR is empty.
 require = if [[ -z "$${$(1)}" ]]; then printf 'make: %s is required.\nUsage: make %s\n' '$(1)' '$(2)' >&2; exit 2; fi
@@ -52,6 +52,8 @@ help:
 		'  deploy RELEASE=<id> APPROVAL=<ref>  Deploy a frozen release built from this copy' \
 		'  first-install RELEASE=<id> APPROVAL=<ref>' \
 		'                                      First install on a fresh database only' \
+		'  Both take MCP_APPROVAL=<ref>, required when the deploy turns on' \
+		'  MCP_ENABLED or MCP_CHANGE_SET_REVIEW_ENABLED from the env file' \
 		'Current release:' \
 		'  status                              Release pointers, backups, restore evidence, scheduler' \
 		'  ps                                  Service containers and their state' \
@@ -81,13 +83,15 @@ deploy:
 	@$(call require,RELEASE,deploy RELEASE=<release-id> APPROVAL=<reference>); \
 	$(call require,APPROVAL,deploy RELEASE=<release-id> APPROVAL=<reference>); \
 	$(same_commit); \
-	'$(BIN)/deploy-release' "$${RELEASE}" --approval "$${APPROVAL}"
+	mcp=(); if [[ -n "$${MCP_APPROVAL}" ]]; then mcp=(--mcp-approval "$${MCP_APPROVAL}"); fi; \
+	'$(BIN)/deploy-release' "$${RELEASE}" --approval "$${APPROVAL}" "$${mcp[@]}"
 
 first-install:
 	@$(call require,RELEASE,first-install RELEASE=<release-id> APPROVAL=<reference>); \
 	$(call require,APPROVAL,first-install RELEASE=<release-id> APPROVAL=<reference>); \
 	$(same_commit); \
-	'$(BIN)/deploy-release' "$${RELEASE}" --approval "$${APPROVAL}" --first-install
+	mcp=(); if [[ -n "$${MCP_APPROVAL}" ]]; then mcp=(--mcp-approval "$${MCP_APPROVAL}"); fi; \
+	'$(BIN)/deploy-release' "$${RELEASE}" --approval "$${APPROVAL}" --first-install "$${mcp[@]}"
 
 status:
 	@'$(BIN)/ops-status'

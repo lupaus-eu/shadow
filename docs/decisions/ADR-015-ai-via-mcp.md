@@ -1,7 +1,8 @@
 # ADR-015: AI Via MCP With Human-Applied Change Sets
 
 Status: Accepted design, amended 2026-10-29 (MCP change-set review,
-TASK-069O); TASK-069B through TASK-069O implemented, TASK-069P pending
+TASK-069O); implemented by TASK-069B through TASK-069P; production enablement
+pending its separate approval
 
 Date: 2026-10-21
 
@@ -94,9 +95,11 @@ page, the connections list component and the admin per-user revocation
 action), TASK-069M (the Metrics tab AI panel), TASK-069N (skills, plugin and
 MCP prompts) and TASK-069O (the MCP change-set review tools behind
 `MCP_CHANGE_SET_REVIEW_ENABLED`, the review channel of migration 019 and this
-amendment) are implemented and the rest is pending.
-The feature stays disabled (`MCP_ENABLED=false`) until TASK-069P's separately
-approved production enablement.
+amendment) are implemented. TASK-069P verified the feature end to end locally
+(`docs/qa/AI-MCP-QA-CHECKLIST.md`), trimmed the default redirect URI
+allowlist and documented its operation (`docs/PRODUCTION-RUNBOOK.md` section
+14). The feature stays disabled (`MCP_ENABLED=false`) until TASK-069P's
+separately approved production enablement.
 
 | Task | Delivers |
 | --- | --- |
@@ -114,15 +117,16 @@ approved production enablement.
 | TASK-069M | Metrics tab AI panel and change-set review UI (implemented) |
 | TASK-069N | Skills, Claude Code plugin bundle, MCP prompts, skill zips (implemented) |
 | TASK-069O | MCP change-set review: `get_change_set_review`, `apply_change_set`, `reject_change_set`, the switch and the review channel (amendment of 2026-10-29, implemented) |
-| TASK-069P | End-to-end QA, runbook and approved production enablement (was TASK-069O until 2026-10-29) |
+| TASK-069P | End-to-end QA and runbook (implemented); approved production enablement (pending) (was TASK-069O until 2026-10-29) |
 
 ## Provider Neutrality And No In-App LLM
 
 Schatten exposes MCP and OAuth 2.1 only. The user brings any MCP-capable
 client and AI subscription. Schatten has no in-app chat, never calls an LLM,
 never stores an LLM API key and has no vendor SDK. Claude clients are the
-first verified clients; TASK-069P also verifies at least one non-Claude MCP
-client.
+first verified clients. TASK-069P verified Claude Code locally; a
+non-Claude MCP client is still to be verified (the developer deferred it on
+2026-10-30; OpenCode needs its own loopback allowlist entry).
 
 ## Two MCP Services In The Existing FastAPI App
 
@@ -249,7 +253,9 @@ Rules:
     the name contains non-ASCII characters, or ASCII punctuation outside the
     set, such as `'`, `&`, `@`, `,`, `#`, `!`, `[` or `]`. Names such as
     `Jonatan's client` or `R&D tool` are therefore rejected. TASK-069P
-    verifies that the real clients' names fit;
+    verified that Claude Code's names (`Claude Code (schatten-read)` and
+    `Claude Code (schatten-write)`) fit; the vendor connectors' names are
+    checked at production enablement;
   - at most 10 redirect URIs of at most 2,048 characters each;
   - other metadata is ignored.
 
@@ -264,8 +270,11 @@ Rules:
     the entry's host, the port is an explicit number from 1 to 65535, the path
     is exactly the entry's path, and there is no userinfo, query or fragment.
     `localhost` entries exist only because local MCP clients use them; RFC
-    8252 section 8.3 prefers IP literals, and TASK-069P verifies the real
-    clients' redirect URIs and trims the default allowlist accordingly.
+    8252 section 8.3 prefers IP literals. TASK-069P found that Claude Code
+    registers `http://localhost:{port}/callback` and that no verified client
+    uses an IP-literal entry, so the default allowlist keeps only the two
+    exact entries and `http://localhost:{port}/callback`; IP-literal entries
+    remain configurable.
   - Every other URI is rejected with `invalid_redirect_uri`. This includes a
     URI whose authority contains `@`, a percent-encoded or trailing-dot host,
     an `https` loopback URI or a missing port.
@@ -335,8 +344,8 @@ Rules:
 - Accepted consequence: when one client registration serves several
   concurrent sessions of the same User and resource, re-authorizing in one
   session signs the others out, because the reused grant's earlier tokens are
-  revoked. TASK-069P verifies the effect with the real clients and records it
-  in the runbook.
+  revoked. TASK-069P verified the effect locally and records it in the
+  runbook; the vendor connectors are checked at production enablement.
 - **Grant deletion and references.** Lazy cleanup deletes revoked or expired
   grants, as described in
   [resource protection](#no-background-execution-and-resource-protection).
@@ -764,7 +773,9 @@ client do what the Metrics tab review does, on behalf of its User.
   stateless `InputRequiredResult` flow) would let Schatten itself ask the
   human to confirm, with a text the AI cannot change. It is not used, because
   support in the real clients is unknown and requiring it could make the tools
-  unusable. TASK-069P records which clients support it for a later decision.
+  unusable. TASK-069P recorded that Claude Code 2.1.314 ships elicitation
+  support; Claude Desktop and claude.ai are recorded at production
+  enablement, for a later decision.
 
 ## Deterministic Timeseries Generator
 
@@ -823,8 +834,8 @@ Resource protections on the shared, resource-limited host:
       browser;
   - `mcp_rate_limiter` for `/api/mcp/*`, per grant.
 
-  TASK-069P verifies the defaults against real vendor-cloud and local
-  clients. Both limiters assume one backend replica, as in ADR-004.
+  TASK-069P verified the defaults with local clients; their fit with
+  vendor-cloud traffic is recorded at production enablement. Both limiters assume one backend replica, as in ADR-004.
 - **bounded OAuth rows.** At most a configurable number of live pending
   authorization requests per client (default 20) and in total (default
   1,000); beyond that `authorize` answers `temporarily_unavailable`.
@@ -924,6 +935,16 @@ No Compose service, container, public port, domain or Entra change is added.
   `/api` and `/api/*` routing without changing anything else in it.
 - Production MCP URLs: `https://schatten.lupaus.eu/api/mcp/read` and
   `https://schatten.lupaus.eu/api/mcp/write`.
+- Production reads `MCP_ENABLED`, `MCP_CHANGE_SET_REVIEW_ENABLED` and
+  `MCP_OAUTH_MAX_CLIENTS` from the protected env file, defaulting to off and
+  10,000 (developer decision of 2026-10-30, TASK-069P). An operator applies
+  them by deploying the current release again, so the incident procedure and
+  the client cap remedy need no new release once the current release includes
+  TASK-069P; releases built before it, such as `v0.1.0`, pin MCP off, so the
+  first enablement deploys a newly built release. `deploy-release` refuses to turn
+  MCP or its change-set review on without a separate `--mcp-approval`
+  reference and records the values and that reference; turning them off needs
+  only the release approval. All other MCP settings stay fixed in Compose.
 - Vendor-cloud connectors (claude.ai, and Claude Desktop custom connectors,
   which are brokered by the vendor cloud) call the production origin from the
   vendor's servers. Local clients such as Claude Code call it from the user's
@@ -1061,7 +1082,8 @@ Costs, risks and accepted trade-offs:
   `/api/v1`.
 - Change sets use other domains' `*_in_transaction` cores only.
 - Keep `MCP_ENABLED=false` by default. Production enablement needs separate
-  human approval under TASK-069P.
+  human approval under TASK-069P, which `deploy-release --mcp-approval`
+  enforces.
 - If the implementation differs from the LikeC4 model, update the model and
   its PNG exports in the same task.
 

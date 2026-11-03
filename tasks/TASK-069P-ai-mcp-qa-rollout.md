@@ -143,16 +143,30 @@ enable it in production, but only after separate human approval.
 - Production enablement is a separate, human-approved release. Do not deploy or
   change production settings without that approval.
 
+### Scope Note (2026-10-30)
+
+During implementation the developer decided that production reads
+`MCP_ENABLED`, `MCP_CHANGE_SET_REVIEW_ENABLED` and `MCP_OAUTH_MAX_CLIENTS` from
+the protected env file instead of fixed Compose values, so that disabling MCP
+and raising the client cap are a redeploy of the current release. This task
+therefore also changes `docker-compose.production.yml`,
+`.github/scripts/verify-production-compose.sh`,
+`.github/scripts/verify-production-runtime.sh`, `deploy/bin/check-host`,
+`deploy/bin/deploy-release` (a required `--mcp-approval` reference when a
+deployment turns MCP or its change-set review on, and the values in every
+deployment record), `deploy/bin/ops-status`, `deploy/lib/common.sh` and
+`deploy/Makefile` (`MCP_APPROVAL=`).
+
 ## Acceptance Criteria
 
-- [ ] The checklist exists, and its local run evidence is recorded.
-- [ ] The runbook and deployment docs describe enable, disable, offboarding
+- [x] The checklist exists, and its local run evidence is recorded.
+- [x] The runbook and deployment docs describe enable, disable, offboarding
       and the incident procedure, and the checklist exercises the incident
       procedure locally.
 - [ ] Production checklist items are marked pending until an authorised
       rollout, and are then completed with evidence.
-- [ ] The LikeC4 model and PNGs match the implemented system.
-- [ ] `AGENTS.md` and `ARCHITECTURE.md` mark the feature as implemented.
+- [x] The LikeC4 model and PNGs match the implemented system.
+- [x] `AGENTS.md` and `ARCHITECTURE.md` mark the feature as implemented.
 
 ## Out Of Scope
 
@@ -180,7 +194,8 @@ Required:
 
 - [ ] Manual verification (full checklist locally, then production after
       approval)
-- [ ] Backend and frontend suites green on the release commit
+- [ ] Backend and frontend suites green on the release commit (green on the
+      2026-10-30 working tree, see the checklist; repeat on the release commit)
 
 ```bash
 cd backend && uv run ruff check . && uv run pytest && uv run pyright

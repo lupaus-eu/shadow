@@ -140,8 +140,13 @@ write tools `apply_change_set` and `reject_change_set` behind
 `MCP_CHANGE_SET_REVIEW_ENABLED`, off by default, and the review channel of
 migration 019) are implemented; the MCP and public OAuth endpoints and the
 skill zip download are registered only with `MCP_ENABLED=true`, off by
-default. The rest is pending TASK-069P (end-to-end QA, runbook and production
-enablement, formerly TASK-069O). Users chat in their own MCP client on
+default. TASK-069P's local end-to-end QA (`docs/qa/AI-MCP-QA-CHECKLIST.md`),
+trimmed redirect URI allowlist, runbook (`docs/PRODUCTION-RUNBOOK.md`
+section 14) and env-file MCP switches (production reads `MCP_ENABLED`,
+`MCP_CHANGE_SET_REVIEW_ENABLED` and `MCP_OAUTH_MAX_CLIENTS` from
+`production.env`; `deploy-release --mcp-approval` is required to turn MCP on)
+complete the implementation; only the separately approved
+production enablement of TASK-069P is pending. Users chat in their own MCP client on
 their own AI subscription; Schatten never calls an LLM or stores LLM keys.
 FastAPI hosts `/api/mcp/read` (`schatten.read`) and `/api/mcp/write`
 (`schatten.write`) and acts as OAuth 2.1 authorization server over the existing
