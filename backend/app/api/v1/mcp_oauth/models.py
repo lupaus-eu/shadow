@@ -20,11 +20,9 @@ from app.core.models import Base
 
 BigIntPrimaryKey = BigInteger().with_variant(Integer, "sqlite")
 
-_SCOPE_CHECK = "scopes IN ('schatten.read', 'schatten.write')"
-_SCOPE_RESOURCE_CHECK = (
-    "(scopes = 'schatten.read' AND resource LIKE '%/api/mcp/read') OR "
-    "(scopes = 'schatten.write' AND resource LIKE '%/api/mcp/write')"
-)
+# Migration 020 (TASK-074): one MCP resource with read, or read and write.
+_SCOPE_CHECK = "scopes IN ('schatten.read', 'schatten.read schatten.write')"
+_RESOURCE_CHECK = "resource LIKE '%/api/mcp'"
 
 
 class McpOauthClient(Base):
@@ -85,8 +83,8 @@ class McpOauthGrant(Base):
         *non_blank_constraints("grant_key", "ck_mcp_oauth_grants_key_non_blank"),
         CheckConstraint(_SCOPE_CHECK, name="ck_mcp_oauth_grants_scope"),
         CheckConstraint(
-            _SCOPE_RESOURCE_CHECK,
-            name="ck_mcp_oauth_grants_scope_resource",
+            _RESOURCE_CHECK,
+            name="ck_mcp_oauth_grants_resource",
         ),
         CheckConstraint(
             "expires_time > created_time",
@@ -163,8 +161,8 @@ class McpOauthAuthorizationRequest(Base):
             name="ck_mcp_oauth_authorization_requests_scope",
         ),
         CheckConstraint(
-            _SCOPE_RESOURCE_CHECK,
-            name="ck_mcp_oauth_authorization_requests_scope_resource",
+            _RESOURCE_CHECK,
+            name="ck_mcp_oauth_authorization_requests_resource",
         ),
         CheckConstraint(
             "expires_time > created_time",

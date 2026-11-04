@@ -48,8 +48,10 @@ from app.core.models import Base
 from app.main import create_app
 
 ORIGIN = "http://testserver"
-READ_RESOURCE = f"{ORIGIN}/api/mcp/read"
-WRITE_RESOURCE = f"{ORIGIN}/api/mcp/write"
+RESOURCE = f"{ORIGIN}/api/mcp"
+BOTH_SCOPES = "schatten.read schatten.write"
+# The resources that TASK-074 replaced with `/api/mcp`.
+LEGACY_RESOURCES = (f"{ORIGIN}/api/mcp/read", f"{ORIGIN}/api/mcp/write")
 LOOPBACK_CALLBACK = "http://127.0.0.1:33418/callback"
 VERIFIER = "v" * 64
 CHALLENGE = (
@@ -59,7 +61,6 @@ CHALLENGE = (
 )
 TOKEN_LOGGER = "app.api.v1.mcp_oauth.token_service"
 OTHER_USER_ID = 42
-SCOPE_FOR = {READ_RESOURCE: "schatten.read", WRITE_RESOURCE: "schatten.write"}
 
 
 def _enable_sqlite_foreign_keys(dbapi_connection: Any, _connection_record: Any) -> None:
@@ -133,21 +134,19 @@ def _register(client: TestClient, name: str = "Claude") -> str:
     return str(response.json()["client_id"])
 
 
-def _approved_code(
-    client: TestClient, client_id: str, resource: str = READ_RESOURCE
-) -> str:
-    authorize = client.get(
-        "/api/oauth/authorize",
-        params={
-            "response_type": "code",
-            "client_id": client_id,
-            "redirect_uri": LOOPBACK_CALLBACK,
-            "code_challenge": CHALLENGE,
-            "code_challenge_method": "S256",
-            "resource": resource,
-            "state": "client-state",
-        },
-    )
+def _approved_code(client: TestClient, client_id: str, scope: str | None = None) -> str:
+    params = {
+        "response_type": "code",
+        "client_id": client_id,
+        "redirect_uri": LOOPBACK_CALLBACK,
+        "code_challenge": CHALLENGE,
+        "code_challenge_method": "S256",
+        "resource": RESOURCE,
+        "state": "client-state",
+    }
+    if scope is not None:
+        params["scope"] = scope
+    authorize = client.get("/api/oauth/authorize", params=params)
     assert authorize.status_code == 303, authorize.text
     request_id = dict(parse_qsl(urlsplit(authorize.headers["location"]).query))[
         "request"
@@ -180,7 +179,7 @@ def _exchange(
         "client_id": client_id,
         "redirect_uri": LOOPBACK_CALLBACK,
         "code_verifier": VERIFIER,
-        "resource": READ_RESOURCE,
+        "resource": RESOURCE,
         **overrides,
     }
     return _post_form(client, "/api/oauth/token", form)
@@ -197,7 +196,7 @@ def _refresh(
         "grant_type": "refresh_token",
         "refresh_token": refresh_token,
         "client_id": client_id,
-        "resource": READ_RESOURCE,
+        "resource": RESOURCE,
         **overrides,
     }
     return _post_form(client, "/api/oauth/token", form)
@@ -212,10 +211,10 @@ def _revoke(
 
 
 def _issued(
-    client: TestClient, client_id: str, resource: str = READ_RESOURCE
+    client: TestClient, client_id: str, scope: str | None = None
 ) -> dict[str, Any]:
-    code = _approved_code(client, client_id, resource)
-    response = _exchange(client, client_id, code, resource=resource)
+    code = _approved_code(client, client_id, scope)
+    response = _exchange(client, client_id, code)
     assert response.status_code == 200, response.text
     return cast(dict[str, Any], response.json())
 
@@ -255,20 +254,18 @@ def _token_row(session: Session, raw_token: str) -> McpOauthToken:
 def _verify(
     session_factory: sessionmaker[Session],
     access_token: str | None,
-    resource: str = READ_RESOURCE,
-    scope: str | None = None,
+    resource: str = RESOURCE,
+    scope: str = "schatten.read",
 ) -> McpPrincipal:
     with session_factory() as session:
-        return verify_access_token(
-            session, access_token, resource, scope or SCOPE_FOR[resource]
-        )
+        return verify_access_token(session, access_token, resource, scope)
 
 
 def _verify_error(
     session_factory: sessionmaker[Session],
     access_token: str | None,
-    resource: str = READ_RESOURCE,
-    scope: str | None = None,
+    resource: str = RESOURCE,
+    scope: str = "schatten.read",
 ) -> str:
     with pytest.raises(TokenVerificationError) as raised:
         _verify(session_factory, access_token, resource, scope)
@@ -292,7 +289,7 @@ def _add_grant(
     client_id: str,
     *,
     user_id: int = OTHER_USER_ID,
-    resource: str = READ_RESOURCE,
+    scopes: str = BOTH_SCOPES,
     revoked: bool = False,
     expired: bool = False,
     key: str | None = None,
@@ -306,11 +303,11 @@ def _add_grant(
     now = datetime.now(UTC)
     created = now - timedelta(days=40) if expired else now - timedelta(days=1)
     grant = McpOauthGrant(
-        grant_key=key or f"grant-{user_id}-{resource[-4:]}-{revoked}-{expired}",
+        grant_key=key or f"grant-{user_id}-{revoked}-{expired}",
         mcp_oauth_client_id=stored.mcp_oauth_client_id,
         user_id=user_id,
-        scopes=SCOPE_FOR[resource],
-        resource=resource,
+        scopes=scopes,
+        resource=RESOURCE,
         created_time=created,
         expires_time=created + timedelta(days=30),
         revoked_time=now if revoked else None,
@@ -380,7 +377,7 @@ def test_code_exchange_issues_hashed_opaque_tokens_bound_to_a_new_grant(
         "scope",
     }
     assert body["token_type"] == "Bearer"
-    assert body["scope"] == "schatten.read"
+    assert body["scope"] == BOTH_SCOPES
     assert 3590 <= body["expires_in"] <= 3600
     access_token, refresh_token = body["access_token"], body["refresh_token"]
     # 32 random bytes (256 bits), base64url-encoded without padding.
@@ -390,8 +387,8 @@ def test_code_exchange_issues_hashed_opaque_tokens_bound_to_a_new_grant(
         grant = _only_grant(session)
         assert (grant.user_id, grant.scopes, grant.resource) == (
             TEST_ACTOR_USER_ID,
-            "schatten.read",
-            READ_RESOURCE,
+            BOTH_SCOPES,
+            RESOURCE,
         )
         assert grant.grant_key.startswith("grant_")
         expires = _as_utc(grant.expires_time)
@@ -443,13 +440,16 @@ def test_code_exchange_issues_hashed_opaque_tokens_bound_to_a_new_grant(
         pytest.param({"redirect_uri": None}, "invalid_request", id="no-redirect"),
         pytest.param({"resource": None}, "invalid_target", id="no-resource"),
         pytest.param(
-            {"resource": WRITE_RESOURCE}, "invalid_target", id="other-resource"
+            {"resource": LEGACY_RESOURCES[0]}, "invalid_target", id="legacy-read"
         ),
         pytest.param(
-            {"resource": f"{READ_RESOURCE}/"}, "invalid_target", id="trailing-slash"
+            {"resource": LEGACY_RESOURCES[1]}, "invalid_target", id="legacy-write"
         ),
         pytest.param(
-            {"resource": [READ_RESOURCE, READ_RESOURCE]},
+            {"resource": f"{RESOURCE}/"}, "invalid_target", id="trailing-slash"
+        ),
+        pytest.param(
+            {"resource": [RESOURCE, RESOURCE]},
             "invalid_target",
             id="two-resources",
         ),
@@ -707,24 +707,75 @@ def test_a_revoked_or_expired_grant_is_not_reused(
     assert _verify(session_factory, second["access_token"]).grant_key == new.grant_key
 
 
-def test_each_resource_gets_its_own_grant(
+def test_one_grant_covers_reading_and_writing(
     client: TestClient, session_factory: sessionmaker[Session]
 ) -> None:
     client_id = _register(client)
-    read = _issued(client, client_id, READ_RESOURCE)
-    write = _issued(client, client_id, WRITE_RESOURCE)
+    issued = _issued(client, client_id)
 
-    assert write["scope"] == "schatten.write"
+    assert issued["scope"] == BOTH_SCOPES
     with session_factory() as session:
-        grants = session.scalars(select(McpOauthGrant)).all()
-        assert {(grant.scopes, grant.resource) for grant in grants} == {
-            ("schatten.read", READ_RESOURCE),
-            ("schatten.write", WRITE_RESOURCE),
-        }
-    assert _verify(session_factory, read["access_token"]).scopes == {"schatten.read"}
-    assert _verify(session_factory, write["access_token"], WRITE_RESOURCE).scopes == {
-        "schatten.write"
+        grant = _only_grant(session)
+        assert (grant.scopes, grant.resource) == (BOTH_SCOPES, RESOURCE)
+    assert _verify(session_factory, issued["access_token"]).scopes == {
+        "schatten.read",
+        "schatten.write",
     }
+
+
+def test_a_read_only_request_gets_a_read_only_grant(
+    client: TestClient, session_factory: sessionmaker[Session]
+) -> None:
+    client_id = _register(client)
+    issued = _issued(client, client_id, "schatten.read")
+
+    assert issued["scope"] == "schatten.read"
+    with session_factory() as session:
+        assert _only_grant(session).scopes == "schatten.read"
+    assert _verify(session_factory, issued["access_token"]).scopes == {"schatten.read"}
+
+
+def test_token_responses_report_the_effective_scopes_of_the_role(
+    client: TestClient,
+    session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client_id = _register(client)
+    code = _approved_code(client, client_id)
+    # The role is limited after consent: the grant keeps both scopes, and the
+    # responses name only those the role allows (RFC 6749 section 5.1).
+    monkeypatch.setitem(
+        token_service.ROLE_SCOPES, "consultant", frozenset({"schatten.read"})
+    )
+
+    exchanged = _exchange(client, client_id, code).json()
+    rotated = _rotated(client, client_id, exchanged["refresh_token"])
+
+    assert exchanged["scope"] == rotated["scope"] == "schatten.read"
+    with session_factory() as session:
+        assert _only_grant(session).scopes == BOTH_SCOPES
+    assert _verify(session_factory, rotated["access_token"]).scopes == {"schatten.read"}
+
+
+def test_reauthorization_takes_the_newest_consents_scopes(
+    client: TestClient, session_factory: sessionmaker[Session]
+) -> None:
+    client_id = _register(client)
+    _issued(client, client_id)
+    with session_factory() as session:
+        grant_key = _only_grant(session).grant_key
+
+    read_only = _issued(client, client_id, "schatten.read")
+    with session_factory() as session:
+        narrowed = _only_grant(session)
+        assert (narrowed.grant_key, narrowed.scopes) == (grant_key, "schatten.read")
+    both = _issued(client, client_id)
+
+    assert read_only["scope"] == "schatten.read"
+    assert both["scope"] == BOTH_SCOPES
+    with session_factory() as session:
+        widened = _only_grant(session)
+        assert (widened.grant_key, widened.scopes) == (grant_key, BOTH_SCOPES)
 
 
 # Refresh tokens
@@ -739,7 +790,7 @@ def test_refresh_rotates_and_only_links_the_old_token(
     before = datetime.now(UTC)
     rotated = _rotated(client, client_id, first["refresh_token"])
 
-    assert rotated["scope"] == "schatten.read"
+    assert rotated["scope"] == BOTH_SCOPES
     assert rotated["token_type"] == "Bearer"
     assert rotated["refresh_token"] != first["refresh_token"]
     with session_factory() as session:
@@ -752,7 +803,7 @@ def test_refresh_rotates_and_only_links_the_old_token(
     for access_token in (first["access_token"], rotated["access_token"]):
         assert _verify(session_factory, access_token).user_id == TEST_ACTOR_USER_ID
     assert _rotated(client, client_id, rotated["refresh_token"])["scope"] == (
-        "schatten.read"
+        BOTH_SCOPES
     )
 
 
@@ -761,11 +812,16 @@ def test_refresh_rotates_and_only_links_the_old_token(
     [
         pytest.param({"resource": None}, "invalid_target", id="no-resource"),
         pytest.param(
-            {"resource": WRITE_RESOURCE}, "invalid_target", id="other-resource"
+            {"resource": LEGACY_RESOURCES[0]}, "invalid_target", id="legacy-resource"
         ),
-        pytest.param({"scope": "schatten.write"}, "invalid_scope", id="other-scope"),
+        pytest.param({"scope": "openid"}, "invalid_scope", id="unknown-scope"),
         pytest.param(
-            {"scope": "schatten.read schatten.write"}, "invalid_scope", id="both"
+            {"scope": "schatten.read openid"}, "invalid_scope", id="unknown-in-set"
+        ),
+        pytest.param(
+            {"scope": ["schatten.read", "schatten.read"]},
+            "invalid_request",
+            id="repeated-scope",
         ),
         pytest.param({"refresh_token": "A" * 43}, "invalid_grant", id="unknown"),
         pytest.param({"refresh_token": None}, "invalid_request", id="no-token"),
@@ -789,6 +845,27 @@ def test_invalid_refresh_requests_have_no_effect(
         refresh = _token_row(session, issued["refresh_token"])
         assert (refresh.replaced_by_hash, refresh.revoked_time) == (None, None)
     assert _rotated(client, client_id, issued["refresh_token"])
+
+
+@pytest.mark.parametrize(
+    "scope",
+    ["schatten.read", "schatten.write", BOTH_SCOPES, "schatten.write schatten.read"],
+)
+def test_a_refresh_scope_never_narrows_or_widens_the_token(
+    client: TestClient, session_factory: sessionmaker[Session], scope: str
+) -> None:
+    client_id = _register(client)
+    issued = _issued(client, client_id)
+
+    response = _refresh(client, client_id, issued["refresh_token"], scope=scope)
+
+    assert response.status_code == 200, response.text
+    assert response.json()["scope"] == BOTH_SCOPES
+    rotated = response.json()["access_token"]
+    assert _verify(session_factory, rotated).scopes == {
+        "schatten.read",
+        "schatten.write",
+    }
 
 
 def test_refresh_rejects_another_clients_token_and_an_access_token(
@@ -1291,7 +1368,7 @@ def test_verify_access_token_returns_the_principal_and_throttles_last_used(
             grant_key=grant.grant_key,
             client_id=client_id,
             client_name="Claude",
-            scopes=frozenset({"schatten.read"}),
+            scopes=frozenset({"schatten.read", "schatten.write"}),
         )
     assert principal == expected
 
@@ -1366,14 +1443,14 @@ def test_verify_access_token_rejects_unknown_tokens_and_the_other_resource(
 
     for token in (None, "", "A" * 43, "short", "A" * 44, read["refresh_token"]):
         assert _verify_error(session_factory, token) == "invalid_token"
-    # A read token presented at the write resource, with either scope.
-    for scope in ("schatten.write", "schatten.read"):
+    # The token presented for a legacy or another origin's resource.
+    for resource in (*LEGACY_RESOURCES, "https://other.example/api/mcp"):
         assert (
-            _verify_error(session_factory, read["access_token"], WRITE_RESOURCE, scope)
+            _verify_error(session_factory, read["access_token"], resource)
             == "invalid_token"
         )
     assert (
-        _verify_error(session_factory, read["access_token"], READ_RESOURCE, "x")
+        _verify_error(session_factory, read["access_token"], RESOURCE, "x")
         == "insufficient_scope"
     )
     with session_factory() as session:
@@ -1389,7 +1466,7 @@ def test_role_change_takes_effect_on_the_next_verification(
     )
     with _client(session_factory, role="admin") as client:
         client_id = _register(client)
-        write = _issued(client, client_id, WRITE_RESOURCE)
+        issued = _issued(client, client_id)
 
     def set_role(role: str) -> None:
         with session_factory() as session:
@@ -1398,17 +1475,21 @@ def test_role_change_takes_effect_on_the_next_verification(
             user.role = role
             session.commit()
 
-    assert _verify(session_factory, write["access_token"], WRITE_RESOURCE).role == (
-        "admin"
-    )
+    admin = _verify(session_factory, issued["access_token"])
     set_role("consultant")
-    assert (
-        _verify_error(session_factory, write["access_token"], WRITE_RESOURCE)
-        == "insufficient_scope"
+    consultant = _verify(session_factory, issued["access_token"])
+    write_required = _verify_error(
+        session_factory, issued["access_token"], scope="schatten.write"
     )
     set_role("admin")
-    assert _verify(session_factory, write["access_token"], WRITE_RESOURCE).scopes == {
-        "schatten.write"
+
+    assert admin.role == "admin"
+    assert admin.scopes == {"schatten.read", "schatten.write"}
+    assert consultant.scopes == {"schatten.read"}
+    assert write_required == "insufficient_scope"
+    assert _verify(session_factory, issued["access_token"]).scopes == {
+        "schatten.read",
+        "schatten.write",
     }
 
 
@@ -1419,12 +1500,18 @@ def test_connections_list_only_the_current_users_active_grants(
     client: TestClient, session_factory: sessionmaker[Session]
 ) -> None:
     client_id = _register(client)
-    read = _issued(client, client_id, READ_RESOURCE)
-    _issued(client, client_id, WRITE_RESOURCE)
-    _verify(session_factory, read["access_token"])
+    other_client_id = _register(client, "Claude Code")
+    used = _issued(client, client_id)
+    _issued(client, other_client_id, "schatten.read")
+    _verify(session_factory, used["access_token"])
     with session_factory() as session:
         own = {
-            grant.resource: grant for grant in session.scalars(select(McpOauthGrant))
+            grant.mcp_oauth_client_id: grant
+            for grant in session.scalars(select(McpOauthGrant))
+        }
+        stored_ids = {
+            stored.client_id: stored.mcp_oauth_client_id
+            for stored in session.scalars(select(McpOauthClient))
         }
         _add_grant(session, client_id, user_id=OTHER_USER_ID)
         _add_grant(session, client_id, user_id=TEST_ACTOR_USER_ID, revoked=True)
@@ -1432,10 +1519,10 @@ def test_connections_list_only_the_current_users_active_grants(
         expected = [
             {
                 "grantKey": grant.grant_key,
-                "clientId": client_id,
-                "clientName": "Claude",
+                "clientId": grant_client_id,
+                "clientName": client_name,
                 "scope": grant.scopes,
-                "resource": grant.resource,
+                "resource": RESOURCE,
                 "createdTime": _as_utc(grant.created_time),
                 "lastUsedTime": (
                     None
@@ -1444,7 +1531,14 @@ def test_connections_list_only_the_current_users_active_grants(
                 ),
                 "expiresTime": _as_utc(grant.expires_time),
             }
-            for grant in (own[WRITE_RESOURCE], own[READ_RESOURCE])
+            for grant, grant_client_id, client_name in (
+                (
+                    own[stored_ids[other_client_id]],
+                    other_client_id,
+                    "Claude Code",
+                ),
+                (own[stored_ids[client_id]], client_id, "Claude"),
+            )
         ]
 
     response = client.get("/api/v1/ai/connections")
@@ -1458,6 +1552,21 @@ def test_connections_list_only_the_current_users_active_grants(
             item["lastUsedTime"] = datetime.fromisoformat(item["lastUsedTime"])
     assert body == expected
     assert body[1]["lastUsedTime"] is not None
+
+
+def test_connections_report_the_effective_scopes_of_the_role(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client_id = _register(client)
+    _issued(client, client_id)
+    monkeypatch.setitem(
+        token_service.ROLE_SCOPES, "consultant", frozenset({"schatten.read"})
+    )
+
+    response = client.get("/api/v1/ai/connections")
+
+    assert response.status_code == 200
+    assert [item["scope"] for item in response.json()] == ["schatten.read"]
 
 
 def test_users_revoke_their_own_connection_and_its_tokens(
@@ -1562,8 +1671,10 @@ def test_admin_revokes_every_active_connection_of_one_user(
         own = _issued(client, client_id)
         with session_factory() as session:
             targets = [
-                _add_grant(session, client_id, resource=READ_RESOURCE),
-                _add_grant(session, client_id, resource=WRITE_RESOURCE),
+                _add_grant(session, client_id, key="grant-target-1"),
+                _add_grant(
+                    session, client_id, scopes="schatten.read", key="grant-target-2"
+                ),
             ]
             _add_token(session, targets[0], "t" * 43)
             _add_grant(session, client_id, revoked=True)
@@ -1746,7 +1857,7 @@ def test_audit_entries_are_emitted_when_the_root_logger_drops_info(
     [
         "/api/oauth/token?refresh_token=SECRETTOKEN&grant_type=refresh_token",
         "/api/oauth/revoke?token=SECRETTOKEN",
-        "/api/mcp/read?access_token=SECRETTOKEN",
+        "/api/mcp?access_token=SECRETTOKEN",
         "/api/oauth/token?code=SECRETTOKEN&code_verifier=SECRETTOKEN",
     ],
 )

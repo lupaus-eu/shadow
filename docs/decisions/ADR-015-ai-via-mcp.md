@@ -1,12 +1,16 @@
 # ADR-015: AI Via MCP With Human-Applied Change Sets
 
 Status: Accepted design, amended 2026-10-29 (MCP change-set review,
-TASK-069O); implemented by TASK-069B through TASK-069P; enabled in production
-on 2026-11-03 after its separate approval (`v0.2.0`)
+TASK-069O) and 2026-11-03 (one MCP service with two scopes, TASK-074);
+implemented by TASK-069B through TASK-069P and TASK-074; enabled in production
+on 2026-11-03 after its separate approval (`v0.2.0`); the 2026-11-03
+amendment reaches production only with its own separately approved release
 
 Date: 2026-10-21
 
-Amended: 2026-10-29 ([MCP Change-Set Review](#mcp-change-set-review))
+Amended: 2026-10-29 ([MCP Change-Set Review](#mcp-change-set-review)),
+2026-11-03 ([One MCP Service In The Existing FastAPI App](#one-mcp-service-in-the-existing-fastapi-app)
+and [Per-Tool Scope Check](#per-tool-scope-check))
 
 ---
 
@@ -54,6 +58,31 @@ A human still decides each apply and reject: in the Metrics tab, or by
 approving the client's tool call. See
 [MCP Change-Set Review](#mcp-change-set-review).
 
+Amendment (2026-11-03, `tasks/TASK-074-single-mcp-connector.md`): after the
+production enablement the developer asked for **one connector that handles
+both read and write, authorized once**. The two services were separate OAuth
+resources, so a user added two connectors, went through consent twice and
+held two grants, and Claude Code registered two OAuth clients. It must stay
+possible to limit a role, for example consultants, to read-only later. This
+replaces the decision that MCP is split into a read service and a write
+service. The developer decided that:
+
+- one MCP service `/api/mcp` serves every tool and prompt, with one OAuth
+  resource and one grant covering read and write;
+- **read-only is decided by role only**. The consent page offers no choice; a
+  client may still ask for `scope=schatten.read` and then gets a read-only
+  grant;
+- the scopes `schatten.read` and `schatten.write` stay the permission
+  vocabulary, and `ROLE_SCOPES` stays the one place that limits a role;
+- every tool and prompt checks its own scope against the caller's effective
+  scopes, so a role limited later sees only the read tools on the same URL;
+- the switch is clean: `/api/mcp/read` and `/api/mcp/write` are removed,
+  migration 020 deletes their grants, and each user replaces the two
+  connectors with the new one once.
+
+See [One MCP Service In The Existing FastAPI App](#one-mcp-service-in-the-existing-fastapi-app)
+and [Per-Tool Scope Check](#per-tool-scope-check).
+
 Constraints from accepted decisions:
 
 - ADR-004: FastAPI is the trusted authorization boundary. Browser sessions are
@@ -74,17 +103,16 @@ Constraints from accepted decisions:
 
 ## Scope And Status
 
-This ADR is an accepted design. **No production MCP client can use Schatten
-yet**; with `MCP_ENABLED=true` (development only) a local MCP client can
-connect to the read service. The implementation is delivered by TASK-069B
-through TASK-069P; TASK-069B (the domain service transaction cores, which
-change no REST behaviour), TASK-069C (the deterministic timeseries generator,
+This ADR is an accepted design. The implementation is delivered by TASK-069B
+through TASK-069P and, for the 2026-11-03 amendment, TASK-074; TASK-069B (the
+domain service transaction cores, which change no REST behaviour), TASK-069C (the deterministic timeseries generator,
 which adds no route), TASK-069D (the MCP OAuth schema, which adds no route),
 TASK-069E (discovery, registration, authorization request and consent API,
 registered only with `MCP_ENABLED=true`), TASK-069F (token, refresh and revoke
 endpoints, registered only with `MCP_ENABLED=true`, `verify_access_token` and
 the always-registered connections API) and TASK-069G (the FastMCP read and
-write endpoints, registered only with `MCP_ENABLED=true`, bearer
+write endpoints, which TASK-074 merged into one, registered only with
+`MCP_ENABLED=true`, bearer
 authentication, resource protection and the first read tools), TASK-069H
 (the remaining read tools and the generator preview), TASK-069I (the
 change-set schema and engine, which add no tool or route) and TASK-069J (the
@@ -94,13 +122,18 @@ that applies or rejects a submitted change set), TASK-069L (the SPA consent
 page, the connections list component and the admin per-user revocation
 action), TASK-069M (the Metrics tab AI panel), TASK-069N (skills, plugin and
 MCP prompts) and TASK-069O (the MCP change-set review tools behind
-`MCP_CHANGE_SET_REVIEW_ENABLED`, the review channel of migration 019 and this
-amendment) are implemented. TASK-069P verified the feature end to end locally
+`MCP_CHANGE_SET_REVIEW_ENABLED`, the review channel of migration 019 and the
+2026-10-29 amendment) are implemented. TASK-069P verified the feature end to end locally
 (`docs/qa/AI-MCP-QA-CHECKLIST.md`), trimmed the default redirect URI
 allowlist and documented its operation (`docs/PRODUCTION-RUNBOOK.md` section
 14). The feature stayed disabled (`MCP_ENABLED=false`) until TASK-069P's
 separately approved production enablement, which enabled it and its
-change-set review on 2026-11-03.
+change-set review on 2026-11-03, with the two services of that time.
+TASK-074 implements the 2026-11-03 amendment: the one MCP service
+`/api/mcp`, the per-tool scope check, the single OAuth resource, migration 020,
+the plugin, the UI and the documentation. Its production deployment is a
+separate, approved release (`deploy-release --mcp-approval`) and not part of
+TASK-074.
 
 | Task | Delivers |
 | --- | --- |
@@ -119,6 +152,7 @@ change-set review on 2026-11-03.
 | TASK-069N | Skills, Claude Code plugin bundle, MCP prompts, skill zips (implemented) |
 | TASK-069O | MCP change-set review: `get_change_set_review`, `apply_change_set`, `reject_change_set`, the switch and the review channel (amendment of 2026-10-29, implemented) |
 | TASK-069P | End-to-end QA and runbook (implemented); approved production enablement (2026-11-03) (was TASK-069O until 2026-10-29) |
+| TASK-074 | One MCP service `/api/mcp` with per-tool scope checks, one OAuth resource and grant, migration 020, plugin 0.3.0, UI and docs (amendment of 2026-11-03, implemented); its production deployment needs a separate approval |
 
 ## Provider Neutrality And No In-App LLM
 
@@ -129,23 +163,38 @@ first verified clients. TASK-069P verified Claude Code locally; a
 non-Claude MCP client is still to be verified (the developer deferred it on
 2026-10-30; OpenCode needs its own loopback allowlist entry).
 
-## Two MCP Services In The Existing FastAPI App
+## One MCP Service In The Existing FastAPI App
 
-Two FastMCP servers run inside the existing FastAPI process and backend image,
-using the MCP Streamable HTTP transport:
+The 2026-11-03 amendment replaced the original design, in which two FastMCP
+servers ran at `/api/mcp/read` (scope `schatten.read`) and `/api/mcp/write`
+(scope `schatten.write`), each its own OAuth resource with its own grant. Now
+one FastMCP server named "Schatten" runs inside the existing FastAPI process and
+backend image at `/api/mcp`, using the MCP Streamable HTTP transport. It
+serves every tool and prompt, and each component requires its own scope
+([Per-Tool Scope Check](#per-tool-scope-check)):
 
-| Endpoint | Required scope | Purpose |
+| Components | Required scope | Purpose |
 | --- | --- | --- |
-| `/api/mcp/read` | `schatten.read` | Inspect organisations, scenarios, org states, type catalog, graph, timeseries, events, change sets and change-set reviews; preview generated series; MCP prompts |
-| `/api/mcp/write` | `schatten.write` | Create, edit, validate, submit and discard **draft change sets**; with `MCP_CHANGE_SET_REVIEW_ENABLED=true` also apply or reject **submitted change sets** ([MCP Change-Set Review](#mcp-change-set-review)) |
+| 13 read tools and the MCP prompts `model_building` and `timeseries_generation` | `schatten.read` | Inspect organisations, scenarios, org states, type catalog, graph, timeseries, events, change sets and change-set reviews; preview generated series; MCP prompts |
+| 6 write tools; 8 with `MCP_CHANGE_SET_REVIEW_ENABLED=true` | `schatten.write` | Create, edit, validate, submit and discard **draft change sets**; with the switch also apply or reject **submitted change sets** ([MCP Change-Set Review](#mcp-change-set-review)) |
 
-- Both servers run `stateless_http=True` with `json_response=True`. No MCP
+- The server runs `stateless_http=True` with `json_response=True`. No MCP
   session state, server-sent event stream or long-running request is kept.
-- Both servers are built inside `create_app()` and registered as exact routes
-  (GET, POST, DELETE) wrapped in bearer authentication. `app.mount` is not
-  used because it causes a trailing-slash redirect. One combined lifespan runs
-  both session managers.
-- With `MCP_ENABLED=false` (the default) the MCP endpoints, the public OAuth
+- `build_mcp_server(runtime, settings)` (`backend/app/mcp/server.py`) creates
+  the one `FastMCP("Schatten", ...)` with one combined instruction text and
+  registers the read tool set (`register_read_tools`, `read_server.py`) and
+  the write tool set (`register_write_tools`, `write_server.py`). The
+  instructions have one variant with and one without
+  `MCP_CHANGE_SET_REVIEW_ENABLED`, name the tools without naming a server and
+  say that the change-set tools are listed only when both the user's role and
+  the access granted to the connection allow proposing changes.
+- The server is built inside `create_app()` and registered as one exact route
+  `/api/mcp` (GET, POST, DELETE) wrapped in bearer authentication. `app.mount`
+  is not used because it causes a trailing-slash redirect. The lifespan runs
+  its session manager. `/api/mcp/read`, `/api/mcp/write`, `/api/mcp/` and
+  their protected-resource metadata documents answer 404; there is no
+  redirect from the old URLs.
+- With `MCP_ENABLED=false` (the default) the MCP endpoint, the public OAuth
   endpoints, the consent API and the skill zip download are not registered and
   return 404. The cookie-session connections API and change-set review API stay
   registered, so users and administrators can still revoke grants and humans
@@ -201,7 +250,7 @@ errors, rate-limited as described in
 | Endpoint | Standard | Contract |
 | --- | --- | --- |
 | `GET /.well-known/oauth-authorization-server` | RFC 8414 | Issuer `PUBLIC_ORIGIN`; grant types `authorization_code`, `refresh_token`; code challenge method `S256` only; scopes `schatten.read`, `schatten.write`; token endpoint auth method `none` |
-| `GET /.well-known/oauth-protected-resource/api/mcp/read` and `.../write` | RFC 9728 | Resource `<origin>/api/mcp/<server>`, authorization server `PUBLIC_ORIGIN`, the server's one scope |
+| `GET /.well-known/oauth-protected-resource/api/mcp` | RFC 9728 | Resource `<origin>/api/mcp`, authorization server `PUBLIC_ORIGIN`, scopes `schatten.read`, `schatten.write` (the 2026-11-03 amendment replaced the two documents `.../api/mcp/read` and `.../api/mcp/write`, each with its server's one scope; they answer 404) |
 | `POST /api/oauth/register` | RFC 7591 | Dynamic Client Registration for public clients only |
 | `GET /api/oauth/authorize` | OAuth 2.1 | Validates and stores a pending request, then redirects to the SPA consent page |
 | `POST /api/oauth/token` | OAuth 2.1 | `authorization_code` with PKCE, and rotating `refresh_token` |
@@ -254,10 +303,10 @@ Rules:
     the name contains non-ASCII characters, or ASCII punctuation outside the
     set, such as `'`, `&`, `@`, `,`, `#`, `!`, `[` or `]`. Names such as
     `Jonatan's client` or `R&D tool` are therefore rejected. TASK-069P
-    verified that Claude Code's names (`Claude Code (schatten-read)` and
-    `Claude Code (schatten-write)`) fit, and the claude.ai and Claude Desktop
-    connectors' name `Claude` passed in production (2026-11-03 and
-    2026-11-04);
+    verified that Claude Code's names for the two servers of that time
+    (`Claude Code (schatten-read)` and `Claude Code (schatten-write)`) fit,
+    and the claude.ai and Claude Desktop connectors' name `Claude` passed in
+    production (2026-11-03 and 2026-11-04);
   - at most 10 redirect URIs of at most 2,048 characters each;
   - other metadata is ignored.
 
@@ -292,18 +341,43 @@ Rules:
   (for example `invalid_request`, `invalid_scope`, `invalid_target`,
   `access_denied` or `temporarily_unavailable`), `state` when the client sent
   one, and `iss` (RFC 9207), and nothing else.
-- **Audience binding.** `resource` is required on both the authorization
-  request and the token request, and it must equal one of the two canonical
-  resource URIs `<PUBLIC_ORIGIN>/api/mcp/read` and
-  `<PUBLIC_ORIGIN>/api/mcp/write` exactly. There is no trailing slash, query
-  or fragment, and no other normalisation is applied. Each resource has
-  exactly one scope (`schatten.read` or `schatten.write`). The requested
-  `scope` must equal that scope, or be omitted, in which case it defaults to
-  that scope. Any other scope set, including both scopes, is rejected with
-  `invalid_scope`. A grant and all its tokens are bound to that one resource.
-  Token verification takes the endpoint's resource and rejects a token issued
-  for the other resource with `401 invalid_token`. A client that uses both
-  services therefore holds two grants.
+- **Audience binding** (replaced by the 2026-11-03 amendment; until then each
+  of the two resources had exactly one scope and a client that used both
+  services held two grants). `resource` is required on both the authorization
+  request and the token request, and it must equal the one canonical resource
+  URI `<PUBLIC_ORIGIN>/api/mcp` exactly, otherwise `invalid_target`. There is
+  no trailing slash, query or fragment, and no other normalisation is applied.
+  A grant and all its tokens are bound to that resource. Token verification
+  rejects a token whose grant has another resource, for example another
+  origin's `/api/mcp`, with `401 invalid_token`.
+- **Requested scopes.** `scope` is optional and may appear at most once. It is
+  a space-separated set of known scopes that includes `schatten.read`, in any
+  order and without duplicates, and is normalised to `schatten.read` or
+  `schatten.read schatten.write`. An omitted `scope` means both scopes.
+  Anything else, including write-only, unknown or duplicated scopes and a
+  repeated `scope` parameter, is rejected with `invalid_scope`.
+- **Consent narrows to the role.** The consent API returns the requested
+  scopes intersected with the User's role scopes (`ROLE_SCOPES`), so the
+  consent page shows exactly what will be granted, and approval stores that
+  narrowed set on the pending request. If it lacks `schatten.read`, approval
+  redirects with `access_denied`; no current role reaches this. For a role
+  that `ROLE_SCOPES` maps to no scope the narrowed set is empty, and the
+  consent page says that the role cannot connect AI clients and offers only
+  Deny (AI review finding F-004 of TASK-074). The page offers no read-only
+  choice: a role, or a client that asks only for `schatten.read`, makes a
+  grant read-only.
+- **Granted and reported scopes.** The code exchange creates or reuses a grant
+  with the pending request's scopes. The token response's `scope` is the
+  effective set, the grant's scopes intersected with the current role's
+  scopes, in both the exchange and refresh (RFC 6749 section 5.1 allows it to
+  differ from the request). The connections API reports the same effective
+  set.
+- **Refresh keeps the grant's scopes.** The refresh `resource` must equal the
+  grant's (`invalid_target`). A `scope` that is sent must name only known
+  scopes (`invalid_scope`). The new token keeps the grant's scopes, and the
+  response says which. Tokens are bound to the grant and carry no scope of
+  their own, so narrowing per token is not supported. This avoids a reconnect
+  loop when a client re-sends both scopes after its role was narrowed.
 - The pending request id (10 minutes), authorization code (60 seconds, single
   use), access token and refresh token are CSPRNG values with at least 256
   bits of entropy. **Only SHA-256 hashes are stored.** Tokens are opaque, not
@@ -335,12 +409,13 @@ Rules:
   5. otherwise the token is rotated.
 - Redeeming an authorization code a second time fails and revokes the grant
   and every token issued from that code (OAuth 2.1).
-- A User's repeated authorization of the same client and resource (and
-  therefore the same single scope) reuses that User's existing grant only
-  when it is active, that is not revoked and not past its `expires_time`.
-  Reuse does not extend the grant's absolute lifetime, and it revokes all of
-  the grant's earlier access and refresh tokens before issuing the new pair. A
-  stale refresh chain then fails as revoked and cannot trigger reuse
+- A User's repeated authorization of the same client and resource reuses that
+  User's existing grant only when it is active, that is not revoked and not
+  past its `expires_time`. The reused grant takes the scopes of the newest
+  consent (2026-11-03 amendment; before it, the resource fixed the single
+  scope). Reuse does not extend the grant's absolute lifetime, and it revokes
+  all of the grant's earlier access and refresh tokens before issuing the new
+  pair. A stale refresh chain then fails as revoked and cannot trigger reuse
   detection against the fresh authorization. Without an active grant, a new
   grant is created.
 - Accepted consequence: when one client registration serves several
@@ -352,7 +427,10 @@ Rules:
 - **Grant deletion and references.** Lazy cleanup deletes revoked or expired
   grants, as described in
   [resource protection](#no-background-execution-and-resource-protection).
-  The references to a grant behave as follows:
+  Migration 020 (2026-11-03 amendment) deleted the grants and tokens on the
+  removed resources `/api/mcp/read` and `/api/mcp/write` once, together with
+  every pending authorization request, with the same effect on the references
+  below. The references to a grant behave as follows:
   - its tokens are deleted with it (`ON DELETE CASCADE`);
   - `ai_change_sets.grant_id` is `ON DELETE SET NULL`. The change set's
     lasting audit record is:
@@ -378,7 +456,7 @@ Rules:
 ### Authorization And Consent Flow
 
 ```text
-MCP client -> GET /api/mcp/<server>               401 + resource_metadata
+MCP client -> POST /api/mcp                       401 + resource_metadata
 MCP client -> GET /.well-known/oauth-*            discovery
 MCP client -> POST /api/oauth/register            client_id
 Browser    -> GET /api/oauth/authorize            303 /ai/authorize?request=<id>
@@ -410,7 +488,8 @@ MCP client -> POST /api/oauth/token               access + refresh token
   URI. Loopback and exact redirect URIs carry no query of their own, so
   nothing is merged or overwritten.
 - The consent page shows the client name, labelled as self-declared by the
-  client, and the requested access in plain words. For a redirect URI that
+  client, and the access that will be granted (the requested scopes narrowed
+  to the User's role) in plain words. For a redirect URI that
   matched an exact allowlist entry it shows the redirect URI's host. For one
   that matched a loopback entry it shows a loopback notice instead: the code
   goes to a program on this computer, and local programs cannot be verified
@@ -478,32 +557,55 @@ Dynamic Client Registration, once supported clients adopt it.
 
 ## Authorization On Every MCP Request
 
-`McpBearerAuth` wraps both MCP endpoints and on every request:
+`McpBearerAuth` wraps the MCP endpoint and on every request:
 
 1. reads `Authorization: Bearer`, hashes the token and loads it as an
    unexpired, unrevoked access token;
 2. checks its grant is not revoked, not past its `expires_time`, and bound to
-   this endpoint's canonical resource; a token for the other resource gets
-   `401 invalid_token`;
+   the canonical resource `<PUBLIC_ORIGIN>/api/mcp`; a token for another
+   resource gets `401 invalid_token`;
 3. loads the grant's User and rejects a soft-deleted User; this **re-reads the
    current database role** on every call;
 4. computes effective scopes as
    `grant.scopes ∩ allowed_scopes_for_role(user.role)`; and
-5. requires the endpoint's scope.
+5. requires the minimum scope `schatten.read`. Until the 2026-11-03 amendment
+   each endpoint required its own one scope.
 
 Failures return `401` with
-`WWW-Authenticate: Bearer resource_metadata="<origin>/.well-known/oauth-protected-resource/api/mcp/<server>"`
+`WWW-Authenticate: Bearer resource_metadata="<origin>/.well-known/oauth-protected-resource/api/mcp"`
 (with `error="invalid_token"` when a token was presented), or `403` with
-`WWW-Authenticate: Bearer error="insufficient_scope", scope="<endpoint scope>", resource_metadata="..."`. The principal (User, role, grant, client name,
+`WWW-Authenticate: Bearer error="insufficient_scope", scope="schatten.read", resource_metadata="..."`. The principal (User, role, grant, client name,
 effective scopes) is placed in a context variable; tools use it as the actor.
 `last_used_time` is written at most every five minutes.
 
+### Per-Tool Scope Check
+
+Added by the 2026-11-03 amendment and implemented by TASK-074. The bearer
+check admits every caller with `schatten.read`; each component then checks its
+own scope:
+
+- every read tool and both MCP prompts are registered with
+  `auth=requires_scope(READ_SCOPE)` (`schatten.read`), and every write tool,
+  including `apply_change_set` and `reject_change_set`, with
+  `auth=requires_scope(WRITE_SCOPE)` (`schatten.write`). `requires_scope(scope)`
+  (`backend/app/mcp/auth.py`) reads `current_principal` and allows the
+  component when the scope is in the principal's effective scopes;
+- `fastmcp` 4.1.4 hides a component whose check fails: it is not listed, and
+  a call to it gets "Unknown tool". A check that raises is logged and treated
+  as a denial, so the check fails closed;
+- the token is verified and the effective scopes are recomputed on every
+  request, so a role change shows or hides the write tools on the next
+  request without a token, URL or client change.
+
 Both current roles, `admin` and `consultant`, are allowed both scopes. This
 matches ADR-004, where both roles use every business API in every
-organisation. The role mapping exists so that a future role can be limited
-without a token format change.
+organisation. The role mapping `ROLE_SCOPES`
+(`backend/app/api/v1/mcp_oauth/token_service.py`) is the one place that limits
+a role: changing a role to `{READ_SCOPE}` is a one-line change with no token
+format, URL or client change, and that role then sees only the read tools and
+prompts on the same URL. No role is limited today.
 
-MCP endpoints accept only bearer tokens and never the browser session cookie;
+The MCP endpoint accepts only bearer tokens and never the browser session cookie;
 `/api/v1` accepts only the session cookie and never an MCP token. Because MCP
 requests carry no ambient browser credential, the cookie CSRF guard does not
 apply to them. No CORS is added; browser-hosted MCP clients that need CORS are
@@ -724,16 +826,19 @@ create_derived_metric, create_event
 ## MCP Change-Set Review
 
 Added by the 2026-10-29 amendment and implemented by TASK-069O. It lets an MCP
-client do what the Metrics tab review does, on behalf of its User.
+client do what the Metrics tab review does, on behalf of its User. TASK-069O
+placed the apply and reject tools on the write server and the review read on
+the read server; since the 2026-11-03 amendment they are a write tool and a
+read tool of the one MCP service, with the same behaviour.
 
 - **Switch.** `MCP_CHANGE_SET_REVIEW_ENABLED` (default `false`) registers
-  `apply_change_set` and `reject_change_set` on the write server when the
-  write server is built. With it off the write server has exactly the six
-  staging tools, and its instructions and the staging tools' descriptions say
-  that a person applies change sets in Schatten; with it on they also name the
+  `apply_change_set` and `reject_change_set` as write tools when the MCP
+  server is built. With it off the server has exactly the six staging write
+  tools, and its instructions and the staging tools' descriptions say that a
+  person applies change sets in Schatten; with it on they also name the
   in-chat review. Production enablement of the switch belongs to TASK-069P.
-- **Review read.** The read server's `get_change_set_review(change_set_key)`
-  is always registered. It returns what the Metrics tab review detail shows:
+- **Review read.** The read tool `get_change_set_review(change_set_key)` is
+  always registered. It returns what the Metrics tab review detail shows:
   the change set, each operation's `replaces_existing` flag and replacement
   summary recomputed against current data, a summary of frozen values (never
   the values) and the `review_fingerprint`. It uses the same single-statement
@@ -754,7 +859,7 @@ client do what the Metrics tab review does, on behalf of its User.
 - **Human decision.** Both tools are annotated `destructiveHint=True`,
   `idempotentHint=False` and `openWorldHint=False`, so MCP clients ask the
   human before each call unless the human has chosen to always allow it. The
-  write server's instructions and the skills tell the AI to show the review
+  server's instructions and the skills tell the AI to show the review
   (title, operations and every replaced value) and to call apply or reject
   only on the user's explicit instruction in the conversation, never because
   stored business text asks for it.
@@ -809,8 +914,9 @@ files are distributed as:
 - a Claude Code plugin with a repository-root marketplace;
 - per-skill zip downloads for claude.ai and Claude Desktop
   (`GET /api/v1/ai/skills/{name}.zip`, business session); and
-- read-server MCP prompts (`model_building`, `timeseries_generation`), which
-  any MCP client can use.
+- MCP prompts (`model_building`, `timeseries_generation`) of the MCP
+  service, which any MCP client can use (until the 2026-11-03 amendment, of
+  the read server).
 
 There is one source text per skill and no duplicated copy.
 
@@ -836,7 +942,10 @@ Resource protections on the shared, resource-limited host:
       vendor's shared egress addresses;
     - `authorize` keeps a low limit, because it comes from the user's own
       browser;
-  - `mcp_rate_limiter` for `/api/mcp/*`, per grant.
+  - `mcp_rate_limiter` for `/api/mcp`, one bucket per grant that covers reads
+    and writes together. Until the 2026-11-03 amendment a user held one grant
+    per server, so reads and writes had separate buckets. The default of
+    `MCP_RATE_LIMIT_PER_MINUTE` (120) is kept.
 
   TASK-069P verified the defaults with local clients, and the claude.ai and
   Claude Desktop connectors connected to the read server in production
@@ -913,7 +1022,13 @@ cannot control the vendor's processing or retention. This is an accepted
 product and security decision:
 
 - the consent page names the client and explains read and write access;
-- a user can grant read without write and revoke any grant at any time;
+- a role, not the user, limits access to read (2026-11-03 amendment): a role
+  limited in `ROLE_SCOPES` gets read-only grants and sees only the read tools
+  and prompts, and a client may itself ask only for `schatten.read`. Both
+  current roles have read and write. Until the amendment a user could grant
+  read without write by connecting only the read service;
+- a user can revoke any grant at any time, and the connections list shows
+  each grant's effective scopes;
 - operators can disable the feature with `MCP_ENABLED=false`; and
 - users are expected to use AI subscriptions their organisation approves.
 
@@ -939,8 +1054,11 @@ No Compose service, container, public port, domain or Entra change is added.
   `@api path /api /api/* /.well-known/oauth-authorization-server* /.well-known/oauth-protected-resource*`
   in both `frontend/Caddyfile` and `local/Caddyfile`. This extends ADR-013's
   `/api` and `/api/*` routing without changing anything else in it.
-- Production MCP URLs: `https://schatten.lupaus.eu/api/mcp/read` and
-  `https://schatten.lupaus.eu/api/mcp/write`.
+- Production MCP URL: `https://schatten.lupaus.eu/api/mcp` (until the
+  2026-11-03 amendment `https://schatten.lupaus.eu/api/mcp/read` and
+  `https://schatten.lupaus.eu/api/mcp/write`). The amendment changes no Caddy
+  route: `/api/*` and `/.well-known/oauth-protected-resource*` are prefix
+  routes.
 - Production reads `MCP_ENABLED`, `MCP_CHANGE_SET_REVIEW_ENABLED` and
   `MCP_OAUTH_MAX_CLIENTS` from the protected env file, defaulting to off and
   10,000 (developer decision of 2026-10-30, TASK-069P). An operator applies
@@ -981,6 +1099,9 @@ Views:
 - [reviewInChatFlow](../diagrams/generated/likec4-reviewInChatFlow.png)
   (dynamic, the 2026-10-29 amendment)
 
+Since the 2026-11-03 amendment the backend has one `mcpService` component in
+place of the read and write service components.
+
 ---
 
 # Options Considered
@@ -988,9 +1109,20 @@ Views:
 - **In-app LLM chat calling a vendor API:** rejected. It needs stored API keys,
   vendor coupling and billing, and the users already have AI subscriptions and
   MCP-capable clients.
-- **One MCP service with mixed scopes:** rejected. Separate read and write
-  services let users connect read-only clients and make the write surface
-  explicit.
+- **One MCP service with mixed scopes:** rejected on 2026-10-21, because
+  separate read and write services let users connect read-only clients and
+  make the write surface explicit. **Accepted by the 2026-11-03 amendment**:
+  one connector and one consent per user instead of two connectors, two
+  consents and two grants. The per-tool scope check keeps the write surface
+  explicit, and `ROLE_SCOPES` can still limit a role to read on the same URL.
+- **Keep the old URLs for a transition (amendment of 2026-11-03):** not
+  chosen. The developer chose a clean switch: `/api/mcp/read` and
+  `/api/mcp/write` answer 404 without a redirect, migration 020 deletes their
+  grants as lazy cleanup would, and each user replaces the two connectors with
+  the new one once.
+- **A read-only choice on the consent page (amendment of 2026-11-03):** not
+  chosen. Read-only is decided by the role; a client may still ask only for
+  `schatten.read`.
 - **An MCP apply tool, with or without confirmation:** rejected on
   2026-10-21, because AI clients may act on untrusted text. **Accepted by the
   2026-10-29 amendment** with the constraints in
@@ -1031,6 +1163,9 @@ Benefits:
   that uses the same domain services as REST.
 - With the switch on, users can review, apply and reject in the same chat
   that staged the change set.
+- Since the 2026-11-03 amendment a user adds one MCP URL and consents once
+  for read and write, and a role can later be limited to read without a
+  token, URL or client change.
 - Generated data is reproducible from its spec and seed.
 - No new runtime service, worker, port or Entra change.
 
@@ -1066,6 +1201,12 @@ Costs, risks and accepted trade-offs:
   re-validation, audit channel and switch are the mitigations.
 - Turning the switch on widens existing write grants without new consent (see
   [MCP Change-Set Review](#mcp-change-set-review)).
+- The 2026-11-03 amendment is a clean switch: after its release every user
+  removes the two old connectors and adds the new one, and users who uploaded
+  the skill zips download and replace them. Users can no longer choose
+  read-only access themselves, except through a client that asks only for
+  `schatten.read`, and one per-grant rate-limit bucket now covers reads and
+  writes together.
 - One new backend dependency (`fastmcp` or the fallback `mcp`).
 - A second diagram tool (LikeC4) is used for this feature.
 
@@ -1084,8 +1225,11 @@ Costs, risks and accepted trade-offs:
   reject records its review channel.
 - Never store plaintext tokens, codes or request ids in the `mcp_oauth_*`
   tables, and never log them or tool arguments.
-- Never accept the session cookie on `/api/mcp/*` or an MCP token on
+- Never accept the session cookie on `/api/mcp` or an MCP token on
   `/api/v1`.
+- Register every MCP tool and prompt with its scope check: read tools and
+  prompts `requires_scope(READ_SCOPE)`, write tools
+  `requires_scope(WRITE_SCOPE)`. Limit a role only through `ROLE_SCOPES`.
 - Change sets use other domains' `*_in_transaction` cores only.
 - Keep `MCP_ENABLED=false` by default. Production enablement needs separate
   human approval under TASK-069P, which `deploy-release --mcp-approval`
@@ -1097,7 +1241,9 @@ Costs, risks and accepted trade-offs:
 
 # Follow-Up
 
-- TASK-069B through TASK-069P implement this design and its amendment.
+- TASK-069B through TASK-069P implement this design and its 2026-10-29
+  amendment; TASK-074 implements the 2026-11-03 amendment, whose production
+  deployment needs a separate approval.
 - Client ID Metadata Documents, more operation types (for example edge and
   event patches) and further roles are separate future decisions.
 - A server-side confirmation of MCP apply and reject through elicitation is a
@@ -1118,3 +1264,4 @@ Costs, risks and accepted trade-offs:
 - `docs/diagrams/likec4/README.md`
 - `tasks/TASK-069A-ai-mcp-architecture.md`
 - `tasks/TASK-069O-mcp-change-set-review.md`
+- `tasks/TASK-074-single-mcp-connector.md`

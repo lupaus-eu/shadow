@@ -31,7 +31,11 @@ from app.api.v1.ai_change_sets.schemas import (
 )
 from app.api.v1.mcp_oauth.models import McpOauthClient, McpOauthGrant
 from app.api.v1.mcp_oauth.service import approve_consent, start_authorization
-from app.api.v1.mcp_oauth.token_service import issue_tokens, revoke_connection
+from app.api.v1.mcp_oauth.token_service import (
+    allowed_scopes_for_role,
+    issue_tokens,
+    revoke_connection,
+)
 from app.api.v1.org_states import org_states_service
 from app.api.v1.org_states.models import (
     DerivedMetricEquation,
@@ -1229,7 +1233,7 @@ def test_lazy_cleanup_nulls_the_grant_and_keeps_the_audit_record() -> None:
     factory = _factory(foreign_keys=True)
     organisation_key = _create_organisation(factory)
     redirect_uri = "http://localhost:33418/callback"
-    resource = "http://testserver/api/mcp/write"
+    resource = "http://testserver/api/mcp"
     verifier = "v" * 64
     with factory() as session:
         session.add(
@@ -1255,6 +1259,7 @@ def test_lazy_cleanup_nulls_the_grant_and_keeps_the_audit_record() -> None:
                     "redirect_uri": [redirect_uri],
                     "code_challenge": [challenge],
                     "code_challenge_method": ["S256"],
+                    "scope": ["schatten.read schatten.write"],
                     "resource": [resource],
                 },
             )
@@ -1264,6 +1269,7 @@ def test_lazy_cleanup_nulls_the_grant_and_keeps_the_audit_record() -> None:
                 SETTINGS,
                 dict(parse_qsl(urlsplit(location).query))["request"],
                 user_id=CREATOR_USER_ID,
+                allowed_scopes=allowed_scopes_for_role("consultant"),
             )
         with factory() as session:
             issued = issue_tokens(
@@ -1284,6 +1290,10 @@ def test_lazy_cleanup_nulls_the_grant_and_keeps_the_audit_record() -> None:
     with factory() as session:
         grant = session.scalar(select(McpOauthGrant))
         assert grant is not None
+        assert (grant.resource, grant.scopes) == (
+            resource,
+            "schatten.read schatten.write",
+        )
         grant_id, grant_key = grant.grant_id, grant.grant_key
     change_set_key = _create_change_set(
         factory, organisation_key, END_TO_END_OPERATIONS[:1], grant_id=grant_id

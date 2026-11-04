@@ -356,15 +356,18 @@ Related Documents:
 
 # AI Domain
 
-Status: accepted design in ADR-015, amended 2026-10-29; implemented by
-TASK-069B through TASK-069P and enabled in production on 2026-11-03 after its
-separate approval (`v0.2.0`). The earlier document-AI candidate
+Status: accepted design in ADR-015, amended 2026-10-29 and 2026-11-03;
+implemented by TASK-069B through TASK-069P and enabled in production on
+2026-11-03 after its separate approval (`v0.2.0`). TASK-074 implements the
+2026-11-03 amendment (one MCP endpoint `/api/mcp`); its production deployment
+needs a separate approval. The earlier document-AI candidate
 (classification, summaries, extraction) is retained in `docs/domains/AI.md` as
 an unplanned candidate outside this scope.
 
 Responsible for:
 
-- MCP access for the user's own AI client: read and write MCP services
+- MCP access for the user's own AI client: one MCP service `/api/mcp` with
+  read and write tools, each checking its own scope
 - Schatten as OAuth 2.1 authorization server for MCP clients, reusing the
   existing Entra login, Users and roles
 - AI change sets staged through MCP and applied or rejected only by a human
@@ -384,10 +387,12 @@ The four `mcp_oauth_*` tables are migrated (TASK-069D, migration 017) and
 used by TASK-069E's registration, authorization and consent endpoints and
 TASK-069F's token and revoke endpoints, which are registered only with
 `MCP_ENABLED=true`, by TASK-069F's always-registered connections API and by
-TASK-069G's MCP bearer authentication on `/api/mcp/read` and `/api/mcp/write`
-(also registered only with `MCP_ENABLED=true`). The two change-set tables are
-migrated (TASK-069I, migration 018) and used by TASK-069I's engine; no tool or
-route uses them yet.
+TASK-069G's MCP bearer authentication, since TASK-074 on the one endpoint
+`/api/mcp` (also registered only with `MCP_ENABLED=true`); migration 020
+(TASK-074) restricts grants and authorization requests to that one resource.
+The two change-set tables are migrated (TASK-069I, migration 018, with the
+review channel of migration 019) and used by the change-set engine, the MCP
+change-set tools and the review API.
 
 Does NOT Own:
 
@@ -411,8 +416,9 @@ never write their tables directly. No other domain depends on AI Domain.
 
 Primary APIs:
 
-- `/api/mcp/read` and `/api/mcp/write` (bearer token; the write server's
-  apply and reject tools only with `MCP_CHANGE_SET_REVIEW_ENABLED`)
+- `/api/mcp` (bearer token; read tools need `schatten.read`, write tools
+  `schatten.write`; the apply and reject tools only with
+  `MCP_CHANGE_SET_REVIEW_ENABLED`)
 - `/.well-known/oauth-*` and `/api/oauth/*`
 - `/api/v1/ai/oauth/consent`, `/api/v1/ai/connections`, `/api/v1/ai/users/{user_id}/connections/revoke`, `/api/v1/ai/skills`
 - `/api/v1/organisations/{organisation_key}/ai/change-sets`

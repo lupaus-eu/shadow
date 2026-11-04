@@ -1,6 +1,7 @@
 // Schatten AI via MCP - C4 model (ADR-015)
 // Implemented by TASK-069B..TASK-069P; MCP is enabled in production since
-// 2026-11-03 after its separate approval.
+// 2026-11-03 after its separate approval. TASK-074 (ADR-015 amendment of
+// 2026-11-03) replaces the read and write services with one MCP service.
 
 model {
 
@@ -69,7 +70,7 @@ model {
     backend = container 'Backend API' {
       #existing
       technology 'Python, FastAPI, SQLAlchemy'
-      description 'Trusted application layer. Hosts the REST API and session login. Since ADR-015: the OAuth authorization server and both MCP services in the same process.'
+      description 'Trusted application layer. Hosts the REST API and session login. Since ADR-015: the OAuth authorization server and the MCP service in the same process.'
 
       restApi = component 'REST business API' {
         #existing
@@ -99,17 +100,12 @@ model {
       mcpAuth = component 'McpBearerAuth and limits' {
         #existing
         technology 'ASGI middleware'
-        description 'Per request: hash token, check grant, resource and User, re-read role, intersect scopes. Rate limit per grant, capacity limiter.'
+        description 'Per request: hash token, check grant, resource /api/mcp and User, re-read role, intersect scopes, require schatten.read. Rate limit per grant for reads and writes together, capacity limiter.'
       }
-      mcpRead = component 'MCP read service' {
+      mcpService = component 'MCP service' {
         #existing
-        technology 'FastMCP, /api/mcp/read, schatten.read'
-        description 'Read-only tools, generator preview, change-set inspection and skill prompts.'
-      }
-      mcpWrite = component 'MCP write service' {
-        #existing
-        technology 'FastMCP, /api/mcp/write, schatten.write'
-        description 'Stages draft change sets: create, add, validate, submit, discard. With MCP_CHANGE_SET_REVIEW_ENABLED also applies or rejects a submitted change set that the human approves in the client.'
+        technology 'FastMCP "Schatten", /api/mcp, schatten.read + schatten.write'
+        description 'One endpoint and OAuth resource. Read tools and prompts need schatten.read; write tools need schatten.write and stage change sets, or apply and reject them when enabled. Tools outside the caller\'s scopes are hidden.'
       }
       changeSetEngine = component 'Change-set engine' {
         #existing
@@ -171,7 +167,7 @@ model {
   schatten.caddy -> schatten.backend.consentApi 'Proxies /api/v1/ai'
   schatten.caddy -> schatten.backend.reviewApi 'Proxies /api/v1/.../ai/change-sets'
   schatten.caddy -> schatten.backend.oauthServer 'Proxies /.well-known/oauth-* and /api/oauth'
-  schatten.caddy -> schatten.backend.mcpAuth 'Proxies /api/mcp/read and /api/mcp/write'
+  schatten.caddy -> schatten.backend.mcpAuth 'Proxies /api/mcp'
   schatten.caddy -> schatten.backend.skills 'Skill zip download (session)'
 
   // Cookie-session side
@@ -188,13 +184,11 @@ model {
 
   // MCP side
   schatten.backend.mcpAuth -> schatten.backend.oauthServer 'verify_access_token'
-  schatten.backend.mcpAuth -> schatten.backend.mcpRead 'Principal with schatten.read'
-  schatten.backend.mcpAuth -> schatten.backend.mcpWrite 'Principal with schatten.write'
-  schatten.backend.mcpRead -> schatten.backend.domainServices 'Reads through existing services'
-  schatten.backend.mcpRead -> schatten.backend.generator 'Preview, persists nothing'
-  schatten.backend.mcpRead -> schatten.backend.skills 'Serves prompts'
-  schatten.backend.mcpRead -> schatten.backend.changeSetEngine 'Lists and reads change sets and their reviews'
-  schatten.backend.mcpWrite -> schatten.backend.changeSetEngine 'Stage, dry-run, submit; apply or reject when enabled (mcp)'
+  schatten.backend.mcpAuth -> schatten.backend.mcpService 'Principal with effective scopes; each tool checks its own'
+  schatten.backend.mcpService -> schatten.backend.domainServices 'Reads through existing services'
+  schatten.backend.mcpService -> schatten.backend.generator 'Preview, persists nothing'
+  schatten.backend.mcpService -> schatten.backend.skills 'Serves prompts'
+  schatten.backend.mcpService -> schatten.backend.changeSetEngine 'Reads change sets and reviews; stage, dry-run, submit; apply or reject when enabled (mcp)'
   schatten.backend.changeSetEngine -> schatten.backend.generator 'Freezes values on submit'
   schatten.backend.changeSetEngine -> schatten.backend.domainServices 'Calls *_in_transaction cores'
 

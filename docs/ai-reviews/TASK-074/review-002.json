@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-074/review-002",
+  "task": {
+    "id": "TASK-074",
+    "path": "tasks/TASK-074-single-mcp-connector.md"
+  },
+  "round": 2,
+  "reviewed_at": "2026-11-04T14:23:33Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": {
+    "number": 130,
+    "url": "https://github.com/reflector-oy/schatten/pull/130"
+  },
+  "source": {
+    "base_sha": "46070a787686a492e40da092f7a872d28ddb0327",
+    "head_sha": "d1a43cce8598f4888ba54b23467f33cfe1da866f",
+    "comparison": "46070a787686a492e40da092f7a872d28ddb0327...d1a43cce8598f4888ba54b23467f33cfe1da866f",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "clean",
+    "summary": "Round 2 reviews d1a43cc, which fixes round 1's F-002 and F-003. A new parametrized test checks that a grant holding only schatten.read gets an unknown tool error for each of the eight write and review tools and stages no change set; it fails when the tool scope check admits any principal. The get_change_set, get_change_set_review, add_operations and apply_change_set docstrings are rewrapped, and a word diff shows no changed words. A second pass over the migration 020 tests and the rest of the diff found nothing new. Backend ruff check, ruff format on the changed files, pyright and pytest with the PostgreSQL integration suites (1396 passed) pass, and the frontend is unchanged since round 1. F-001 (the read-only explanation names only the role, as the task prescribes), F-004 (an empty narrowed scope shown as unknown access, unreachable with the current roles) and F-005 (refresh accepts scopes beyond the grant, as ADR-015 decided) stay open for the developer's decision.",
+    "findings": [],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-074/review-001",
+        "finding_id": "F-002",
+        "disposition": "fixed",
+        "rationale": "A parametrized test now covers a read-only grant calling every write and review tool with the review switch on: each call answers as an unknown tool and no change set is created. The test fails when the scope check is weakened to admit any principal.",
+        "validated_by": {
+          "review_id": "TASK-074/review-002",
+          "commit": "d1a43cce8598f4888ba54b23467f33cfe1da866f"
+        }
+      },
+      {
+        "record_id": "TASK-074/review-001",
+        "finding_id": "F-003",
+        "disposition": "fixed",
+        "rationale": "The four docstring paragraphs are rewrapped to the modules' usual width with no changed words, and the review-switch wording replacements still apply, as the write-tool tests show.",
+        "validated_by": {
+          "review_id": "TASK-074/review-002",
+          "commit": "d1a43cce8598f4888ba54b23467f33cfe1da866f"
+        }
+      }
+    ]
+  }
+}

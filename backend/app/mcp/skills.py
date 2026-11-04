@@ -2,7 +2,7 @@
 
 `plugin/skills/<name>/SKILL.md` is the only copy of a skill. The Claude Code
 plugin ships its folder, `GET /api/v1/ai/skills/{name}.zip` serves the folder
-zipped and the read server serves its body as an MCP prompt. This module does
+zipped and the Schatten MCP server serves its body as an MCP prompt. This module does
 not import `fastmcp`, so the zip route works without loading it.
 """
 
@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 SKILLS_DIRECTORY = Path(__file__).parent / "plugin" / "skills"
-# Skill name -> MCP prompt name on the read server.
+# Skill name -> MCP prompt name on the Schatten MCP server.
 SKILL_PROMPT_NAMES = {
     "schatten-model-building": "model_building",
     "schatten-timeseries-generation": "timeseries_generation",

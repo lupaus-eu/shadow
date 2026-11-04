@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import itertools
 import os
 import shutil
 import threading
@@ -160,6 +161,10 @@ def test_rejects_non_latest_and_unapplied_down_migrations(
             database_url=migration_database_url,
         )
 
+    execute_command(
+        DownCommand("020_alter_mcp_oauth_single_resource.down.sql"),
+        database_url=migration_database_url,
+    )
     execute_command(
         DownCommand("019_add_ai_change_set_review_channel.down.sql"),
         database_url=migration_database_url,
@@ -635,6 +640,10 @@ def test_prediction_interval_migration_resets_development_rows_and_constraints(
                 )
 
     execute_command(
+        DownCommand("020_alter_mcp_oauth_single_resource.down.sql"),
+        database_url=migration_database_url,
+    )
+    execute_command(
         DownCommand("019_add_ai_change_set_review_channel.down.sql"),
         database_url=migration_database_url,
     )
@@ -729,6 +738,10 @@ def test_prophet_result_kind_migration_up_and_down(
         connection.commit()
 
     execute_command(
+        DownCommand("020_alter_mcp_oauth_single_resource.down.sql"),
+        database_url=migration_database_url,
+    )
+    execute_command(
         DownCommand("019_add_ai_change_set_review_channel.down.sql"),
         database_url=migration_database_url,
     )
@@ -815,6 +828,10 @@ def test_prediction_observation_source_migration_replaces_schema(
                 """
             )
 
+    execute_command(
+        DownCommand("020_alter_mcp_oauth_single_resource.down.sql"),
+        database_url=migration_database_url,
+    )
     execute_command(
         DownCommand("019_add_ai_change_set_review_channel.down.sql"),
         database_url=migration_database_url,
@@ -955,6 +972,10 @@ def test_prediction_request_migration_preserves_versions_and_enforces_lifecycle(
                 (other[0], user[0], version[0]),
             )
 
+    execute_command(
+        DownCommand("020_alter_mcp_oauth_single_resource.down.sql"),
+        database_url=migration_database_url,
+    )
     execute_command(
         DownCommand("019_add_ai_change_set_review_channel.down.sql"),
         database_url=migration_database_url,
@@ -1141,6 +1162,10 @@ def test_timeserie_name_and_short_name_indexes_enforce_active_scope(
         connection.commit()
 
     execute_command(
+        DownCommand("020_alter_mcp_oauth_single_resource.down.sql"),
+        database_url=migration_database_url,
+    )
+    execute_command(
         DownCommand("019_add_ai_change_set_review_channel.down.sql"),
         database_url=migration_database_url,
     )
@@ -1231,6 +1256,25 @@ def test_concurrent_up_commands_are_serialized(
 
 MCP_REDIRECT_URIS = '["https://claude.ai/api/mcp/auth_callback"]'
 MCP_CODE_CHALLENGE = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
+# Migration 017's two resources, which migration 020 replaces with one.
+LEGACY_MCP_READ_RESOURCE = "https://app.localhost/api/mcp/read"
+LEGACY_MCP_WRITE_RESOURCE = "https://app.localhost/api/mcp/write"
+MCP_RESOURCE = "https://app.localhost/api/mcp"
+MCP_READ_WRITE_SCOPES = "schatten.read schatten.write"
+
+
+def _migrate_through(database_url: str, tmp_path: Path, version: int) -> None:
+    """Apply the repository migrations up to and including `version` only."""
+    migration_copy = tmp_path / f"migrations_through_{version:03d}"
+    migration_copy.mkdir()
+    for migration in discover_migrations()[:version]:
+        shutil.copy2(migration.up_path, migration_copy / migration.up_name)
+        shutil.copy2(migration.down_path, migration_copy / migration.down_name)
+    execute_command(
+        UpCommand(),
+        database_url=database_url,
+        migrations_directory=migration_copy,
+    )
 
 
 def _schema_catalog(database_url: str) -> list[tuple[object, ...]]:
@@ -1279,6 +1323,10 @@ def test_mcp_oauth_migration_down_fully_reverses_up(
     )
 
     execute_command(
+        DownCommand("020_alter_mcp_oauth_single_resource.down.sql"),
+        database_url=migration_database_url,
+    )
+    execute_command(
         DownCommand("019_add_ai_change_set_review_channel.down.sql"),
         database_url=migration_database_url,
     )
@@ -1300,6 +1348,9 @@ def test_mcp_oauth_migration_down_fully_reverses_up(
 
 def _insert_mcp_oauth_fixture(
     connection: psycopg.Connection[tuple[object, ...]],
+    *,
+    scopes: str = "schatten.write",
+    resource: str = LEGACY_MCP_WRITE_RESOURCE,
 ) -> tuple[object, object, object]:
     user = connection.execute(
         "INSERT INTO users (name, email, role) "
@@ -1315,19 +1366,19 @@ def _insert_mcp_oauth_fixture(
     grant = connection.execute(
         "INSERT INTO mcp_oauth_grants ("
         "grant_key, mcp_oauth_client_id, user_id, scopes, resource, expires_time"
-        ") VALUES ('grant-1', %s, %s, 'schatten.write', "
-        "'https://app.localhost/api/mcp/write', now() + interval '30 days') "
+        ") VALUES ('grant-1', %s, %s, %s, %s, now() + interval '30 days') "
         "RETURNING grant_id",
-        (client[0], user[0]),
+        (client[0], user[0], scopes, resource),
     ).fetchone()
     assert grant is not None
     return user[0], client[0], grant[0]
 
 
 def test_mcp_oauth_grant_deletion_cascades_and_clients_are_restricted(
-    migration_database_url: str,
+    migration_database_url: str, tmp_path: Path
 ) -> None:
-    execute_command(UpCommand(), database_url=migration_database_url)
+    # Migration 017's rows; migration 020 replaces its resources.
+    _migrate_through(migration_database_url, tmp_path, 19)
 
     with psycopg.connect(migration_database_url) as connection:
         user_id, client_id, grant_id = _insert_mcp_oauth_fixture(connection)
@@ -1398,8 +1449,11 @@ def test_mcp_oauth_grant_deletion_cascades_and_clients_are_restricted(
     )
 
 
-def test_mcp_oauth_schema_constraints(migration_database_url: str) -> None:
-    execute_command(UpCommand(), database_url=migration_database_url)
+def test_mcp_oauth_schema_constraints(
+    migration_database_url: str, tmp_path: Path
+) -> None:
+    # Migration 017's rows; migration 020 replaces its resources.
+    _migrate_through(migration_database_url, tmp_path, 19)
     with psycopg.connect(migration_database_url) as connection:
         user_id, client_id, grant_id = _insert_mcp_oauth_fixture(connection)
         connection.commit()
@@ -1527,6 +1581,10 @@ def test_ai_change_sets_migration_down_fully_reverses_up(
     )
 
     execute_command(
+        DownCommand("020_alter_mcp_oauth_single_resource.down.sql"),
+        database_url=migration_database_url,
+    )
+    execute_command(
         DownCommand("019_add_ai_change_set_review_channel.down.sql"),
         database_url=migration_database_url,
     )
@@ -1571,7 +1629,7 @@ def test_ai_change_set_review_channel_migration_backfills_and_reverses(
         connection.commit()
     before = _schema_catalog(migration_database_url)
 
-    execute_command(UpCommand(), database_url=migration_database_url)
+    _migrate_through(migration_database_url, tmp_path, 19)
 
     with psycopg.connect(migration_database_url) as connection:
         rows = connection.execute(
@@ -1601,8 +1659,13 @@ def test_ai_change_set_review_channel_migration_backfills_and_reverses(
 
 def _insert_ai_change_set_fixture(
     connection: psycopg.Connection[tuple[object, ...]],
+    *,
+    scopes: str = "schatten.write",
+    resource: str = LEGACY_MCP_WRITE_RESOURCE,
 ) -> tuple[object, object, object]:
-    user_id, _, grant_id = _insert_mcp_oauth_fixture(connection)
+    user_id, _, grant_id = _insert_mcp_oauth_fixture(
+        connection, scopes=scopes, resource=resource
+    )
     organisation = connection.execute(
         "INSERT INTO organisations (organisation_key, name, created_by) "
         "VALUES ('ai-org', 'AI Org', %s) RETURNING organisation_id",
@@ -1628,9 +1691,10 @@ def _insert_ai_change_set_fixture(
 
 
 def test_ai_change_set_grant_deletion_keeps_the_audit_record(
-    migration_database_url: str,
+    migration_database_url: str, tmp_path: Path
 ) -> None:
-    execute_command(UpCommand(), database_url=migration_database_url)
+    # Migration 017's rows; migration 020 replaces its resources.
+    _migrate_through(migration_database_url, tmp_path, 19)
 
     with psycopg.connect(migration_database_url) as connection:
         user_id, grant_id, change_set_id = _insert_ai_change_set_fixture(connection)
@@ -1657,8 +1721,11 @@ def test_ai_change_set_grant_deletion_keeps_the_audit_record(
     )
 
 
-def test_ai_change_set_schema_constraints(migration_database_url: str) -> None:
-    execute_command(UpCommand(), database_url=migration_database_url)
+def test_ai_change_set_schema_constraints(
+    migration_database_url: str, tmp_path: Path
+) -> None:
+    # Migration 017's rows; migration 020 replaces its resources.
+    _migrate_through(migration_database_url, tmp_path, 19)
     with psycopg.connect(migration_database_url) as connection:
         user_id, _, change_set_id = _insert_ai_change_set_fixture(connection)
         organisation_id = connection.execute(
@@ -1883,3 +1950,304 @@ def test_ai_change_set_schema_constraints(migration_database_url: str) -> None:
         with psycopg.connect(migration_database_url) as connection:
             with pytest.raises(error):
                 connection.execute(statement, parameters)
+
+
+MCP_GRANT_INSERT: LiteralString = (
+    "INSERT INTO mcp_oauth_grants ("
+    "grant_key, mcp_oauth_client_id, user_id, scopes, resource, expires_time"
+    ") VALUES (%s, %s, %s, %s, %s, now() + interval '30 days') RETURNING grant_id"
+)
+MCP_PENDING_REQUEST_INSERT: LiteralString = (
+    "INSERT INTO mcp_oauth_authorization_requests ("
+    "request_id_hash, mcp_oauth_client_id, redirect_uri, code_challenge, scopes, "
+    "resource, expires_time"
+    ") VALUES (%s, %s, 'https://claude.ai/api/mcp/auth_callback', %s, %s, %s, "
+    "now() + interval '10 minutes')"
+)
+MCP_REDEEMED_REQUEST_INSERT: LiteralString = (
+    "INSERT INTO mcp_oauth_authorization_requests ("
+    "request_id_hash, mcp_oauth_client_id, redirect_uri, code_challenge, scopes, "
+    "resource, expires_time, user_id, code_hash, code_expires_time, consumed_time, "
+    "grant_id"
+    ") SELECT %s, mcp_oauth_client_id, 'https://claude.ai/api/mcp/auth_callback', "
+    "%s, scopes, resource, now() + interval '10 minutes', user_id, %s, "
+    "now() + interval '60 seconds', now(), grant_id "
+    "FROM mcp_oauth_grants WHERE grant_id = %s"
+)
+LEGACY_MCP_SCOPE_CHECKS = {
+    "ck_mcp_oauth_grants_scope",
+    "ck_mcp_oauth_grants_scope_resource",
+    "ck_mcp_oauth_authorization_requests_scope",
+    "ck_mcp_oauth_authorization_requests_scope_resource",
+}
+MCP_SCOPE_CHECKS = {
+    "ck_mcp_oauth_grants_scope",
+    "ck_mcp_oauth_grants_resource",
+    "ck_mcp_oauth_authorization_requests_scope",
+    "ck_mcp_oauth_authorization_requests_resource",
+}
+
+
+def _mcp_scope_checks(database_url: str) -> dict[str, str]:
+    """The scope and resource CHECK constraints of migrations 017 and 020."""
+    with psycopg.connect(database_url) as connection:
+        rows = connection.execute(
+            "SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint "
+            "WHERE connamespace = current_schema()::regnamespace "
+            "AND conname = ANY(%s)",
+            (sorted(LEGACY_MCP_SCOPE_CHECKS | MCP_SCOPE_CHECKS),),
+        ).fetchall()
+    return {str(name): str(definition) for name, definition in rows}
+
+
+def _insert_mcp_token_pair(
+    connection: psycopg.Connection[tuple[object, ...]],
+    grant_id: object,
+    access_hash: bytes,
+    refresh_hash: bytes,
+) -> None:
+    for token_hash, kind in ((access_hash, "access"), (refresh_hash, "refresh")):
+        connection.execute(
+            "INSERT INTO mcp_oauth_tokens (token_hash, grant_id, kind, expires_time) "
+            "VALUES (%s, %s, %s, now() + interval '1 hour')",
+            (token_hash, grant_id, kind),
+        )
+
+
+def _assert_mcp_oauth_rows_deleted_and_change_set_kept(
+    database_url: str, user_id: object, change_set_id: object, clients: str
+) -> None:
+    for table in (
+        "mcp_oauth_grants",
+        "mcp_oauth_tokens",
+        "mcp_oauth_authorization_requests",
+    ):
+        assert _scalar(database_url, f"SELECT count(*) FROM {table}") == 0
+    assert (
+        _scalar(
+            database_url,
+            "SELECT string_agg(client_id, ',' ORDER BY client_id) "
+            "FROM mcp_oauth_clients",
+        )
+        == clients
+    )
+    with psycopg.connect(database_url) as connection:
+        row = connection.execute(
+            "SELECT grant_id, created_by, client_id, client_name, status "
+            "FROM ai_change_sets WHERE change_set_id = %s",
+            (change_set_id,),
+        ).fetchone()
+    assert row == (None, user_id, "client-1", "Claude", "draft")
+    assert _scalar(database_url, "SELECT count(*) FROM ai_change_set_operations") == 1
+
+
+def test_mcp_single_resource_migration_deletes_legacy_grants_and_keeps_audit(
+    migration_database_url: str, tmp_path: Path
+) -> None:
+    _migrate_through(migration_database_url, tmp_path, 19)
+    with psycopg.connect(migration_database_url) as connection:
+        # The change set references the legacy write grant.
+        user_id, write_grant_id, change_set_id = _insert_ai_change_set_fixture(
+            connection
+        )
+        client = connection.execute(
+            "SELECT mcp_oauth_client_id FROM mcp_oauth_clients"
+        ).fetchone()
+        assert client is not None
+        read_grant = connection.execute(
+            MCP_GRANT_INSERT,
+            ("grant-2", client[0], user_id, "schatten.read", LEGACY_MCP_READ_RESOURCE),
+        ).fetchone()
+        assert read_grant is not None
+        connection.execute(
+            "INSERT INTO mcp_oauth_clients (client_id, client_name, redirect_uris) "
+            "VALUES ('client-2', 'Claude Code', %s::jsonb)",
+            (MCP_REDIRECT_URIS,),
+        )
+        _insert_mcp_token_pair(connection, write_grant_id, b"a" * 32, b"r" * 32)
+        _insert_mcp_token_pair(connection, read_grant[0], b"b" * 32, b"s" * 32)
+        connection.execute(
+            MCP_PENDING_REQUEST_INSERT,
+            (
+                b"p" * 32,
+                client[0],
+                MCP_CODE_CHALLENGE,
+                "schatten.read",
+                LEGACY_MCP_READ_RESOURCE,
+            ),
+        )
+        connection.execute(
+            MCP_REDEEMED_REQUEST_INSERT,
+            (b"q" * 32, MCP_CODE_CHALLENGE, b"c" * 32, write_grant_id),
+        )
+        connection.commit()
+    assert _scalar(migration_database_url, "SELECT count(*) FROM mcp_oauth_tokens") == 4
+
+    execute_command(UpCommand(), database_url=migration_database_url)
+
+    assert (
+        _scalar(migration_database_url, "SELECT max(version) FROM schema_migrations")
+        == 20
+    )
+    _assert_mcp_oauth_rows_deleted_and_change_set_kept(
+        migration_database_url, user_id, change_set_id, "client-1,client-2"
+    )
+
+
+def test_mcp_single_resource_migration_replaces_the_scope_checks(
+    migration_database_url: str,
+) -> None:
+    execute_command(UpCommand(), database_url=migration_database_url)
+
+    assert set(_mcp_scope_checks(migration_database_url)) == MCP_SCOPE_CHECKS
+    with psycopg.connect(migration_database_url) as connection:
+        user_id, client_id, _ = _insert_mcp_oauth_fixture(
+            connection, scopes=MCP_READ_WRITE_SCOPES, resource=MCP_RESOURCE
+        )
+        connection.commit()
+    keys = itertools.count(2)
+
+    def insert(table: str, scopes: str, resource: str) -> None:
+        key = next(keys)
+        with psycopg.connect(migration_database_url) as connection:
+            if table == "grants":
+                connection.execute(
+                    MCP_GRANT_INSERT,
+                    (f"grant-{key}", client_id, user_id, scopes, resource),
+                )
+            else:
+                connection.execute(
+                    MCP_PENDING_REQUEST_INSERT,
+                    (
+                        key.to_bytes(32, "big"),
+                        client_id,
+                        MCP_CODE_CHALLENGE,
+                        scopes,
+                        resource,
+                    ),
+                )
+            connection.commit()
+
+    tables = ("grants", "authorization_requests")
+    for table in tables:
+        for scopes, resource in (
+            ("schatten.read", MCP_RESOURCE),
+            (MCP_READ_WRITE_SCOPES, MCP_RESOURCE),
+            (MCP_READ_WRITE_SCOPES, "https://schatten.lupaus.eu/api/mcp"),
+        ):
+            insert(table, scopes, resource)
+
+    rejected: list[tuple[str, str, set[str]]] = [
+        *(
+            (scopes, MCP_RESOURCE, {"scope"})
+            for scopes in (
+                "schatten.write",
+                "schatten.write schatten.read",
+                "schatten.admin",
+                "schatten.read schatten.admin",
+                "",
+            )
+        ),
+        ("schatten.read", LEGACY_MCP_READ_RESOURCE, {"resource"}),
+        (MCP_READ_WRITE_SCOPES, LEGACY_MCP_WRITE_RESOURCE, {"resource"}),
+        (MCP_READ_WRITE_SCOPES, "https://app.localhost/api/mcp/", {"resource"}),
+        # Migration 017's write grant fails both checks.
+        ("schatten.write", LEGACY_MCP_WRITE_RESOURCE, {"scope", "resource"}),
+    ]
+    for table in tables:
+        for scopes, resource, checks in rejected:
+            with pytest.raises(psycopg.errors.CheckViolation) as violation:
+                insert(table, scopes, resource)
+            assert violation.value.diag.constraint_name in {
+                f"ck_mcp_oauth_{table}_{check}" for check in checks
+            }
+
+    assert _scalar(migration_database_url, "SELECT count(*) FROM mcp_oauth_grants") == 4
+    assert (
+        _scalar(
+            migration_database_url,
+            "SELECT count(*) FROM mcp_oauth_authorization_requests",
+        )
+        == 3
+    )
+
+
+def test_mcp_single_resource_migration_down_restores_the_017_checks(
+    migration_database_url: str, tmp_path: Path
+) -> None:
+    _migrate_through(migration_database_url, tmp_path, 19)
+    before = _schema_catalog(migration_database_url)
+    checks_before = _mcp_scope_checks(migration_database_url)
+    assert set(checks_before) == LEGACY_MCP_SCOPE_CHECKS
+
+    execute_command(UpCommand(), database_url=migration_database_url)
+    with psycopg.connect(migration_database_url) as connection:
+        user_id, grant_id, change_set_id = _insert_ai_change_set_fixture(
+            connection, scopes=MCP_READ_WRITE_SCOPES, resource=MCP_RESOURCE
+        )
+        client = connection.execute(
+            "SELECT mcp_oauth_client_id FROM mcp_oauth_clients"
+        ).fetchone()
+        assert client is not None
+        _insert_mcp_token_pair(connection, grant_id, b"a" * 32, b"r" * 32)
+        connection.execute(
+            MCP_PENDING_REQUEST_INSERT,
+            (b"p" * 32, client[0], MCP_CODE_CHALLENGE, "schatten.read", MCP_RESOURCE),
+        )
+        connection.execute(
+            MCP_REDEEMED_REQUEST_INSERT,
+            (b"q" * 32, MCP_CODE_CHALLENGE, b"c" * 32, grant_id),
+        )
+        connection.commit()
+
+    execute_command(
+        DownCommand("020_alter_mcp_oauth_single_resource.down.sql"),
+        database_url=migration_database_url,
+    )
+
+    assert (
+        _scalar(migration_database_url, "SELECT max(version) FROM schema_migrations")
+        == 19
+    )
+    assert _mcp_scope_checks(migration_database_url) == checks_before
+    assert _schema_catalog(migration_database_url) == before
+    _assert_mcp_oauth_rows_deleted_and_change_set_kept(
+        migration_database_url, user_id, change_set_id, "client-1"
+    )
+    with psycopg.connect(migration_database_url) as connection:
+        connection.execute(
+            MCP_GRANT_INSERT,
+            (
+                "grant-read",
+                client[0],
+                user_id,
+                "schatten.read",
+                LEGACY_MCP_READ_RESOURCE,
+            ),
+        )
+        connection.commit()
+    single_resource_rows: list[tuple[LiteralString, tuple[object, ...]]] = [
+        (
+            MCP_GRANT_INSERT,
+            ("grant-2", client[0], user_id, MCP_READ_WRITE_SCOPES, MCP_RESOURCE),
+        ),
+        (
+            MCP_PENDING_REQUEST_INSERT,
+            (
+                b"p" * 32,
+                client[0],
+                MCP_CODE_CHALLENGE,
+                MCP_READ_WRITE_SCOPES,
+                MCP_RESOURCE,
+            ),
+        ),
+    ]
+    for statement, parameters in single_resource_rows:
+        with psycopg.connect(migration_database_url) as connection:
+            with pytest.raises(psycopg.errors.CheckViolation):
+                connection.execute(statement, parameters)
+
+    # Reapplying 020 removes the legacy grant again.
+    execute_command(UpCommand(), database_url=migration_database_url)
+    assert _mcp_scope_checks(migration_database_url).keys() == MCP_SCOPE_CHECKS
+    assert _scalar(migration_database_url, "SELECT count(*) FROM mcp_oauth_grants") == 0

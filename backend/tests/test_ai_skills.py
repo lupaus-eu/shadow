@@ -18,6 +18,8 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.api.v1.ai_change_sets import engine
 from app.api.v1.ai_change_sets.schemas import OPERATION_ADAPTER
+from app.api.v1.mcp_oauth.service import READ_SCOPE, WRITE_SCOPE
+from app.api.v1.mcp_oauth.token_service import McpPrincipal
 from app.api.v1.org_twin_structure.models import (
     AllowedConnection,
     EdgeType,
@@ -33,8 +35,9 @@ from app.core.config import Settings
 from app.core.database import get_db_session
 from app.core.models import Base
 from app.main import create_app
-from app.mcp.read_server import build_read_server
+from app.mcp.auth import current_principal
 from app.mcp.runtime import McpToolRuntime
+from app.mcp.server import build_mcp_server
 from app.mcp.skills import (
     SKILL_PROMPT_NAMES,
     SKILLS_DIRECTORY,
@@ -49,10 +52,36 @@ DEFAULT_METAMODEL_PATH = (
 )
 EXAMPLE_USER_ID = 1
 SKILL_NAMES = tuple(SKILL_PROMPT_NAMES)
-PRODUCTION_MCP_URLS = {
-    "schatten-read": "https://schatten.lupaus.eu/api/mcp/read",
-    "schatten-write": "https://schatten.lupaus.eu/api/mcp/write",
-}
+# TASK-074: one MCP server, connected and authorized once.
+PRODUCTION_MCP_URLS = {"schatten": "https://schatten.lupaus.eu/api/mcp"}
+PLUGIN_VERSION = "0.3.0"
+# Wording of the two servers that TASK-074 replaced with one.
+TWO_SERVER_WORDING = (
+    "read server",
+    "write server",
+    "read service",
+    "write service",
+    "mcp servers",
+    "read and write servers",
+    "/api/mcp/read",
+    "/api/mcp/write",
+    "schatten-read",
+    "schatten-write",
+)
+READ_ONLY_SENTENCE = (
+    "If `create_change_set` is not listed, this connection can only read, because "
+    "of the user's role or because the client asked only for read access when it "
+    "connected: say so instead of proposing changes."
+)
+PRINCIPAL = McpPrincipal(
+    user_id=EXAMPLE_USER_ID,
+    role="consultant",
+    grant_id=1,
+    grant_key="grant_test",
+    client_id="client-test",
+    client_name="Claude",
+    scopes=frozenset({READ_SCOPE, WRITE_SCOPE}),
+)
 # Characters that start a YAML indicator or would end a plain scalar early.
 YAML_UNSAFE_START = tuple("-?:,[]{}#&*!|>'\"%@`")
 
@@ -211,7 +240,8 @@ def test_plugin_and_marketplace_manifests_are_valid() -> None:
     marketplace = _read_json(REPOSITORY_ROOT / ".claude-plugin" / "marketplace.json")
 
     assert plugin["name"] == "schatten"
-    assert plugin["version"] and plugin["description"]
+    assert plugin["version"] == PLUGIN_VERSION
+    assert plugin["description"]
     assert {
         name: server["url"] for name, server in mcp["mcpServers"].items()
     } == PRODUCTION_MCP_URLS
@@ -221,6 +251,23 @@ def test_plugin_and_marketplace_manifests_are_valid() -> None:
     assert entry["name"] == plugin["name"]
     assert entry["source"].startswith("./")
     assert (REPOSITORY_ROOT / entry["source"]).resolve() == PLUGIN_DIRECTORY
+
+
+@pytest.mark.parametrize("name", SKILL_NAMES)
+def test_skills_name_one_mcp_server_and_no_read_or_write_server(name: str) -> None:
+    text = _skill_text(name)
+    frontmatter, _ = parse_frontmatter(text)
+
+    assert frontmatter["description"].count("through the Schatten MCP server.") == 1
+    for wording in TWO_SERVER_WORDING:
+        assert wording not in text.lower()
+
+
+def test_model_building_skill_tells_a_read_only_connection_to_say_so() -> None:
+    _, body = parse_frontmatter(_skill_text("schatten-model-building"))
+    opening = body.split("\n## ", 1)[0]
+
+    assert READ_ONLY_SENTENCE in " ".join(opening.split())
 
 
 @pytest.mark.parametrize("name", SKILL_NAMES)
@@ -267,18 +314,22 @@ def test_model_building_example_runs_against_the_default_metamodel(
 
 
 @pytest.mark.anyio
-async def test_read_server_prompts_return_the_skill_content() -> None:
-    server = build_read_server(
+async def test_mcp_server_prompts_return_the_skill_content() -> None:
+    server = build_mcp_server(
         McpToolRuntime(sessionmaker(), anyio.CapacityLimiter(1)),
         Settings.model_validate({"MCP_ENABLED": True}),
     )
 
-    async with Client(server) as client:
-        prompts = {prompt.name: prompt for prompt in await client.list_prompts()}
-        results = {
-            name: await client.get_prompt(name)
-            for name in ("model_building", "timeseries_generation")
-        }
+    reset_token = current_principal.set(PRINCIPAL)
+    try:
+        async with Client(server) as client:
+            prompts = {prompt.name: prompt for prompt in await client.list_prompts()}
+            results = {
+                name: await client.get_prompt(name)
+                for name in ("model_building", "timeseries_generation")
+            }
+    finally:
+        current_principal.reset(reset_token)
 
     assert set(prompts) == {"model_building", "timeseries_generation"}
     for skill in load_skills():

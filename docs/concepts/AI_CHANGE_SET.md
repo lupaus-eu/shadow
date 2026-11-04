@@ -61,8 +61,9 @@ Change set (`ai_change_sets`):
 - grant, `client_id` and `client_name`: the MCP grant and client that staged
   it. `client_id` is copied as a plain value. `client_name` is a label the
   client declared itself. The grant reference becomes null when lazy cleanup
-  deletes a revoked or expired grant (`ON DELETE SET NULL`); `created_by`,
-  `client_id` and `client_name` stay as the audit record
+  deletes a revoked or expired grant, or when migration 020 deleted a grant on
+  the former read or write MCP resource (TASK-074) (`ON DELETE SET NULL`);
+  `created_by`, `client_id` and `client_name` stay as the audit record
 - `validation_result`: per-operation result of the latest dry-run (`ok`, an
   error or `not_run`). The `replaces_existing` flags shown for review are not
   taken from it; they are recomputed against current data (see Domain Rules)
@@ -272,7 +273,8 @@ The lifecycle is drawn in
 # Invariants
 
 - A change set belongs to exactly one organisation and one creating User. It
-  references its staging grant until lazy cleanup deletes that grant. After
+  references its staging grant until lazy cleanup, or for a grant on the
+  former read or write MCP resource migration 020, deletes that grant. After
   that, `created_by`, the copied `client_id` and `client_name` remain the audit
   record.
 - Operations are ordered by unique `position`; a `ref` is unique within the

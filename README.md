@@ -191,28 +191,37 @@ had it on, with the change-set review, since 2026-11-03 (`v0.2.0`;
 [runbook section 14](docs/PRODUCTION-RUNBOOK.md#14-ai-via-mcp-enable-disable-offboarding-and-incidents));
 local and production evidence is in [the QA checklist](docs/qa/AI-MCP-QA-CHECKLIST.md).
 
-- Claude Code: install the Schatten plugin, which adds the MCP servers
-  `https://schatten.lupaus.eu/api/mcp/read` and `/api/mcp/write` and the
-  Schatten skills (needs read access to this repository):
+Schatten has one MCP server, `https://schatten.lupaus.eu/api/mcp`, which you
+connect and authorize once; the tools it lists depend on your role.
+
+- Claude Code: install the Schatten plugin, which adds the Schatten MCP server
+  `https://schatten.lupaus.eu/api/mcp` and the Schatten skills (needs read
+  access to this repository):
 
   ```text
   /plugin marketplace add reflector-oy/schatten
   /plugin install schatten@schatten
   ```
 
-  Then run `/mcp`, authenticate each server and approve the access in
-  Schatten. Keep `apply_change_set` and `reject_change_set` on "ask": in auto
-  mode, or once these tools are allowed without asking, Claude Code applies
-  and rejects without asking you.
+  Then run `/mcp`, select the Schatten server, authenticate and approve the
+  access in Schatten. Keep `apply_change_set` and `reject_change_set` on
+  "ask": in auto mode, or once these tools are allowed without asking, Claude
+  Code applies and rejects without asking you.
   Reconnect with `/mcp` after a Schatten release that changes tool results.
-- claude.ai and Claude Desktop: add the read and write URLs as two custom
-  connectors (Settings, Connectors), and upload the two skill zips from the
-  Connect section under Customize, Skills (code execution must be on).
-- Other MCP clients: add both URLs and use the read server's MCP prompts
-  `model_building` and `timeseries_generation`, which carry the same skill
-  text. The client's OAuth callback must be on the redirect URI allowlist
+- claude.ai and Claude Desktop: add the URL as one custom connector
+  (Settings, Connectors), and upload the two skill zips from the Connect
+  section under Customize, Skills (code execution must be on).
+- Other MCP clients: add the URL and use the MCP prompts `model_building` and
+  `timeseries_generation`, which carry the same skill text. The client's
+  OAuth callback must be on the redirect URI allowlist
   (`MCP_OAUTH_REDIRECT_URIS`); by default only the claude.ai and claude.com
   callbacks and `http://localhost:{port}/callback` are allowed.
+
+Before TASK-074 (ADR-015 amendment of 2026-11-03) Schatten had separate read
+and write servers. After the release that brings TASK-074 to production,
+remove the two old connectors (or the old plugin servers) and add the one
+above, download the skill zips again and replace the uploaded skills, and
+update the Claude Code plugin to version 0.3.0.
 
 The skills live in `backend/app/mcp/plugin/skills/`. Local use against
 `https://app.localhost` is described in

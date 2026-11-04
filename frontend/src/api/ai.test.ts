@@ -36,7 +36,7 @@ describe("AI API", () => {
       redirectIsLoopback: false,
       redirectHost: "claude.ai",
       scope: "schatten.read",
-      resource: "https://app.localhost/api/mcp/read",
+      resource: "https://app.localhost/api/mcp",
       expiresTime: "2026-10-28T10:10:00Z"
     };
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(consent));
@@ -121,8 +121,8 @@ describe("AI API", () => {
         grantKey: "grant/1",
         clientId: "client-1",
         clientName: "Claude",
-        scope: "schatten.read",
-        resource: "https://app.localhost/api/mcp/read",
+        scope: "schatten.read schatten.write",
+        resource: "https://app.localhost/api/mcp",
         createdTime: "2026-10-01T10:00:00Z",
         lastUsedTime: null,
         expiresTime: "2026-10-31T10:00:00Z"

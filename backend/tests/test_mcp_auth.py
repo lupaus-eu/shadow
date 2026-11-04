@@ -36,8 +36,27 @@ from app.core.models import Base
 from app.main import create_app
 
 ORIGIN = "http://testserver"
-SERVERS = ("read", "write")
-SCOPE_FOR = {"read": READ_SCOPE, "write": WRITE_SCOPE}
+MCP_PATH = "/api/mcp"
+RESOURCE = f"{ORIGIN}{MCP_PATH}"
+RESOURCE_METADATA = f"{ORIGIN}/.well-known/oauth-protected-resource{MCP_PATH}"
+BOTH_SCOPES = f"{READ_SCOPE} {WRITE_SCOPE}"
+# The endpoints that TASK-074 replaced with `/api/mcp`.
+LEGACY_PATHS = ("/api/mcp/read", "/api/mcp/write")
+READ_TOOL_NAMES = (
+    "whoami",
+    "list_organisations",
+    "list_scenarios",
+    "list_org_states",
+    "get_type_catalog",
+    "get_graph",
+    "list_timeseries",
+    "get_timeserie",
+    "list_events",
+    "preview_generated_timeserie",
+    "list_change_sets",
+    "get_change_set",
+    "get_change_set_review",
+)
 WRITE_TOOL_NAMES = (
     "create_change_set",
     "add_operations",
@@ -46,6 +65,8 @@ WRITE_TOOL_NAMES = (
     "submit_change_set",
     "discard_change_set",
 )
+REVIEW_TOOL_NAMES = ("apply_change_set", "reject_change_set")
+PROMPT_NAMES = ("model_building", "timeseries_generation")
 MCP_HEADERS = {"Accept": "application/json, text/event-stream"}
 USER_ID = 7
 OTHER_USER_ID = 8
@@ -99,7 +120,7 @@ def _client(
             yield session
 
     app.dependency_overrides[get_db_session] = override_get_db_session
-    # The context manager runs the lifespan that starts the MCP servers.
+    # The context manager runs the lifespan that starts the MCP server.
     with TestClient(app) as client:
         yield client
 
@@ -112,8 +133,9 @@ def client(session_factory: sessionmaker[Session]) -> Iterator[TestClient]:
 
 def _issue_token(
     session_factory: sessionmaker[Session],
-    server: str = "read",
     *,
+    scopes: str = BOTH_SCOPES,
+    resource: str = RESOURCE,
     user_id: int = USER_ID,
 ) -> tuple[str, str]:
     """Store an active grant and access token; return (token, grant_key)."""
@@ -132,8 +154,8 @@ def _issue_token(
             grant_key=grant_key,
             mcp_oauth_client_id=client.mcp_oauth_client_id,
             user_id=user_id,
-            scopes=SCOPE_FOR[server],
-            resource=f"{ORIGIN}/api/mcp/{server}",
+            scopes=scopes,
+            resource=resource,
             created_time=now,
             expires_time=now + timedelta(days=30),
         )
@@ -154,58 +176,62 @@ def _issue_token(
 
 def _rpc(
     client: TestClient,
-    server: str,
     method: str,
     params: dict[str, object] | None = None,
     *,
     token: str | None = None,
+    path: str = MCP_PATH,
 ) -> httpx2.Response:
     headers = dict(MCP_HEADERS)
     if token is not None:
         headers["Authorization"] = f"Bearer {token}"
     return client.post(
-        f"/api/mcp/{server}",
+        path,
         headers=headers,
         json={"jsonrpc": "2.0", "id": 1, "method": method, "params": params or {}},
     )
 
 
 def _whoami(client: TestClient, token: str) -> httpx2.Response:
-    return _rpc(
-        client, "read", "tools/call", {"name": "whoami", "arguments": {}}, token=token
-    )
+    return _rpc(client, "tools/call", {"name": "whoami", "arguments": {}}, token=token)
 
 
-def _resource_metadata(server: str) -> str:
-    return f"{ORIGIN}/.well-known/oauth-protected-resource/api/mcp/{server}"
+def _tool_names(client: TestClient, token: str) -> set[str]:
+    response = _rpc(client, "tools/list", token=token)
+    assert response.status_code == 200, response.text
+    return {tool["name"] for tool in response.json()["result"]["tools"]}
 
 
-def _assert_invalid_token(response: httpx2.Response, server: str = "read") -> None:
+def _prompt_names(client: TestClient, token: str) -> set[str]:
+    response = _rpc(client, "prompts/list", token=token)
+    assert response.status_code == 200, response.text
+    return {prompt["name"] for prompt in response.json()["result"]["prompts"]}
+
+
+def _assert_invalid_token(response: httpx2.Response) -> None:
     assert response.status_code == 401, response.text
     assert response.headers["www-authenticate"] == (
-        'Bearer error="invalid_token", '
-        f'resource_metadata="{_resource_metadata(server)}"'
+        f'Bearer error="invalid_token", resource_metadata="{RESOURCE_METADATA}"'
     )
     assert response.json()["error"] == "invalid_token"
 
 
-@pytest.mark.parametrize("server", SERVERS)
 @pytest.mark.parametrize("method", ["GET", "POST", "DELETE"])
 def test_missing_token_gets_401_with_resource_metadata(
-    client: TestClient, server: str, method: str
+    client: TestClient, method: str
 ) -> None:
-    response = client.request(method, f"/api/mcp/{server}", headers=MCP_HEADERS)
+    response = client.request(method, MCP_PATH, headers=MCP_HEADERS)
 
     assert response.status_code == 401
     assert response.headers["www-authenticate"] == (
-        f'Bearer resource_metadata="{_resource_metadata(server)}"'
+        f'Bearer resource_metadata="{RESOURCE_METADATA}"'
     )
     assert response.headers["cache-control"] == "no-store"
 
 
 def test_other_authorization_scheme_counts_as_no_token(client: TestClient) -> None:
     response = client.post(
-        "/api/mcp/read", headers={**MCP_HEADERS, "Authorization": "Basic dXNlcg=="}
+        MCP_PATH, headers={**MCP_HEADERS, "Authorization": "Basic dXNlcg=="}
     )
 
     assert response.status_code == 401
@@ -217,7 +243,7 @@ def test_browser_session_cookie_is_not_accepted(
 ) -> None:
     authenticate_test_client(client, session_factory, user_id=1)
 
-    response = _rpc(client, "read", "tools/list")
+    response = _rpc(client, "tools/list")
 
     assert response.status_code == 401
     assert "error=" not in response.headers["www-authenticate"]
@@ -249,7 +275,7 @@ def test_presented_but_rejected_token_gets_invalid_token(
     client: TestClient, authorization: list[str]
 ) -> None:
     response = client.post(
-        "/api/mcp/read",
+        MCP_PATH,
         headers=[
             *MCP_HEADERS.items(),
             *(("Authorization", value) for value in authorization),
@@ -259,14 +285,12 @@ def test_presented_but_rejected_token_gets_invalid_token(
     _assert_invalid_token(response)
 
 
-def test_valid_tokens_reach_their_server(
+def test_valid_token_reaches_the_server(
     client: TestClient, session_factory: sessionmaker[Session]
 ) -> None:
-    read_token, _ = _issue_token(session_factory, "read")
-    write_token, _ = _issue_token(session_factory, "write")
+    token, _ = _issue_token(session_factory)
 
-    whoami = _whoami(client, read_token)
-    write_tools = _rpc(client, "write", "tools/list", token=write_token)
+    whoami = _whoami(client, token)
 
     assert whoami.status_code == 200, whoami.text
     assert whoami.headers["cache-control"] == "no-store"
@@ -276,16 +300,48 @@ def test_valid_tokens_reach_their_server(
         "email": "mcp-user@example.test",
         "role": "consultant",
     }
-    assert write_tools.status_code == 200, write_tools.text
-    assert {tool["name"] for tool in write_tools.json()["result"]["tools"]} == set(
-        WRITE_TOOL_NAMES
+
+
+def test_one_server_lists_read_and_write_tools_and_prompts(
+    client: TestClient, session_factory: sessionmaker[Session]
+) -> None:
+    token, _ = _issue_token(session_factory)
+
+    initialize = _rpc(
+        client,
+        "initialize",
+        {
+            "protocolVersion": "2025-06-18",
+            "capabilities": {},
+            "clientInfo": {"name": "test", "version": "1"},
+        },
+        token=token,
     )
+    tools = _tool_names(client, token)
+
+    assert initialize.status_code == 200, initialize.text
+    assert initialize.json()["result"]["serverInfo"]["name"] == "Schatten"
+    assert len(READ_TOOL_NAMES) == 13
+    assert len(WRITE_TOOL_NAMES) == 6
+    assert tools == {*READ_TOOL_NAMES, *WRITE_TOOL_NAMES}
+    assert _prompt_names(client, token) == set(PROMPT_NAMES)
+
+
+def test_the_review_switch_adds_apply_and_reject(
+    session_factory: sessionmaker[Session],
+) -> None:
+    token, _ = _issue_token(session_factory)
+
+    with _client(session_factory, MCP_CHANGE_SET_REVIEW_ENABLED=True) as client:
+        tools = _tool_names(client, token)
+
+    assert len(tools) == 21
+    assert tools == {*READ_TOOL_NAMES, *WRITE_TOOL_NAMES, *REVIEW_TOOL_NAMES}
 
 
 def _create_change_set(client: TestClient, token: str) -> httpx2.Response:
     return _rpc(
         client,
-        "write",
         "tools/call",
         {
             "name": "create_change_set",
@@ -301,11 +357,11 @@ def _seed_organisation(session_factory: sessionmaker[Session]) -> None:
         session.commit()
 
 
-def test_write_token_stages_a_change_set_for_its_grant(
+def test_token_stages_a_change_set_for_its_grant(
     client: TestClient, session_factory: sessionmaker[Session]
 ) -> None:
     _seed_organisation(session_factory)
-    token, grant_key = _issue_token(session_factory, "write")
+    token, grant_key = _issue_token(session_factory)
 
     response = _create_change_set(client, token)
 
@@ -323,83 +379,101 @@ def test_write_token_stages_a_change_set_for_its_grant(
         assert change_set.created_by == USER_ID
 
 
-@pytest.mark.parametrize("tool", WRITE_TOOL_NAMES)
-def test_read_only_token_cannot_call_write_tools(
-    client: TestClient,
+def _stub_role_scopes(
+    monkeypatch: pytest.MonkeyPatch, role: str, scopes: frozenset[str]
+) -> None:
+    monkeypatch.setitem(token_service.ROLE_SCOPES, role, scopes)
+
+
+def test_read_only_role_sees_only_read_tools_and_prompts(
+    session_factory: sessionmaker[Session], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _stub_role_scopes(monkeypatch, "consultant", frozenset({READ_SCOPE}))
+    token, _ = _issue_token(session_factory)
+
+    with _client(session_factory, MCP_CHANGE_SET_REVIEW_ENABLED=True) as client:
+        tools = _tool_names(client, token)
+        prompts = _prompt_names(client, token)
+        whoami = _whoami(client, token)
+
+    assert tools == set(READ_TOOL_NAMES)
+    assert prompts == set(PROMPT_NAMES)
+    assert whoami.status_code == 200, whoami.text
+
+
+def test_read_only_grant_sees_only_read_tools(
+    client: TestClient, session_factory: sessionmaker[Session]
+) -> None:
+    # A client that asked for `scope=schatten.read` holds a read-only grant.
+    token, _ = _issue_token(session_factory, scopes=READ_SCOPE)
+
+    assert _tool_names(client, token) == set(READ_TOOL_NAMES)
+
+
+@pytest.mark.parametrize("tool", [*WRITE_TOOL_NAMES, *REVIEW_TOOL_NAMES])
+def test_read_only_grant_gets_unknown_tool_for_write_tools(
+    session_factory: sessionmaker[Session], tool: str
+) -> None:
+    _seed_organisation(session_factory)
+    token, _ = _issue_token(session_factory, scopes=READ_SCOPE)
+    arguments = {"organisation_key": "org_acme", "title": "AI plan"}
+
+    with _client(session_factory, MCP_CHANGE_SET_REVIEW_ENABLED=True) as client:
+        response = _rpc(
+            client, "tools/call", {"name": tool, "arguments": arguments}, token=token
+        )
+
+    assert response.status_code == 200, response.text
+    assert f"Unknown tool: '{tool}'" in response.text
+    with session_factory() as session:
+        assert session.scalars(select(AiChangeSet)).all() == []
+
+
+@pytest.mark.parametrize("tool", [*WRITE_TOOL_NAMES, *REVIEW_TOOL_NAMES])
+def test_read_only_role_gets_unknown_tool_for_write_tools(
     session_factory: sessionmaker[Session],
     monkeypatch: pytest.MonkeyPatch,
     tool: str,
 ) -> None:
     _seed_organisation(session_factory)
-    read_token, _ = _issue_token(session_factory, "read")
+    _stub_role_scopes(monkeypatch, "consultant", frozenset({READ_SCOPE}))
+    token, _ = _issue_token(session_factory)
     arguments = {"organisation_key": "org_acme", "title": "AI plan"}
 
-    def call(token: str) -> httpx2.Response:
-        return _rpc(
-            client,
-            "write",
-            "tools/call",
-            {"name": tool, "arguments": arguments},
-            token=token,
+    with _client(session_factory, MCP_CHANGE_SET_REVIEW_ENABLED=True) as client:
+        response = _rpc(
+            client, "tools/call", {"name": tool, "arguments": arguments}, token=token
         )
 
-    other_resource = call(read_token)
-    # A write grant whose User's role has only the read scope.
-    _stub_role_scopes(monkeypatch, "consultant", frozenset({READ_SCOPE}))
-    write_token, _ = _issue_token(session_factory, "write")
-    insufficient = call(write_token)
-
-    _assert_invalid_token(other_resource, "write")
-    assert insufficient.status_code == 403
-    assert insufficient.json()["error"] == "insufficient_scope"
+    assert response.status_code == 200, response.text
+    assert f"Unknown tool: '{tool}'" in response.text
     with session_factory() as session:
         assert session.scalars(select(AiChangeSet)).all() == []
 
 
-def test_the_review_switch_adds_apply_and_reject_to_the_write_server(
-    session_factory: sessionmaker[Session],
-) -> None:
-    write_token, _ = _issue_token(session_factory, "write")
-
-    with _client(session_factory, MCP_CHANGE_SET_REVIEW_ENABLED=True) as client:
-        write_tools = _rpc(client, "write", "tools/list", token=write_token)
-
-    assert write_tools.status_code == 200, write_tools.text
-    assert {tool["name"] for tool in write_tools.json()["result"]["tools"]} == {
-        *WRITE_TOOL_NAMES,
-        "apply_change_set",
-        "reject_change_set",
-    }
-
-
-@pytest.mark.parametrize("tool", ["apply_change_set", "reject_change_set"])
-def test_read_only_token_cannot_apply_or_reject(
+def test_role_change_shows_or_hides_write_tools_on_the_next_call(
+    client: TestClient,
     session_factory: sessionmaker[Session],
     monkeypatch: pytest.MonkeyPatch,
-    tool: str,
 ) -> None:
-    read_token, _ = _issue_token(session_factory, "read")
     _stub_role_scopes(monkeypatch, "consultant", frozenset({READ_SCOPE}))
-    write_token, _ = _issue_token(session_factory, "write")
-    arguments = {"change_set_key": "any", "review_fingerprint": "0" * 64}
+    token, _ = _issue_token(session_factory)
 
-    with _client(session_factory, MCP_CHANGE_SET_REVIEW_ENABLED=True) as client:
-
-        def call(token: str) -> httpx2.Response:
-            return _rpc(
-                client,
-                "write",
-                "tools/call",
-                {"name": tool, "arguments": arguments},
-                token=token,
+    def set_role(role: str) -> None:
+        with session_factory() as session:
+            session.execute(
+                update(User).where(User.user_id == USER_ID).values(role=role)
             )
+            session.commit()
 
-        other_resource = call(read_token)
-        insufficient = call(write_token)
+    read_only = _tool_names(client, token)
+    set_role("admin")
+    read_write = _tool_names(client, token)
+    set_role("consultant")
+    read_only_again = _tool_names(client, token)
 
-    _assert_invalid_token(other_resource, "write")
-    assert insufficient.status_code == 403
-    assert insufficient.json()["error"] == "insufficient_scope"
+    assert read_only == read_only_again == set(READ_TOOL_NAMES)
+    assert read_write == {*READ_TOOL_NAMES, *WRITE_TOOL_NAMES}
 
 
 def test_concurrent_calls_act_as_each_tokens_own_user(tmp_path: Path) -> None:
@@ -444,41 +518,32 @@ def test_concurrent_calls_act_as_each_tokens_own_user(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    ("issued_for", "called"), [("read", "write"), ("write", "read")]
+    "resource", ["https://other.example/api/mcp", "http://testserver:8000/api/mcp"]
 )
-def test_token_for_the_other_resource_gets_invalid_token(
-    client: TestClient,
-    session_factory: sessionmaker[Session],
-    issued_for: str,
-    called: str,
+def test_token_for_another_origins_resource_gets_invalid_token(
+    client: TestClient, session_factory: sessionmaker[Session], resource: str
 ) -> None:
-    token, _ = _issue_token(session_factory, issued_for)
+    token, _ = _issue_token(session_factory, resource=resource)
 
-    response = _rpc(client, called, "tools/list", token=token)
+    response = _rpc(client, "tools/list", token=token)
 
-    _assert_invalid_token(response, called)
-
-
-def _stub_role_scopes(
-    monkeypatch: pytest.MonkeyPatch, role: str, scopes: frozenset[str]
-) -> None:
-    monkeypatch.setitem(token_service.ROLE_SCOPES, role, scopes)
+    _assert_invalid_token(response)
 
 
-def test_missing_effective_scope_gets_403_insufficient_scope(
+def test_missing_read_scope_gets_403_insufficient_scope(
     client: TestClient,
     session_factory: sessionmaker[Session],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _stub_role_scopes(monkeypatch, "consultant", frozenset({WRITE_SCOPE}))
-    token, _ = _issue_token(session_factory, "read")
+    token, _ = _issue_token(session_factory)
 
-    response = _whoami(client, token)
+    response = _create_change_set(client, token)
 
     assert response.status_code == 403
     assert response.headers["www-authenticate"] == (
         'Bearer error="insufficient_scope", scope="schatten.read", '
-        f'resource_metadata="{_resource_metadata("read")}"'
+        f'resource_metadata="{RESOURCE_METADATA}"'
     )
     assert response.json()["error"] == "insufficient_scope"
 
@@ -489,7 +554,7 @@ def test_role_change_takes_effect_on_the_next_call(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _stub_role_scopes(monkeypatch, "consultant", frozenset({WRITE_SCOPE}))
-    token, _ = _issue_token(session_factory, "read")
+    token, _ = _issue_token(session_factory)
 
     def set_role(role: str) -> None:
         with session_factory() as session:
@@ -586,7 +651,7 @@ def test_invalidated_access_stops_on_the_next_call(
     _assert_invalid_token(_whoami(client, token))
 
 
-def test_rate_limit_is_per_grant_on_mcp_rate_limiter_only(
+def test_rate_limit_is_per_grant_for_reads_and_writes_on_mcp_rate_limiter_only(
     session_factory: sessionmaker[Session], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     with _client(session_factory, MCP_RATE_LIMIT_PER_MINUTE=2) as client:
@@ -608,7 +673,12 @@ def test_rate_limit_is_per_grant_on_mcp_rate_limiter_only(
         token, grant_key = _issue_token(session_factory)
         other_token, other_grant_key = _issue_token(session_factory)
 
-        statuses = [_whoami(client, token).status_code for _ in range(3)]
+        # One grant covers reads and writes, so they share its bucket.
+        statuses = [
+            _whoami(client, token).status_code,
+            _create_change_set(client, token).status_code,
+            _whoami(client, token).status_code,
+        ]
         other = _whoami(client, other_token)
 
     assert statuses == [200, 200, 429]
@@ -621,22 +691,43 @@ def test_rate_limit_is_per_grant_on_mcp_rate_limiter_only(
     ]
 
 
-@pytest.mark.parametrize("server", SERVERS)
+@pytest.mark.parametrize("path", [MCP_PATH, *LEGACY_PATHS])
 @pytest.mark.parametrize("method", ["GET", "POST", "DELETE"])
 def test_mcp_disabled_registers_no_mcp_routes(
-    session_factory: sessionmaker[Session], server: str, method: str
+    session_factory: sessionmaker[Session], path: str, method: str
 ) -> None:
-    token, _ = _issue_token(session_factory, server)
+    token, _ = _issue_token(session_factory)
     app = create_app(settings=Settings(), mcp_session_factory=session_factory)
 
     with TestClient(app) as client:
         response = client.request(
             method,
-            f"/api/mcp/{server}",
+            path,
             headers={**MCP_HEADERS, "Authorization": f"Bearer {token}"},
         )
 
     assert response.status_code == 404
+
+
+@pytest.mark.parametrize("with_token", [True, False])
+@pytest.mark.parametrize("path", LEGACY_PATHS)
+@pytest.mark.parametrize("method", ["GET", "POST", "DELETE"])
+def test_legacy_read_and_write_endpoints_are_gone(
+    client: TestClient,
+    session_factory: sessionmaker[Session],
+    path: str,
+    method: str,
+    with_token: bool,
+) -> None:
+    headers = dict(MCP_HEADERS)
+    if with_token:
+        token, _ = _issue_token(session_factory)
+        headers["Authorization"] = f"Bearer {token}"
+
+    response = client.request(method, path, headers=headers)
+
+    assert response.status_code == 404
+    assert "www-authenticate" not in response.headers
 
 
 def test_fastmcp_is_imported_only_when_mcp_is_enabled() -> None:
@@ -669,28 +760,26 @@ def test_authenticated_get_and_delete_are_not_supported_statelessly(
     token, _ = _issue_token(session_factory)
     headers = {**MCP_HEADERS, "Authorization": f"Bearer {token}"}
 
-    assert client.get("/api/mcp/read", headers=headers).status_code == 405
-    assert client.delete("/api/mcp/read", headers=headers).status_code == 405
-    assert client.put("/api/mcp/read", headers=headers).status_code == 405
+    assert client.get(MCP_PATH, headers=headers).status_code == 405
+    assert client.delete(MCP_PATH, headers=headers).status_code == 405
+    assert client.put(MCP_PATH, headers=headers).status_code == 405
 
 
 @pytest.mark.parametrize("with_token", [True, False])
-@pytest.mark.parametrize("server", SERVERS)
 @pytest.mark.parametrize("method", ["GET", "POST"])
 def test_trailing_slash_is_not_redirected(
     client: TestClient,
     session_factory: sessionmaker[Session],
-    server: str,
     method: str,
     with_token: bool,
 ) -> None:
     headers = dict(MCP_HEADERS)
     if with_token:
-        token, _ = _issue_token(session_factory, server)
+        token, _ = _issue_token(session_factory)
         headers["Authorization"] = f"Bearer {token}"
 
     response = client.request(
-        method, f"/api/mcp/{server}/", headers=headers, follow_redirects=False
+        method, f"{MCP_PATH}/", headers=headers, follow_redirects=False
     )
 
     assert response.status_code == 404
@@ -727,10 +816,9 @@ def test_tokens_and_tool_arguments_are_never_logged(
         raise RuntimeError(f"database error for {organisation_key}")
 
     with _captured_logs() as logs:
-        _rpc(client, "read", "tools/list", token=rejected_token)
+        _rpc(client, "tools/list", token=rejected_token)
         not_found = _rpc(
             client,
-            "read",
             "tools/call",
             {"name": "list_scenarios", "arguments": {"organisation_key": argument}},
             token=token,
@@ -740,7 +828,6 @@ def test_tokens_and_tool_arguments_are_never_logged(
         )
         failed = _rpc(
             client,
-            "read",
             "tools/call",
             {"name": "list_scenarios", "arguments": {"organisation_key": argument}},
             token=token,

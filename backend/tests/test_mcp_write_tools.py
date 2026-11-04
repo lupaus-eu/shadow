@@ -1,3 +1,4 @@
+import json
 import os
 
 os.environ["APP_ENV"] = "test"
@@ -10,6 +11,7 @@ import anyio
 import psycopg
 import pytest
 from fastmcp import Client, FastMCP
+from mcp.types import Tool
 from sqlalchemy import StaticPool, create_engine, func, select, update
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import OperationalError
@@ -18,7 +20,7 @@ from sqlalchemy.orm import Session, sessionmaker
 import app.api.v1.ai_change_sets.engine as engine
 from app.api.v1.ai_change_sets import service as change_sets_service
 from app.api.v1.ai_change_sets.models import AiChangeSet, AiChangeSetOperation
-from app.api.v1.mcp_oauth.service import WRITE_SCOPE
+from app.api.v1.mcp_oauth.service import READ_SCOPE, WRITE_SCOPE
 from app.api.v1.mcp_oauth.token_service import McpPrincipal
 from app.api.v1.org_states.models import (
     DerivedMetricEquation,
@@ -45,9 +47,8 @@ from app.core.config import Settings
 from app.core.models import Base
 from app.mcp import read_server, write_server
 from app.mcp.auth import current_principal
-from app.mcp.read_server import build_read_server
 from app.mcp.runtime import McpToolRuntime
-from app.mcp.write_server import build_write_server
+from app.mcp.server import INSTRUCTIONS, REVIEW_INSTRUCTIONS, build_mcp_server
 
 CREATOR_USER_ID = 7
 OTHER_USER_ID = 8
@@ -62,7 +63,7 @@ CREATOR = McpPrincipal(
     grant_key="grant_creator",
     client_id="client-creator",
     client_name="Claude",
-    scopes=frozenset({WRITE_SCOPE}),
+    scopes=frozenset({READ_SCOPE, WRITE_SCOPE}),
 )
 OTHER_USER = McpPrincipal(
     user_id=OTHER_USER_ID,
@@ -71,7 +72,7 @@ OTHER_USER = McpPrincipal(
     grant_key="grant_other",
     client_id="client-other",
     client_name="Other client",
-    scopes=frozenset({WRITE_SCOPE}),
+    scopes=frozenset({READ_SCOPE, WRITE_SCOPE}),
 )
 # Another grant of the creating User, for example a second MCP client.
 CREATOR_SECOND_GRANT = McpPrincipal(
@@ -81,7 +82,7 @@ CREATOR_SECOND_GRANT = McpPrincipal(
     grant_key="grant_creator_second",
     client_id="client-creator-second",
     client_name="Claude Code",
-    scopes=frozenset({WRITE_SCOPE}),
+    scopes=frozenset({READ_SCOPE, WRITE_SCOPE}),
 )
 WRITE_TOOLS = {
     "create_change_set",
@@ -209,12 +210,7 @@ def runtime(session_factory: sessionmaker[Session]) -> McpToolRuntime:
 
 @pytest.fixture()
 def server(runtime: McpToolRuntime) -> FastMCP:
-    return build_write_server(runtime, SETTINGS)
-
-
-@pytest.fixture()
-def reader(runtime: McpToolRuntime) -> FastMCP:
-    return build_read_server(runtime, SETTINGS)
+    return build_mcp_server(runtime, SETTINGS)
 
 
 def _seed_users_and_default_metamodel(factory: sessionmaker[Session]) -> None:
@@ -342,14 +338,30 @@ def _statuses(result: dict[str, Any]) -> list[str]:
     return [item["status"] for item in result["operations"]]
 
 
+async def _tools(server: FastMCP) -> dict[str, Tool]:
+    """List the tools for a principal with both scopes, so all are visible."""
+    with _acting_as(CREATOR):
+        async with Client(server) as client:
+            return {tool.name: tool for tool in await client.list_tools()}
+
+
+def _write_tools(tools: dict[str, Tool]) -> dict[str, Tool]:
+    """The tools of the one MCP server that are not annotated read-only."""
+    return {
+        name: tool
+        for name, tool in tools.items()
+        if tool.annotations is None or tool.annotations.read_only_hint is not True
+    }
+
+
 @pytest.mark.anyio
 async def test_write_tools_stage_only_and_none_applies(server: FastMCP) -> None:
-    async with Client(server) as client:
-        tools = {tool.name: tool for tool in await client.list_tools()}
+    tools = await _tools(server)
+    write_tools = _write_tools(tools)
 
-    assert set(tools) == WRITE_TOOLS
+    assert set(write_tools) == WRITE_TOOLS
     assert not [name for name in tools if "apply" in name or "reject" in name]
-    for name, tool in tools.items():
+    for name, tool in write_tools.items():
         assert tool.annotations is not None
         assert tool.annotations.read_only_hint is False
         assert tool.annotations.open_world_hint is False
@@ -363,29 +375,26 @@ async def test_write_tools_stage_only_and_none_applies(server: FastMCP) -> None:
 async def test_write_instructions_and_docstrings_explain_the_workflow(
     server: FastMCP,
 ) -> None:
-    async with Client(server) as client:
-        tools = {tool.name: tool for tool in await client.list_tools()}
+    tools = await _tools(server)
 
-    instructions = server.instructions or ""
+    instructions = " ".join((server.instructions or "").split())
     assert "create_change_set, add_operations, validate_change_set" in instructions
-    assert "Nothing is applied until a\nperson approves it" in instructions
+    assert "Nothing is applied until a person approves it" in instructions
     add = tools["add_operations"].description or ""
     assert "`$ref`" in add
     assert "referred to verbatim" in add
     assert "stops at the first failing operation" in (
         tools["validate_change_set"].description or ""
     )
-    for tool in tools.values():
-        if tool.name not in {"remove_operation", "discard_change_set"}:
-            assert "Nothing is applied until a human approves it" in " ".join(
-                (tool.description or "").split()
-            )
+    for name in WRITE_TOOLS - {"remove_operation", "discard_change_set"}:
+        assert "Nothing is applied until a human approves it" in " ".join(
+            (tools[name].description or "").split()
+        )
 
 
 @pytest.mark.anyio
 async def test_full_staging_workflow_changes_no_business_table(
     server: FastMCP,
-    reader: FastMCP,
     session_factory: sessionmaker[Session],
     organisation_key: str,
 ) -> None:
@@ -417,7 +426,7 @@ async def test_full_staging_workflow_changes_no_business_table(
     submitted = await _call(
         server, "submit_change_set", {"change_set_key": change_set_key}
     )
-    detail = await _call(reader, "get_change_set", {"change_set_key": change_set_key})
+    detail = await _call(server, "get_change_set", {"change_set_key": change_set_key})
 
     assert created["status"] == "draft"
     assert created["title"] == "AI plan"
@@ -476,7 +485,6 @@ async def test_full_staging_workflow_changes_no_business_table(
 @pytest.mark.anyio
 async def test_validation_returns_each_operation_and_stops_at_the_first_error(
     server: FastMCP,
-    reader: FastMCP,
     organisation_key: str,
 ) -> None:
     operations: list[dict[str, Any]] = [
@@ -494,7 +502,7 @@ async def test_validation_returns_each_operation_and_stops_at_the_first_error(
     failed = await _call(
         server, "validate_change_set", {"change_set_key": change_set_key}
     )
-    stored = await _call(reader, "get_change_set", {"change_set_key": change_set_key})
+    stored = await _call(server, "get_change_set", {"change_set_key": change_set_key})
     not_submitted = await _call(
         server, "submit_change_set", {"change_set_key": change_set_key}
     )
@@ -528,7 +536,6 @@ async def test_validation_returns_each_operation_and_stops_at_the_first_error(
 @pytest.mark.anyio
 async def test_validation_reports_replacements_for_information_only(
     server: FastMCP,
-    reader: FastMCP,
     session_factory: sessionmaker[Session],
     organisation_key: str,
 ) -> None:
@@ -568,7 +575,7 @@ async def test_validation_reports_replacements_for_information_only(
     validated = await _call(
         server, "validate_change_set", {"change_set_key": change_set_key}
     )
-    detail = await _call(reader, "get_change_set", {"change_set_key": change_set_key})
+    detail = await _call(server, "get_change_set", {"change_set_key": change_set_key})
 
     assert validated["ok"] is True
     replacement = validated["replacements"]["operations"][0]
@@ -596,7 +603,6 @@ async def test_editing_a_submitted_change_set_is_rejected(
 @pytest.mark.anyio
 async def test_editing_another_users_change_set_is_rejected(
     server: FastMCP,
-    reader: FastMCP,
     session_factory: sessionmaker[Session],
     organisation_key: str,
 ) -> None:
@@ -609,7 +615,7 @@ async def test_editing_another_users_change_set_is_rejected(
     for name, arguments in _edit_calls(change_set_key):
         assert await _error(server, name, arguments, OTHER_USER) == message, name
     readable = await _call(
-        reader, "get_change_set", {"change_set_key": change_set_key}, OTHER_USER
+        server, "get_change_set", {"change_set_key": change_set_key}, OTHER_USER
     )
     # Another grant of the creating User may change the draft.
     added = await _call(
@@ -642,9 +648,7 @@ def _edit_calls(change_set_key: str) -> list[tuple[str, dict[str, object]]]:
 
 
 @pytest.mark.anyio
-async def test_discard_ends_the_draft(
-    server: FastMCP, reader: FastMCP, organisation_key: str
-) -> None:
+async def test_discard_ends_the_draft(server: FastMCP, organisation_key: str) -> None:
     change_set_key = await _create_with(server, organisation_key, [EVENT_OPERATION])
 
     discarded = await _call(
@@ -655,7 +659,7 @@ async def test_discard_ends_the_draft(
         "add_operations",
         {"change_set_key": change_set_key, "operations": [EVENT_OPERATION]},
     )
-    detail = await _call(reader, "get_change_set", {"change_set_key": change_set_key})
+    detail = await _call(server, "get_change_set", {"change_set_key": change_set_key})
 
     assert discarded["status"] == "discarded"
     assert error == (
@@ -779,7 +783,6 @@ async def test_tool_boundary_input_limits(
 @pytest.mark.anyio
 async def test_unknown_change_set_and_organisation_are_errors(
     server: FastMCP,
-    reader: FastMCP,
     session_factory: sessionmaker[Session],
     organisation_key: str,
 ) -> None:
@@ -801,7 +804,7 @@ async def test_unknown_change_set_and_organisation_are_errors(
     for name, arguments in _edit_calls(change_set_key):
         assert await _error(server, name, arguments) == "Change set not found.", name
     assert (
-        await _error(reader, "get_change_set", {"change_set_key": change_set_key})
+        await _error(server, "get_change_set", {"change_set_key": change_set_key})
         == "Change set not found."
     )
 
@@ -891,7 +894,6 @@ async def test_a_database_timeout_is_a_retryable_tool_error(
 @pytest.mark.anyio
 async def test_read_tools_list_and_filter_change_sets(
     server: FastMCP,
-    reader: FastMCP,
     organisation_key: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -907,32 +909,32 @@ async def test_read_tools_list_and_filter_change_sets(
         return [item["id"] for item in result["change_sets"]]
 
     every = await _call(
-        reader, "list_change_sets", {"organisation_key": organisation_key}
+        server, "list_change_sets", {"organisation_key": organisation_key}
     )
     submitted = await _call(
-        reader,
+        server,
         "list_change_sets",
         {"organisation_key": organisation_key, "status": "submitted"},
     )
     by_scenario = await _call(
-        reader,
+        server,
         "list_change_sets",
         {"organisation_key": organisation_key, "scenario_key": "reality"},
         OTHER_USER,
     )
     unknown_scenario = await _error(
-        reader,
+        server,
         "list_change_sets",
         {"organisation_key": organisation_key, "scenario_key": "missing"},
     )
     unknown_status = await _error(
-        reader,
+        server,
         "list_change_sets",
         {"organisation_key": organisation_key, "status": "pending"},
     )
     monkeypatch.setattr(read_server, "LIST_CHANGE_SETS_MAX_ITEMS", 2)
     bounded = await _call(
-        reader, "list_change_sets", {"organisation_key": organisation_key}
+        server, "list_change_sets", {"organisation_key": organisation_key}
     )
 
     assert set(keys(every)) == {on_reality, new_scenario, empty}
@@ -952,9 +954,8 @@ async def test_read_tools_list_and_filter_change_sets(
 
 
 @pytest.mark.anyio
-async def test_change_set_read_tools_are_read_only(reader: FastMCP) -> None:
-    async with Client(reader) as client:
-        tools = {tool.name: tool for tool in await client.list_tools()}
+async def test_change_set_read_tools_are_read_only(server: FastMCP) -> None:
+    tools = await _tools(server)
 
     for name in ("list_change_sets", "get_change_set"):
         annotations = tools[name].annotations
@@ -976,7 +977,7 @@ REVIEW_TOOLS = {"apply_change_set", "reject_change_set"}
 
 @pytest.fixture()
 def review_server(runtime: McpToolRuntime) -> FastMCP:
-    return build_write_server(runtime, REVIEW_SETTINGS)
+    return build_mcp_server(runtime, REVIEW_SETTINGS)
 
 
 async def _submitted(
@@ -990,9 +991,9 @@ async def _submitted(
     return change_set_key
 
 
-async def _review_fingerprint(reader: FastMCP, change_set_key: str) -> str:
+async def _review_fingerprint(server: FastMCP, change_set_key: str) -> str:
     review = await _call(
-        reader, "get_change_set_review", {"change_set_key": change_set_key}
+        server, "get_change_set_review", {"change_set_key": change_set_key}
     )
     return review["review_fingerprint"]
 
@@ -1018,10 +1019,9 @@ def _review_audit(
 async def test_the_switch_registers_apply_and_reject_as_destructive(
     review_server: FastMCP,
 ) -> None:
-    async with Client(review_server) as client:
-        tools = {tool.name: tool for tool in await client.list_tools()}
+    tools = await _tools(review_server)
 
-    assert set(tools) == WRITE_TOOLS | REVIEW_TOOLS
+    assert set(_write_tools(tools)) == WRITE_TOOLS | REVIEW_TOOLS
     for name in REVIEW_TOOLS:
         annotations = tools[name].annotations
         assert annotations is not None
@@ -1041,11 +1041,10 @@ async def test_the_switch_registers_apply_and_reject_as_destructive(
 
 
 async def _descriptions(server: FastMCP) -> dict[str, str]:
-    async with Client(server) as client:
-        return {
-            tool.name: " ".join((tool.description or "").split())
-            for tool in await client.list_tools()
-        }
+    return {
+        name: " ".join((tool.description or "").split())
+        for name, tool in (await _tools(server)).items()
+    }
 
 
 @pytest.mark.anyio
@@ -1077,16 +1076,73 @@ def test_review_wording_that_a_docstring_lacks_fails_the_build(
         {"create_change_set": (("A sentence it does not contain.", "New."),)},
     )
 
-    build_write_server(runtime, SETTINGS)
+    build_mcp_server(runtime, SETTINGS)
     with pytest.raises(ValueError, match="create_change_set docstring lacks"):
-        build_write_server(runtime, REVIEW_SETTINGS)
+        build_mcp_server(runtime, REVIEW_SETTINGS)
+
+
+# The one server's instructions (TASK-074): reading, staging and, with the
+# review switch, the in-chat review, without naming separate services.
+OLD_SERVICE_WORDING = (
+    "read service",
+    "write service",
+    "read server",
+    "write server",
+    "/api/mcp/read",
+    "/api/mcp/write",
+)
+IN_CHAT_REVIEW_SENTENCES = (
+    "A person decides every submitted change set, in Schatten at the returned "
+    "review URL or here in the chat.",
+    "Call apply_change_set with that review's review_fingerprint, or "
+    "reject_change_set, only when the user explicitly tells you to in this "
+    "conversation,",
+)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("review_enabled", [False, True])
+async def test_one_server_instructions_cover_reading_and_staging(
+    runtime: McpToolRuntime, review_enabled: bool
+) -> None:
+    combined = build_mcp_server(
+        runtime, REVIEW_SETTINGS if review_enabled else SETTINGS
+    )
+
+    assert combined.name == "Schatten"
+    assert combined.instructions == (
+        REVIEW_INSTRUCTIONS if review_enabled else INSTRUCTIONS
+    )
+    text = " ".join((combined.instructions or "").split())
+    assert "start with whoami and list_organisations" in text
+    assert "get_change_set_review shows what applying a submitted one" in text
+    assert "The prompts model_building and timeseries_generation" in text
+    assert "create_change_set, add_operations, validate_change_set" in text
+    assert "then submit_change_set" in text
+    assert (
+        "The change-set tools are listed only when both the user's role and the "
+        "access granted to this connection allow proposing changes." in text
+    )
+    for sentence in IN_CHAT_REVIEW_SENTENCES:
+        assert (sentence in text) is review_enabled
+    assert ("apply_change_set" in text) is review_enabled
+    assert ("reject_change_set" in text) is review_enabled
+    assert ("no tool here can apply a change set" in text) is not review_enabled
+    # Tool descriptions and their argument descriptions name tools directly.
+    descriptions = [
+        f"{tool.description} {json.dumps(tool.input_schema)}"
+        for tool in (await _tools(combined)).values()
+    ]
+    assert any("of list_organisations." in item for item in descriptions)
+    for wording in OLD_SERVICE_WORDING:
+        assert wording not in text.lower()
+        assert not [item for item in descriptions if wording in item.lower()]
 
 
 @pytest.mark.anyio
 async def test_mcp_apply_applies_another_users_change_set_and_records_the_client(
     server: FastMCP,
     review_server: FastMCP,
-    reader: FastMCP,
     session_factory: sessionmaker[Session],
     organisation_key: str,
 ) -> None:
@@ -1095,7 +1151,7 @@ async def test_mcp_apply_applies_another_users_change_set_and_records_the_client
     )
     before = _row_counts(session_factory)
     review = await _call(
-        reader, "get_change_set_review", {"change_set_key": change_set_key}
+        server, "get_change_set_review", {"change_set_key": change_set_key}
     )
     with session_factory() as session:
         rest_review = change_sets_service.review_detail(
@@ -1141,7 +1197,7 @@ async def test_mcp_apply_applies_another_users_change_set_and_records_the_client
             select(Scenario).where(Scenario.scenario_key == applied["refs"]["$plan"])
         ).one()
         assert plan.created_by == OTHER_USER_ID
-    detail = await _call(reader, "get_change_set", {"change_set_key": change_set_key})
+    detail = await _call(server, "get_change_set", {"change_set_key": change_set_key})
     assert detail["reviewed_via"] == "mcp"
     assert detail["applied_result"]["status"] == "applied"
 
@@ -1185,11 +1241,10 @@ async def test_mcp_apply_needs_the_current_review_fingerprint(
 async def test_mcp_apply_and_reject_need_a_submitted_change_set(
     server: FastMCP,
     review_server: FastMCP,
-    reader: FastMCP,
     organisation_key: str,
 ) -> None:
     draft_key = await _create_with(server, organisation_key, [EVENT_OPERATION])
-    fingerprint = await _review_fingerprint(reader, draft_key)
+    fingerprint = await _review_fingerprint(server, draft_key)
 
     applied = await _error(
         review_server,
@@ -1218,7 +1273,6 @@ async def test_mcp_apply_and_reject_need_a_submitted_change_set(
 async def test_mcp_apply_failure_marks_the_change_set_failed_with_the_client(
     server: FastMCP,
     review_server: FastMCP,
-    reader: FastMCP,
     session_factory: sessionmaker[Session],
     organisation_key: str,
 ) -> None:
@@ -1239,7 +1293,7 @@ async def test_mcp_apply_failure_marks_the_change_set_failed_with_the_client(
             }
         ],
     )
-    fingerprint = await _review_fingerprint(reader, change_set_key)
+    fingerprint = await _review_fingerprint(server, change_set_key)
     # The same key is taken after submit, so re-validation fails.
     with session_factory() as session:
         reality = session.scalars(select(Scenario)).one()
@@ -1280,7 +1334,6 @@ async def test_mcp_apply_failure_marks_the_change_set_failed_with_the_client(
 async def test_mcp_reject_records_the_note_and_the_client(
     server: FastMCP,
     review_server: FastMCP,
-    reader: FastMCP,
     session_factory: sessionmaker[Session],
     organisation_key: str,
 ) -> None:
@@ -1301,7 +1354,7 @@ async def test_mcp_reject_records_the_note_and_the_client(
         principal=CREATOR_SECOND_GRANT,
     )
     again = await _error(review_server, "reject_change_set", {"change_set_key": noted})
-    fingerprint = await _review_fingerprint(reader, noted)
+    fingerprint = await _review_fingerprint(server, noted)
     apply = await _error(
         review_server,
         "apply_change_set",
@@ -1358,12 +1411,11 @@ async def test_mcp_reject_note_rejects_nul_and_long_text(
 async def test_mcp_review_maps_lock_and_unavailable_errors_to_retry_messages(
     server: FastMCP,
     review_server: FastMCP,
-    reader: FastMCP,
     organisation_key: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     change_set_key = await _submitted(server, organisation_key, [EVENT_OPERATION])
-    fingerprint = await _review_fingerprint(reader, change_set_key)
+    fingerprint = await _review_fingerprint(server, change_set_key)
 
     def locked(*_args: object, **_kwargs: object) -> object:
         raise engine.ChangeSetApplyError(
@@ -1390,7 +1442,6 @@ async def test_mcp_review_maps_lock_and_unavailable_errors_to_retry_messages(
 @pytest.mark.anyio
 async def test_change_set_review_reports_replacements_against_current_data(
     server: FastMCP,
-    reader: FastMCP,
     session_factory: sessionmaker[Session],
     organisation_key: str,
 ) -> None:
@@ -1429,7 +1480,7 @@ async def test_change_set_review_reports_replacements_against_current_data(
     )
 
     first = await _call(
-        reader, "get_change_set_review", {"change_set_key": change_set_key}
+        server, "get_change_set_review", {"change_set_key": change_set_key}
     )
     with session_factory() as session:
         session.add(
@@ -1439,7 +1490,7 @@ async def test_change_set_review_reports_replacements_against_current_data(
         )
         session.commit()
     second = await _call(
-        reader, "get_change_set_review", {"change_set_key": change_set_key}
+        server, "get_change_set_review", {"change_set_key": change_set_key}
     )
 
     replacement = first["replacements"][0]
@@ -1453,13 +1504,13 @@ async def test_change_set_review_reports_replacements_against_current_data(
 
 @pytest.mark.anyio
 async def test_change_set_review_timeout_is_a_retryable_tool_error(
-    reader: FastMCP, monkeypatch: pytest.MonkeyPatch
+    server: FastMCP, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     def timed_out(*_args: object, **_kwargs: object) -> object:
         raise _query_cancelled()
 
     monkeypatch.setattr(change_sets_service, "change_set_review", timed_out)
 
-    assert await _error(reader, "get_change_set_review", {"change_set_key": "any"}) == (
+    assert await _error(server, "get_change_set_review", {"change_set_key": "any"}) == (
         "The change set is busy or the database timed out; try again shortly."
     )

@@ -52,7 +52,7 @@ Päätetty teknologiapino:
 
 - frontend: React, TypeScript, Vite, pnpm, Vitest, ESLint, Prettier hakemistossa `frontend/`
 - backend: Python, FastAPI, Pydantic, uv, pytest, pyright, Ruff hakemistossa `backend/`
-- MCP: `fastmcp` 4 (ADR-015) for the MCP read and write endpoints in the backend
+- MCP: `fastmcp` 4 (ADR-015) for the MCP endpoint `/api/mcp` in the backend
 - database: PostgreSQL
 - ORM: SQLAlchemy
 - migrations: repository-owned Python/Psycopg runner and paired SQL migrations
@@ -133,7 +133,7 @@ admin "Revoke AI connections" action (`frontend/src/features/ai/`) and
 TASK-069M's Metrics tab AI panel (connect instructions, connections and
 change-set review with apply and reject, `frontend/src/features/ai/AiPanel.tsx`)
 and TASK-069N's Schatten skills, Claude Code plugin and repository marketplace
-(`backend/app/mcp/plugin/`, `.claude-plugin/marketplace.json`), read-server MCP
+(`backend/app/mcp/plugin/`, `.claude-plugin/marketplace.json`), MCP
 prompts and skill zip download and TASK-069O's MCP change-set review
 (ADR-015 amendment of 2026-10-29: the read tool `get_change_set_review`, the
 write tools `apply_change_set` and `reject_change_set` behind
@@ -148,11 +148,19 @@ section 14) and env-file MCP switches (production reads `MCP_ENABLED`,
 complete the implementation. TASK-069P's separately approved production
 enablement deployed release `20261103T090415Z-df98a2e7c05a` with both switches
 on, accepted and tagged `v0.2.0` on 2026-11-03; its record, covering Claude Code and the claude.ai and Claude
-Desktop read connectors, is in `docs/qa/AI-MCP-QA-CHECKLIST.md`. Users chat in their own MCP client on
+Desktop read connectors, is in `docs/qa/AI-MCP-QA-CHECKLIST.md`. TASK-074
+implements ADR-015's amendment of 2026-11-03: one MCP endpoint `/api/mcp`
+(FastMCP server "Schatten", one OAuth resource, one grant with `schatten.read`
+and `schatten.write`) replaces `/api/mcp/read` and `/api/mcp/write`, which
+answer 404; every tool and prompt checks its own scope (`requires_scope`), so
+`ROLE_SCOPES` alone can later limit a role to read-only; migration 020
+(`020_alter_mcp_oauth_single_resource`) deletes the old grants; the plugin is
+0.3.0 with one server `schatten`. Its production deployment needs a separate
+approval (`deploy-release --mcp-approval`). Users chat in their own MCP client on
 their own AI subscription; Schatten never calls an LLM or stores LLM keys.
-FastAPI hosts `/api/mcp/read` (`schatten.read`) and `/api/mcp/write`
-(`schatten.write`) and acts as OAuth 2.1 authorization server over the existing
-Entra login, without changing the Entra registration. The write service stages
+FastAPI hosts `/api/mcp` (read tools and prompts need `schatten.read`, write
+tools `schatten.write`) and acts as OAuth 2.1 authorization server over the existing
+Entra login, without changing the Entra registration. The write tools stage
 AI change sets. **A human decides every apply and reject**: in the Metrics tab,
 or, with `MCP_CHANGE_SET_REVIEW_ENABLED=true`, by approving the MCP client's
 `apply_change_set` or `reject_change_set` call; no other MCP tool may apply

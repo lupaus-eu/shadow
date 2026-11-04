@@ -28,7 +28,7 @@ NO_STORE_PATH_PREFIXES = (
     "/api/v1/auth",
     "/api/v1/ai/oauth",
     "/api/oauth",
-    "/api/mcp/",
+    "/api/mcp",
     "/.well-known/oauth-",
 )
 
@@ -48,13 +48,13 @@ def create_app(
     # ADR-015: MCP traffic is limited per grant by its own limiter, never by
     # the login or OAuth limiters.
     mcp_rate_limiter = FixedWindowRateLimiter()
-    mcp_endpoints: list[McpEndpoint] = []
+    mcp_endpoint: McpEndpoint | None = None
     if resolved_settings.mcp_enabled:
         # Imported only here: fastmcp costs memory and startup time and sets
         # up its own logging on import, so a disabled backend never loads it.
-        from app.mcp.endpoints import build_mcp_endpoints
+        from app.mcp.endpoints import build_mcp_endpoint
 
-        mcp_endpoints = build_mcp_endpoints(
+        mcp_endpoint = build_mcp_endpoint(
             resolved_settings,
             rate_limiter=mcp_rate_limiter,
             session_factory=mcp_session_factory,
@@ -65,10 +65,10 @@ def create_app(
         if resolved_settings.app_environment != "test":
             resolved_provider.initialize()
         async with AsyncExitStack() as stack:
-            # One combined lifespan runs both MCP servers' session managers.
-            for endpoint in mcp_endpoints:
+            # The app's lifespan also runs the MCP server's session manager.
+            if mcp_endpoint is not None:
                 await stack.enter_async_context(
-                    endpoint.http_app.lifespan(endpoint.http_app)
+                    mcp_endpoint.http_app.lifespan(mcp_endpoint.http_app)
                 )
             yield
 
@@ -162,7 +162,8 @@ def create_app(
         app.include_router(mcp_oauth_router)
         app.include_router(mcp_oauth_consent_router)
         app.include_router(ai_skills_router)
-    app.router.routes.extend(endpoint.route for endpoint in mcp_endpoints)
+    if mcp_endpoint is not None:
+        app.router.routes.append(mcp_endpoint.route)
     return app
 
 

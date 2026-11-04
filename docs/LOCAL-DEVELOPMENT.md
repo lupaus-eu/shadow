@@ -63,22 +63,22 @@ docker compose --env-file .env --env-file .env.entra.local exec -T local-caddy \
   caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
 ```
 
-## AI via MCP settings (TASK-069E, TASK-069F, TASK-069G, TASK-069N, TASK-069O)
+## AI via MCP settings (TASK-069E, TASK-069F, TASK-069G, TASK-069N, TASK-069O, TASK-074)
 
 MCP is off by default. `docker-compose.yml` passes these backend settings with
 the defaults shown in `.env.example`; override them in `.env` (no secrets):
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
-| `MCP_ENABLED` | `false` | With `false`, the MCP endpoints `/api/mcp/read` and `/api/mcp/write`, OAuth discovery, `/api/oauth/register`, `/api/oauth/authorize`, `/api/oauth/token`, `/api/oauth/revoke`, the `/api/v1/ai/oauth/consent` API and the skill zip download `/api/v1/ai/skills/{name}.zip` return 404 and `GET /api/v1/auth/session` reports `features.mcp=false`; the `/api/v1/ai/connections` API stays available |
-| `MCP_CHANGE_SET_REVIEW_ENABLED` | `false` | With `true` (and `MCP_ENABLED=true`) the write server also lists `apply_change_set` and `reject_change_set`, and the session reports `features.mcpChangeSetReview=true` (ADR-015 amendment) |
+| `MCP_ENABLED` | `false` | With `false`, the MCP endpoint `/api/mcp`, OAuth discovery, `/api/oauth/register`, `/api/oauth/authorize`, `/api/oauth/token`, `/api/oauth/revoke`, the `/api/v1/ai/oauth/consent` API and the skill zip download `/api/v1/ai/skills/{name}.zip` return 404 and `GET /api/v1/auth/session` reports `features.mcp=false`; the `/api/v1/ai/connections` API stays available |
+| `MCP_CHANGE_SET_REVIEW_ENABLED` | `false` | With `true` (and `MCP_ENABLED=true`) the MCP server also lists the write tools `apply_change_set` and `reject_change_set`, and the session reports `features.mcpChangeSetReview=true` (ADR-015 amendment) |
 | `MCP_OAUTH_REDIRECT_URIS` | claude.ai and claude.com callbacks plus `http://localhost:{port}/callback` (Claude Code) | Redirect URI allowlist; `{port}` is literal. A local client with another loopback callback, such as OpenCode's `http://127.0.0.1:{port}/mcp/oauth/callback`, needs its own entry in `.env` |
 | `MCP_OAUTH_AUTHORIZATION_REQUEST_LIFETIME_SECONDS`, `MCP_OAUTH_AUTHORIZATION_CODE_LIFETIME_SECONDS` | `600`, `60` | Pending request and code lifetimes |
 | `MCP_OAUTH_ACCESS_TOKEN_LIFETIME_SECONDS`, `MCP_OAUTH_REFRESH_TOKEN_IDLE_LIFETIME_SECONDS`, `MCP_OAUTH_GRANT_LIFETIME_SECONDS` | `3600`, `604800`, `2592000` | Access token lifetime, refresh token idle timeout and absolute grant lifetime; no token outlives its grant |
 | `MCP_OAUTH_REGISTER_RATE_LIMIT_PER_MINUTE`, `..._AUTHORIZE_...`, `..._TOKEN_...`, `..._REVOKE_...` | `30`, `20`, `300`, `60` | Per-IP buckets of the separate `oauth_rate_limiter` |
 | `MCP_OAUTH_MAX_PENDING_REQUESTS_PER_CLIENT`, `MCP_OAUTH_MAX_PENDING_REQUESTS`, `MCP_OAUTH_MAX_CLIENTS` | `20`, `1000`, `10000` | Pending request and client caps |
 | `MCP_TOOL_CONCURRENCY` | `4` | Shared `anyio.CapacityLimiter` for MCP bearer verification and tool database work (1 to 64); change-set validate and submit use two connections per token |
-| `MCP_RATE_LIMIT_PER_MINUTE` | `120` | Requests per grant and minute on `/api/mcp/*`, counted by the separate `mcp_rate_limiter` |
+| `MCP_RATE_LIMIT_PER_MINUTE` | `120` | Requests per grant and minute on `/api/mcp`, reads and writes together in one bucket (TASK-074), counted by the separate `mcp_rate_limiter` |
 | `AI_CHANGE_SET_STATEMENT_TIMEOUT_MS`, `AI_CHANGE_SET_LOCK_TIMEOUT_MS` | `30000`, `5000` | Change-set `statement_timeout` and apply `lock_timeout`; the statement timeout must be longer |
 
 To try the endpoints locally, set `MCP_ENABLED=true` in `.env` and recreate the
@@ -94,27 +94,26 @@ was reused. Never point it at a key.
 
 ```bash
 export NODE_EXTRA_CA_CERTS="$PWD/.local/app-tls/ca.crt"
-claude mcp add --transport http schatten-read https://app.localhost/api/mcp/read
+claude mcp add --transport http schatten https://app.localhost/api/mcp
 claude
 ```
 
-In Claude Code, run `/mcp`, select `schatten-read` and authenticate. Claude
-Code registers itself and opens the consent page in the browser, where you sign
-in with Entra and approve read access; the code returns to Claude Code on an
-allowlisted loopback redirect and Claude Code exchanges it for tokens. Then ask
-it to call the `whoami` tool, which returns your Schatten User. `schatten-write`
-(`https://app.localhost/api/mcp/write`) connects the same way with a separate
-grant:
+In Claude Code, run `/mcp`, select `schatten` and authenticate **once**.
+Claude Code registers itself and opens the consent page in the browser, where
+you sign in with Entra and approve read and write access; the code returns to
+Claude Code on an allowlisted loopback redirect and Claude Code exchanges it
+for tokens. One connection then appears in the Metrics tab AI panel. Ask it
+to call the `whoami` tool, which returns your Schatten User. The one grant
+covers every tool your role allows: both current roles see all read and write
+tools and both prompts. Until TASK-074 the read and write tools were separate
+servers (`/api/mcp/read` and `/api/mcp/write`, now 404); remove such old
+entries with `claude mcp remove`.
 
-```bash
-claude mcp add --transport http schatten-write https://app.localhost/api/mcp/write
-```
-
-With both connected, ask Claude Code to stage a small change set, for example an
+Ask Claude Code to stage a small change set, for example an
 event in the `reality` scenario: it calls `create_change_set`,
 `add_operations`, `validate_change_set` and `submit_change_set` and returns the
 review URL `https://app.localhost/schatten/<org>/metrics?changeSet=<key>`.
-`get_change_set` on `schatten-read` shows the submitted change set. With
+`get_change_set` shows the submitted change set. With
 `MCP_CHANGE_SET_REVIEW_ENABLED=false` nothing is applied by MCP: a human opens
 the review URL, which opens the Metrics tab AI panel on the change set
 (TASK-069M), and applies or rejects it there through the review API
@@ -123,9 +122,9 @@ the review URL, which opens the Metrics tab AI panel on the change set
 
 To try the in-chat review (TASK-069O), also set
 `MCP_CHANGE_SET_REVIEW_ENABLED=true` in `.env`, recreate the backend and
-reconnect `schatten-write` in `/mcp` so that Claude Code reloads its tool
-list. Ask Claude Code to review the submitted change set: it calls
-`get_change_set_review` on `schatten-read` and shows the operations and any
+reconnect `schatten` in `/mcp` so that Claude Code reloads its tool list
+(21 tools with the switch on). Ask Claude Code to review the submitted change
+set: it calls `get_change_set_review` and shows the operations and any
 replaced data. Tell it to apply or reject; Claude Code asks for permission
 before `apply_change_set` or `reject_change_set` (do not add them to an allow
 rule). The Metrics tab then shows the change set as reviewed through the AI
@@ -134,18 +133,20 @@ client.
 An unauthenticated request shows the discovery challenge:
 
 ```bash
-curl -si --cacert "$NODE_EXTRA_CA_CERTS" -X POST https://app.localhost/api/mcp/read
+curl -si --cacert "$NODE_EXTRA_CA_CERTS" -X POST https://app.localhost/api/mcp
 ```
 
 It answers `401` with
-`WWW-Authenticate: Bearer resource_metadata="https://app.localhost/.well-known/oauth-protected-resource/api/mcp/read"`.
+`WWW-Authenticate: Bearer resource_metadata="https://app.localhost/.well-known/oauth-protected-resource/api/mcp"`.
+That document lists the scopes `schatten.read` and `schatten.write`. The old
+paths `/api/mcp/read` and `/api/mcp/write` answer 404.
 
 ### Skills, the Claude Code plugin and MCP prompts locally (TASK-069N)
 
 The skills are `backend/app/mcp/plugin/skills/*/SKILL.md`. The plugin in
-`backend/app/mcp/plugin/` bundles them with a `.mcp.json` that points at the
-production servers `https://schatten.lupaus.eu/api/mcp/read` and `/write`.
-Locally, keep the `app.localhost` servers added above and load the plugin for
+`backend/app/mcp/plugin/` bundles them with a `.mcp.json` whose one server
+`schatten` points at production, `https://schatten.lupaus.eu/api/mcp`.
+Locally, keep the `app.localhost` server added above and load the plugin for
 its skills, either for one session straight from the checkout (picks up
 `SKILL.md` edits on the next start):
 
@@ -160,13 +161,13 @@ claude plugin marketplace add ./
 claude plugin install schatten@schatten
 ```
 
-The plugin's own servers (`plugin:schatten:schatten-read` and
-`plugin:schatten:schatten-write` in `/mcp`) connect to production, where MCP
-is on since 2026-11-03 (TASK-069P); disable them in `/mcp` for local work.
-`claude --plugin-dir backend/app/mcp/plugin plugin details schatten` (or
+The plugin's own server (`plugin:schatten:schatten` in `/mcp`) connects to
+production, where MCP is on since 2026-11-03 (TASK-069P); disable it in `/mcp`
+for local work. Production serves `/api/mcp` only after the release that
+brings TASK-074 there. `claude --plugin-dir backend/app/mcp/plugin plugin details schatten` (or
 `claude plugin details schatten@schatten` once installed) lists the skills
-`schatten-model-building` and `schatten-timeseries-generation` and both
-servers. Then ask for a small model, for example a
+`schatten-model-building` and `schatten-timeseries-generation` and the one
+`schatten` server. Then ask for a small model, for example a
 team with a goal measured by a monthly revenue metric and two years of
 generated revenue. Claude Code should call `get_type_catalog` first, preview
 the generator spec with `preview_generated_timeserie`, stage, validate and
@@ -174,10 +175,10 @@ submit a change set, and return the review URL without claiming that anything
 was applied. With the in-chat review enabled it should also offer to review
 the change set in the chat and apply it only when you say so.
 
-The read server's prompts `model_building` and `timeseries_generation` serve
-the same `SKILL.md` bodies; Claude Code offers them as
-`/mcp__schatten-read__model_building` and
-`/mcp__schatten-read__timeseries_generation`. The backend reads the files when
+The MCP prompts `model_building` and `timeseries_generation` serve the same
+`SKILL.md` bodies; Claude Code offers them as
+`/mcp__schatten__model_building` and
+`/mcp__schatten__timeseries_generation`. The backend reads the files when
 it builds the app, and the dev server reloads only on Python changes, so
 restart the backend container after editing a skill
 (`docker compose --env-file .env --env-file .env.entra.local restart backend`).

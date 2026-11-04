@@ -27,8 +27,9 @@ Päätetty tekninen perusrakenne:
 
 - frontend: React, TypeScript, Vite, pnpm, Vitest, ESLint, Prettier hakemistossa `frontend/`
 - backend: Python, FastAPI, Pydantic, uv, pytest, pyright, Ruff hakemistossa `backend/`
-- MCP: `fastmcp` 4 (ADR-015) serves the MCP read and write endpoints inside
-  the backend process (TASK-069G)
+- MCP: `fastmcp` 4 (ADR-015) serves the one MCP endpoint `/api/mcp` inside
+  the backend process (TASK-069G; one endpoint in place of the read and write
+  endpoints since TASK-074)
 - database: PostgreSQL
 - ORM: SQLAlchemy
 - authentication target: provider-neutral backend OIDC connecting directly to
@@ -56,11 +57,12 @@ Päätetty tekninen perusrakenne:
   architecture, detached snapshot preparation, durable request persistence,
   request APIs, supervised worker calculation, atomic publication, current-tab
   UI and supported-runtime wiring are implemented
-- AI via MCP: ADR-015 accepts read and write MCP services in the backend,
-  Schatten as OAuth 2.1 authorization server for MCP clients over the existing
-  Entra login, and AI change sets that a human applies or rejects, in
-  Schatten or, since the 2026-10-29 amendment, by approving the MCP client's
-  call. This is an accepted design. TASK-069B's flush-only domain service transaction
+- AI via MCP: ADR-015 accepts one MCP service with read and write scopes in
+  the backend (since the 2026-11-03 amendment; separate read and write
+  services before it), Schatten as OAuth 2.1 authorization server for MCP
+  clients over the existing Entra login, and AI change sets that a human
+  applies or rejects, in Schatten or, since the 2026-10-29 amendment, by
+  approving the MCP client's call. This is an accepted design. TASK-069B's flush-only domain service transaction
   cores, TASK-069C's deterministic timeseries generator, TASK-069D's MCP
   OAuth schema, TASK-069E's OAuth discovery, registration, authorization
   request and consent API, TASK-069F's token, refresh and revoke endpoints,
@@ -74,8 +76,10 @@ Päätetty tekninen perusrakenne:
   skills, Claude Code plugin, MCP prompts and skill zips and TASK-069O's MCP
   change-set review behind `MCP_CHANGE_SET_REVIEW_ENABLED` are implemented,
   and TASK-069P verified the feature locally, documented its operation and,
-  after separate approval, enabled it in production on 2026-11-03 (see
-  [AI Via MCP](#ai-via-mcp))
+  after separate approval, enabled it in production on 2026-11-03.
+  TASK-074 implements the 2026-11-03 amendment (one MCP endpoint `/api/mcp`,
+  per-tool scope checks, migration 020); its production deployment needs a
+  separate approval (see [AI Via MCP](#ai-via-mcp))
 
 Tarkemmat toteutusyksityiskohdat täsmentyvät taskien ja tarvittaessa uusien ADR:ien kautta.
 
@@ -575,11 +579,10 @@ rotating refresh tokens with reuse detection, RFC 7009 revocation, lazy
 cleanup, `verify_access_token` and the always-registered
 `/api/v1/ai/connections` API, in the same package; see the
 [MCP OAuth token sequence](docs/diagrams/generated/sequence-mcp-oauth-tokens.svg))
-and TASK-069G (the `fastmcp` read and write servers at exact routes
-`/api/mcp/read` and `/api/mcp/write`, `McpBearerAuth`, the shared tool
-capacity limiter, the per-grant `mcp_rate_limiter` and the read tools
-`whoami`, `list_organisations`, `list_scenarios` and `list_org_states`, in
-`backend/app/mcp/`) and TASK-069H (the read tools `get_type_catalog`,
+and TASK-069G (the `fastmcp` read and write servers, which TASK-074 merged
+into one, `McpBearerAuth`, the shared tool capacity limiter, the per-grant
+`mcp_rate_limiter` and the read tools `whoami`, `list_organisations`,
+`list_scenarios` and `list_org_states`, in `backend/app/mcp/`) and TASK-069H (the read tools `get_type_catalog`,
 `get_graph`, `list_timeseries`, `get_timeserie`, `list_events` and
 `preview_generated_timeserie`, with bounded value lists that report
 truncation) and TASK-069I (migration 018's `ai_change_sets` and
@@ -615,15 +618,18 @@ reads `MCP_ENABLED`, `MCP_CHANGE_SET_REVIEW_ENABLED` and
 unset), and `deploy-release` refuses to turn MCP or its review on without a
 separate `--mcp-approval` reference. The feature is implemented, and
 TASK-069P's separately approved production enablement turned it and its
-change-set review on in production on 2026-11-03 (`v0.2.0`).
+change-set review on in production on 2026-11-03 (`v0.2.0`). TASK-074
+implements the 2026-11-03 amendment of ADR-015, see
+[One MCP Endpoint](#one-mcp-endpoint); its production deployment is a
+separately approved release.
 
 Users chat in their own MCP-capable AI client (Claude Desktop, claude.ai,
 Claude Code or another) on their own AI subscription. Schatten never calls an
 LLM and never stores LLM keys.
 
 ```text
-AI client / vendor connector --HTTPS Bearer--> Caddy --/api/mcp/read----> FastAPI MCP read service
-                                                     --/api/mcp/write---> FastAPI MCP write service (stages; applies or rejects only with
+AI client / vendor connector --HTTPS Bearer--> Caddy --/api/mcp----------> FastAPI MCP service "Schatten" (read tools: schatten.read;
+                                                                          write tools: schatten.write, stage, and apply or reject only with
                                                                           MCP_CHANGE_SET_REVIEW_ENABLED and the human's approval in the client)
                                                      --/api/oauth, /.well-known/oauth-*--> FastAPI OAuth server
 Browser SPA --session + CSRF--> /api/v1/ai/... consent, connections, change-set review (human apply)
@@ -631,13 +637,13 @@ Browser SPA --session + CSRF--> /api/v1/ai/... consent, connections, change-set 
 
 Accepted design:
 
-- Two FastMCP Streamable HTTP services run in the existing FastAPI process:
-  `/api/mcp/read` (scope `schatten.read`) and `/api/mcp/write` (scope
-  `schatten.write`), stateless with JSON responses. `create_app()` builds
-  them, registers exact GET, POST and DELETE routes wrapped in `McpBearerAuth`
-  (not `app.mount`, which redirects to a trailing slash) and runs both session
-  managers in one combined lifespan. The trailing-slash spelling
-  `/api/mcp/<server>/` answers 404 without `Location` (TASK-071). **Only `apply_change_set`, behind
+- One FastMCP Streamable HTTP service named "Schatten" runs in the existing
+  FastAPI process at `/api/mcp`, stateless with JSON responses, and serves
+  every tool and prompt. `create_app()` builds it, registers one exact GET,
+  POST and DELETE route wrapped in `McpBearerAuth` (not `app.mount`, which
+  redirects to a trailing slash) and runs its session manager in the
+  lifespan. The trailing-slash spelling `/api/mcp/` answers 404 without
+  `Location` (TASK-071). **Only `apply_change_set`, behind
   `MCP_CHANGE_SET_REVIEW_ENABLED`, applies changes through MCP.**
 - Schatten is its own OAuth 2.1 authorization server: discovery, Dynamic
   Client Registration limited by a redirect URI allowlist, mandatory PKCE
@@ -646,16 +652,18 @@ Accepted design:
   `return_to` flow plus a CSRF-protected consent page. The Entra registration
   does not change.
 - Every MCP request re-reads the token, grant, User and role; effective scopes
-  are the grant's scopes intersected with the role's allowed scopes. Each
-  grant and its tokens are bound to one MCP resource and its single scope. MCP
-  endpoints accept only bearer tokens, and `/api/v1` accepts only the session
-  cookie.
+  are the grant's scopes intersected with the role's allowed scopes
+  (`ROLE_SCOPES`). Each grant and its tokens are bound to the one MCP resource
+  `<PUBLIC_ORIGIN>/api/mcp`; one grant covers read and write. The bearer check
+  requires `schatten.read`, and each tool and prompt checks its own scope. The
+  MCP endpoint accepts only bearer tokens, and `/api/v1` accepts only the
+  session cookie.
 - Grants last at most 30 days (refresh tokens expire after 7 idle days)
   without an Entra re-check. That is an accepted trade-off against ADR-004's
   browser-session bounds, so offboarding must soft-delete the User or revoke
   the User's grants. The incident procedure is to disable MCP and revoke
   grants, with no manual database change.
-- The write service stages AI change sets. Dry-run always rolls back.
+- The write tools stage AI change sets. Dry-run always rolls back.
   **A human reviews and applies or rejects each change set**, in the Metrics
   tab or by approving the MCP client's `apply_change_set` or
   `reject_change_set` call; apply is atomic through the domain services' `*_in_transaction`
@@ -672,15 +680,39 @@ Accepted design:
 - Business data read through MCP flows to the user's AI vendor; this is an
   accepted product and security decision.
 
+## One MCP Endpoint
+
+Implemented by TASK-074 under the 2026-11-03 amendment of ADR-015, which
+replaced the read and write services at `/api/mcp/read` and `/api/mcp/write`
+(both now 404, with their metadata documents). A user connects one URL,
+`<origin>/api/mcp`, and authorizes once; the protected-resource metadata
+`/.well-known/oauth-protected-resource/api/mcp` lists `schatten.read` and
+`schatten.write`. `build_mcp_server` (`backend/app/mcp/server.py`) registers
+the read tools (`register_read_tools`) and the write tools
+(`register_write_tools`) on one `FastMCP("Schatten")`. Every read tool and
+both prompts carry `auth=requires_scope(READ_SCOPE)` and every write tool
+`auth=requires_scope(WRITE_SCOPE)` (`backend/app/mcp/auth.py`); `fastmcp`
+hides a component the caller lacks the scope for, so it is not listed and a
+call gets "Unknown tool", and a failing check denies. Authorize accepts an
+omitted `scope` (both), `schatten.read` or both scopes, consent narrows them to
+the User's role, and the token response and connections list report the
+effective scopes. Read-only access is decided by role only: limiting a role is
+a one-line `ROLE_SCOPES` change, and no role is limited today. Migration 020
+(`020_alter_mcp_oauth_single_resource`) deletes the old resources' requests,
+grants and tokens and constrains grants and requests to the new resource and
+scope sets. The per-grant
+`MCP_RATE_LIMIT_PER_MINUTE` bucket now covers reads and writes together.
+Caddy is unchanged.
+
 ## MCP Change-Set Review
 
 Implemented by TASK-069O under the 2026-10-29 amendment of ADR-015. The read
-server's `get_change_set_review` returns what the Metrics tab review shows:
+tool `get_change_set_review` returns what the Metrics tab review shows:
 the operations, the replacement flags and summaries recomputed against current
 data and the `review_fingerprint` (`service.change_set_review`, sharing the
 review API's load). With `MCP_CHANGE_SET_REVIEW_ENABLED=true` (default
-`false`, and no effect without `MCP_ENABLED`) the write server also registers
-`apply_change_set(change_set_key, review_fingerprint)` and
+`false`, and no effect without `MCP_ENABLED`) the MCP server also registers
+the write tools `apply_change_set(change_set_key, review_fingerprint)` and
 `reject_change_set(change_set_key, note)`. They run the engine's apply and
 reject unchanged, on any submitted change set of the organisation, with the
 grant's User as reviewer, and are annotated destructive so that MCP clients
@@ -715,7 +747,7 @@ also before a scenario is selected. The panel has three sections:
   would be discarded; reject takes an optional note. A change set applied or
   rejected through MCP names the reviewing AI client.
 - Connections: TASK-069L's `ConnectionsList`.
-- Connect: the MCP URLs and client steps, the Claude Code plugin install
+- Connect: the MCP URL and client steps, the Claude Code plugin install
   commands and the skill zip downloads, hidden when `features.mcp` is false.
 
 With `features.mcp` false the toggle is shown only when the organisation has
@@ -732,12 +764,13 @@ text, `backend/app/mcp/plugin/skills/<name>/SKILL.md`, which reaches AI
 clients in three ways:
 
 - the Claude Code plugin `schatten` in `backend/app/mcp/plugin/` (the skills
-  and a `.mcp.json` with the production MCP URLs), installed through the
+  and a `.mcp.json` with the one production MCP server `schatten`,
+  `https://schatten.lupaus.eu/api/mcp`), installed through the
   repository-root marketplace `.claude-plugin/marketplace.json`;
 - `GET /api/v1/ai/skills/{name}.zip` (business session, registered only with
   `MCP_ENABLED=true`), the skill folder zipped with the standard library for
   upload to claude.ai or Claude Desktop; and
-- the read server's MCP prompts `model_building` and `timeseries_generation`,
+- the MCP prompts `model_building` and `timeseries_generation`,
   which serve the `SKILL.md` bodies to any MCP client.
 
 `backend/app/mcp/skills.py` loads the files for both the prompts and the zip

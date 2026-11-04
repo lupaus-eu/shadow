@@ -538,9 +538,10 @@ production.
 
 - [ ] Discovery 200 and an unauthenticated MCP request 401 with
       `resource_metadata` on `https://schatten.lupaus.eu`.
-- [ ] claude.ai connector: add `https://schatten.lupaus.eu/api/mcp/read` and
-      `/api/mcp/write`, consent, `whoami`; record client name, redirect URI
-      and whether the client is per user or shared.
+- [ ] claude.ai connector: add `https://schatten.lupaus.eu/api/mcp` (before
+      TASK-074 `/api/mcp/read` and `/api/mcp/write`), consent, `whoami`;
+      record client name, redirect URI and whether the client is per user or
+      shared.
 - [ ] Claude Desktop custom connector: the same.
 - [ ] Claude Code against production with the plugin.
 - [ ] Stage, review and apply one change set on the isolated test
@@ -768,3 +769,39 @@ changes), PostgreSQL integration suites against the local PostgreSQL 18
 | `.github/scripts/verify-production-compose.sh` | Pass (both MCP switches still `false`) |
 
 Repeat them on the final release commit before the enablement release.
+
+## TASK-074 Single MCP Connector
+
+Local end-to-end checks for the 2026-11-03 amendment of ADR-015
+([TASK-074](../../tasks/TASK-074-single-mcp-connector.md)): one MCP endpoint
+`/api/mcp` with per-tool scope checks in place of `/api/mcp/read` and
+`/api/mcp/write`. The records above stay as they are; they describe the two
+servers of that time. The read-only role is covered by the automated tests
+with a stubbed `ROLE_SCOPES`; no role is limited in code. The production
+release of TASK-074 is separate and needs its own approval
+([runbook 14.10](../PRODUCTION-RUNBOOK.md#1410-switching-to-the-single-mcp-connector-task-074)).
+
+| Field | Value |
+| --- | --- |
+| Date | Pending |
+| Tester | Pending |
+| Application | Pending: branch `feature/TASK-074-single-mcp-connector` at the commit tested |
+| Environment | Local `https://app.localhost`, migrated to 020, `MCP_ENABLED=true`, `MCP_CHANGE_SET_REVIEW_ENABLED=true` |
+| Real client | Pending: Claude Code version |
+| Evidence | Pending |
+
+- [ ] Automated: the backend, frontend, PostgreSQL integration, LikeC4 and
+      review-record checks of the task's Testing section pass.
+- [ ] An unauthenticated `curl -X POST https://app.localhost/api/mcp` gives
+      401 with
+      `resource_metadata=.../.well-known/oauth-protected-resource/api/mcp`.
+      `/api/mcp/read` gives 404.
+- [ ] `claude mcp add --transport http schatten https://app.localhost/api/mcp`,
+      then `/mcp` → authenticate **once**. The consent page shows read and
+      write access, and one connection appears in the Metrics tab.
+- [ ] The client lists all 21 tools and both prompts. `whoami` works, and a
+      change set can be staged, submitted and applied from the chat.
+- [ ] Revoking the connection in the Metrics tab cuts off both reading and
+      writing.
+- [ ] The plugin, reinstalled from the repository marketplace, shows one
+      `schatten` server.

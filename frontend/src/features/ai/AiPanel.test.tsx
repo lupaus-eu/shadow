@@ -75,47 +75,51 @@ describe("AiPanel", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it("describes the write connection by whether MCP change-set review is on", () => {
+  it("describes the one connection by whether MCP change-set review is on", () => {
     renderPanel();
     fireEvent.click(screen.getByRole("button", { name: "Connect" }));
-    expect(screen.getByText("Write (proposals only)")).toBeVisible();
+    expect(
+      screen.getByText(/It reads Schatten and proposes changes through one connection/)
+    ).toBeVisible();
     expect(
       screen.getByText(/nothing changes until a person applies the change set here/)
     ).toBeVisible();
+    expect(screen.queryByText(/apply or reject a change set/)).not.toBeInTheDocument();
     cleanup();
 
     renderPanel({ mcpChangeSetReview: true });
     fireEvent.click(screen.getByRole("button", { name: "Connect" }));
-    expect(screen.getByText("Write (propose, apply and reject)")).toBeVisible();
+    expect(
+      screen.getByText(/It reads Schatten and proposes changes through one connection/)
+    ).toBeVisible();
     expect(
       screen.getByText(/the client can apply or reject a change set awaiting review/)
     ).toBeVisible();
-    expect(screen.queryByText("Write (proposals only)")).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Copy URL" })).toHaveLength(1);
   });
 
-  it("shows the MCP URLs with copy buttons and the Claude Code commands", async () => {
+  it("shows the one MCP URL with a copy button and the Claude Code command", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     stubClipboard(writeText);
     renderPanel();
 
     fireEvent.click(screen.getByRole("button", { name: "Connect" }));
 
-    const readUrl = `${window.location.origin}/api/mcp/read`;
-    const writeUrl = `${window.location.origin}/api/mcp/write`;
-    expect(screen.getByText(readUrl, { selector: "code" })).toBeVisible();
-    expect(screen.getByText(writeUrl, { selector: "code" })).toBeVisible();
-    expect(screen.getByText(/claude mcp add --transport http schatten-read/)).toHaveTextContent(
-      `claude mcp add --transport http schatten-read ${readUrl}`
+    const url = `${window.location.origin}/api/mcp`;
+    expect(screen.getByText(url, { selector: "code" })).toBeVisible();
+    expect(screen.getByText("MCP server URL")).toBeVisible();
+    expect(screen.queryByText(/api\/mcp\/(read|write)/)).not.toBeInTheDocument();
+    expect(screen.getByText(/claude mcp add --transport http/)).toHaveTextContent(
+      `claude mcp add --transport http schatten ${url}`
     );
     expect(screen.getByText(/custom connector/)).toBeVisible();
+    expect(screen.getByText("Paste the URL and connect.")).toBeVisible();
+    expect(screen.getAllByRole("button", { name: /URL$/ })).toHaveLength(1);
 
-    fireEvent.click(screen.getByRole("button", { name: "Copy write URL" }));
+    fireEvent.click(screen.getByRole("button", { name: "Copy URL" }));
 
-    await waitFor(() => expect(writeText).toHaveBeenCalledWith(writeUrl));
-    expect(await screen.findByRole("button", { name: "Copy write URL" })).toHaveTextContent(
-      "Copied"
-    );
-    expect(screen.getByRole("button", { name: "Copy read URL" })).toHaveTextContent("Copy");
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(url));
+    expect(await screen.findByRole("button", { name: "Copy URL" })).toHaveTextContent("Copied");
   });
 
   it("explains a failed copy", async () => {
@@ -123,7 +127,7 @@ describe("AiPanel", () => {
     renderPanel();
 
     fireEvent.click(screen.getByRole("button", { name: "Connect" }));
-    fireEvent.click(screen.getByRole("button", { name: "Copy read URL" }));
+    fireEvent.click(screen.getByRole("button", { name: "Copy URL" }));
 
     expect(await screen.findByText("Copying failed; select the URL and copy it.")).toBeVisible();
   });
@@ -137,9 +141,17 @@ describe("AiPanel", () => {
 
     expect(screen.getByText("/plugin marketplace add reflector-oy/schatten")).toBeVisible();
     expect(screen.getByText("/plugin install schatten@schatten")).toBeVisible();
-    // The plugin's servers are the production ones; this origin is not.
-    expect(screen.getByText(/The plugin connects to https:\/\/schatten\.lupaus\.eu/)).toBeVisible();
-    expect(screen.getByText(/Whether you installed the plugin or added the servers/)).toBeVisible();
+    expect(
+      screen.getByText(/The Schatten plugin adds the Schatten server and skills\./)
+    ).toBeVisible();
+    // The plugin's server is the production one; this origin is not.
+    expect(
+      screen.getByText(/The plugin connects to https:\/\/schatten\.lupaus\.eu/)
+    ).toHaveTextContent("also add the server below; the plugin's skills apply to it too.");
+    expect(screen.getByText("Or add only the server:")).toBeVisible();
+    expect(
+      screen.getByText(/Whether you installed the plugin or added the server,/)
+    ).toHaveTextContent("select the Schatten server and authenticate");
 
     fireEvent.click(screen.getByRole("button", { name: "Copy install command" }));
 
@@ -170,7 +182,7 @@ describe("AiPanel", () => {
 
     expect(screen.getByText("/plugin install schatten@schatten")).toBeVisible();
     expect(
-      screen.getByText("https://schatten.lupaus.eu/api/mcp/read", { selector: "code" })
+      screen.getByText("https://schatten.lupaus.eu/api/mcp", { selector: "code" })
     ).toBeVisible();
     expect(screen.queryByText(/The plugin connects to/)).not.toBeInTheDocument();
   });
@@ -214,7 +226,7 @@ describe("AiPanel", () => {
     const sections = screen.getByRole("group", { name: "AI panel section" });
     expect(within(sections).queryByRole("button", { name: "Connect" })).not.toBeInTheDocument();
     expect(within(sections).getByRole("button", { name: "Connections" })).toBeVisible();
-    expect(screen.queryByText(/api\/mcp\/read/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/api\/mcp/)).not.toBeInTheDocument();
     expect(screen.queryByText(/\/plugin (marketplace add|install)/)).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /\.zip/ })).not.toBeInTheDocument();
   });

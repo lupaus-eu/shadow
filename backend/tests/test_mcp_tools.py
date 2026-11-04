@@ -7,10 +7,12 @@ from typing import Any, cast
 import anyio
 import pytest
 from fastmcp import Client, FastMCP
+from fastmcp.exceptions import ToolError
+from mcp.types import Tool
 from sqlalchemy import StaticPool, create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.api.v1.mcp_oauth.service import READ_SCOPE
+from app.api.v1.mcp_oauth.service import READ_SCOPE, WRITE_SCOPE
 from app.api.v1.mcp_oauth.token_service import McpPrincipal
 from app.api.v1.org_states import org_states_service
 from app.api.v1.org_states.models import (
@@ -38,8 +40,8 @@ from app.core.config import Settings
 from app.core.models import Base
 from app.mcp import read_server
 from app.mcp.auth import current_principal
-from app.mcp.read_server import build_read_server
 from app.mcp.runtime import McpToolRuntime
+from app.mcp.server import build_mcp_server
 
 USER_ID = 7
 PRINCIPAL = McpPrincipal(
@@ -49,9 +51,25 @@ PRINCIPAL = McpPrincipal(
     grant_key="grant_test",
     client_id="client-test",
     client_name="Claude",
-    scopes=frozenset({READ_SCOPE}),
+    scopes=frozenset({READ_SCOPE, WRITE_SCOPE}),
 )
 DELETED = datetime(2026, 1, 1, tzinfo=UTC)
+
+READ_TOOLS = {
+    "whoami",
+    "list_organisations",
+    "list_scenarios",
+    "list_org_states",
+    "get_type_catalog",
+    "get_graph",
+    "list_timeseries",
+    "get_timeserie",
+    "list_events",
+    "preview_generated_timeserie",
+    "list_change_sets",
+    "get_change_set",
+    "get_change_set_review",
+}
 
 SETTINGS = Settings.model_validate({"MCP_ENABLED": True})
 
@@ -435,7 +453,7 @@ def runtime(session_factory: sessionmaker[Session]) -> McpToolRuntime:
 
 @pytest.fixture()
 def server(runtime: McpToolRuntime) -> FastMCP:
-    return build_read_server(runtime, SETTINGS)
+    return build_mcp_server(runtime, SETTINGS)
 
 
 @contextmanager
@@ -446,6 +464,12 @@ def _acting_as(principal: McpPrincipal | None) -> Generator[None, None, None]:
         yield
     finally:
         current_principal.reset(reset_token)
+
+
+async def _list_tools(server: FastMCP) -> list[Tool]:
+    with _acting_as(PRINCIPAL):
+        async with Client(server) as client:
+            return await client.list_tools()
 
 
 async def _call(
@@ -480,25 +504,17 @@ async def _error(
 
 @pytest.mark.anyio
 async def test_read_tools_are_annotated_read_only(server: FastMCP) -> None:
-    async with Client(server) as client:
-        tools = await client.list_tools()
+    tools = await _list_tools(server)
 
-    assert {tool.name for tool in tools} == {
-        "whoami",
-        "list_organisations",
-        "list_scenarios",
-        "list_org_states",
-        "get_type_catalog",
-        "get_graph",
-        "list_timeseries",
-        "get_timeserie",
-        "list_events",
-        "preview_generated_timeserie",
-        "list_change_sets",
-        "get_change_set",
-        "get_change_set_review",
+    read_only = {
+        tool.name
+        for tool in tools
+        if tool.annotations is not None and tool.annotations.read_only_hint
     }
+    assert read_only == READ_TOOLS
     for tool in tools:
+        if tool.name not in READ_TOOLS:
+            continue
         assert tool.annotations is not None
         assert tool.annotations.read_only_hint is True
         assert tool.annotations.idempotent_hint is True
@@ -579,10 +595,9 @@ async def test_list_org_states_returns_active_states_by_target_date(
 
 @pytest.mark.anyio
 async def test_tool_docstrings_state_the_response_limits(server: FastMCP) -> None:
-    async with Client(server) as client:
-        descriptions = {
-            tool.name: tool.description or "" for tool in await client.list_tools()
-        }
+    descriptions = {
+        tool.name: tool.description or "" for tool in await _list_tools(server)
+    }
 
     assert (
         f"({read_server.LIST_TIMESERIES_MAX_VALUES:,})"
@@ -1220,11 +1235,21 @@ async def test_key_arguments_are_validated(
 
 
 @pytest.mark.anyio
-async def test_tools_fail_without_a_verified_principal(server: FastMCP) -> None:
+async def test_tools_fail_without_a_verified_principal(
+    server: FastMCP, runtime: McpToolRuntime
+) -> None:
+    # The scope check hides every tool from a request without a principal, and
+    # the runtime still refuses to run tool work for one.
     assert (
         await _error(server, "list_organisations", principal=None)
-        == "Authentication required"
+        == "Unknown tool: 'list_organisations'"
     )
+
+    def work(session: Session, principal: McpPrincipal) -> int:
+        return principal.user_id
+
+    with _acting_as(None), pytest.raises(ToolError, match="Authentication required"):
+        await runtime.run(work)
 
 
 @pytest.mark.anyio

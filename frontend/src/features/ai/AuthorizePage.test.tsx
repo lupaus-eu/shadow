@@ -37,7 +37,7 @@ const vendorConsent: ConsentRequestDto = {
   redirectIsLoopback: false,
   redirectHost: "claude.ai",
   scope: "schatten.read",
-  resource: "https://app.localhost/api/mcp/read",
+  resource: "https://app.localhost/api/mcp",
   expiresTime: "2026-10-28T10:10:00Z"
 };
 
@@ -46,8 +46,7 @@ const loopbackConsent: ConsentRequestDto = {
   clientName: "Claude Code (CLI)",
   redirectIsLoopback: true,
   redirectHost: "127.0.0.1",
-  scope: "schatten.write",
-  resource: "https://app.localhost/api/mcp/write"
+  scope: "schatten.read schatten.write"
 };
 
 function deferred<T>() {
@@ -129,10 +128,21 @@ describe("AuthorizePage", () => {
     expect(
       screen.getByText(/The connection lasts for a limited time \(30 days by default\)/)
     ).toBeVisible();
-    expect(screen.queryByRole("heading", { name: /Write access/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /propose/ })).not.toBeInTheDocument();
+    expect(screen.queryByText(/propose changes/)).not.toBeInTheDocument();
   });
 
-  it("shows the loopback notice instead of the host and explains write access", async () => {
+  it("keeps read access read-only when MCP review is on", async () => {
+    fetchConsentRequestMock.mockResolvedValue(vendorConsent);
+
+    renderPage(`/ai/authorize?request=${REQUEST_ID}`, { mcp: true, mcpChangeSetReview: true });
+
+    expect(await screen.findByRole("heading", { name: "Read access" })).toBeVisible();
+    expect(screen.getByText(/It cannot change anything\./)).toBeVisible();
+    expect(screen.queryByText(/apply or reject/)).not.toBeInTheDocument();
+  });
+
+  it("shows the loopback notice instead of the host and explains read and write access", async () => {
     fetchConsentRequestMock.mockResolvedValue(loopbackConsent);
 
     renderPage();
@@ -143,14 +153,30 @@ describe("AuthorizePage", () => {
     expect(notice).toHaveTextContent("Local programs cannot be verified by name");
     expect(screen.getByText("A program on this computer")).toBeVisible();
     expect(document.body).not.toHaveTextContent("127.0.0.1");
-    expect(screen.getByRole("heading", { name: "Write access: proposals only" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Read and propose changes" })).toBeVisible();
+    expect(screen.getByText(/The AI client can read the organisations, scenarios/)).toBeVisible();
+    expect(screen.getByText(/It can also propose changes as change sets\./)).toBeVisible();
     expect(
       screen.getByText(/nothing in Schatten changes until a person reviews and applies/)
     ).toBeVisible();
+    expect(screen.queryByText(/It cannot change anything/)).not.toBeInTheDocument();
     expect(
       screen.getByText(/Data that the AI client reads from Schatten is sent to your AI vendor\./)
     ).toBeVisible();
     expect(screen.queryByRole("heading", { name: "Read access" })).not.toBeInTheDocument();
+  });
+
+  it("explains read and write access in either scope order", async () => {
+    fetchConsentRequestMock.mockResolvedValue({
+      ...loopbackConsent,
+      scope: "schatten.write schatten.read"
+    });
+
+    renderPage();
+
+    expect(await screen.findByRole("heading", { name: "Read and propose changes" })).toBeVisible();
+    expect(screen.getByText(/It can also propose changes as change sets\./)).toBeVisible();
+    expect(screen.queryByRole("heading", { name: "Unknown access" })).not.toBeInTheDocument();
   });
 
   it("explains that write access can apply and reject when MCP review is on", async () => {
@@ -160,15 +186,46 @@ describe("AuthorizePage", () => {
 
     expect(
       await screen.findByRole("heading", {
-        name: "Write access: propose, apply and reject changes"
+        name: "Read, propose, apply and reject changes"
       })
     ).toBeVisible();
+    expect(screen.getByText(/The AI client can read the organisations, scenarios/)).toBeVisible();
     expect(
-      screen.getByText(/it can also apply or reject change sets awaiting review/)
+      screen.getByText(/when you tell it to, apply or reject change sets awaiting review/)
     ).toBeVisible();
     expect(screen.getByText(/including change sets that other people proposed/)).toBeVisible();
     expect(
-      screen.queryByRole("heading", { name: "Write access: proposals only" })
+      screen.queryByRole("heading", { name: "Read and propose changes" })
+    ).not.toBeInTheDocument();
+  });
+
+  it("describes write access without read access as unknown", async () => {
+    fetchConsentRequestMock.mockResolvedValue({ ...loopbackConsent, scope: "schatten.write" });
+
+    renderPage();
+
+    expect(await screen.findByRole("heading", { name: "Unknown access" })).toBeVisible();
+    expect(screen.getByText("schatten.write")).toBeVisible();
+    expect(screen.getByText(/Deny the request if you are unsure\./)).toBeVisible();
+    expect(screen.queryByRole("heading", { name: /propose/ })).not.toBeInTheDocument();
+  });
+
+  it("says that the role cannot connect and offers only Deny for an empty scope", async () => {
+    // The consent API narrows the scopes to the role; a role that
+    // `ROLE_SCOPES` maps to no scope gets an empty set.
+    fetchConsentRequestMock.mockResolvedValue({ ...loopbackConsent, scope: "" });
+
+    renderPage();
+
+    expect(await screen.findByRole("heading", { name: "No access" })).toBeVisible();
+    expect(
+      screen.getByText(/Your Schatten role \(Admin\) does not allow AI clients to connect/)
+    ).toBeVisible();
+    expect(screen.getByRole("button", { name: "Deny" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Unknown access" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/Data that the AI client reads from Schatten is sent to your AI vendor/)
     ).not.toBeInTheDocument();
   });
 

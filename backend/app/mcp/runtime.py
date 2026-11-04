@@ -1,7 +1,7 @@
 """Run MCP tool database work under ADR-015's resource protection.
 
 Tools run their database work in a worker thread with their own session,
-bounded by one `anyio.CapacityLimiter` shared by both MCP servers and their
+bounded by one `anyio.CapacityLimiter` shared by the MCP server's tools and its
 bearer authentication. A domain error reaches the client as a tool error with
 the service's message. Any other error reaches it only as a generic message and
 is logged with its type and stack but without its message, which may contain

@@ -1,6 +1,6 @@
 ---
 name: schatten-timeseries-generation
-description: Choose units, time grains and realistic generator parameters for Schatten timeseries, preview them, align their dates and write derived-metric formulas. Use whenever you create Schatten timeseries or propose their values through the Schatten MCP servers.
+description: Choose units, time grains and realistic generator parameters for Schatten timeseries, preview them, align their dates and write derived-metric formulas. Use whenever you create Schatten timeseries or propose their values through the Schatten MCP server.
 ---
 
 # Generating Schatten timeseries

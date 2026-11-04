@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-074/review-004",
+  "task": {
+    "id": "TASK-074",
+    "path": "tasks/TASK-074-single-mcp-connector.md"
+  },
+  "round": 4,
+  "reviewed_at": "2026-11-04T14:51:51Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": {
+    "number": 130,
+    "url": "https://github.com/reflector-oy/schatten/pull/130"
+  },
+  "source": {
+    "base_sha": "46070a787686a492e40da092f7a872d28ddb0327",
+    "head_sha": "55b8932faa581f466027d548bf84a0308b8fd515",
+    "comparison": "46070a787686a492e40da092f7a872d28ddb0327...55b8932faa581f466027d548bf84a0308b8fd515",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "clean",
+    "summary": "Round 4 records the developer's decision on round 1's F-005 for the implementation reviewed in round 3; only review records changed since then. Strict refresh scope checking would reject a requested scope outside the grant's scopes with invalid_scope. It gives no security gain, because a refresh never issues more than the grant holds, and once a role is limited it could make every refresh fail for a client that requested both scopes, was granted read only at consent and re-sends its original scope. The developer accepted the current behaviour, which ADR-015's amendment records. No finding remains open for TASK-074.",
+    "findings": [],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-074/review-001",
+        "finding_id": "F-005",
+        "disposition": "accepted_risk",
+        "rationale": "The developer decided to keep ADR-015's refresh rule: a sent scope must name only known scopes, and the token keeps the grant's scopes, which the response names. It grants no extra access and avoids refreshes that fail until reauthorization after a role is limited.",
+        "validated_by": {
+          "review_id": "TASK-074/review-004",
+          "commit": "55b8932faa581f466027d548bf84a0308b8fd515"
+        }
+      }
+    ]
+  }
+}

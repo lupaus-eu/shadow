@@ -1,28 +1,27 @@
-"""Build the MCP endpoints that `create_app()` registers (ADR-015).
+"""Build the MCP endpoint that `create_app()` registers (ADR-015).
 
-Both FastMCP servers are built per app, stateless with JSON responses, so no
-MCP session, server-sent event stream or per-session state is kept. They are
-served at exact routes wrapped in `McpBearerAuth`: `app.mount` would redirect
-`/api/mcp/<server>` to a trailing slash. Stateless servers answer an
-authenticated GET or DELETE with 405.
+The one Schatten FastMCP server is built per app, stateless with JSON
+responses, so no MCP session, server-sent event stream or per-session state is
+kept. It is served at the exact route `/api/mcp` wrapped in `McpBearerAuth`:
+`app.mount` would redirect `/api/mcp` to a trailing slash. The stateless server
+answers an authenticated GET or DELETE with 405.
 """
 
 from collections.abc import Callable
 from dataclasses import dataclass
 
 import anyio
-from fastmcp import FastMCP
 from fastmcp.server.http import StarletteWithLifespan
 from sqlalchemy.orm import Session
 from starlette.routing import Route
 
 from app.api.v1.auth.rate_limit import FixedWindowRateLimiter
+from app.api.v1.mcp_oauth.service import MCP_PATH
 from app.core.config import Settings
 from app.core.database import get_session_factory
-from app.mcp.auth import McpBearerAuth, McpServerName
-from app.mcp.read_server import build_read_server
+from app.mcp.auth import McpBearerAuth
 from app.mcp.runtime import McpToolRuntime
-from app.mcp.write_server import build_write_server
+from app.mcp.server import build_mcp_server
 
 MCP_ROUTE_METHODS = ("GET", "POST", "DELETE")
 
@@ -34,37 +33,29 @@ class McpEndpoint:
     http_app: StarletteWithLifespan
 
 
-def build_mcp_endpoints(
+def build_mcp_endpoint(
     settings: Settings,
     *,
     rate_limiter: FixedWindowRateLimiter,
     session_factory: Callable[[], Session] | None = None,
-) -> list[McpEndpoint]:
-    """Build the read and write endpoints with one shared capacity limiter."""
+) -> McpEndpoint:
+    """Build the endpoint; its tools and authentication share one limiter."""
     resolved_session_factory = session_factory or _new_session
     limiter = anyio.CapacityLimiter(settings.mcp_tool_concurrency)
     runtime = McpToolRuntime(resolved_session_factory, limiter)
-    servers: dict[McpServerName, FastMCP] = {
-        "read": build_read_server(runtime, settings),
-        "write": build_write_server(runtime, settings),
-    }
-    endpoints: list[McpEndpoint] = []
-    for name, server in servers.items():
-        path = f"/api/mcp/{name}"
-        http_app = server.http_app(path=path, stateless_http=True, json_response=True)
-        auth = McpBearerAuth(
-            http_app,
-            server=name,
-            settings=settings,
-            session_factory=resolved_session_factory,
-            limiter=limiter,
-            rate_limiter=rate_limiter,
-        )
-        route = Route(
-            path, endpoint=auth, methods=MCP_ROUTE_METHODS, include_in_schema=False
-        )
-        endpoints.append(McpEndpoint(route=route, http_app=http_app))
-    return endpoints
+    server = build_mcp_server(runtime, settings)
+    http_app = server.http_app(path=MCP_PATH, stateless_http=True, json_response=True)
+    auth = McpBearerAuth(
+        http_app,
+        settings=settings,
+        session_factory=resolved_session_factory,
+        limiter=limiter,
+        rate_limiter=rate_limiter,
+    )
+    route = Route(
+        MCP_PATH, endpoint=auth, methods=MCP_ROUTE_METHODS, include_in_schema=False
+    )
+    return McpEndpoint(route=route, http_app=http_app)
 
 
 def _new_session() -> Session:

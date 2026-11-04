@@ -1,10 +1,12 @@
-"""Bearer authentication for the MCP endpoints (ADR-015).
+"""Bearer authentication and tool scope checks for the MCP endpoint (ADR-015).
 
-`McpBearerAuth` wraps each MCP server's Streamable HTTP app. It accepts only an
+`McpBearerAuth` wraps the MCP server's Streamable HTTP app. It accepts only an
 `Authorization: Bearer` token, never the browser session cookie, and on every
-request verifies the token for the endpoint's canonical resource and scope,
-applies the per-grant `mcp_rate_limiter` and exposes the verified principal to
-tools through `current_principal`. Tokens are never logged.
+request verifies the token for the canonical resource and the minimum scope
+`schatten.read`, applies the per-grant `mcp_rate_limiter` and exposes the
+verified principal to tools through `current_principal`. `requires_scope` then
+admits each tool and prompt only for a principal with its scope (TASK-074).
+Tokens are never logged.
 """
 
 from collections.abc import Callable
@@ -13,13 +15,18 @@ from typing import Literal
 
 import anyio
 import anyio.to_thread
+from fastmcp.server.auth import AuthCheck, AuthContext
 from sqlalchemy.orm import Session
 from starlette.datastructures import Headers
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from app.api.v1.auth.rate_limit import FixedWindowRateLimiter
-from app.api.v1.mcp_oauth.service import MCP_SERVER_SCOPES, canonical_resource
+from app.api.v1.mcp_oauth.service import (
+    PROTECTED_RESOURCE_METADATA_PATH,
+    READ_SCOPE,
+    canonical_resource,
+)
 from app.api.v1.mcp_oauth.token_service import (
     McpPrincipal,
     TokenVerificationError,
@@ -27,7 +34,6 @@ from app.api.v1.mcp_oauth.token_service import (
 )
 from app.core.config import Settings
 
-McpServerName = Literal["read", "write"]
 MCP_RATE_LIMIT_BUCKET = "mcp"
 
 current_principal: ContextVar[McpPrincipal | None] = ContextVar(
@@ -35,25 +41,39 @@ current_principal: ContextVar[McpPrincipal | None] = ContextVar(
 )
 
 
+def requires_scope(scope: str) -> AuthCheck:
+    """Admit a tool or prompt only for a principal whose scopes include `scope`.
+
+    The principal's scopes are the effective set that `verify_access_token`
+    computed for this request: the grant's scopes that the User's role allows.
+    fastmcp leaves a component whose check fails out of its lists and answers
+    a call to it as an unknown tool, so a role without `schatten.write` sees
+    only the read tools and prompts.
+    """
+
+    def check(_: AuthContext) -> bool:
+        principal = current_principal.get()
+        return principal is not None and scope in principal.scopes
+
+    return check
+
+
 class McpBearerAuth:
-    """ASGI wrapper that authenticates one MCP endpoint."""
+    """ASGI wrapper that authenticates the MCP endpoint."""
 
     def __init__(
         self,
         app: ASGIApp,
         *,
-        server: McpServerName,
         settings: Settings,
         session_factory: Callable[[], Session],
         limiter: anyio.CapacityLimiter,
         rate_limiter: FixedWindowRateLimiter,
     ) -> None:
         self._app = app
-        self._resource = canonical_resource(settings, server)
-        self._scope = MCP_SERVER_SCOPES[server]
+        self._resource = canonical_resource(settings)
         self._resource_metadata = (
-            f"{settings.public_origin}"
-            f"/.well-known/oauth-protected-resource/api/mcp/{server}"
+            f"{settings.public_origin}{PROTECTED_RESOURCE_METADATA_PATH}"
         )
         self._rate_limit_per_minute = settings.mcp_rate_limit_per_minute
         self._session_factory = session_factory
@@ -101,19 +121,19 @@ class McpBearerAuth:
 
     def _verify(self, token: str) -> McpPrincipal:
         with self._session_factory() as session:
-            return verify_access_token(session, token, self._resource, self._scope)
+            return verify_access_token(session, token, self._resource, READ_SCOPE)
 
     def _challenge(
         self,
         status_code: int,
         error: Literal["invalid_token", "insufficient_scope"] | None,
     ) -> JSONResponse:
-        """Build the RFC 6750 / RFC 9728 challenge for this endpoint."""
+        """Build the RFC 6750 / RFC 9728 challenge for the endpoint."""
         parameters: list[str] = []
         if error is not None:
             parameters.append(f'error="{error}"')
         if error == "insufficient_scope":
-            parameters.append(f'scope="{self._scope}"')
+            parameters.append(f'scope="{READ_SCOPE}"')
         parameters.append(f'resource_metadata="{self._resource_metadata}"')
         descriptions = {
             None: "A bearer token is required",

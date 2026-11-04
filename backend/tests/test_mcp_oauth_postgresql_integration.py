@@ -28,6 +28,8 @@ from app.api.v1.mcp_oauth.models import (
     McpOauthToken,
 )
 from app.api.v1.mcp_oauth.service import (
+    READ_SCOPE,
+    WRITE_SCOPE,
     OAuthError,
     approve_consent,
     cleanup_stale_clients,
@@ -35,6 +37,7 @@ from app.api.v1.mcp_oauth.service import (
 )
 from app.api.v1.mcp_oauth.token_service import (
     IssuedTokens,
+    allowed_scopes_for_role,
     issue_tokens,
     verify_access_token,
 )
@@ -48,7 +51,9 @@ REDIRECT_URI = "http://127.0.0.1:33418/callback"
 SETTINGS = Settings.model_validate(
     {"MCP_ENABLED": True, "MCP_OAUTH_REDIRECT_URIS": "http://127.0.0.1:{port}/callback"}
 )
-READ_RESOURCE = "http://testserver/api/mcp/read"
+# TASK-074: one MCP resource; a grant holds both scopes for a current role.
+MCP_RESOURCE = "http://testserver/api/mcp"
+MCP_SCOPES = f"{READ_SCOPE} {WRITE_SCOPE}"
 VERIFIER = "v" * 64
 CHALLENGE = (
     base64.urlsafe_b64encode(hashlib.sha256(VERIFIER.encode()).digest())
@@ -113,7 +118,7 @@ def _authorize_query(client_id: str) -> dict[str, list[str]]:
         "redirect_uri": [REDIRECT_URI],
         "code_challenge": [CHALLENGE],
         "code_challenge_method": ["S256"],
-        "resource": [READ_RESOURCE],
+        "resource": [MCP_RESOURCE],
     }
 
 
@@ -187,6 +192,7 @@ def _approved_code(factory: sessionmaker[Session], client_id: str, user_id: int)
             SETTINGS,
             dict(parse_qsl(urlsplit(location).query))["request"],
             user_id=user_id,
+            allowed_scopes=allowed_scopes_for_role("consultant"),
         )
     return dict(parse_qsl(urlsplit(redirect_url).query))["code"]
 
@@ -198,7 +204,7 @@ def _exchange_parameters(client_id: str, code: str) -> dict[str, list[str]]:
         "client_id": [client_id],
         "redirect_uri": [REDIRECT_URI],
         "code_verifier": [VERIFIER],
-        "resource": [READ_RESOURCE],
+        "resource": [MCP_RESOURCE],
     }
 
 
@@ -207,7 +213,7 @@ def _refresh_parameters(client_id: str, refresh_token: str) -> dict[str, list[st
         "grant_type": ["refresh_token"],
         "refresh_token": [refresh_token],
         "client_id": [client_id],
-        "resource": [READ_RESOURCE],
+        "resource": [MCP_RESOURCE],
     }
 
 
@@ -388,8 +394,8 @@ def test_grant_insert_for_the_same_client_does_not_wait_for_authorize(
                     grant_key="raw-grant",
                     mcp_oauth_client_id=client_row_id,
                     user_id=user_id,
-                    scopes="schatten.read",
-                    resource=READ_RESOURCE,
+                    scopes=MCP_SCOPES,
+                    resource=MCP_RESOURCE,
                     created_time=now,
                     expires_time=now + timedelta(days=30),
                 )
@@ -532,7 +538,13 @@ def test_token_client_update_waits_for_authorize_but_the_grant_insert_does_not(
         location = start_authorization(session, SETTINGS, _authorize_query("shared"))
     request_id = dict(parse_qsl(urlsplit(location).query))["request"]
     with factory() as session:
-        redirect_url = approve_consent(session, SETTINGS, request_id, user_id=user_id)
+        redirect_url = approve_consent(
+            session,
+            SETTINGS,
+            request_id,
+            user_id=user_id,
+            allowed_scopes=allowed_scopes_for_role("consultant"),
+        )
     code = dict(parse_qsl(urlsplit(redirect_url).query))["code"]
     with factory() as session:
         stored = session.scalar(select(McpOauthClient))
@@ -606,6 +618,7 @@ def test_token_lifecycle_and_cleanup_cascade_on_postgresql(
             SETTINGS,
             dict(parse_qsl(urlsplit(location).query))["request"],
             user_id=user_id,
+            allowed_scopes=allowed_scopes_for_role("admin"),
         )
     code = dict(parse_qsl(urlsplit(redirect_url).query))["code"]
 
@@ -616,7 +629,7 @@ def test_token_lifecycle_and_cleanup_cascade_on_postgresql(
                 SETTINGS,
                 {
                     "client_id": ["lifecycle"],
-                    "resource": [READ_RESOURCE],
+                    "resource": [MCP_RESOURCE],
                     **{name: [value] for name, value in parameters.items()},
                 },
             )
@@ -627,14 +640,20 @@ def test_token_lifecycle_and_cleanup_cascade_on_postgresql(
         redirect_uri=REDIRECT_URI,
         code_verifier=VERIFIER,
     )
+    assert issued.scope == MCP_SCOPES
     with factory() as session:
         principal = verify_access_token(
-            session, issued.access_token, READ_RESOURCE, "schatten.read"
+            session, issued.access_token, MCP_RESOURCE, READ_SCOPE
         )
+        grant = session.scalar(select(McpOauthGrant))
+        assert grant is not None
+        assert (grant.scopes, grant.resource) == (MCP_SCOPES, MCP_RESOURCE)
     assert (principal.user_id, principal.role) == (user_id, "admin")
+    assert principal.scopes == frozenset({READ_SCOPE, WRITE_SCOPE})
     rotated = token_request(
         grant_type="refresh_token", refresh_token=issued.refresh_token
     )
+    assert rotated.scope == MCP_SCOPES
 
     with pytest.raises(OAuthError) as replayed:
         token_request(grant_type="refresh_token", refresh_token=issued.refresh_token)
@@ -684,8 +703,8 @@ def test_concurrent_cleanups_do_not_deadlock(
             grant_key="revoked",
             mcp_oauth_client_id=client_row_id,
             user_id=user_id,
-            scopes="schatten.read",
-            resource=READ_RESOURCE,
+            scopes=MCP_SCOPES,
+            resource=MCP_RESOURCE,
             created_time=now - timedelta(days=1),
             expires_time=now + timedelta(days=29),
             revoked_time=now - timedelta(seconds=1),
@@ -694,8 +713,8 @@ def test_concurrent_cleanups_do_not_deadlock(
             grant_key="expiring",
             mcp_oauth_client_id=client_row_id,
             user_id=user_id,
-            scopes="schatten.read",
-            resource=READ_RESOURCE,
+            scopes=MCP_SCOPES,
+            resource=MCP_RESOURCE,
             created_time=now - timedelta(days=30),
             expires_time=now + timedelta(seconds=5),
         )
@@ -781,8 +800,8 @@ def test_cleanup_skips_a_grant_deletion_that_would_wait(
             grant_key="revoked",
             mcp_oauth_client_id=client_row_id,
             user_id=user_id,
-            scopes="schatten.read",
-            resource=READ_RESOURCE,
+            scopes=MCP_SCOPES,
+            resource=MCP_RESOURCE,
             created_time=now - timedelta(days=1),
             expires_time=now + timedelta(days=29),
             revoked_time=now,

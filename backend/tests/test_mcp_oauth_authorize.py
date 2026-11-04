@@ -18,6 +18,7 @@ from sqlalchemy import StaticPool, create_engine, delete, func, select
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
+import app.api.v1.mcp_oauth.token_service as token_service
 from app.api.v1.auth.logging import SensitiveQueryFilter
 from app.api.v1.auth.rate_limit import FixedWindowRateLimiter
 from app.api.v1.mcp_oauth.models import (
@@ -33,8 +34,10 @@ from app.core.models import Base
 from app.main import create_app
 
 ORIGIN = "http://testserver"
-READ_RESOURCE = f"{ORIGIN}/api/mcp/read"
-WRITE_RESOURCE = f"{ORIGIN}/api/mcp/write"
+RESOURCE = f"{ORIGIN}/api/mcp"
+BOTH_SCOPES = "schatten.read schatten.write"
+# The resources that TASK-074 replaced with `/api/mcp`.
+LEGACY_RESOURCES = (f"{ORIGIN}/api/mcp/read", f"{ORIGIN}/api/mcp/write")
 CLAUDE_CALLBACK = "https://claude.ai/api/mcp/auth_callback"
 CLAUDE_COM_CALLBACK = "https://claude.com/api/mcp/auth_callback"
 LOOPBACK_CALLBACK = "http://127.0.0.1:33418/callback"
@@ -137,8 +140,8 @@ def _authorize_params(
         "redirect_uri": redirect_uri,
         "code_challenge": CHALLENGE,
         "code_challenge_method": "S256",
-        "resource": READ_RESOURCE,
-        "scope": "schatten.read",
+        "resource": RESOURCE,
+        "scope": BOTH_SCOPES,
         "state": "client-state",
         **overrides,
     }
@@ -242,8 +245,8 @@ def _add_grant(
         grant_key=f"grant-{stored.client_id}",
         mcp_oauth_client_id=stored.mcp_oauth_client_id,
         user_id=_add_user(session).user_id,
-        scopes="schatten.read",
-        resource=READ_RESOURCE,
+        scopes=BOTH_SCOPES,
+        resource=RESOURCE,
         created_time=now - timedelta(days=40),
         expires_time=now + timedelta(days=1) if active else now - timedelta(days=10),
     )
@@ -262,8 +265,8 @@ def _add_authorization_request(
         mcp_oauth_client_id=stored.mcp_oauth_client_id,
         redirect_uri=LOOPBACK_CALLBACK,
         code_challenge=CHALLENGE,
-        scopes="schatten.read",
-        resource=READ_RESOURCE,
+        scopes=BOTH_SCOPES,
+        resource=RESOURCE,
         created_time=created,
         expires_time=created + timedelta(minutes=10),
     )
@@ -299,27 +302,34 @@ def test_authorization_server_metadata_advertises_the_contract(
     }
 
 
-@pytest.mark.parametrize(
-    ("server", "resource", "scope"),
-    [
-        ("read", READ_RESOURCE, "schatten.read"),
-        ("write", WRITE_RESOURCE, "schatten.write"),
-    ],
-)
-def test_protected_resource_metadata_uses_canonical_resource(
-    client: TestClient, server: str, resource: str, scope: str
+def test_protected_resource_metadata_uses_the_one_canonical_resource(
+    client: TestClient,
 ) -> None:
-    response = client.get(f"/.well-known/oauth-protected-resource/api/mcp/{server}")
+    response = client.get("/.well-known/oauth-protected-resource/api/mcp")
 
     assert response.status_code == 200
     assert response.headers["cache-control"] == "no-store"
     assert response.json() == {
-        "resource": resource,
+        "resource": RESOURCE,
         "authorization_servers": [ORIGIN],
-        "scopes_supported": [scope],
+        "scopes_supported": ["schatten.read", "schatten.write"],
         "bearer_methods_supported": ["header"],
     }
     assert not response.json()["resource"].endswith("/")
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/.well-known/oauth-protected-resource/api/mcp/read",
+        "/.well-known/oauth-protected-resource/api/mcp/write",
+        "/.well-known/oauth-protected-resource/api/mcp/",
+    ],
+)
+def test_legacy_protected_resource_metadata_is_gone(
+    client: TestClient, path: str
+) -> None:
+    assert client.get(path).status_code == 404
 
 
 # Registration
@@ -655,7 +665,7 @@ def test_valid_authorize_updates_last_used_time_so_cleanup_keeps_the_client(
     [
         {"redirect_uri": "http://127.0.0.1:33418/other"},
         {"scope": "schatten.write"},
-        {"resource": WRITE_RESOURCE + "/"},
+        {"resource": RESOURCE + "/"},
         {"code_challenge": None},
     ],
 )
@@ -701,7 +711,7 @@ def test_authorize_stores_only_a_hashed_pending_request(
         assert pending.redirect_uri == LOOPBACK_CALLBACK
         assert pending.state == "client-state"
         assert pending.code_challenge == CHALLENGE
-        assert (pending.scopes, pending.resource) == ("schatten.read", READ_RESOURCE)
+        assert (pending.scopes, pending.resource) == (BOTH_SCOPES, RESOURCE)
         assert pending.expires_time - pending.created_time == timedelta(minutes=10)
         assert (pending.user_id, pending.code_hash) == (None, None)
         assert request_id not in _mcp_oauth_values(session)
@@ -829,30 +839,36 @@ def test_authorize_accepts_a_loopback_port_change_only(
         ),
         pytest.param({"scope": "openid"}, "invalid_scope", id="unknown-scope"),
         pytest.param(
-            {"scope": "schatten.read schatten.write"}, "invalid_scope", id="both"
+            {"scope": "schatten.read openid"}, "invalid_scope", id="unknown-in-set"
         ),
-        pytest.param({"scope": "schatten.write"}, "invalid_scope", id="mismatch"),
+        pytest.param({"scope": "schatten.write"}, "invalid_scope", id="write-only"),
+        pytest.param(
+            {"scope": "schatten.read schatten.read"}, "invalid_scope", id="duplicate"
+        ),
+        pytest.param(
+            {"scope": "schatten.read  schatten.write"},
+            "invalid_scope",
+            id="double-space",
+        ),
+        pytest.param({"scope": "SCHATTEN.READ"}, "invalid_scope", id="scope-case"),
         pytest.param({"scope": ""}, "invalid_scope", id="empty-scope"),
         pytest.param({"resource": None}, "invalid_target", id="resource-missing"),
         pytest.param(
-            {"resource": READ_RESOURCE + "/"}, "invalid_target", id="trailing-slash"
+            {"resource": RESOURCE + "/"}, "invalid_target", id="trailing-slash"
         ),
+        pytest.param({"resource": RESOURCE + "?x=1"}, "invalid_target", id="query"),
+        pytest.param({"resource": RESOURCE + "#x"}, "invalid_target", id="fragment"),
         pytest.param(
-            {"resource": READ_RESOURCE + "?x=1"}, "invalid_target", id="query"
-        ),
-        pytest.param(
-            {"resource": READ_RESOURCE + "#x"}, "invalid_target", id="fragment"
-        ),
-        pytest.param(
-            {"resource": "https://testserver/api/mcp/read"},
+            {"resource": "https://testserver/api/mcp"},
             "invalid_target",
             id="other-origin",
         ),
+        pytest.param({"resource": f"{ORIGIN}/api/MCP"}, "invalid_target", id="case"),
         pytest.param(
-            {"resource": f"{ORIGIN}/api/mcp/READ"}, "invalid_target", id="case"
+            {"resource": LEGACY_RESOURCES[0]}, "invalid_target", id="legacy-read"
         ),
         pytest.param(
-            {"resource": f"{ORIGIN}/api/mcp"}, "invalid_target", id="no-server"
+            {"resource": LEGACY_RESOURCES[1]}, "invalid_target", id="legacy-write"
         ),
     ],
 )
@@ -888,7 +904,10 @@ def test_authorize_rejects_two_resources_and_duplicate_parameters(
     base_params = tuple(_authorize_params(client_id).items())
 
     two_resources = client.get(
-        "/api/oauth/authorize", params=(*base_params, ("resource", WRITE_RESOURCE))
+        "/api/oauth/authorize", params=(*base_params, ("resource", RESOURCE))
+    )
+    two_scopes = client.get(
+        "/api/oauth/authorize", params=(*base_params, ("scope", "schatten.read"))
     )
     duplicate_state = client.get(
         "/api/oauth/authorize", params=(*base_params, ("state", "other"))
@@ -899,6 +918,11 @@ def test_authorize_rejects_two_resources_and_duplicate_parameters(
 
     assert _query(two_resources.headers["location"])[1] == [
         ("error", "invalid_target"),
+        ("state", "client-state"),
+        ("iss", ORIGIN),
+    ]
+    assert _query(two_scopes.headers["location"])[1] == [
+        ("error", "invalid_scope"),
         ("state", "client-state"),
         ("iss", ORIGIN),
     ]
@@ -930,22 +954,29 @@ def test_authorize_redirects_a_nul_state_as_invalid_request_without_echoing_it(
         assert _stored_client(session, client_id).last_used_time is None
 
 
-def test_authorize_accepts_write_resource_with_default_scope(
+@pytest.mark.parametrize(
+    ("scope", "stored"),
+    [
+        pytest.param(None, BOTH_SCOPES, id="omitted"),
+        pytest.param("schatten.read", "schatten.read", id="read"),
+        pytest.param(BOTH_SCOPES, BOTH_SCOPES, id="both"),
+        pytest.param("schatten.write schatten.read", BOTH_SCOPES, id="reversed"),
+    ],
+)
+def test_authorize_normalises_the_requested_scopes(
     client: TestClient,
     session_factory: sessionmaker[Session],
+    scope: str | None,
+    stored: str,
 ) -> None:
     client_id = _registered_client_id(client)
 
-    _request_id(
-        _authorize(
-            client, _authorize_params(client_id, resource=WRITE_RESOURCE, scope=None)
-        )
-    )
+    _request_id(_authorize(client, _authorize_params(client_id, scope=scope)))
 
     with session_factory() as session:
         pending = session.scalar(select(McpOauthAuthorizationRequest))
         assert pending is not None
-        assert (pending.scopes, pending.resource) == ("schatten.write", WRITE_RESOURCE)
+        assert (pending.scopes, pending.resource) == (stored, RESOURCE)
 
 
 def test_authorize_caps_live_pending_requests_per_client_and_in_total(
@@ -1012,9 +1043,7 @@ def test_consent_returns_client_redirect_classification_scope_and_expiry(
     is_loopback: bool,
     host: str,
 ) -> None:
-    request_id = _start_consent(
-        client, redirect_uri, resource=WRITE_RESOURCE, scope=None
-    )
+    request_id = _start_consent(client, redirect_uri, scope=None)
 
     response = client.get("/api/v1/ai/oauth/consent", params={"request": request_id})
 
@@ -1027,8 +1056,8 @@ def test_consent_returns_client_redirect_classification_scope_and_expiry(
         "clientNameSelfDeclared": True,
         "redirectIsLoopback": is_loopback,
         "redirectHost": host,
-        "scope": "schatten.write",
-        "resource": WRITE_RESOURCE,
+        "scope": BOTH_SCOPES,
+        "resource": RESOURCE,
     }
     assert timedelta(minutes=9) < expires - datetime.now(UTC) <= timedelta(minutes=10)
 
@@ -1072,6 +1101,74 @@ def test_approve_records_user_and_returns_server_built_code_redirect(
         stored_values = _mcp_oauth_values(session)
         assert code not in stored_values
         assert request_id not in stored_values
+
+
+def _stub_role_scopes(
+    monkeypatch: pytest.MonkeyPatch, role: str, scopes: frozenset[str]
+) -> None:
+    monkeypatch.setitem(token_service.ROLE_SCOPES, role, scopes)
+
+
+def test_consent_shows_and_approval_grants_only_the_role_scopes(
+    client: TestClient,
+    session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _stub_role_scopes(monkeypatch, "consultant", frozenset({"schatten.read"}))
+    request_id = _start_consent(client, CLAUDE_CALLBACK, scope=BOTH_SCOPES)
+
+    consent = client.get("/api/v1/ai/oauth/consent", params={"request": request_id})
+    approve = client.post(
+        "/api/v1/ai/oauth/consent/approve", json={"request": request_id}
+    )
+
+    assert consent.json()["scope"] == "schatten.read"
+    assert [name for name, _ in _query(approve.json()["redirectUrl"])[1]] == [
+        "code",
+        "state",
+        "iss",
+    ]
+    with session_factory() as session:
+        pending = session.scalar(select(McpOauthAuthorizationRequest))
+        assert pending is not None
+        assert pending.scopes == "schatten.read"
+
+
+@pytest.mark.parametrize(
+    ("role_scopes", "consent_scope"),
+    [(frozenset({"schatten.write"}), "schatten.write"), (frozenset[str](), "")],
+    ids=["write-only-role", "role-without-ai-access"],
+)
+def test_approval_without_the_read_scope_returns_access_denied(
+    client: TestClient,
+    session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+    role_scopes: frozenset[str],
+    consent_scope: str,
+) -> None:
+    # Neither role can hold `schatten.read`. A role without AI access gets an
+    # empty consent scope, which the consent page shows as "No access" with
+    # only Deny.
+    _stub_role_scopes(monkeypatch, "consultant", role_scopes)
+    request_id = _start_consent(client, CLAUDE_CALLBACK)
+
+    consent = client.get("/api/v1/ai/oauth/consent", params={"request": request_id})
+    response = client.post(
+        "/api/v1/ai/oauth/consent/approve", json={"request": request_id}
+    )
+
+    assert consent.status_code == 200, consent.text
+    assert consent.json()["scope"] == consent_scope
+    assert response.status_code == 200
+    assert _query(response.json()["redirectUrl"]) == (
+        CLAUDE_CALLBACK,
+        [("error", "access_denied"), ("state", "client-state"), ("iss", ORIGIN)],
+    )
+    with session_factory() as session:
+        pending = session.scalar(select(McpOauthAuthorizationRequest))
+        assert pending is not None
+        assert pending.user_id == TEST_ACTOR_USER_ID
+        assert (pending.code_hash, pending.scopes) == (None, BOTH_SCOPES)
 
 
 def test_deny_records_user_and_returns_access_denied_redirect(
@@ -1278,8 +1375,8 @@ def test_mcp_disabled_registers_no_endpoint_and_reports_feature_off(
         session_body = client.get("/api/v1/auth/session").json()
         responses = [
             client.get("/.well-known/oauth-authorization-server"),
+            client.get("/.well-known/oauth-protected-resource/api/mcp"),
             client.get("/.well-known/oauth-protected-resource/api/mcp/read"),
-            client.get("/.well-known/oauth-protected-resource/api/mcp/write"),
             client.post("/api/oauth/register", json={"client_name": "Claude"}),
             client.get("/api/oauth/authorize", params={"client_id": "x"}),
             client.get("/api/v1/ai/oauth/consent", params={"request": "A" * 43}),

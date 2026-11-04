@@ -82,7 +82,7 @@ class Settings(StrictBaseModel):
         default=600, alias="OIDC_TRANSACTION_LIFETIME_SECONDS", ge=1
     )
     mcp_enabled: bool = Field(default=False, alias="MCP_ENABLED")
-    # ADR-015 amendment (TASK-069O): registers the write server's
+    # ADR-015 amendment (TASK-069O): registers the MCP write tools
     # apply_change_set and reject_change_set. No effect without MCP_ENABLED.
     mcp_change_set_review_enabled: bool = Field(
         default=False, alias="MCP_CHANGE_SET_REVIEW_ENABLED"

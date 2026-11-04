@@ -12,7 +12,7 @@ function messageFromError(error: unknown): string {
 // Lists the signed-in User's active MCP grants. It does not depend on
 // `features.mcp`: the connections API stays registered while MCP is disabled,
 // so grants stay revocable (ADR-015 incident procedure). `changeSetReview`
-// names write access as able to apply and reject change sets.
+// labels a grant with write access as able to apply and reject change sets.
 export default function ConnectionsList(props: { changeSetReview?: boolean }) {
   const [connections, setConnections] = useState<AiConnectionDto[]>([]);
   const [loading, setLoading] = useState(true);

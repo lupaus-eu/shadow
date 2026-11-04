@@ -70,6 +70,7 @@ db/migrations/016_add_prophet_result_kind.sql
 db/migrations/017_create_mcp_oauth_schema.sql
 db/migrations/018_create_ai_change_sets.sql
 db/migrations/019_add_ai_change_set_review_channel.sql
+db/migrations/020_alter_mcp_oauth_single_resource.sql
 ```
 
 | Table | Purpose | Notes |
@@ -101,8 +102,8 @@ db/migrations/019_add_ai_change_set_review_channel.sql
 | `contacts` | Customer-owned contacts | Name is required; email, phone and job title are optional. |
 | `customer_addresses` | Customer-owned labelled addresses | Label, first address line and two-letter uppercase country code are required. |
 | `mcp_oauth_clients` | Dynamically registered public MCP OAuth clients (ADR-015) | Unique `client_id`, trimmed self-declared `client_name` (1--100 characters), `redirect_uris` as a JSONB array of 1--10 URIs, created time and IP, throttled `last_used_time`, and `deleted_time` for stale-client soft deletion. |
-| `mcp_oauth_authorization_requests` | Ten-minute pending authorization requests | Primary key is the SHA-256 request-id hash; holds client, redirect URI, `state`, S256 `code_challenge`, one scope and its resource. After consent it holds the deciding User, the 60-second code hash and expiry, the consumed time and the redeemed `grant_id`. |
-| `mcp_oauth_grants` | One User's consent for one client, scope and MCP resource | Unique `grant_key`; exactly one scope (`schatten.read` or `schatten.write`) bound to the matching resource; non-null 30-day absolute `expires_time`; last used, revoked time and `revoked_by`. |
+| `mcp_oauth_authorization_requests` | Ten-minute pending authorization requests | Primary key is the SHA-256 request-id hash; holds client, redirect URI, `state`, S256 `code_challenge`, the scopes (`schatten.read` or both) and the MCP resource. After consent it holds the deciding User, the 60-second code hash and expiry, the consumed time and the redeemed `grant_id`. |
+| `mcp_oauth_grants` | One User's consent for one client and the MCP resource | Unique `grant_key`; `scopes` `schatten.read` or `schatten.read schatten.write` on the one resource ending in `/api/mcp` (migration 020); non-null 30-day absolute `expires_time`; last used, revoked time and `revoked_by`. |
 | `mcp_oauth_tokens` | Opaque MCP access and refresh tokens | Primary key is the SHA-256 token hash; `kind` is `access` or `refresh`; expiry, `replaced_by_hash` rotation link and `revoked_time`. |
 | `ai_change_sets` | AI change sets staged through MCP and applied or rejected only by a human, in the Metrics tab or by approving an MCP client call (ADR-015, migrations 018 and 019) | Unique `change_set_key`; organisation; nullable `scenario_id` derived by the engine from the operations; title and rationale; `status` (`draft`, `submitted`, `applied`, `rejected`, `failed`, `discarded`); nullable `grant_id` (`ON DELETE SET NULL`); copied `client_id` and self-declared `client_name`; JSONB `validation_result` and `applied_result`; reviewer, review time and note; `reviewed_via` (`web` or `mcp`) with the reviewing MCP client's copied `review_client_id` and `review_client_name` (migration 019); standard audit columns with a required `created_by`. |
 | `ai_change_set_operations` | Ordered typed operations of a change set | Unique `(change_set_id, position)` and `(change_set_id, ref)`; `op_type` from ADR-015's list; JSONB `payload`, `frozen_values` (generated values and generator version, set on submit) and the latest `error`. |
@@ -212,10 +213,26 @@ back.
   `NOT NULL` and 1 to 100 characters; trimming and ADR-015's ASCII allowlist
   are enforced by the registration service (TASK-069E). `redirect_uris` is a
   JSON array of 1 to 10 entries, stored exactly as validated.
-- Grants and authorization requests hold exactly one scope:
-  `scopes` is `schatten.read` or `schatten.write`, and the `resource` ends in
-  the matching `/api/mcp/read` or `/api/mcp/write`. The exact canonical
-  resource URI is validated by the application.
+- Migration 020 (TASK-074, `020_alter_mcp_oauth_single_resource`): grants
+  and authorization requests hold `scopes` `schatten.read` or
+  `schatten.read schatten.write` (`ck_mcp_oauth_grants_scope`,
+  `ck_mcp_oauth_authorization_requests_scope`), and their `resource` matches
+  `LIKE '%/api/mcp'` (`ck_mcp_oauth_grants_resource`,
+  `ck_mcp_oauth_authorization_requests_resource`). The exact canonical
+  resource URI is validated by the application. The migration replaces
+  migration 017's four constraints, which allowed exactly one scope,
+  `schatten.read` or `schatten.write`, with the resource ending in the
+  matching `/api/mcp/read` or `/api/mcp/write`
+  (`ck_mcp_oauth_grants_scope_resource` and
+  `ck_mcp_oauth_authorization_requests_scope_resource` are dropped).
+  Before the new constraints it deletes every authorization request, then the
+  tokens and grants whose `resource` is not `LIKE '%/api/mcp'`; the foreign
+  key sets `ai_change_sets.grant_id` to null, and the change sets keep
+  `client_id` and `client_name`. Clients stay until stale-client cleanup
+  removes them after 30 days. Its down migration deletes the authorization
+  requests and the tokens and grants on the new resource and restores
+  migration 017's constraints verbatim, so every grant of the single resource
+  is lost.
 - `mcp_oauth_grants.expires_time` is non-null and after creation. It is the
   30-day absolute lifetime and is never extended, also not on grant reuse.
   `revoked_by` requires `revoked_time`.
@@ -243,8 +260,9 @@ back.
   deletes expired access tokens but never a refresh token of an active grant,
   because ADR-015's refresh-token reuse detection depends on these rows.
 - `ai_change_sets.grant_id` is `ON DELETE SET NULL`: lazy cleanup deletes a
-  revoked or expired grant without failing on a change set that references it,
-  and `created_by`, the copied `client_id` and `client_name` remain the audit
+  revoked or expired grant, and migration 020 deleted the grants on the former
+  resources, without failing on a change set that references it, and
+  `created_by`, the copied `client_id` and `client_name` remain the audit
   record. Change-set history is never deleted by the application.
 - `ai_change_sets.status` is one of `draft`, `submitted`, `applied`,
   `rejected`, `failed` or `discarded`. `applied_result` is present exactly for
@@ -338,8 +356,8 @@ The following candidate tables are retained as planned future work. They are not
 | ai_summaries | AI Domain (unplanned document-AI candidate) | AI summary outputs; outside ADR-015's scope, no task |
 | ai_extractions | AI Domain (unplanned document-AI candidate) | AI extraction outputs; outside ADR-015's scope, no task |
 
-The AI Domain's MCP OAuth tables (`mcp_oauth_*`, migration 017, TASK-069D)
-and change-set tables (`ai_change_sets`, `ai_change_set_operations`,
+The AI Domain's MCP OAuth tables (`mcp_oauth_*`, migration 017, TASK-069D;
+single MCP resource migration 020, TASK-074) and change-set tables (`ai_change_sets`, `ai_change_set_operations`,
 migration 018, TASK-069I, review channel migration 019, TASK-069O) are listed
 under Core Tables.
 

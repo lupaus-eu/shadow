@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-074/review-003",
+  "task": {
+    "id": "TASK-074",
+    "path": "tasks/TASK-074-single-mcp-connector.md"
+  },
+  "round": 3,
+  "reviewed_at": "2026-11-04T14:43:17Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": {
+    "number": 130,
+    "url": "https://github.com/reflector-oy/schatten/pull/130"
+  },
+  "source": {
+    "base_sha": "46070a787686a492e40da092f7a872d28ddb0327",
+    "head_sha": "55b8932faa581f466027d548bf84a0308b8fd515",
+    "comparison": "46070a787686a492e40da092f7a872d28ddb0327...55b8932faa581f466027d548bf84a0308b8fd515",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "clean",
+    "summary": "Round 3 reviews 55b8932, which fixes round 1's F-001 and F-004 as the developer decided. The model-building skill and both server instruction variants now say that a missing create_change_set means this connection can only read, because of the user's role or because the client asked only for read access, and the skill and instruction tests check the new sentences. An empty consent scope, which a role that ROLE_SCOPES maps to no scope gets, is now its own access level: the consent page shows No access, names the user's role, says that the role cannot connect AI clients, hides Approve and the vendor-data note and keeps Deny, and the connections list labels such a grant No access. A backend test stubs that role limitation and checks that the consent API reports an empty scope and approval redirects with access_denied; frontend tests cover the page state and the helper. ADR-015, the AI domain document and the task record the new wording and consent state. Backend ruff check, ruff format on the changed files, pyright and pytest with the PostgreSQL integration suites (1397 passed) pass, as do the frontend format check, lint, 446 tests and build. No new finding. F-005 (refresh accepts scopes beyond the grant, as ADR-015 decided) stays open for the developer's decision.",
+    "findings": [],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-074/review-001",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "As the developer decided, the skill, both instruction variants, ADR-015, the AI domain document and the task now name the user's role and the access the client asked for as the two reasons a connection can only read. Tests check the skill and instruction sentences.",
+        "validated_by": {
+          "review_id": "TASK-074/review-003",
+          "commit": "55b8932faa581f466027d548bf84a0308b8fd515"
+        }
+      },
+      {
+        "record_id": "TASK-074/review-001",
+        "finding_id": "F-004",
+        "disposition": "fixed",
+        "rationale": "As the developer decided, an empty consent scope is shown as No access with the user's role, the statement that the role cannot connect AI clients and only the Deny action. A backend test with a role stubbed to no scope reaches this state through the consent API, and frontend tests cover the page and the label.",
+        "validated_by": {
+          "review_id": "TASK-074/review-003",
+          "commit": "55b8932faa581f466027d548bf84a0308b8fd515"
+        }
+      }
+    ]
+  }
+}

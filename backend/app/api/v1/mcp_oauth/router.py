@@ -22,7 +22,8 @@ from app.api.v1.mcp_oauth.schemas import (
     TokenResponse,
 )
 from app.api.v1.mcp_oauth.service import (
-    MCP_SERVER_SCOPES,
+    MCP_SCOPES,
+    PROTECTED_RESOURCE_METADATA_PATH,
     OAuthError,
     canonical_resource,
     register_client,
@@ -58,7 +59,7 @@ def authorization_server_metadata(
         token_endpoint=f"{origin}/api/oauth/token",
         registration_endpoint=f"{origin}/api/oauth/register",
         revocation_endpoint=f"{origin}/api/oauth/revoke",
-        scopes_supported=list(MCP_SERVER_SCOPES.values()),
+        scopes_supported=list(MCP_SCOPES),
         response_types_supported=["code"],
         response_modes_supported=["query"],
         grant_types_supported=["authorization_code", "refresh_token"],
@@ -69,22 +70,17 @@ def authorization_server_metadata(
     )
 
 
-@router.get(
-    "/.well-known/oauth-protected-resource/api/mcp/read",
-    response_model=ProtectedResourceMetadata,
-)
-def read_resource_metadata(settings: SettingsDependency) -> ProtectedResourceMetadata:
-    return _protected_resource_metadata(settings, "read")
-
-
-@router.get(
-    "/.well-known/oauth-protected-resource/api/mcp/write",
-    response_model=ProtectedResourceMetadata,
-)
-def write_resource_metadata(
+@router.get(PROTECTED_RESOURCE_METADATA_PATH, response_model=ProtectedResourceMetadata)
+def protected_resource_metadata(
     settings: SettingsDependency,
 ) -> ProtectedResourceMetadata:
-    return _protected_resource_metadata(settings, "write")
+    """RFC 9728 metadata of the one MCP resource, which carries both scopes."""
+    return ProtectedResourceMetadata(
+        resource=canonical_resource(settings),
+        authorization_servers=[settings.public_origin],
+        scopes_supported=list(MCP_SCOPES),
+        bearer_methods_supported=["header"],
+    )
 
 
 @router.post(
@@ -213,17 +209,6 @@ def rate_limited_response() -> JSONResponse:
 def oauth_error_response(error: OAuthError) -> JSONResponse:
     body = OAuthErrorResponse(error=error.error, error_description=error.description)
     return JSONResponse(status_code=error.status_code, content=body.model_dump())
-
-
-def _protected_resource_metadata(
-    settings: Settings, server: str
-) -> ProtectedResourceMetadata:
-    return ProtectedResourceMetadata(
-        resource=canonical_resource(settings, server),
-        authorization_servers=[settings.public_origin],
-        scopes_supported=[MCP_SERVER_SCOPES[server]],
-        bearer_methods_supported=["header"],
-    )
 
 
 async def _read_json_body(request: Request) -> object:

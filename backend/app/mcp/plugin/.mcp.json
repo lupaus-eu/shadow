@@ -1,12 +1,8 @@
 {
   "mcpServers": {
-    "schatten-read": {
+    "schatten": {
       "type": "http",
-      "url": "https://schatten.lupaus.eu/api/mcp/read"
-    },
-    "schatten-write": {
-      "type": "http",
-      "url": "https://schatten.lupaus.eu/api/mcp/write"
+      "url": "https://schatten.lupaus.eu/api/mcp"
     }
   }
 }

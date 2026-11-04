@@ -1,19 +1,20 @@
 """Cookie-session consent API, registered only with `MCP_ENABLED=true`.
 
 The pending request id travels only in the `request` query parameter (redacted
-from access logs) and in JSON bodies, never in a URL path.
+from access logs) and in JSON bodies, never in a URL path. The consent shows,
+and the approval grants, only the requested scopes the User's role allows.
 """
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Query
 
 from app.api.v1.auth.dependencies import (
     AuthHttpError,
+    BusinessSessionDependency,
     SessionDependency,
     SettingsDependency,
     UnsafeRequestDependency,
-    require_business_request,
 )
 from app.api.v1.mcp_oauth.schemas import (
     ConsentDecisionRequest,
@@ -26,22 +27,25 @@ from app.api.v1.mcp_oauth.service import (
     deny_consent,
     load_consent,
 )
+from app.api.v1.mcp_oauth.token_service import allowed_scopes_for_role
 
 router = APIRouter(prefix="/api/v1/ai/oauth", tags=["ai"])
 
 
-@router.get(
-    "/consent",
-    response_model=ConsentRequestResponse,
-    dependencies=[Depends(require_business_request)],
-)
+@router.get("/consent", response_model=ConsentRequestResponse)
 def get_consent(
     session: SessionDependency,
     settings: SettingsDependency,
+    active: BusinessSessionDependency,
     request_id: Annotated[str | None, Query(alias="request")] = None,
 ) -> ConsentRequestResponse:
     try:
-        consent = load_consent(session, settings, request_id)
+        consent = load_consent(
+            session,
+            settings,
+            request_id,
+            allowed_scopes=allowed_scopes_for_role(active.user.role),
+        )
     except ConsentError as exc:
         raise _consent_http_error(exc) from exc
     return ConsentRequestResponse(
@@ -63,7 +67,11 @@ def approve(
 ) -> ConsentDecisionResponse:
     try:
         redirect_url = approve_consent(
-            session, settings, payload.request, user_id=active.user.user_id
+            session,
+            settings,
+            payload.request,
+            user_id=active.user.user_id,
+            allowed_scopes=allowed_scopes_for_role(active.user.role),
         )
     except ConsentError as exc:
         raise _consent_http_error(exc) from exc

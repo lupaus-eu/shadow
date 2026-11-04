@@ -25,7 +25,7 @@ import app.api.v1.ai_change_sets.engine as engine
 from app.api.v1.ai_change_sets.models import AiChangeSet
 from app.api.v1.ai_change_sets.schemas import OPERATION_ADAPTER, ExecutionResult
 from app.api.v1.mcp_oauth.models import McpOauthClient, McpOauthGrant
-from app.api.v1.mcp_oauth.service import WRITE_SCOPE
+from app.api.v1.mcp_oauth.service import READ_SCOPE, WRITE_SCOPE
 from app.api.v1.mcp_oauth.token_service import McpPrincipal
 from app.api.v1.org_states import org_states_service
 from app.api.v1.org_states.models import (
@@ -59,7 +59,7 @@ from app.core.migrations import UpCommand, execute_command
 from app.main import create_app
 from app.mcp.auth import current_principal
 from app.mcp.runtime import McpToolRuntime
-from app.mcp.write_server import build_write_server
+from app.mcp.server import build_mcp_server
 
 TEST_DATABASE_ENV = "MIGRATION_TEST_DATABASE_URL"
 CREATOR_USER_ID = 7
@@ -749,7 +749,7 @@ def test_write_tools_stage_and_submit_through_a_real_connection_pool(
     edit's key-share lock on that row would block until the statement timeout.
     """
     principal = _write_principal(factory)
-    server = build_write_server(
+    server = build_mcp_server(
         McpToolRuntime(factory, anyio.CapacityLimiter(4)), SHORT_TIMEOUTS
     )
     operations: list[dict[str, Any]] = [
@@ -814,7 +814,7 @@ def test_concurrent_mcp_and_web_apply_apply_the_change_set_once(
 ) -> None:
     """An MCP apply waits for a web apply's change-set lock, then sees it applied."""
     principal = _write_principal(factory)
-    server = build_write_server(
+    server = build_mcp_server(
         McpToolRuntime(factory, anyio.CapacityLimiter(4)),
         Settings.model_validate(
             {
@@ -879,7 +879,7 @@ def test_concurrent_mcp_and_web_apply_apply_the_change_set_once(
 
 
 def _write_principal(factory: sessionmaker[Session]) -> McpPrincipal:
-    """A write grant row, which the change set references, and its principal."""
+    """A grant row with both scopes, which change sets reference, and its principal."""
     now = datetime.now(UTC)
     with factory() as session:
         client = McpOauthClient(
@@ -893,8 +893,8 @@ def _write_principal(factory: sessionmaker[Session]) -> McpPrincipal:
             grant_key="grant_creator",
             mcp_oauth_client_id=client.mcp_oauth_client_id,
             user_id=CREATOR_USER_ID,
-            scopes=WRITE_SCOPE,
-            resource="http://testserver/api/mcp/write",
+            scopes=f"{READ_SCOPE} {WRITE_SCOPE}",
+            resource="http://testserver/api/mcp",
             created_time=now,
             expires_time=now + timedelta(days=30),
         )
@@ -907,7 +907,7 @@ def _write_principal(factory: sessionmaker[Session]) -> McpPrincipal:
             grant_key=grant.grant_key,
             client_id=client.client_id,
             client_name=client.client_name,
-            scopes=frozenset({WRITE_SCOPE}),
+            scopes=frozenset({READ_SCOPE, WRITE_SCOPE}),
         )
 
 

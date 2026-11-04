@@ -8,10 +8,11 @@ import {
   fetchConsentRequest
 } from "../../api/ai";
 import type { ConsentRequestDto } from "../../api/ai";
+import type { UserRole } from "../../api/users";
 import { useAuth } from "../../auth/AuthContext";
 import { navigateBrowser } from "../../auth/browserNavigation";
 import SelfDeclaredClientName from "./SelfDeclaredClientName";
-import { formatAiTimestamp } from "./aiPresentation";
+import { aiAccessFromScope, aiScopeLabel, formatAiTimestamp } from "./aiPresentation";
 import Alert from "../../components/Alert";
 
 type Decision = "approve" | "deny";
@@ -170,6 +171,8 @@ function ConsentRequest(props: { requestId: string }) {
 
   const { consent } = state;
   const busy = deciding !== null;
+  // A role without AI access cannot approve; the server would deny anyway.
+  const canApprove = aiAccessFromScope(consent.scope) !== "none";
 
   return (
     <main className="center-page">
@@ -226,11 +229,17 @@ function ConsentRequest(props: { requestId: string }) {
           <h2 id="ai-authorize-access-title" className="section-title">
             Requested access
           </h2>
-          <ScopeExplanation scope={consent.scope} changeSetReview={features.mcpChangeSetReview} />
-          <p>
-            Data that the AI client reads from Schatten is sent to your AI vendor. The connection
-            lasts for a limited time (30 days by default) unless it is revoked.
-          </p>
+          <ScopeExplanation
+            scope={consent.scope}
+            changeSetReview={features.mcpChangeSetReview}
+            role={user?.role}
+          />
+          {canApprove ? (
+            <p>
+              Data that the AI client reads from Schatten is sent to your AI vendor. The connection
+              lasts for a limited time (30 days by default) unless it is revoked.
+            </p>
+          ) : null}
         </section>
 
         {decisionError ? (
@@ -252,68 +261,82 @@ function ConsentRequest(props: { requestId: string }) {
           >
             {deciding === "deny" ? "Denying..." : "Deny"}
           </button>
-          <button
-            className="btn btn--primary"
-            type="button"
-            onClick={() => void decide("approve")}
-            disabled={busy}
-          >
-            {deciding === "approve" ? "Approving..." : "Approve"}
-          </button>
+          {canApprove ? (
+            <button
+              className="btn btn--primary"
+              type="button"
+              onClick={() => void decide("approve")}
+              disabled={busy}
+            >
+              {deciding === "approve" ? "Approving..." : "Approve"}
+            </button>
+          ) : null}
         </div>
       </section>
     </main>
   );
 }
 
-// With MCP change-set review on, write access can also apply and reject
-// submitted change sets (ADR-015 amendment).
-function ScopeExplanation(props: { scope: string; changeSetReview: boolean }) {
-  if (props.scope === "schatten.read") {
+// The scope is the set the grant will hold: read, or read and write, narrowed
+// to the User's role. An empty set means the role allows no AI access. With MCP
+// change-set review on, write access can also apply and reject submitted
+// change sets (ADR-015 amendment).
+function ScopeExplanation(props: { scope: string; changeSetReview: boolean; role?: UserRole }) {
+  const access = aiAccessFromScope(props.scope);
+
+  if (access === "none") {
     return (
       <div className="ai-authorize__scope">
-        <h3 className="secondary-title">Read access</h3>
+        <h3 className="secondary-title">{aiScopeLabel(props.scope)}</h3>
         <p>
-          The AI client can read the organisations, scenarios, model structure, timeseries, events
-          and AI change sets that you can see in Schatten. It cannot change anything.
+          Your Schatten role
+          {props.role ? <> ({props.role === "admin" ? "Admin" : "Consultant"})</> : null} does not
+          allow AI clients to connect, so this request cannot be approved. Deny it to return to the
+          AI client, and ask your administrator if you need AI access.
         </p>
       </div>
     );
   }
 
-  if (props.scope === "schatten.write" && props.changeSetReview) {
+  if (access === null) {
     return (
       <div className="ai-authorize__scope">
-        <h3 className="secondary-title">Write access: propose, apply and reject changes</h3>
+        <h3 className="secondary-title">Unknown access</h3>
         <p>
-          The AI client can propose changes as change sets. When you tell it to, it can also apply
-          or reject change sets awaiting review on your behalf, including change sets that other
-          people proposed. Applying a change set changes Schatten data, and you are recorded as its
-          reviewer. Your AI client should ask you to approve each apply or reject.
+          The client requests access that this page cannot describe (
+          <span className="metadata-code">{props.scope}</span>). Deny the request if you are unsure.
         </p>
       </div>
     );
   }
 
-  if (props.scope === "schatten.write") {
-    return (
-      <div className="ai-authorize__scope">
-        <h3 className="secondary-title">Write access: proposals only</h3>
-        <p>
-          The AI client can propose changes as change sets. Changes are proposed only: nothing in
-          Schatten changes until a person reviews and applies the change set in Schatten.
-        </p>
-      </div>
-    );
-  }
+  const readText =
+    "The AI client can read the organisations, scenarios, model structure, timeseries, events " +
+    "and AI change sets that you can see in Schatten.";
 
   return (
     <div className="ai-authorize__scope">
-      <h3 className="secondary-title">Unknown access</h3>
-      <p>
-        The client requests access that this page cannot describe (
-        <span className="metadata-code">{props.scope}</span>). Deny the request if you are unsure.
-      </p>
+      <h3 className="secondary-title">{aiScopeLabel(props.scope, props.changeSetReview)}</h3>
+      {access === "read" ? (
+        <p>{readText} It cannot change anything.</p>
+      ) : (
+        <>
+          <p>{readText}</p>
+          {props.changeSetReview ? (
+            <p>
+              It can also propose changes as change sets and, when you tell it to, apply or reject
+              change sets awaiting review on your behalf, including change sets that other people
+              proposed. Applying a change set changes Schatten data, and you are recorded as its
+              reviewer. Your AI client should ask you to approve each apply or reject.
+            </p>
+          ) : (
+            <p>
+              It can also propose changes as change sets. Changes are proposed only: nothing in
+              Schatten changes until a person reviews and applies the change set in Schatten.
+            </p>
+          )}
+        </>
+      )}
     </div>
   );
 }

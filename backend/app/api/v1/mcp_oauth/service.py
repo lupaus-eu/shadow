@@ -8,7 +8,7 @@ import hashlib
 import logging
 import re
 import secrets
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Literal, cast
@@ -28,7 +28,11 @@ logger = logging.getLogger(__name__)
 
 READ_SCOPE = "schatten.read"
 WRITE_SCOPE = "schatten.write"
-MCP_SERVER_SCOPES = {"read": READ_SCOPE, "write": WRITE_SCOPE}
+# ADR-015 amendment (TASK-074): one MCP resource carries both scopes. Every
+# grant holds `schatten.read`; `schatten.write` is optional.
+MCP_SCOPES = (READ_SCOPE, WRITE_SCOPE)
+MCP_PATH = "/api/mcp"
+PROTECTED_RESOURCE_METADATA_PATH = f"/.well-known/oauth-protected-resource{MCP_PATH}"
 CLIENT_STALE_AFTER = timedelta(days=30)
 CLEANUP_BATCH_SIZE = 1000
 MAX_CLIENT_NAME_LENGTH = 100
@@ -104,16 +108,20 @@ class PendingConsent:
     expires_time: datetime
 
 
-def canonical_resources(settings: Settings) -> dict[str, str]:
-    """Map each canonical MCP resource URI to its single scope."""
-    return {
-        canonical_resource(settings, server): scope
-        for server, scope in MCP_SERVER_SCOPES.items()
-    }
+def canonical_resource(settings: Settings) -> str:
+    """The one MCP resource URI that every grant and token is bound to."""
+    return f"{settings.public_origin}{MCP_PATH}"
 
 
-def canonical_resource(settings: Settings, server: str) -> str:
-    return f"{settings.public_origin}/api/mcp/{server}"
+def format_scopes(scopes: Iterable[str]) -> str:
+    """The known scopes among `scopes`, space-separated in `MCP_SCOPES` order."""
+    present = frozenset(scopes)
+    return " ".join(scope for scope in MCP_SCOPES if scope in present)
+
+
+def narrow_scopes(scopes: str, allowed_scopes: frozenset[str]) -> str:
+    """The stored `scopes` that `allowed_scopes`, a role's scopes, admit."""
+    return format_scopes(frozenset(scopes.split()) & allowed_scopes)
 
 
 def validate_client_name(value: object) -> str:
@@ -375,15 +383,17 @@ def load_consent(
     settings: Settings,
     raw_request_id: str | None,
     *,
+    allowed_scopes: frozenset[str],
     now: datetime | None = None,
 ) -> PendingConsent:
+    """Load a pending request with the scopes the User's role would be granted."""
     pending, client, target = _load_undecided_request(
         session, settings, raw_request_id, now or datetime.now(UTC), lock=False
     )
     return PendingConsent(
         client_name=client.client_name,
         redirect=target,
-        scope=pending.scopes,
+        scope=narrow_scopes(pending.scopes, allowed_scopes),
         resource=pending.resource,
         expires_time=_as_utc(pending.expires_time),
     )
@@ -395,15 +405,28 @@ def approve_consent(
     raw_request_id: str | None,
     *,
     user_id: int,
+    allowed_scopes: frozenset[str],
     now: datetime | None = None,
 ) -> str:
-    """Record the User, store a hashed one-time code and return the redirect."""
+    """Record the User, store a hashed one-time code and return the redirect.
+
+    The request keeps only the scopes the User's role allows. A role without
+    `schatten.read` cannot connect, so its approval returns `access_denied`.
+    """
     current = now or datetime.now(UTC)
     pending, _, target = _load_undecided_request(
         session, settings, raw_request_id, current, lock=True
     )
-    code = secrets.token_urlsafe(32)
+    scopes = narrow_scopes(pending.scopes, allowed_scopes)
     pending.user_id = user_id
+    if READ_SCOPE not in scopes.split():
+        state = pending.state
+        session.commit()
+        return build_redirect_url(
+            settings, target.uri, [("error", "access_denied")], state
+        )
+    code = secrets.token_urlsafe(32)
+    pending.scopes = scopes
     pending.code_hash = _sha256(code)
     pending.code_expires_time = current + timedelta(
         seconds=settings.mcp_oauth_authorization_code_lifetime_seconds
@@ -493,15 +516,28 @@ def _validated_authorization_parameters(
     ):
         raise _RedirectedError("invalid_request")
     resources = query.get("resource", ())
-    resource_scopes = canonical_resources(settings)
-    if len(resources) != 1 or resources[0] not in resource_scopes:
+    resource = canonical_resource(settings)
+    if list(resources) != [resource]:
         raise _RedirectedError("invalid_target")
-    resource = resources[0]
-    expected_scope = resource_scopes[resource]
-    scopes = query.get("scope")
-    if scopes is not None and list(scopes) != [expected_scope]:
+    return code_challenge, _requested_scopes(query.get("scope")), resource
+
+
+def _requested_scopes(values: Sequence[str] | None) -> str:
+    """Normalise the optional `scope` parameter; omitted means both scopes.
+
+    It may appear once, as a space-separated set of known scopes without
+    duplicates that includes `schatten.read`, in any order.
+    """
+    if values is None:
+        return format_scopes(MCP_SCOPES)
+    requested = values[0].split(" ") if len(values) == 1 else []
+    if (
+        READ_SCOPE not in requested
+        or len(frozenset(requested)) != len(requested)
+        or not frozenset(requested) <= frozenset(MCP_SCOPES)
+    ):
         raise _RedirectedError("invalid_scope")
-    return code_challenge, expected_scope, resource
+    return format_scopes(requested)
 
 
 def _single_parameter(query: Mapping[str, Sequence[str]], name: str) -> str | None:

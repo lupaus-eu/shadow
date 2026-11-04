@@ -3,9 +3,10 @@
 Tämä dokumentti kuvaa järjestelmän loogisen datamallin.
 
 Status: core, customer and Forecasting durable-request/saved-version models
-defined. The AI Domain's MCP OAuth entities (TASK-069D, migration 017) and
-change-set entities (TASK-069I, migration 018, with the review channel of
-TASK-069O, migration 019) are migrated. Billing remains TBD.
+defined. The AI Domain's MCP OAuth entities (TASK-069D, migration 017, with
+the single MCP resource of TASK-074, migration 020) and change-set entities
+(TASK-069I, migration 018, with the review channel of TASK-069O, migration
+019) are migrated. Billing remains TBD.
 
 Looginen datamalli kuvaa:
 
@@ -180,15 +181,17 @@ Lue nämä yhdessä datamallin kanssa:
 # AI Domain Entities
 
 ADR-015 accepts these logical entities. The four MCP OAuth tables are created
-by TASK-069D (`017_create_mcp_oauth_schema`) and the two change-set tables by
-TASK-069I (`018_create_ai_change_sets`). Both are described in
+by TASK-069D (`017_create_mcp_oauth_schema`), and TASK-074
+(`020_alter_mcp_oauth_single_resource`) restricts their grants and
+authorization requests to the one MCP resource. The two change-set tables are
+created by TASK-069I (`018_create_ai_change_sets`). Both are described in
 `docs/data/DATABASE.md` and the physical diagram.
 
 | Entity | Table | Notes |
 | --- | --- | --- |
 | MCP OAuth Client | `mcp_oauth_clients` | Dynamically registered public client with a unique `client_id`, bounded self-declared name and allowlisted redirect URIs; soft-deleted when stale, then hard-deleted once unreferenced. |
-| MCP Authorization Request | `mcp_oauth_authorization_requests` | Ten-minute pending authorization request keyed by request-id hash, with PKCE challenge, scopes, resource, state and redirect URI; after approval it holds the deciding User and a 60-second single-use code hash; after denial it holds only the deciding User. |
-| MCP Grant | `mcp_oauth_grants` | One User's consent for one client, one scope and its MCP resource, with a 30-day absolute expiry; revocable. |
+| MCP Authorization Request | `mcp_oauth_authorization_requests` | Ten-minute pending authorization request keyed by request-id hash, with PKCE challenge, scopes (`schatten.read` or both), resource, state and redirect URI; after approval it holds the deciding User and a 60-second single-use code hash; after denial it holds only the deciding User. |
+| MCP Grant | `mcp_oauth_grants` | One User's consent for one client and the MCP resource, with `schatten.read` or both scopes and a 30-day absolute expiry; revocable. |
 | MCP Token | `mcp_oauth_tokens` | Opaque access or refresh token keyed by SHA-256 hash, with expiry, rotation link and revocation. |
 | AI Change Set | `ai_change_sets` | Organisation-owned staged proposal with status, optional derived scenario reference, creator, grant, copied `client_id`, client name, validation and applied results, and review fields, including the review channel and reviewing MCP client (migration 019). |
 | AI Change Set Operation | `ai_change_set_operations` | Ordered typed operation with a stable position, an optional `$ref` symbol for the server-generated key it creates, payload, frozen generated values and generator version, and its latest error. |
@@ -197,9 +200,13 @@ Relationship rules:
 
 - An MCP OAuth Client has many Authorization Requests and Grants.
 - A Grant belongs to one User and one Client and has many Tokens. It holds
-  exactly one scope, `schatten.read` or `schatten.write`, and is bound to the
-  MCP resource of that scope (`/api/mcp/read` or `/api/mcp/write`). Its tokens
-  are accepted only by that resource.
+  `schatten.read` or `schatten.read schatten.write` and is bound to the one
+  MCP resource `<PUBLIC_ORIGIN>/api/mcp`, so one Grant covers read and write.
+  Its tokens are accepted only by that resource and carry no scope of their
+  own. A reused Grant takes the scopes of the newest consent. Until migration
+  020 (TASK-074) a Grant held exactly one scope and was bound to that scope's
+  resource, `/api/mcp/read` or `/api/mcp/write`; migration 020 deleted those
+  Grants with their Tokens.
 - A Grant's `expires_time` is 30 days after creation and is never extended. A
   re-authorization reuses only an active Grant and revokes its earlier Tokens.
   No Token expires after its Grant.
@@ -211,11 +218,13 @@ Relationship rules:
   login transaction's `return_to` for up to ten minutes.)
 - Grant revocation, User soft deletion or Token expiry ends MCP access on the
   next request. The effective scopes are the Grant's scopes intersected
-  with the scopes allowed for the User's current role.
+  with the scopes allowed for the User's current role; each MCP tool and
+  prompt checks its own scope against them.
 - An AI Change Set belongs to one Organisation and one creating User, and
   owns ordered Operations unique by position and by `ref`. Its reference to the
   staging Grant is nullable (`ON DELETE SET NULL`). When lazy cleanup deletes
-  a revoked or expired Grant, the change set keeps `created_by`, a copied
+  a revoked or expired Grant, or migration 020 deleted a Grant on a former
+  resource, the change set keeps `created_by`, a copied
   `client_id` (a plain value, not a foreign key) and `client_name` as its audit
   record. Change-set history is never deleted.
   Its optional Scenario reference is derived from the Operations whenever

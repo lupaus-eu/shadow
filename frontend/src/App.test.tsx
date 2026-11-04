@@ -109,7 +109,7 @@ function mockSchattenApi(options?: {
           redirectIsLoopback: false,
           redirectHost: "claude.ai",
           scope: options?.consentScope ?? "schatten.read",
-          resource: "https://app.localhost/api/mcp/read",
+          resource: "https://app.localhost/api/mcp",
           expiresTime: "2026-10-28T10:10:00Z"
         })
       );
@@ -709,18 +709,18 @@ describe("Schatten UI shell", () => {
     );
   });
 
-  it("explains write access from the session's MCP change-set review flag", async () => {
+  it("explains read and write access from the session's MCP change-set review flag", async () => {
     mockSchattenApi({
       mcpEnabled: true,
       mcpChangeSetReview: true,
-      consentScope: "schatten.write"
+      consentScope: "schatten.read schatten.write"
     });
 
     renderAt("/ai/authorize?request=pending-id");
 
     expect(
       await screen.findByRole("heading", {
-        name: "Write access: propose, apply and reject changes"
+        name: "Read, propose, apply and reject changes"
       })
     ).toBeVisible();
   });

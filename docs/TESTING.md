@@ -637,7 +637,14 @@ allowlist, `client_name` ASCII allowlist, metadata bounds, public clients
 only, cleanup before the client cap), authorize validation and its shown or
 redirected errors, pending request caps, consent lookup, approve and deny
 with CSRF/Origin, single decision, expiry, the separate `oauth_rate_limiter`,
-the `MCP_ENABLED=false` 404s and `features.mcp`, and log redaction.
+the `MCP_ENABLED=false` 404s and `features.mcp`, and log redaction. For
+TASK-074 it covers the scope parsing (omitted, `schatten.read`, both scopes
+in either order, and `invalid_scope` for write-only, unknown and duplicated
+scopes and a repeated `scope` parameter), `invalid_target` for any resource
+other than the single `<PUBLIC_ORIGIN>/api/mcp`, the one protected-resource
+document with both scopes and the 404 of the old ones, a consent that shows
+the role-narrowed scope, and an approval without the read scope that answers
+`access_denied`.
 `tests/test_api_authorization.py` builds the app with default settings and
 with `MCP_ENABLED=true`, so the sweep covers the MCP-gated `/api/v1/ai/*`
 routes.
@@ -672,13 +679,20 @@ at the grant's expiry, ADR-015's refresh check order and reuse detection
 (including after a cleanup pass), cleanup of a revoked grant that a request
 still references and client hard deletion, the throttled client and grant
 `last_used_time`, RFC 7009 revocation, every `verify_access_token` rejection
-including the other resource and an immediate role change, the connections
+including another resource and an immediate role change, the connections
 and admin revocation APIs with CSRF/Origin, the revocation log entries without
 tokens, their emission through the MCP OAuth audit handler while the root
 logger is at `WARNING` (as under `fastapi run`), the access-log redaction of
 misplaced token parameters, the `token` and `revoke` rate-limit buckets and the
 `MCP_ENABLED=false` behaviour. The grant-reuse and absolute-expiry tests
-disable lazy cleanup, so the lookups themselves must skip inactive grants. `tests/test_api_authorization.py` sweeps the
+disable lazy cleanup, so the lookups themselves must skip inactive grants.
+For TASK-074 it covers one grant for both scopes, a token response `scope`
+that is the effective set, the refresh `scope` rules (unknown scopes and
+another resource rejected, the grant's scopes kept and reported), grant reuse
+taking the newest consent's scopes, verification against the single resource
+and connections that report the effective scope.
+`tests/test_mcp_oauth_models.py` checks migration 020's scope and resource
+constraints on the models. `tests/test_api_authorization.py` sweeps the
 connections routes in both app configurations and treats
 `/api/v1/ai/users/{user_id}/connections/revoke` as admin-only.
 
@@ -718,7 +732,7 @@ MIGRATION_TEST_DATABASE_URL=postgresql://schatten:schatten_dev_password@localhos
 and passes its session factory as `create_app(mcp_session_factory=...)`,
 because `McpBearerAuth` and the tools open their own sessions outside FastAPI
 dependency injection. It uses `with TestClient(app)` so the lifespan starts
-both MCP session managers, stores grants and access tokens directly and sends
+the MCP session manager, stores grants and access tokens directly and sends
 plain JSON-RPC requests. It covers the `401` challenge without a token (also
 for every method and for the session cookie), `invalid_token` for malformed,
 unknown, repeated and other-resource tokens, `403 insufficient_scope` with a
@@ -755,7 +769,7 @@ creating User may edit), the operation and value limits, the tool-boundary
 title, rationale, NUL and payload-size limits, unknown change sets and deleted
 organisations, the statement timeout on every write transaction, a database
 timeout as a retryable tool error, and `list_change_sets` filtering and
-truncation. For TASK-069O's MCP change-set review it builds the write server
+truncation. For TASK-069O's MCP change-set review it builds the server
 with the switch on and covers the two extra destructive tools, the review
 instructions, the staging tools' switch-dependent descriptions (the switch-off
 wording unchanged, and a `REVIEW_WORDING` sentence missing from a docstring
@@ -766,19 +780,39 @@ reviewer as actor and records `mcp` and the client, a stale or malformed
 fingerprint, apply and reject of a draft, an operation failure that marks the
 change set failed with the MCP channel, reject notes (trimmed, blank, NUL,
 too long) and the retryable lock errors. `tests/test_mcp_auth.py` also checks
-over HTTP that a write token stages a change set for its own grant and client,
-that a read-only token (another resource, or a write grant without the
-effective write scope) cannot call any write tool, including apply and reject,
-and that the switch adds the two tools to the write server's list. The engine
+over HTTP that a token with both scopes stages a change set for its own grant
+and client, that a caller without the effective write scope cannot call any
+write tool, including apply and reject, and that the switch adds the two tools
+to the tool list. The engine
 module checks that apply and reject record their review channel and that the
 channel constraints hold, the review API tests that it records `web`, the
 migration module migration 019's backfill, constraints and exact down
 migration, and the change-set PostgreSQL module that a concurrent MCP and web
 apply applies once.
 
+For TASK-074's single endpoint `tests/test_mcp_auth.py` covers `/api/mcp` as
+the one MCP route, 404 for `/api/mcp/read`, `/api/mcp/write` and the
+trailing-slash `/api/mcp/`, the exact `WWW-Authenticate` challenge with
+`/.well-known/oauth-protected-resource/api/mcp`, `401 invalid_token` for a
+token whose grant has another origin's `/api/mcp` resource, the tool list of
+a full-role principal (13 read tools, 6 write tools or 8 with the switch, and
+both prompts), the list of a principal with `ROLE_SCOPES` stubbed to a
+read-only role (only the read tools and prompts, and "Unknown tool" for
+`create_change_set` and `apply_change_set`), a role change that shows or
+hides the write tools on the next call, the lazy `fastmcp` import and the
+stateless 405s. `tests/test_mcp_tools.py`, `tests/test_mcp_write_tools.py`,
+`tests/test_ai_skills.py` and `tests/test_ai_change_set_engine.py` build the
+combined server, use `/api/mcp` with both scopes in their fixtures and check
+the combined instruction wording. `tests/test_ai_skills.py` also checks that
+the plugin's `.mcp.json` has exactly one server, that the skills name no read
+or write server, and that the model-building skill says what to do when
+`create_change_set` is not listed.
+
 ```bash
 cd backend
 uv run pytest tests/test_mcp_auth.py tests/test_mcp_tools.py tests/test_mcp_write_tools.py -v
+uv run pytest tests/test_mcp_oauth_authorize.py tests/test_mcp_oauth_tokens.py \
+  tests/test_mcp_oauth_models.py tests/test_ai_skills.py -v
 ```
 
 ## AI Change-Set Engine Harness (TASK-069I)
@@ -824,7 +858,11 @@ review API apply requests through a real connection pool apply the change set
 once: one `200`, one `409 not_submitted`.
 `tests/test_migrations_integration.py` checks migration 018's up and
 down, its constraints and that deleting a referenced grant keeps the change
-set's audit fields. Both are skipped without `MIGRATION_TEST_DATABASE_URL`
+set's audit fields, and (TASK-074) that migration 020 removes the legacy
+authorization requests, grants and tokens, nulls the change set's `grant_id`
+while keeping its `client_name`, enforces the new constraints and is fully
+reversed by its down migration. The change-set and MCP OAuth PostgreSQL
+modules use the single resource in their fixtures. Both are skipped without `MIGRATION_TEST_DATABASE_URL`
 and always run in CI:
 
 ```bash
@@ -1207,9 +1245,14 @@ states, the missing `request` parameter, the "not available" state with
 decision, the client name in `<bdi>` with its self-declared label, the
 loopback notice without the host for `redirectIsLoopback: true`, the plain
 `redirectHost` for a vendor callback, the AI vendor notice and the default
-connection lifetime wording, and that the request id is never rendered.
-`ConnectionsList.test.tsx` covers the listed fields (`clientId`, scope and
-times), the isolated client name, confirmed revoke by `grantKey`,
+connection lifetime wording, the combined scope labels (TASK-074: "Read
+access" for `schatten.read`, "Read and propose changes" for both scopes, and
+"Read, propose, apply and reject changes" for both scopes with MCP change-set
+review on), and that the request id is never rendered.
+`aiPresentation.test.ts` (TASK-074) covers parsing the space-separated scope
+set and the labels of `aiScopeLabel`.
+`ConnectionsList.test.tsx` covers the listed fields (`clientId`, scope label
+and times), the isolated client name, confirmed revoke by `grantKey`,
 an already revoked grant, a failed revoke, load errors and use without the
 MCP feature. `UsersTab.test.tsx` covers the confirmed "Revoke AI connections"
 action and its revoked count, and `App.test.tsx` covers the anonymous
@@ -1250,9 +1293,10 @@ The component tests mock the API module:
 - `ChangeSetList.test.tsx`: the default selected-scenario filter with
   `includeUnscoped`, the "Show all" toggle, the list without a scenario and
   its load error.
-- `AiPanel.test.tsx`: the sections, the MCP URLs, their copy buttons and a
-  failed copy, the Claude Code command and the hidden Connect section with
-  `features.mcp` false.
+- `AiPanel.test.tsx`: the sections, the one "MCP server URL" row
+  (`<origin>/api/mcp`, TASK-074), its copy button and a failed copy, the Claude
+  Code command `claude mcp add --transport http schatten <origin>/api/mcp` and
+  the hidden Connect section with `features.mcp` false.
 - `features/metrics/MetricsTabAiPanel.test.tsx`: the toolbar toggle with MCP
   enabled, its absence with MCP disabled and nothing to show and its presence
   with a connection, the deep link (also before a scenario is selected) and

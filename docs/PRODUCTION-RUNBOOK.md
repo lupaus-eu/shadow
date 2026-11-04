@@ -1133,10 +1133,12 @@ verification.
 ## 14. AI Via MCP: Enable, Disable, Offboarding And Incidents
 
 [ADR-015](decisions/ADR-015-ai-via-mcp.md) lets Users connect their own MCP
-client (claude.ai, Claude Desktop, Claude Code or another client) to
-`https://schatten.lupaus.eu/api/mcp/read` and `/api/mcp/write`. Schatten is the
-OAuth 2.1 server over the existing Entra login; the Entra registration does not
-change. Local evidence and the
+client (claude.ai, Claude Desktop, Claude Code or another client) to one URL,
+`https://schatten.lupaus.eu/api/mcp`, and authorize it once for read and write
+(TASK-074, ADR-015 amendment of 2026-11-03). Releases before TASK-074,
+including `v0.2.0`, serve the two URLs `/api/mcp/read` and `/api/mcp/write`
+instead; switching is in 14.10. Schatten is the OAuth 2.1 server over the
+existing Entra login; the Entra registration does not change. Local evidence and the
 [production enablement record of 2026-11-03](qa/AI-MCP-QA-CHECKLIST.md#production-enablement-record-2026-11-03)
 are in [AI-MCP-QA-CHECKLIST.md](qa/AI-MCP-QA-CHECKLIST.md); the record covers
 Claude Code with the plugin, and the claude.ai and Claude Desktop connectors
@@ -1156,7 +1158,7 @@ reviewed release
 | Setting | Where, default | Effect |
 | --- | --- | --- |
 | `MCP_ENABLED` | Env file, `false` when unset | `false`: the MCP endpoints, discovery, registration, authorize, consent, token and revoke and the skill zips answer 404, so no token works and no grant is issued. The connections API, the admin revocation and the change-set review API stay available |
-| `MCP_CHANGE_SET_REVIEW_ENABLED` | Env file, `false` when unset | With `MCP_ENABLED=true`, `true` adds `apply_change_set` and `reject_change_set` to the write server. `false` keeps staging only |
+| `MCP_CHANGE_SET_REVIEW_ENABLED` | Env file, `false` when unset | With `MCP_ENABLED=true`, `true` adds the write tools `apply_change_set` and `reject_change_set` to the MCP server. `false` keeps staging only |
 | `MCP_OAUTH_MAX_CLIENTS` | Env file, `10000` when unset | Client cap (14.5) |
 | `MCP_OAUTH_REDIRECT_URIS` | Compose: claude.ai and claude.com callbacks, `http://localhost:{port}/callback` | Redirect URI allowlist. The loopback entry is Claude Code's; TASK-069P removed the unused `127.0.0.1` and `[::1]` entries. Adding a client with another callback is a reviewed release |
 
@@ -1218,11 +1220,16 @@ deployed values and the env file's values.
    Then run the narrow smoke (section 7) and the MCP smoke:
    - `curl -sS https://schatten.lupaus.eu/.well-known/oauth-authorization-server`
      returns issuer `https://schatten.lupaus.eu`;
-   - `curl -sS -o /dev/null -D - -X POST https://schatten.lupaus.eu/api/mcp/read`
-     returns `401` with `WWW-Authenticate: Bearer resource_metadata=...`;
-   - a designated account connects one client to both servers, approves the
-     consent pages and calls `whoami`, and stages and decides one change set in
-     an isolated test organisation;
+   - `curl -sS -o /dev/null -D - -X POST https://schatten.lupaus.eu/api/mcp`
+     returns `401` with
+     `WWW-Authenticate: Bearer resource_metadata="https://schatten.lupaus.eu/.well-known/oauth-protected-resource/api/mcp"`,
+     that document lists `schatten.read` and `schatten.write`, and
+     `POST /api/mcp/read` returns 404. A release before TASK-074 serves
+     `/api/mcp/read` and `/api/mcp/write` instead, each answering 401 with its
+     own `resource_metadata`;
+   - a designated account connects one client to the server, approves the
+     consent page once and calls `whoami`, and stages and decides one change
+     set in an isolated test organisation;
    - the remaining production items of the QA checklist, without load,
      rate-limit or attack tests.
 5. Tell Users how to connect (README "Connect an AI client") and to reconnect
@@ -1235,8 +1242,8 @@ deployed values and the env file's values.
   approval is needed. Every MCP and OAuth endpoint then answers 404; grants
   are kept but unusable.
 - **Apply and reject only:** set `MCP_CHANGE_SET_REVIEW_ENABLED=false` and
-  deploy the current release the same way. The write server loses the two
-  tools and keeps staging; humans still apply in the Metrics tab. Clients that
+  deploy the current release the same way. The MCP server loses the two
+  write tools and keeps staging; humans still apply in the Metrics tab. Clients that
   cached the tool list get "Unknown tool".
 - The redeploy keeps the release gates. If the latest restore evidence is
   failed or missing, rehearse the newest backup first (8.3). If MCP must stop
@@ -1287,8 +1294,8 @@ manual database change.
 3. **Review change sets.** Reject suspicious submitted change sets in the
    Metrics tab AI panel, which works while MCP is disabled. Find change sets
    applied or rejected through MCP by their "via <client> (MCP)" label, or with
-   the read service's `list_change_sets` (`reviewed_via`,
-   `review_client_name`) after re-enabling. Applied changes are corrected
+   the read tool `list_change_sets` (`reviewed_via`, `review_client_name`)
+   after re-enabling. Applied changes are corrected
    through the normal UI; there is no automatic undo.
 4. **Re-enable** only with a new recorded human approval, given to the deploy
    as `MCP_APPROVAL` (14.2).
@@ -1302,7 +1309,7 @@ revoked grants, without names, tokens or client ids.
 BACKEND=$(docker ps -q --filter label=com.docker.compose.project=schatten --filter label=com.docker.compose.service=backend)
 CADDY=$(docker ps -q --filter label=com.docker.compose.project=schatten --filter label=com.docker.compose.service=frontend)
 docker logs --since 24h "$BACKEND" 2>&1 | grep -E 'MCP OAuth|AI change set'
-docker logs --since 24h "$CADDY" 2>&1 | grep -E '/api/oauth/|/api/mcp/' | grep -c '"status":429'
+docker logs --since 24h "$CADDY" 2>&1 | grep -E '/api/oauth/|/api/mcp' | grep -c '"status":429'
 ```
 
 | Entry | Meaning |
@@ -1312,7 +1319,7 @@ docker logs --since 24h "$CADDY" 2>&1 | grep -E '/api/oauth/|/api/mcp/' | grep -
 | `MCP OAuth client registration refused: the cap of ...` | Client cap reached (14.5) |
 | `MCP OAuth lazy cleanup step ... skipped after a lock conflict` | Harmless; cleanup retries on a later request |
 | `AI change set <key> apply failed in step ...` | An apply rolled back; the change set is `failed` and the AI stages a new one |
-| Caddy `429` on `/api/oauth/*` or `/api/mcp/*` | A rate-limit bucket is full (per client address for OAuth, per grant for MCP) |
+| Caddy `429` on `/api/oauth/*` or `/api/mcp` | A rate-limit bucket is full (per client address for OAuth; per grant for MCP, since TASK-074 one bucket of `MCP_RATE_LIMIT_PER_MINUTE`, 120, for reads and writes together) |
 
 The logs never contain tokens, authorization codes, pending request ids or tool
 arguments: Caddy replaces `request`, `return_to`, `code`, `state`, token query
@@ -1365,3 +1372,52 @@ Claude Desktop connectors with the read server only.
   support; Schatten does not use it (ADR-015 defers server-side confirmation).
   Support in claude.ai and Claude Desktop is not observable from Schatten,
   which logs no client capabilities.
+
+### 14.10 Switching To The Single MCP Connector (TASK-074)
+
+TASK-074 replaces `/api/mcp/read` and `/api/mcp/write` with the one URL
+`https://schatten.lupaus.eu/api/mcp`: one OAuth resource, one consent and one
+grant for read and write. The old URLs and their metadata documents answer
+404, with no redirect. Its production release is **not** part of TASK-074 and
+needs its own recorded approval.
+
+1. Complete a new copy of the
+   [enablement gate](qa/AI-MCP-QA-CHECKLIST.md#production-enablement-gate)
+   with the TASK-074 local run
+   ([checklist](qa/AI-MCP-QA-CHECKLIST.md#task-074-single-mcp-connector)).
+   Tell Users beforehand that every AI connection stops at the release and
+   must be added again once (step 4).
+2. Deliver, build and approve a release from a commit that includes TASK-074
+   (section 3), then deploy it with both references, leaving the env file's
+   switches as they are:
+   `$M deploy RELEASE=<release-id> APPROVAL=<ref> MCP_APPROVAL=<ref>`. Its
+   migration job runs migration 020
+   (`020_alter_mcp_oauth_single_resource`), which deletes every pending
+   authorization request and every grant and token of the old resources.
+   Change sets keep their copied `client_id` and `client_name`; their
+   `grant_id` becomes null. Clients stay until stale-client cleanup removes
+   them after 30 days.
+3. Run the narrow smoke (section 7) and the MCP smoke of 14.2 step 4 against
+   `/api/mcp`: one connection appears in the designated account's connections
+   list, with read and write access.
+4. Tell Users (README "Connect an AI client"):
+   - **Connectors:** in claude.ai and Claude Desktop, remove the two old
+     Schatten connectors and add `https://schatten.lupaus.eu/api/mcp` as one
+     custom connector. In Claude Code without the plugin, remove the two old
+     servers (`claude mcp remove <name>`) and add
+     `claude mcp add --transport http schatten https://schatten.lupaus.eu/api/mcp`.
+     Then authenticate once and approve the access in Schatten.
+   - **Plugin:** Claude Code plugin users update the `schatten` plugin to
+     version 0.3.0, which has one server and the new skills, and authenticate
+     it once in `/mcp`.
+   - **Uploaded skills:** users who uploaded the skill zips to claude.ai or
+     Claude Desktop download them again from the Metrics tab AI panel and
+     replace the uploaded skills, which otherwise keep the old text about read
+     and write servers.
+5. Watch the logs (14.7). `MCP_RATE_LIMIT_PER_MINUTE` (120) is now one bucket
+   per grant for reads and writes together, where each server's grant had its
+   own before; a `429` on `/api/mcp` after the release can come from that.
+
+Releases before TASK-074 cannot use the schema after migration 020: their
+authorization stores the old resources, which migration 020's constraints
+reject. Take that into account in the schema review of a rollback (section 6).

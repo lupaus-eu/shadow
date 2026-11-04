@@ -67,8 +67,8 @@ const connection: AiConnectionDto = {
   grantKey: "grant-1",
   clientId: "client-abc",
   clientName: "Claude",
-  scope: "schatten.write",
-  resource: "https://app.localhost/api/mcp/write",
+  scope: "schatten.read schatten.write",
+  resource: "https://app.localhost/api/mcp",
   createdTime: "2026-10-01T08:00:00Z",
   lastUsedTime: null,
   expiresTime: "2026-10-31T08:00:00Z"
@@ -162,6 +162,12 @@ describe("MetricsTab AI panel", () => {
     expect(await within(panel).findByText("No change sets.")).toBeVisible();
     expect(within(panel).getByRole("button", { name: "Connect" })).toBeVisible();
 
+    fireEvent.click(within(panel).getByRole("button", { name: "Connect" }));
+    expect(
+      within(panel).getByText(`${window.location.origin}/api/mcp`, { selector: "code" })
+    ).toBeVisible();
+    expect(within(panel).getAllByRole("button", { name: "Copy URL" })).toHaveLength(1);
+
     fireEvent.click(toggle);
 
     expect(screen.queryByRole("complementary", { name: "AI" })).not.toBeInTheDocument();
@@ -192,6 +198,7 @@ describe("MetricsTab AI panel", () => {
     expect(within(panel).queryByRole("button", { name: "Connect" })).not.toBeInTheDocument();
     fireEvent.click(within(panel).getByRole("button", { name: "Connections" }));
     expect(await within(panel).findByText("client-abc")).toBeVisible();
+    expect(within(panel).getByText("Read and propose changes")).toBeVisible();
   });
 
   it("opens the panel on the deep-linked change set and clears the link on close", async () => {

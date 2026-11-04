@@ -21,18 +21,18 @@ const readConnection: AiConnectionDto = {
   clientId: "client-id-read",
   clientName: "Claude",
   scope: "schatten.read",
-  resource: "https://app.localhost/api/mcp/read",
+  resource: "https://app.localhost/api/mcp",
   createdTime: "2026-10-01T08:00:00Z",
   lastUsedTime: "2026-10-27T09:30:00Z",
   expiresTime: "2026-10-31T08:00:00Z"
 };
 
-const writeConnection: AiConnectionDto = {
-  grantKey: "grant-write",
-  clientId: "client-id-write",
+const readWriteConnection: AiConnectionDto = {
+  grantKey: "grant-read-write",
+  clientId: "client-id-read-write",
   clientName: "my-client_2",
-  scope: "schatten.write",
-  resource: "https://app.localhost/api/mcp/write",
+  scope: "schatten.read schatten.write",
+  resource: "https://app.localhost/api/mcp",
   createdTime: "2026-10-02T08:00:00Z",
   lastUsedTime: null,
   expiresTime: "2026-11-01T08:00:00Z"
@@ -65,7 +65,7 @@ afterEach(() => {
 
 describe("ConnectionsList", () => {
   it("lists each grant with its client id, scope and times", async () => {
-    fetchAiConnectionsMock.mockResolvedValue([readConnection, writeConnection]);
+    fetchAiConnectionsMock.mockResolvedValue([readConnection, readWriteConnection]);
 
     render(<ConnectionsList />);
 
@@ -73,7 +73,7 @@ describe("ConnectionsList", () => {
     const readRow = await screen.findByRole("listitem", { name: /^Claude/ });
     expect(within(readRow).getByText("client-id-read")).toBeVisible();
     expect(within(readRow).getByText("schatten.read")).toBeVisible();
-    expect(within(readRow).getByText("Read")).toBeVisible();
+    expect(within(readRow).getByText("Read access")).toBeVisible();
     expect(within(readRow).getByText(formatAiTimestamp(readConnection.createdTime))).toBeVisible();
     expect(
       within(readRow).getByText(formatAiTimestamp(readConnection.lastUsedTime ?? ""))
@@ -81,19 +81,33 @@ describe("ConnectionsList", () => {
     expect(within(readRow).getByText(formatAiTimestamp(readConnection.expiresTime))).toBeVisible();
 
     const writeRow = await screen.findByRole("listitem", { name: /^my-client_2/ });
-    expect(within(writeRow).getByText("client-id-write")).toBeVisible();
-    expect(within(writeRow).getByText("schatten.write")).toBeVisible();
-    expect(within(writeRow).getByText("Propose changes")).toBeVisible();
+    expect(within(writeRow).getByText("client-id-read-write")).toBeVisible();
+    expect(within(writeRow).getByText("schatten.read schatten.write")).toBeVisible();
+    expect(within(writeRow).getByText("Read and propose changes")).toBeVisible();
     expect(within(writeRow).getByText("Never")).toBeVisible();
   });
 
+  it("labels read and write access in either scope order", async () => {
+    fetchAiConnectionsMock.mockResolvedValue([
+      { ...readWriteConnection, scope: "schatten.write schatten.read" }
+    ]);
+
+    render(<ConnectionsList />);
+
+    const writeRow = await screen.findByRole("listitem", { name: /^my-client_2/ });
+    expect(within(writeRow).getByText("schatten.write schatten.read")).toBeVisible();
+    expect(within(writeRow).getByText("Read and propose changes")).toBeVisible();
+  });
+
   it("labels write access as applying too when MCP change-set review is on", async () => {
-    fetchAiConnectionsMock.mockResolvedValue([writeConnection]);
+    fetchAiConnectionsMock.mockResolvedValue([readConnection, readWriteConnection]);
 
     render(<ConnectionsList changeSetReview />);
 
     const writeRow = await screen.findByRole("listitem", { name: /^my-client_2/ });
-    expect(within(writeRow).getByText("Propose and apply changes")).toBeVisible();
+    expect(within(writeRow).getByText("Read, propose, apply and reject changes")).toBeVisible();
+    const readRow = screen.getByRole("listitem", { name: /^Claude/ });
+    expect(within(readRow).getByText("Read access")).toBeVisible();
   });
 
   it("renders the client name isolated and labelled as self-declared", async () => {
@@ -107,7 +121,7 @@ describe("ConnectionsList", () => {
   });
 
   it("confirms before revoking a connection by its grant key", async () => {
-    fetchAiConnectionsMock.mockResolvedValue([readConnection, writeConnection]);
+    fetchAiConnectionsMock.mockResolvedValue([readConnection, readWriteConnection]);
     revokeAiConnectionMock.mockResolvedValue();
 
     render(<ConnectionsList />);
@@ -124,7 +138,7 @@ describe("ConnectionsList", () => {
     fireEvent.click(within(writeRow).getByRole("button", { name: "Revoke" }));
     fireEvent.click(within(writeRow).getByRole("button", { name: "Confirm revoke" }));
 
-    await waitFor(() => expect(revokeAiConnectionMock).toHaveBeenCalledWith("grant-write"));
+    await waitFor(() => expect(revokeAiConnectionMock).toHaveBeenCalledWith("grant-read-write"));
     await waitFor(() =>
       expect(screen.queryByRole("listitem", { name: /^my-client_2/ })).not.toBeInTheDocument()
     );

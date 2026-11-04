@@ -3,7 +3,7 @@
 The Metrics tab lists, inspects, applies and rejects change sets staged
 through MCP. Both roles may review, including the creator, and the reviewer is
 the actor; the review is recorded with the `web` channel. MCP clients can also
-apply and reject through the write server (TASK-069O). The routes stay
+apply and reject through the MCP server (TASK-069O). The routes stay
 registered with `MCP_ENABLED=false`, so staged change sets can still be
 reviewed while MCP is disabled.
 """

@@ -3,7 +3,7 @@
 deployment {
 
   environment production 'Production' {
-    description 'https://schatten.lupaus.eu. MCP URLs: /api/mcp/read and /api/mcp/write, on with the change-set review since 2026-11-03 (TASK-069P).'
+    description 'https://schatten.lupaus.eu. MCP and its change-set review on since 2026-11-03 (TASK-069P). MCP URL /api/mcp (TASK-074, with its own approved release).'
 
     workstation = node 'User workstation' {
       browser = device 'Web browser' {
@@ -34,7 +34,7 @@ deployment {
         instanceOf schatten.caddy
       }
       backend = dockerContainer 'backend' {
-        description 'FastAPI REST API. Private. Since ADR-015: OAuth server and both MCP services in the same process.'
+        description 'FastAPI REST API. Private. Since ADR-015: OAuth server and the MCP service in the same process.'
         instanceOf schatten.backend
       }
       predictionWorker = dockerContainer 'prediction-worker' {

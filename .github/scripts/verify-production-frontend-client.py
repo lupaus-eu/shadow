@@ -63,8 +63,7 @@ assert b'<div id="root"></div>' in body
 # ADR-015: only the OAuth discovery documents under /.well-known reach FastAPI.
 for path in (
     "/.well-known/oauth-authorization-server",
-    "/.well-known/oauth-protected-resource/api/mcp/read",
-    "/.well-known/oauth-protected-resource/api/mcp/write",
+    "/.well-known/oauth-protected-resource/api/mcp",
 ):
     response, body = request(path)
     assert response.status == 200, (path, response.status)

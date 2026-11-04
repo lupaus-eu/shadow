@@ -44,7 +44,9 @@ def get_connections(
             lastUsedTime=connection.last_used_time,
             expiresTime=connection.expires_time,
         )
-        for connection in list_connections(session, user_id=active.user.user_id)
+        for connection in list_connections(
+            session, user_id=active.user.user_id, role=active.user.role
+        )
     ]
 
 

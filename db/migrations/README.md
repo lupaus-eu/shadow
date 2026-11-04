@@ -96,6 +96,8 @@ The current ordered migration chain is:
 016_add_prophet_result_kind.sql
 017_create_mcp_oauth_schema.sql
 018_create_ai_change_sets.sql
+019_add_ai_change_set_review_channel.sql
+020_alter_mcp_oauth_single_resource.sql
 ```
 
 Jokaisella yllä olevalla tiedostolla on vastaava `.down.sql`-tiedosto.

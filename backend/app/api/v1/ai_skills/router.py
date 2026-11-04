@@ -2,7 +2,7 @@
 
 A business session downloads a Schatten skill's folder zipped, for upload to
 claude.ai or Claude Desktop. The zip is built from the same `SKILL.md` files
-that the Claude Code plugin ships and the read server's prompts serve.
+that the Claude Code plugin ships and the MCP server's prompts serve.
 """
 
 from fastapi import APIRouter, Depends, Response

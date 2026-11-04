@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 from typing import cast
 
 import pytest
-from sqlalchemy import StaticPool, Table, create_engine, event
+from sqlalchemy import CheckConstraint, StaticPool, Table, create_engine, event
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -18,8 +18,10 @@ from app.api.v1.mcp_oauth.models import (
 from app.api.v1.users.models import User
 from app.core.models import Base
 
-READ_RESOURCE = "https://app.localhost/api/mcp/read"
-WRITE_RESOURCE = "https://app.localhost/api/mcp/write"
+# Migration 020 (TASK-074): one MCP resource carries read, or read and write.
+MCP_RESOURCE = "https://app.localhost/api/mcp"
+READ_SCOPES = "schatten.read"
+READ_WRITE_SCOPES = "schatten.read schatten.write"
 CODE_CHALLENGE = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
 NOW = datetime(2026, 10, 23, 12, 0, tzinfo=UTC)
 
@@ -66,8 +68,8 @@ def _grant(
     session: Session,
     *,
     grant_key: str = "grant-1",
-    scopes: str = "schatten.read",
-    resource: str = READ_RESOURCE,
+    scopes: str = READ_WRITE_SCOPES,
+    resource: str = MCP_RESOURCE,
     expires_time: datetime | None = NOW + timedelta(days=30),
 ) -> McpOauthGrant:
     user = session.query(User).first() or _user(session)
@@ -96,7 +98,11 @@ def _token(grant_id: int, token_hash: bytes, kind: str = "access") -> McpOauthTo
 
 
 def _authorization_request(
-    client_id: int, request_id_hash: bytes
+    client_id: int,
+    request_id_hash: bytes,
+    *,
+    scopes: str = READ_WRITE_SCOPES,
+    resource: str = MCP_RESOURCE,
 ) -> McpOauthAuthorizationRequest:
     return McpOauthAuthorizationRequest(
         request_id_hash=request_id_hash,
@@ -104,8 +110,8 @@ def _authorization_request(
         redirect_uri="https://claude.ai/api/mcp/auth_callback",
         state="client-state",
         code_challenge=CODE_CHALLENGE,
-        scopes="schatten.write",
-        resource=WRITE_RESOURCE,
+        scopes=scopes,
+        resource=resource,
         created_time=NOW,
         expires_time=NOW + timedelta(minutes=10),
     )
@@ -127,8 +133,6 @@ def test_valid_grant_with_tokens_and_redeemed_request_is_stored(
     refresh.replaced_by_hash = b"n" * 32
     session.add(refresh)
     request = _authorization_request(grant.mcp_oauth_client_id, b"q" * 32)
-    request.scopes = "schatten.read"
-    request.resource = READ_RESOURCE
     request.user_id = grant.user_id
     request.code_hash = b"c" * 32
     request.code_expires_time = NOW + timedelta(seconds=60)
@@ -217,42 +221,114 @@ def test_only_refresh_tokens_have_a_replacement(session: Session) -> None:
     _assert_rejected(session)
 
 
-@pytest.mark.parametrize(
-    ("scopes", "resource"),
-    [
-        ("schatten.admin", READ_RESOURCE),
-        ("schatten.read schatten.write", READ_RESOURCE),
-        ("schatten.write schatten.read", WRITE_RESOURCE),
-        ("", READ_RESOURCE),
-        ("schatten.read", WRITE_RESOURCE),
-        ("schatten.write", READ_RESOURCE),
-    ],
-)
-def test_grant_holds_exactly_one_allowed_scope_for_its_resource(
-    session: Session, scopes: str, resource: str
-) -> None:
+def _add_grant_row(session: Session, scopes: str, resource: str) -> None:
     _grant(session, scopes=scopes, resource=resource)
 
-    _assert_rejected(session)
 
-
-@pytest.mark.parametrize(
-    ("scopes", "resource"),
-    [
-        ("schatten.read schatten.write", READ_RESOURCE),
-        ("schatten.write", READ_RESOURCE),
-    ],
-)
-def test_authorization_request_holds_one_allowed_scope_for_its_resource(
+def _add_authorization_request_row(
     session: Session, scopes: str, resource: str
 ) -> None:
     client = _client(session)
-    request = _authorization_request(client.mcp_oauth_client_id, b"q" * 32)
-    request.scopes = scopes
-    request.resource = resource
-    session.add(request)
+    session.add(
+        _authorization_request(
+            client.mcp_oauth_client_id, b"q" * 32, scopes=scopes, resource=resource
+        )
+    )
+
+
+ScopedRowBuilder = Callable[[Session, str, str], None]
+scoped_rows = pytest.mark.parametrize(
+    "add_row",
+    [_add_grant_row, _add_authorization_request_row],
+    ids=["grant", "authorization_request"],
+)
+
+
+@scoped_rows
+@pytest.mark.parametrize("scopes", [READ_SCOPES, READ_WRITE_SCOPES])
+def test_scoped_rows_accept_read_or_read_and_write_on_the_mcp_resource(
+    session: Session, add_row: ScopedRowBuilder, scopes: str
+) -> None:
+    add_row(session, scopes, MCP_RESOURCE)
+    session.commit()
+
+    stored = {
+        (grant.scopes, grant.resource) for grant in session.query(McpOauthGrant)
+    } | {
+        (request.scopes, request.resource)
+        for request in session.query(McpOauthAuthorizationRequest)
+    }
+    assert stored == {(scopes, MCP_RESOURCE)}
+
+
+@scoped_rows
+@pytest.mark.parametrize(
+    "scopes",
+    [
+        "schatten.write",
+        "schatten.write schatten.read",
+        "schatten.admin",
+        "schatten.read schatten.admin",
+        "schatten.read schatten.write schatten.admin",
+        "schatten.read  schatten.write",
+        "schatten.read schatten.read",
+        "",
+    ],
+)
+def test_scoped_rows_reject_any_other_scopes(
+    session: Session, add_row: ScopedRowBuilder, scopes: str
+) -> None:
+    add_row(session, scopes, MCP_RESOURCE)
 
     _assert_rejected(session)
+
+
+@scoped_rows
+@pytest.mark.parametrize(
+    "resource",
+    [
+        "https://app.localhost/api/mcp/read",
+        "https://app.localhost/api/mcp/write",
+        "https://app.localhost/api/mcp/",
+        "https://app.localhost/api/mcpx",
+    ],
+)
+@pytest.mark.parametrize("scopes", [READ_SCOPES, READ_WRITE_SCOPES])
+def test_scoped_rows_reject_any_other_resource(
+    session: Session, add_row: ScopedRowBuilder, scopes: str, resource: str
+) -> None:
+    add_row(session, scopes, resource)
+
+    _assert_rejected(session)
+
+
+def test_scope_and_resource_checks_mirror_migration_020() -> None:
+    expected = {
+        McpOauthGrant: {
+            "ck_mcp_oauth_grants_scope": (
+                "scopes IN ('schatten.read', 'schatten.read schatten.write')"
+            ),
+            "ck_mcp_oauth_grants_resource": "resource LIKE '%/api/mcp'",
+        },
+        McpOauthAuthorizationRequest: {
+            "ck_mcp_oauth_authorization_requests_scope": (
+                "scopes IN ('schatten.read', 'schatten.read schatten.write')"
+            ),
+            "ck_mcp_oauth_authorization_requests_resource": (
+                "resource LIKE '%/api/mcp'"
+            ),
+        },
+    }
+    for model, checks in expected.items():
+        table = cast(Table, model.__table__)
+        constraints = {
+            constraint.name: str(constraint.sqltext)
+            for constraint in table.constraints
+            if isinstance(constraint, CheckConstraint)
+            and isinstance(constraint.name, str)
+            and ("scope" in constraint.name or "resource" in constraint.name)
+        }
+        assert constraints == checks
 
 
 def test_grant_expiry_is_required(session: Session) -> None:

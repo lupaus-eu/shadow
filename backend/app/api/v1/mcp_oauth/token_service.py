@@ -39,11 +39,13 @@ from app.api.v1.mcp_oauth.models import (
 from app.api.v1.mcp_oauth.service import (
     CLEANUP_BATCH_SIZE,
     MAX_CLIENT_ID_LENGTH,
+    MCP_SCOPES,
     READ_SCOPE,
     WRITE_SCOPE,
     OAuthError,
     advisory_transaction_lock,
     cleanup_stale_clients,
+    narrow_scopes,
 )
 from app.api.v1.users.models import User
 from app.core.config import Settings
@@ -53,8 +55,9 @@ logger = logging.getLogger(__name__)
 LAST_USED_WRITE_INTERVAL = timedelta(minutes=5)
 MAX_GRANT_KEY_LENGTH = 128
 BIGINT_MAX = 2**63 - 1
-# ADR-015: both current roles may use both scopes. The mapping exists so that a
-# future role can be limited without a token format change.
+# ADR-015: both current roles may use both scopes. This mapping is the one
+# place that limits a role: a role without `schatten.write` sees only the read
+# tools on the same endpoint, with no token format, URL or client change.
 ROLE_SCOPES: dict[str, frozenset[str]] = {
     "admin": frozenset({READ_SCOPE, WRITE_SCOPE}),
     "consultant": frozenset({READ_SCOPE, WRITE_SCOPE}),
@@ -217,10 +220,12 @@ def verify_access_token(
     *,
     now: datetime | None = None,
 ) -> McpPrincipal:
-    """Verify an MCP bearer token for one resource and scope (ADR-015).
+    """Verify an MCP bearer token for the resource and a minimum scope (ADR-015).
 
     Every call re-reads the token, grant, client and User, so revocation,
     expiry, User soft deletion and role changes take effect on the next call.
+    The principal carries the effective scopes, the grant's scopes that the
+    User's role allows, which each MCP tool checks for its own scope.
     """
     current = now or datetime.now(UTC)
     stored = (
@@ -268,9 +273,10 @@ def verify_access_token(
 
 
 def list_connections(
-    session: Session, *, user_id: int, now: datetime | None = None
+    session: Session, *, user_id: int, role: str, now: datetime | None = None
 ) -> list[McpConnection]:
-    """List the User's active grants, newest first."""
+    """List the User's active grants, newest first, with their effective scopes."""
+    allowed_scopes = allowed_scopes_for_role(role)
     current = now or datetime.now(UTC)
     rows = session.execute(
         select(McpOauthGrant, McpOauthClient)
@@ -290,7 +296,7 @@ def list_connections(
             grant_key=grant.grant_key,
             client_id=client.client_id,
             client_name=client.client_name,
-            scope=grant.scopes,
+            scope=narrow_scopes(grant.scopes, allowed_scopes),
             resource=grant.resource,
             created_time=_as_utc(grant.created_time),
             last_used_time=(
@@ -539,9 +545,11 @@ def _exchange_authorization_code(
         session.add(grant)
         session.flush()
     else:
-        # A reused grant keeps its expiry; its earlier tokens are revoked, so a
-        # stale refresh chain fails as revoked instead of triggering reuse
-        # detection against this authorization.
+        # A reused grant keeps its expiry and takes the newest consent's scopes;
+        # its earlier tokens are revoked, so a stale refresh chain fails as
+        # revoked instead of triggering reuse detection against this
+        # authorization.
+        grant.scopes = pending.scopes
         revocation = _revocation(
             session,
             grant,
@@ -551,7 +559,7 @@ def _exchange_authorization_code(
             revoked_tokens=_revoke_grant_tokens(session, grant.grant_id, now),
         )
     pending.grant_id = grant.grant_id
-    issued, _ = _issue_token_pair(session, settings, grant, now)
+    issued, _ = _issue_token_pair(session, settings, grant, user, now)
     _touch_client(session, client, now)
     session.commit()
     if revocation is not None:
@@ -578,8 +586,10 @@ def _refresh(
         _fail(session, "invalid_grant", "Invalid refresh token")
     if resource != grant.resource:
         _fail(session, "invalid_target", "resource does not match the grant")
-    if scope is not None and scope != grant.scopes:
-        _fail(session, "invalid_scope", "scope does not match the grant")
+    # Tokens carry no scope of their own, so a sent scope cannot narrow one:
+    # the token keeps the grant's scopes, and the response names them.
+    if scope is not None and not frozenset(scope.split(" ")) <= frozenset(MCP_SCOPES):
+        _fail(session, "invalid_scope", "Unknown scope")
 
     # ADR-015's check order; the first match decides.
     if not _is_active(grant, now):
@@ -600,10 +610,11 @@ def _refresh(
         raise OAuthError("invalid_grant", "Refresh token already used")
     if _as_utc(token.expires_time) <= now:
         _fail(session, "invalid_grant", "Refresh token expired")
-    if _active_user(session, grant.user_id) is None:
+    user = _active_user(session, grant.user_id)
+    if user is None:
         _fail(session, "invalid_grant", "Invalid refresh token")
 
-    issued, refresh_hash = _issue_token_pair(session, settings, grant, now)
+    issued, refresh_hash = _issue_token_pair(session, settings, grant, user, now)
     # Rotation only links the replacement; it never sets revoked_time.
     token.replaced_by_hash = refresh_hash
     session.flush()
@@ -718,9 +729,18 @@ def _revoke_redeemed_code_grant(
 
 
 def _issue_token_pair(
-    session: Session, settings: Settings, grant: McpOauthGrant, now: datetime
+    session: Session,
+    settings: Settings,
+    grant: McpOauthGrant,
+    user: User,
+    now: datetime,
 ) -> tuple[IssuedTokens, bytes]:
-    """Store a new access and refresh token; no token outlives its grant."""
+    """Store a new access and refresh token; no token outlives its grant.
+
+    The response `scope` is the effective set, the grant's scopes that the
+    User's current role allows, which may differ from the request (RFC 6749
+    section 5.1).
+    """
     access_token = secrets.token_urlsafe(32)
     refresh_token = secrets.token_urlsafe(32)
     refresh_hash = _sha256(refresh_token)
@@ -756,7 +776,7 @@ def _issue_token_pair(
         access_token=access_token,
         refresh_token=refresh_token,
         expires_in=int((access_expires - now).total_seconds()),
-        scope=grant.scopes,
+        scope=narrow_scopes(grant.scopes, allowed_scopes_for_role(user.role)),
     )
     return issued, refresh_hash
 
