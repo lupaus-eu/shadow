@@ -73,8 +73,8 @@ Päätetty tekninen perusrakenne:
   page and connections UI, TASK-069M's Metrics tab AI panel, TASK-069N's
   skills, Claude Code plugin, MCP prompts and skill zips and TASK-069O's MCP
   change-set review behind `MCP_CHANGE_SET_REVIEW_ENABLED` are implemented,
-  and TASK-069P verified the feature locally and documented its operation;
-  only the separately approved production enablement is pending (see
+  and TASK-069P verified the feature locally, documented its operation and,
+  after separate approval, enabled it in production on 2026-11-03 (see
   [AI Via MCP](#ai-via-mcp))
 
 Tarkemmat toteutusyksityiskohdat täsmentyvät taskien ja tarvittaessa uusien ADR:ien kautta.
@@ -613,8 +613,9 @@ disable, offboarding and the incident procedure in
 reads `MCP_ENABLED`, `MCP_CHANGE_SET_REVIEW_ENABLED` and
 `MCP_OAUTH_MAX_CLIENTS` from the protected env file (off and 10,000 when
 unset), and `deploy-release` refuses to turn MCP or its review on without a
-separate `--mcp-approval` reference. The feature is implemented and stays off
-in production until TASK-069P's separately approved production enablement.
+separate `--mcp-approval` reference. The feature is implemented, and
+TASK-069P's separately approved production enablement turned it and its
+change-set review on in production on 2026-11-03 (`v0.2.0`).
 
 Users chat in their own MCP-capable AI client (Claude Desktop, claude.ai,
 Claude Code or another) on their own AI subscription. Schatten never calls an
@@ -688,8 +689,9 @@ review API's codes. Every review records `reviewed_via` (`web` or `mcp`) and,
 for `mcp`, the reviewing client's `review_client_id` and `review_client_name`
 (migration 019). The session's `features.mcpChangeSetReview` switches the
 consent page, connect instructions and connections list wording; the Metrics
-AI panel shows the reviewing client. Production pins the switch to `false`
-until TASK-069P's approved enablement.
+AI panel shows the reviewing client. Production reads the switch from the
+protected env file; it has been on since TASK-069P's approved enablement on
+2026-11-03.
 
 ## Metrics Tab AI Panel
 
@@ -1025,7 +1027,7 @@ ADR-004 Authentication, Identity And Session Architecture: accepted
 ADR-005 Production-Only Deployment Environments: accepted
 ADR-006 Local Authentik TLS And Optional Entra Federation: target superseded by ADR-013
 ADR-013 Shared Entra Registration And Local HTTPS Deployment: accepted; source delivery H1-H3 implemented, first rollout by TASK-059F (v0.1.0)
-ADR-015 AI Via MCP With Human-Applied Change Sets: accepted, amended 2026-10-29; implemented (TASK-069B..TASK-069P), production enablement pending approval
+ADR-015 AI Via MCP With Human-Applied Change Sets: accepted, amended 2026-10-29; implemented (TASK-069B..TASK-069P), enabled in production 2026-11-03 (v0.2.0)
 ```
 
 ---

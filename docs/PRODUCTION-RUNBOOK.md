@@ -14,8 +14,9 @@ commands below is recorded in
 [SOURCE-DELIVERY-QA.md](qa/SOURCE-DELIVERY-QA.md) (H1-H3). Real host and
 provider evidence goes into the F record,
 [FIRST-PRODUCTION-ROLLOUT.md](qa/FIRST-PRODUCTION-ROLLOUT.md). Section 14 covers
-AI via MCP ([ADR-015](decisions/ADR-015-ai-via-mcp.md)), which stays disabled
-until its separately approved enablement.
+AI via MCP ([ADR-015](decisions/ADR-015-ai-via-mcp.md)), enabled in production
+with its change-set review on 2026-11-03 after its separate approval
+(`v0.2.0`).
 
 **This runbook authorizes nothing.** Every host, DNS, firewall, GitHub, Entra,
 backup-activation and production step is TASK-059F work and needs explicit
@@ -1127,7 +1128,7 @@ verification.
 | 2.8, 4-6 | `init-state`, `check-host`, `make build`, `make first-install`, `make deploy` and its guards, initialization, `make backup`/`restore`/`status`, gates and direct-command rollback on Engine 28.5.2 and 29.8.1 daemons, with Git absent from `PATH` | The real host and its resources |
 | 7 Smoke | Local simulated-OIDC suites | Production smoke |
 | 8-10 | Backups, failures, retention, passphrase restore, scheduler, cleanup, persistence, daemon restart; `make ps`/`logs`/`stop`/`start` keeping containers and volumes, with and without Ofelia (H3); the reboot lock refusing while a holder exists (with `echo` in place of `systemctl reboot`) | Real schedule runs, real reboot, certificate renewal |
-| 14 MCP | Enable, review-switch-only disable, full disable with the 404 surface, offboarding by soft delete and admin revocation, client cap, incident steps 1-4 and log redaction against the local stack; env-file switches, refused non-plain env-file lines and non-boolean rendered values, the `--mcp-approval` gate, the warning for a release that ignores the env file, the recorded values and `ops-status` in the disposable runtime (TASK-069P, [checklist](qa/AI-MCP-QA-CHECKLIST.md)) | The production redeploy, vendor-cloud connectors, real traffic |
+| 14 MCP | Enable, review-switch-only disable, full disable with the 404 surface, offboarding by soft delete and admin revocation, client cap, incident steps 1-4 and log redaction against the local stack; env-file switches, refused non-plain env-file lines and non-boolean rendered values, the `--mcp-approval` gate, the warning for a release that ignores the env file, the recorded values and `ops-status` in the disposable runtime (TASK-069P, [checklist](qa/AI-MCP-QA-CHECKLIST.md)) | Vendor-cloud connectors, real traffic; the enablement redeploy and Claude Code were verified in production on 2026-11-03, and the claude.ai and Claude Desktop connectors with the read server on 2026-11-04 ([record](qa/AI-MCP-QA-CHECKLIST.md#production-enablement-record-2026-11-03)) |
 
 ## 14. AI Via MCP: Enable, Disable, Offboarding And Incidents
 
@@ -1135,9 +1136,11 @@ verification.
 client (claude.ai, Claude Desktop, Claude Code or another client) to
 `https://schatten.lupaus.eu/api/mcp/read` and `/api/mcp/write`. Schatten is the
 OAuth 2.1 server over the existing Entra login; the Entra registration does not
-change. Local evidence is in
-[AI-MCP-QA-CHECKLIST.md](qa/AI-MCP-QA-CHECKLIST.md); the production items there
-stay pending until the approved enablement records them.
+change. Local evidence and the
+[production enablement record of 2026-11-03](qa/AI-MCP-QA-CHECKLIST.md#production-enablement-record-2026-11-03)
+are in [AI-MCP-QA-CHECKLIST.md](qa/AI-MCP-QA-CHECKLIST.md); the record covers
+Claude Code with the plugin, and the claude.ai and Claude Desktop connectors
+with the read server only.
 
 **Enabling MCP in production needs its own recorded human approval
 (TASK-069P).** A merge to `main` is not that approval.
@@ -1326,12 +1329,15 @@ channel to every change-set summary) already-connected Claude Code sessions
 reject those results until they reconnect (`/mcp` in Claude Code). With every
 release that changes tool results, tell Users to reconnect their clients (in
 claude.ai and Claude Desktop, reconnect the connector). Whether vendor-cloud
-connectors cache schemas the same way is a pending production check.
+connectors cache schemas the same way is still to be checked, after the next
+release that changes a tool result.
 
 ### 14.9 Observed Client Behaviour
 
-From the local run of 2026-10-30
-([checklist](qa/AI-MCP-QA-CHECKLIST.md)); production clients are pending.
+From the local runs of 2026-10-30 and 2026-11-03 and the production
+enablement of 2026-11-03 with its checks of 2026-11-04
+([checklist](qa/AI-MCP-QA-CHECKLIST.md)), which covered the claude.ai and
+Claude Desktop connectors with the read server only.
 
 - **Approval of apply and reject.** The human decision is the client's tool
   approval plus the user's instruction in the chat. Claude Code running in
@@ -1339,13 +1345,23 @@ From the local run of 2026-10-30
   prompt**; any setting that allows these tools without asking has the same
   effect, and then only the user's instruction and the review fingerprint
   stand between the AI and the data. Advise Users to keep these two tools on
-  "ask". Claude Code's default-mode prompt, Claude Desktop and claude.ai are
-  recorded at enablement.
+  "ask". Claude Code 2.1.314 in manual mode asked before each call, including
+  `reject_change_set` (2026-11-03), and in production Claude Code with the
+  plugin, in the CLI and in the Claude desktop app's Code tab, asked before
+  both (2026-11-03). With "always allow" chosen in the Code tab, applying and
+  rejecting ran without asking (2026-11-03), the effect described above.
+  claude.ai and Claude Desktop asked before a read tool set to ask
+  (2026-11-04); their prompts before apply and reject are still to be
+  recorded with the write connector.
 - **Concurrent sessions.** Claude Code uses one client registration per
   configured server and reuses it on reconnect. Re-authorizing a client for the
   same User and resource revokes that grant's earlier tokens, so another
   session holding them is signed out until it reconnects (ADR-015 accepted
-  consequence). Whether vendor connectors share one `client_id` across Users is
-  recorded at enablement.
-- **Elicitation.** Claude Code 2.1.314 ships MCP elicitation support; Schatten
-  does not use it (ADR-015 defers server-side confirmation).
+  consequence). In production the Claude Code CLI and the desktop app's Code
+  tab each registered their own clients (2026-11-03). Whether the claude.ai
+  and Claude Desktop connectors share one `client_id` across Users is still to
+  be recorded.
+- **Elicitation.** Claude Code 2.1.309 and 2.1.314 ship MCP elicitation
+  support; Schatten does not use it (ADR-015 defers server-side confirmation).
+  Support in claude.ai and Claude Desktop is not observable from Schatten,
+  which logs no client capabilities.

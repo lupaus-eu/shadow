@@ -1,0 +1,109 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-069P/review-005",
+  "task": {
+    "id": "TASK-069P",
+    "path": "tasks/TASK-069P-ai-mcp-qa-rollout.md"
+  },
+  "round": 5,
+  "reviewed_at": "2026-11-03T16:13:37Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": {
+    "number": 129,
+    "url": "https://github.com/reflector-oy/schatten/pull/129"
+  },
+  "source": {
+    "base_sha": "df98a2e7c05a2920c869bd9a1f331673217d412e",
+    "head_sha": "cfdbe7756a25e63aa27db330d03c1e62dbec5548",
+    "comparison": "df98a2e7c05a2920c869bd9a1f331673217d412e...cfdbe7756a25e63aa27db330d03c1e62dbec5548",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Round 5 reviews PR 129 at cfdbe77, focusing on the round 4 fixes in the QA checklist, runbook section 14 and the task criterion. The rollback command, its section 6 citation, the prefix check and the absence of migrations in rollback match v0.1.0's own deploy-release and release layout; v0.2.0 snapshots always carry modelKinds, which v0.1.0's snapshot model forbids, so its worker exits, restarts and marks such requests interrupted; Schatten's logout code is unchanged since v0.1.0. Every link and anchor resolves, git diff --check is clean, the LikeC4 sources are unchanged since round 4 and the added lines hold no forbidden data. Round 3 F-006 and round 4 F-001 to F-004 are fixed. One new low finding: the v0.2.0 tag object is dated before smoke item 2 and its logout re-checks, and the record does not say so.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "The record says v0.2.0 was created after acceptance, but the tag object (12:22 UTC, 14:22 Helsinki time) predates smoke item 2 and its logout re-checks, and the record does not say so.",
+        "rationale": "Smoke item 2 ran at about 16:03 Helsinki time with a stopped logout, its repeat between 16:00 and 17:00 and the session 401 check at about 18:00, while DEPLOYMENT.md says a failed check stops release acceptance and runbook section 11 creates stable tags only after acceptance.",
+        "recommendation": "Record the tag time and either state that smoke item 2 and its re-checks were completed after acceptance and tagging, as a deviation with the role that accepted it, or record the earlier admin check that acceptance relied on.",
+        "locations": [
+          {
+            "path": "docs/qa/AI-MCP-QA-CHECKLIST.md",
+            "line": 572
+          },
+          {
+            "path": "docs/qa/AI-MCP-QA-CHECKLIST.md",
+            "line": 573
+          },
+          {
+            "path": "docs/DEPLOYMENT.md",
+            "line": 905
+          },
+          {
+            "path": "docs/PRODUCTION-RUNBOOK.md",
+            "line": 1088
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-069P/review-003",
+        "finding_id": "F-006",
+        "disposition": "fixed",
+        "rationale": "The plugin's reject call is named, and section 9, the enablement record and the production QA data paragraph state that the connector checks prompted, used Testiorganisaatio and did not record their change set titles.",
+        "validated_by": {
+          "review_id": "TASK-069P/review-005",
+          "commit": "cfdbe7756a25e63aa27db330d03c1e62dbec5548"
+        }
+      },
+      {
+        "record_id": "TASK-069P/review-004",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "The record gives runbook section 6's command with --approval and the target release's own tooling path, matching v0.1.0's deploy-release, and says rollback checks the exact migration prefix and never runs migrations.",
+        "validated_by": {
+          "review_id": "TASK-069P/review-005",
+          "commit": "cfdbe7756a25e63aa27db330d03c1e62dbec5548"
+        }
+      },
+      {
+        "record_id": "TASK-069P/review-004",
+        "finding_id": "F-002",
+        "disposition": "fixed",
+        "rationale": "The record says requests queued under v0.2.0 fail under v0.1.0's worker, which exits, restarts and marks them interrupted, and that the queue is drained before a rollback and failed requests are resubmitted, matching both versions' code.",
+        "validated_by": {
+          "review_id": "TASK-069P/review-005",
+          "commit": "cfdbe7756a25e63aa27db330d03c1e62dbec5548"
+        }
+      },
+      {
+        "record_id": "TASK-069P/review-004",
+        "finding_id": "F-003",
+        "disposition": "fixed",
+        "rationale": "Smoke item 2 records a repeated logout returning to /login and the session endpoint answering 401 after a logout, and item 3 records the consultant's logout returning to /login.",
+        "validated_by": {
+          "review_id": "TASK-069P/review-005",
+          "commit": "cfdbe7756a25e63aa27db330d03c1e62dbec5548"
+        }
+      },
+      {
+        "record_id": "TASK-069P/review-004",
+        "finding_id": "F-004",
+        "disposition": "fixed",
+        "rationale": "The always-allow observation is attributed to Claude Desktop in checklist section 9, the enablement record and runbook section 14.",
+        "validated_by": {
+          "review_id": "TASK-069P/review-005",
+          "commit": "cfdbe7756a25e63aa27db330d03c1e62dbec5548"
+        }
+      }
+    ]
+  }
+}

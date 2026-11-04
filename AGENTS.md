@@ -145,8 +145,10 @@ trimmed redirect URI allowlist, runbook (`docs/PRODUCTION-RUNBOOK.md`
 section 14) and env-file MCP switches (production reads `MCP_ENABLED`,
 `MCP_CHANGE_SET_REVIEW_ENABLED` and `MCP_OAUTH_MAX_CLIENTS` from
 `production.env`; `deploy-release --mcp-approval` is required to turn MCP on)
-complete the implementation; only the separately approved
-production enablement of TASK-069P is pending. Users chat in their own MCP client on
+complete the implementation. TASK-069P's separately approved production
+enablement deployed release `20261103T090415Z-df98a2e7c05a` with both switches
+on, accepted and tagged `v0.2.0` on 2026-11-03; its record, covering Claude Code and the claude.ai and Claude
+Desktop read connectors, is in `docs/qa/AI-MCP-QA-CHECKLIST.md`. Users chat in their own MCP client on
 their own AI subscription; Schatten never calls an LLM or stores LLM keys.
 FastAPI hosts `/api/mcp/read` (`schatten.read`) and `/api/mcp/write`
 (`schatten.write`) and acts as OAuth 2.1 authorization server over the existing

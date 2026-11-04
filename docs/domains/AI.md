@@ -31,14 +31,14 @@ and TASK-069O (the MCP change-set review of the 2026-10-29 ADR-015
 amendment, see [MCP Change-Set Review (TASK-069O)](#mcp-change-set-review-task-069o))
 are implemented, and TASK-069P verified the feature locally
 (`docs/qa/AI-MCP-QA-CHECKLIST.md`) and documented its operation
-(`docs/PRODUCTION-RUNBOOK.md` section 14); only the separately approved
-production enablement is pending. The MCP endpoints, the
+(`docs/PRODUCTION-RUNBOOK.md` section 14); its separately approved production
+enablement followed on 2026-11-03. The MCP endpoints, the
 public OAuth endpoints, the consent API and the skill zip download are
-registered only with `MCP_ENABLED=true`, which is off by default and in
-production; the connections and change-set review APIs are always registered.
-The MCP apply and reject tools are registered only with
-`MCP_CHANGE_SET_REVIEW_ENABLED=true` as well, also off by default and in
-production.
+registered only with `MCP_ENABLED=true`, which is off by default and on in
+production since 2026-11-03; the connections and change-set review APIs are
+always registered. The MCP apply and reject tools are registered only with
+`MCP_CHANGE_SET_REVIEW_ENABLED=true` as well, also off by default and on in
+production since 2026-11-03.
 
 ## Purpose
 

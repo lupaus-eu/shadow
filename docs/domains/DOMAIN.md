@@ -357,8 +357,8 @@ Related Documents:
 # AI Domain
 
 Status: accepted design in ADR-015, amended 2026-10-29; implemented by
-TASK-069B through TASK-069P, with production enablement pending its separate
-approval. The earlier document-AI candidate
+TASK-069B through TASK-069P and enabled in production on 2026-11-03 after its
+separate approval (`v0.2.0`). The earlier document-AI candidate
 (classification, summaries, extraction) is retained in `docs/domains/AI.md` as
 an unplanned candidate outside this scope.
 

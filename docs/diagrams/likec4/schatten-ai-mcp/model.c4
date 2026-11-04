@@ -1,6 +1,6 @@
 // Schatten AI via MCP - C4 model (ADR-015)
-// Implemented by TASK-069B..TASK-069P; MCP stays off in production until
-// its separately approved enablement.
+// Implemented by TASK-069B..TASK-069P; MCP is enabled in production since
+// 2026-11-03 after its separate approval.
 
 model {
 

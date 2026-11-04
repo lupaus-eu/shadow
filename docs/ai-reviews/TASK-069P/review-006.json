@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-069P/review-006",
+  "task": {
+    "id": "TASK-069P",
+    "path": "tasks/TASK-069P-ai-mcp-qa-rollout.md"
+  },
+  "round": 6,
+  "reviewed_at": "2026-11-04T07:47:32Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": {
+    "number": 129,
+    "url": "https://github.com/reflector-oy/schatten/pull/129"
+  },
+  "source": {
+    "base_sha": "df98a2e7c05a2920c869bd9a1f331673217d412e",
+    "head_sha": "653aa6e3bf9aa21698c2e21dd1bb67952a415187",
+    "comparison": "df98a2e7c05a2920c869bd9a1f331673217d412e...653aa6e3bf9aa21698c2e21dd1bb67952a415187",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "clean",
+    "summary": "Round 6 reviews PR 129 at 653aa6e, focusing on the changes since round 5's cfdbe77: the stable tag row, the scheduler row of the enablement record and the task's production criterion. The v0.2.0 tag object is dated 12:22:20 UTC, which the row now gives; smoke items 3 and 5 and the plugin's apply at 10:23:01 UTC precede it, and the accepted deviation names smoke item 2 with its re-checks and the unrecorded time of smoke item 1, citing runbook section 11. The scheduler row's backup schatten-20261104T003001Z-scheduled-b713cc and Ofelia's postgres-backup result at 02:30:01 (+02:00) agree with each other and with ops-status, which lists only completed backups; the restore evidence matches the Restore evidence row. The task criterion no longer lists the backup check, and no other document listed it. git diff --check is clean, no link or anchor was added and the added lines hold no forbidden data. Round 5 F-001 is fixed.",
+    "findings": [],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-069P/review-005",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "The stable tag row gives the tag time, the checks completed before it on which the main developer accepted the release, and an accepted deviation stating that smoke item 2 and its re-checks ran after the tag and that smoke item 1's time relative to it was not recorded.",
+        "validated_by": {
+          "review_id": "TASK-069P/review-006",
+          "commit": "653aa6e3bf9aa21698c2e21dd1bb67952a415187"
+        }
+      }
+    ]
+  }
+}

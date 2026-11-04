@@ -1,8 +1,8 @@
 # ADR-015: AI Via MCP With Human-Applied Change Sets
 
 Status: Accepted design, amended 2026-10-29 (MCP change-set review,
-TASK-069O); implemented by TASK-069B through TASK-069P; production enablement
-pending its separate approval
+TASK-069O); implemented by TASK-069B through TASK-069P; enabled in production
+on 2026-11-03 after its separate approval (`v0.2.0`)
 
 Date: 2026-10-21
 
@@ -98,8 +98,9 @@ MCP prompts) and TASK-069O (the MCP change-set review tools behind
 amendment) are implemented. TASK-069P verified the feature end to end locally
 (`docs/qa/AI-MCP-QA-CHECKLIST.md`), trimmed the default redirect URI
 allowlist and documented its operation (`docs/PRODUCTION-RUNBOOK.md` section
-14). The feature stays disabled (`MCP_ENABLED=false`) until TASK-069P's
-separately approved production enablement.
+14). The feature stayed disabled (`MCP_ENABLED=false`) until TASK-069P's
+separately approved production enablement, which enabled it and its
+change-set review on 2026-11-03.
 
 | Task | Delivers |
 | --- | --- |
@@ -117,7 +118,7 @@ separately approved production enablement.
 | TASK-069M | Metrics tab AI panel and change-set review UI (implemented) |
 | TASK-069N | Skills, Claude Code plugin bundle, MCP prompts, skill zips (implemented) |
 | TASK-069O | MCP change-set review: `get_change_set_review`, `apply_change_set`, `reject_change_set`, the switch and the review channel (amendment of 2026-10-29, implemented) |
-| TASK-069P | End-to-end QA and runbook (implemented); approved production enablement (pending) (was TASK-069O until 2026-10-29) |
+| TASK-069P | End-to-end QA and runbook (implemented); approved production enablement (2026-11-03) (was TASK-069O until 2026-10-29) |
 
 ## Provider Neutrality And No In-App LLM
 
@@ -254,8 +255,9 @@ Rules:
     set, such as `'`, `&`, `@`, `,`, `#`, `!`, `[` or `]`. Names such as
     `Jonatan's client` or `R&D tool` are therefore rejected. TASK-069P
     verified that Claude Code's names (`Claude Code (schatten-read)` and
-    `Claude Code (schatten-write)`) fit; the vendor connectors' names are
-    checked at production enablement;
+    `Claude Code (schatten-write)`) fit, and the claude.ai and Claude Desktop
+    connectors' name `Claude` passed in production (2026-11-03 and
+    2026-11-04);
   - at most 10 redirect URIs of at most 2,048 characters each;
   - other metadata is ignored.
 
@@ -345,7 +347,8 @@ Rules:
   concurrent sessions of the same User and resource, re-authorizing in one
   session signs the others out, because the reused grant's earlier tokens are
   revoked. TASK-069P verified the effect locally and records it in the
-  runbook; the vendor connectors are checked at production enablement.
+  runbook. Whether the claude.ai and Claude Desktop connectors share one
+  registration across Users is still to be recorded.
 - **Grant deletion and references.** Lazy cleanup deletes revoked or expired
   grants, as described in
   [resource protection](#no-background-execution-and-resource-protection).
@@ -773,9 +776,10 @@ client do what the Metrics tab review does, on behalf of its User.
   stateless `InputRequiredResult` flow) would let Schatten itself ask the
   human to confirm, with a text the AI cannot change. It is not used, because
   support in the real clients is unknown and requiring it could make the tools
-  unusable. TASK-069P recorded that Claude Code 2.1.314 ships elicitation
-  support; Claude Desktop and claude.ai are recorded at production
-  enablement, for a later decision.
+  unusable. TASK-069P recorded that Claude Code 2.1.309 and 2.1.314 ship
+  elicitation support. Support in Claude Desktop and claude.ai is not
+  observable from Schatten, which logs no client capabilities, and is still
+  to be recorded for a later decision.
 
 ## Deterministic Timeseries Generator
 
@@ -834,8 +838,10 @@ Resource protections on the shared, resource-limited host:
       browser;
   - `mcp_rate_limiter` for `/api/mcp/*`, per grant.
 
-  TASK-069P verified the defaults with local clients; their fit with
-  vendor-cloud traffic is recorded at production enablement. Both limiters assume one backend replica, as in ADR-004.
+  TASK-069P verified the defaults with local clients, and the claude.ai and
+  Claude Desktop connectors connected to the read server in production
+  (2026-11-03 and 2026-11-04) without a reported problem; the fit with real multi-user
+  vendor-cloud traffic is still to be observed. Both limiters assume one backend replica, as in ADR-004.
 - **bounded OAuth rows.** At most a configurable number of live pending
   authorization requests per client (default 20) and in total (default
   1,000); beyond that `authorize` answers `temporarily_unavailable`.

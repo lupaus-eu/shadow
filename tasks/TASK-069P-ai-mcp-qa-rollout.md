@@ -164,7 +164,20 @@ deployment record), `deploy/bin/ops-status`, `deploy/lib/common.sh` and
       and the incident procedure, and the checklist exercises the incident
       procedure locally.
 - [ ] Production checklist items are marked pending until an authorised
-      rollout, and are then completed with evidence.
+      rollout, and are then completed with evidence. The 2026-11-03
+      enablement recorded Claude Code with the plugin (CLI and the desktop
+      app's Code tab) and a log inspection, and the checks of 2026-11-04
+      recorded the claude.ai and Claude Desktop connectors with the read
+      server. Still open in the checklist: the claude.ai and Claude Desktop
+      connectors with the write server, whose prompts before apply and
+      reject wait for the write connector to be added (enablement record and
+      section 9), whether they share a registration across Users (section
+      13), vendor schema caching after the next result-schema change
+      (section 16 and the enablement record), the client cap and rate-limit
+      buckets under real vendor-cloud traffic and the concurrency limiter,
+      statement timeout and memory headroom (section 12 and the enablement
+      record) and the claude.ai and Claude Desktop elicitation support
+      (section 9).
 - [x] The LikeC4 model and PNGs match the implemented system.
 - [x] `AGENTS.md` and `ARCHITECTURE.md` mark the feature as implemented.
 
@@ -193,9 +206,12 @@ tasks/TASK-069A-ai-mcp-architecture.md ... tasks/TASK-069O-mcp-change-set-review
 Required:
 
 - [ ] Manual verification (full checklist locally, then production after
-      approval)
-- [ ] Backend and frontend suites green on the release commit (green on the
-      2026-10-30 working tree, see the checklist; repeat on the release commit)
+      approval): local runs of 2026-10-30 and 2026-11-03 and the production
+      enablement of 2026-11-03 with the claude.ai and Claude Desktop read
+      connector checks of 2026-11-04, done; the items above still open
+- [x] Backend and frontend suites green on the release commit (green on the
+      2026-10-30 working tree, see the checklist; CI green on `df98a2e`, the
+      2026-11-03 release commit)
 
 ```bash
 cd backend && uv run ruff check . && uv run pytest && uv run pyright

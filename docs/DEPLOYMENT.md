@@ -249,7 +249,7 @@ the local evidence is in [AI-MCP-QA-CHECKLIST.md](qa/AI-MCP-QA-CHECKLIST.md).
 | --- | --- | --- |
 | `MCP_ENABLED` | Env file; `false` when unset | Feature flag. With `false` the MCP endpoints `/api/mcp/read` and `/api/mcp/write` and the discovery, registration, authorization, consent, token and revoke endpoints are not registered and return 404, and the session response reports `features.mcp=false`. The `/api/v1/ai/connections` API and the admin per-user revocation stay registered for ADR-015's incident procedure. Turning it on needs TASK-069P's separate human approval (`--mcp-approval`); a disable needs only the release approval (runbook 14.3). `verify-production-compose.sh` asserts the `${MCP_ENABLED:-false}` interpolation and its `false` default |
 | `MCP_CHANGE_SET_REVIEW_ENABLED` | Env file; `false` when unset | ADR-015 amendment (TASK-069O). With `true`, and only with `MCP_ENABLED=true`, the MCP write server also registers `apply_change_set` and `reject_change_set`, so MCP clients can apply or reject submitted change sets on their User's approval, and the session reports `features.mcpChangeSetReview=true`. The backend reads it at startup and builds the write server's tool list then, so a change takes effect when the current release is deployed again. Turning it on while MCP is on needs `--mcp-approval`. Turning it on later gives existing write grants these tools without new consent; enable it together with MCP, or tell users. Setting it to `false` and redeploying removes the tools and keeps staging. |
-| `MCP_OAUTH_REDIRECT_URIS` | claude.ai and claude.com callbacks, `http://localhost:{port}/callback` | Space- or comma-separated allowlist. Exact entries must be HTTPS without userinfo, query, fragment or wildcard. Loopback entries keep the literal `{port}` placeholder; `127.0.0.1`, `[::1]` and `localhost` hosts are supported. Startup fails on any other entry. TASK-069P trimmed the default to the loopback entry a verified client uses (Claude Code's `localhost` callback); the vendor callbacks are confirmed at production enablement |
+| `MCP_OAUTH_REDIRECT_URIS` | claude.ai and claude.com callbacks, `http://localhost:{port}/callback` | Space- or comma-separated allowlist. Exact entries must be HTTPS without userinfo, query, fragment or wildcard. Loopback entries keep the literal `{port}` placeholder; `127.0.0.1`, `[::1]` and `localhost` hosts are supported. Startup fails on any other entry. TASK-069P trimmed the default to the loopback entry a verified client uses (Claude Code's `localhost` callback). At the 2026-11-03 production enablement the claude.ai and Claude Desktop connectors registered an allowlisted vendor callback; which one each uses was not recorded, so both stay |
 | `MCP_OAUTH_AUTHORIZATION_REQUEST_LIFETIME_SECONDS` | `600` | Pending authorization request lifetime (1 to 3600) |
 | `MCP_OAUTH_AUTHORIZATION_CODE_LIFETIME_SECONDS` | `60` | Single-use authorization code lifetime (1 to 600) |
 | `MCP_OAUTH_ACCESS_TOKEN_LIFETIME_SECONDS` | `3600` | Opaque access token lifetime (1 to 86400), capped at the grant's expiry |
@@ -278,8 +278,9 @@ because vendor connector brokers call them from shared egress addresses.
 The OAuth and MCP limiters are separate from the login limiter, and all assume
 one backend replica. TASK-069P verified every bucket, the per-grant MCP limit,
 the client cap and login isolation locally with Claude Code and a scripted
-client; their fit with real vendor-cloud traffic is recorded at production
-enablement.
+client; their fit with real vendor-cloud traffic is still to be observed. The
+2026-11-03 enablement saw no 429 and 6 client registrations
+([record](qa/AI-MCP-QA-CHECKLIST.md#production-enablement-record-2026-11-03)).
 
 ## Host Setup And Build/Release Contract
 

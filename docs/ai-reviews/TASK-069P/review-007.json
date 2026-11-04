@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-069P/review-007",
+  "task": {
+    "id": "TASK-069P",
+    "path": "tasks/TASK-069P-ai-mcp-qa-rollout.md"
+  },
+  "round": 7,
+  "reviewed_at": "2026-11-04T09:46:08Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": {
+    "number": 129,
+    "url": "https://github.com/reflector-oy/schatten/pull/129"
+  },
+  "source": {
+    "base_sha": "df98a2e7c05a2920c869bd9a1f331673217d412e",
+    "head_sha": "51a9e1c4e6945b6fe8bc12ebe9623a52c2014bd4",
+    "comparison": "df98a2e7c05a2920c869bd9a1f331673217d412e...51a9e1c4e6945b6fe8bc12ebe9623a52c2014bd4",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "clean",
+    "summary": "Round 7 reviews PR 129 at 51a9e1c, focusing on the correction of the vendor connector record since round 6's 653aa6e. Each corrected claim was checked against the production Caddy and backend log summaries the developer ran on 2026-11-04 and the developer's 2026-11-04 consent page observations: Claude Code CLI 2.1.314 registrations at 09:50-09:51 UTC and the desktop app's Code tab at 10:19 UTC, each Code tab registration after a 400; two vendor Claude registrations at 11:32 and 11:33 UTC, one read-server authorize with the claude.ai callback and only read calls from the vendor cloud; claude.ai and Claude Desktop returning to claude.ai and asking before whoami. The record now names the CLI and Code tab checks correctly, marks the claude.ai and Claude Desktop connectors as partly checked with the read server, closes the callback item while keeping both callbacks allowlisted, states that per-User registration was not observed, and records the first scan's registration count against the log. The checklist sections, runbook section 14, ADR-015, the task criterion and AGENTS.md agree. Every in-page anchor resolves, git diff --check is clean and the added lines hold no client ids, tokens or identities. Round 6 had no findings.",
+    "findings": [],
+    "prior_finding_dispositions": []
+  }
+}

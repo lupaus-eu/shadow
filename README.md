@@ -186,10 +186,10 @@ person applies or rejects in the Metrics tab or, with
 `MCP_CHANGE_SET_REVIEW_ENABLED`, in the chat by approving the client's apply
 or reject call ([ADR-015](docs/decisions/ADR-015-ai-via-mcp.md)). The feature
 is behind `MCP_ENABLED` (off by default); when it is on, the Metrics tab's AI panel
-Connect section shows these steps for the current Schatten. Production stays
-off until its separately approved enablement
-([runbook section 14](docs/PRODUCTION-RUNBOOK.md#14-ai-via-mcp-enable-disable-offboarding-and-incidents));
-local evidence is in [the QA checklist](docs/qa/AI-MCP-QA-CHECKLIST.md).
+Connect section shows these steps for the current Schatten. Production has
+had it on, with the change-set review, since 2026-11-03 (`v0.2.0`;
+[runbook section 14](docs/PRODUCTION-RUNBOOK.md#14-ai-via-mcp-enable-disable-offboarding-and-incidents));
+local and production evidence is in [the QA checklist](docs/qa/AI-MCP-QA-CHECKLIST.md).
 
 - Claude Code: install the Schatten plugin, which adds the MCP servers
   `https://schatten.lupaus.eu/api/mcp/read` and `/api/mcp/write` and the

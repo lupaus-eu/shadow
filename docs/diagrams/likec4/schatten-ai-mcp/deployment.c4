@@ -3,7 +3,7 @@
 deployment {
 
   environment production 'Production' {
-    description 'https://schatten.lupaus.eu. MCP URLs: /api/mcp/read and /api/mcp/write, off (MCP_ENABLED=false) until the approved enablement.'
+    description 'https://schatten.lupaus.eu. MCP URLs: /api/mcp/read and /api/mcp/write, on with the change-set review since 2026-11-03 (TASK-069P).'
 
     workstation = node 'User workstation' {
       browser = device 'Web browser' {

@@ -162,7 +162,7 @@ claude plugin install schatten@schatten
 
 The plugin's own servers (`plugin:schatten:schatten-read` and
 `plugin:schatten:schatten-write` in `/mcp`) connect to production, where MCP
-stays off until its separately approved enablement (TASK-069P); disable them in `/mcp` for local work.
+is on since 2026-11-03 (TASK-069P); disable them in `/mcp` for local work.
 `claude --plugin-dir backend/app/mcp/plugin plugin details schatten` (or
 `claude plugin details schatten@schatten` once installed) lists the skills
 `schatten-model-building` and `schatten-timeseries-generation` and both

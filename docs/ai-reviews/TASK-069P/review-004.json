@@ -1,0 +1,181 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-069P/review-004",
+  "task": {
+    "id": "TASK-069P",
+    "path": "tasks/TASK-069P-ai-mcp-qa-rollout.md"
+  },
+  "round": 4,
+  "reviewed_at": "2026-11-03T14:40:42Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": {
+    "number": 129,
+    "url": "https://github.com/reflector-oy/schatten/pull/129"
+  },
+  "source": {
+    "base_sha": "df98a2e7c05a2920c869bd9a1f331673217d412e",
+    "head_sha": "e61b13681630afb0819303f40fba4df8cbc4aa9f",
+    "comparison": "df98a2e7c05a2920c869bd9a1f331673217d412e...e61b13681630afb0819303f40fba4df8cbc4aa9f",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Round 4 reviews PR 129 at e61b136: the round 3 fixes and the completed release record with the deployment record fields, release.env values, migration and rollback review, prior tag image IDs and each narrow smoke item. The locally checkable facts hold: the release record matches deploy-release and build-release, migrations 016 to 019 are additive and v0.1.0 passes the rollback prefix check against schema 19, the v0.1.0 image IDs match the F record, every link and anchor resolves, LikeC4 validates and no tenant ID or token-like value is recorded. Round 3 F-001 to F-005 and F-007 are fixed; F-006 stays open because the connector checks' organisation, change sets and reject calls are still not listed. The four new findings are low: the recorded rollback command lacks the required approval and cites the wrong runbook section, the rollback option omits that requests queued under v0.2.0 fail under v0.1.0's worker, smoke items 2 and 3 omit the logout evidence the follow-up depends on, and the always-allow observation names no client.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "The recorded v0.1.0 rollback command would be refused, and it cites runbook section 5 instead of section 6.",
+        "rationale": "deploy-release requires --approval in every mode, runbook section 6 runs the rollback with the target release's own tooling and an approval reference, and rollback mode never runs the migration job but must pass the migration-prefix check.",
+        "recommendation": "Record the command as runbook section 6 gives it, cite section 6, and say that rollback checks the prefix and never runs migrations.",
+        "locations": [
+          {
+            "path": "docs/qa/AI-MCP-QA-CHECKLIST.md",
+            "line": 567
+          },
+          {
+            "path": "deploy/bin/deploy-release",
+            "line": 44
+          },
+          {
+            "path": "docs/PRODUCTION-RUNBOOK.md",
+            "line": 789
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "The recorded rollback option omits that prediction requests queued under v0.2.0 fail under v0.1.0's worker.",
+        "rationale": "v0.2.0 stores a modelKinds key in every request's input snapshot, and v0.1.0's snapshot model forbids extra keys, so its worker rejects such requests, contrary to runbook section 6's durable queued requests.",
+        "recommendation": "State that requests queued under v0.2.0 fail after a rollback and must be resubmitted, or that the queue is drained before rolling back.",
+        "locations": [
+          {
+            "path": "docs/qa/AI-MCP-QA-CHECKLIST.md",
+            "line": 567
+          },
+          {
+            "path": "backend/app/api/v1/predictions/service.py",
+            "line": 145
+          },
+          {
+            "path": "backend/app/api/v1/predictions/snapshots.py",
+            "line": 184
+          },
+          {
+            "path": "docs/PRODUCTION-RUNBOOK.md",
+            "line": 780
+          }
+        ]
+      },
+      {
+        "id": "F-003",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "Smoke items 2 and 3 do not record the logout evidence that the open logout follow-up depends on.",
+        "rationale": "Runbook item 2 requires the return to /login and then a 401 from the session endpoint and item 3 includes the consultant's logout, but the record does not say whether the session endpoint answered 401 after the admin's logout or whether the consultant's logout returned to /login.",
+        "recommendation": "State both results or mark either as not checked.",
+        "locations": [
+          {
+            "path": "docs/qa/AI-MCP-QA-CHECKLIST.md",
+            "line": 569
+          },
+          {
+            "path": "docs/PRODUCTION-RUNBOOK.md",
+            "line": 819
+          }
+        ]
+      },
+      {
+        "id": "F-004",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "The always-allow observation does not say which client or calls it covers.",
+        "rationale": "The production checks ask what each client's always allow does, and both recorded plugin calls ran after a prompt, so the always-allow calls were others that the record does not identify.",
+        "recommendation": "Name the client or clients the observation covers, or say that it is not attributed to a client.",
+        "locations": [
+          {
+            "path": "docs/qa/AI-MCP-QA-CHECKLIST.md",
+            "line": 245
+          },
+          {
+            "path": "docs/qa/AI-MCP-QA-CHECKLIST.md",
+            "line": 627
+          },
+          {
+            "path": "docs/PRODUCTION-RUNBOOK.md",
+            "line": 1349
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-069P/review-003",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "The record now has the deployment record fields, the release.env tool versions and memory, the migration and rollback review with its late timing, the v0.1.0 image IDs and each smoke item with a time and result or an accepted risk; the rollback content issues are new findings.",
+        "validated_by": {
+          "review_id": "TASK-069P/review-004",
+          "commit": "e61b13681630afb0819303f40fba4df8cbc4aa9f"
+        }
+      },
+      {
+        "record_id": "TASK-069P/review-003",
+        "finding_id": "F-002",
+        "disposition": "fixed",
+        "rationale": "ARCHITECTURE.md, ADR-015 and DEPLOYMENT.md now describe the state after the 2026-11-03 enablement.",
+        "validated_by": {
+          "review_id": "TASK-069P/review-004",
+          "commit": "e61b13681630afb0819303f40fba4df8cbc4aa9f"
+        }
+      },
+      {
+        "record_id": "TASK-069P/review-003",
+        "finding_id": "F-003",
+        "disposition": "fixed",
+        "rationale": "The task's criterion lists every open production item of the checklist, including the scheduler and logout follow-ups.",
+        "validated_by": {
+          "review_id": "TASK-069P/review-004",
+          "commit": "e61b13681630afb0819303f40fba4df8cbc4aa9f"
+        }
+      },
+      {
+        "record_id": "TASK-069P/review-003",
+        "finding_id": "F-004",
+        "disposition": "fixed",
+        "rationale": "The label rules cover production, partly checked and not recorded items, the vendor callback has its own pending item and the always-allow behaviour is recorded; its client attribution is a new finding.",
+        "validated_by": {
+          "review_id": "TASK-069P/review-004",
+          "commit": "e61b13681630afb0819303f40fba4df8cbc4aa9f"
+        }
+      },
+      {
+        "record_id": "TASK-069P/review-003",
+        "finding_id": "F-005",
+        "disposition": "fixed",
+        "rationale": "Finding 2 now cites three values in the first scan and six in the rerun, matching the scan counts.",
+        "validated_by": {
+          "review_id": "TASK-069P/review-004",
+          "commit": "e61b13681630afb0819303f40fba4df8cbc4aa9f"
+        }
+      },
+      {
+        "record_id": "TASK-069P/review-003",
+        "finding_id": "F-007",
+        "disposition": "fixed",
+        "rationale": "The incorrect end time is gone and the record gives the check window and the order of the plugin checks, connector checks, the product owner's testing and both scans.",
+        "validated_by": {
+          "review_id": "TASK-069P/review-004",
+          "commit": "e61b13681630afb0819303f40fba4df8cbc4aa9f"
+        }
+      }
+    ]
+  }
+}

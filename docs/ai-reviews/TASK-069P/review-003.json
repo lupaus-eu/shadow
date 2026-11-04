@@ -1,0 +1,206 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-069P/review-003",
+  "task": {
+    "id": "TASK-069P",
+    "path": "tasks/TASK-069P-ai-mcp-qa-rollout.md"
+  },
+  "round": 3,
+  "reviewed_at": "2026-11-03T13:00:00Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": {
+    "number": 129,
+    "url": "https://github.com/reflector-oy/schatten/pull/129"
+  },
+  "source": {
+    "base_sha": "df98a2e7c05a2920c869bd9a1f331673217d412e",
+    "head_sha": "f1413c84e9a8bf14e0e6d2fb4a5c3817ce1dabb2",
+    "comparison": "df98a2e7c05a2920c869bd9a1f331673217d412e...f1413c84e9a8bf14e0e6d2fb4a5c3817ce1dabb2",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Round 3 reviews PR 129: the release-commit re-run and the production enablement record of 2026-11-03 in the AI via MCP QA checklist, the v0.2.0 tag and the status-line updates in AGENTS.md, ARCHITECTURE.md, README.md, DEPLOYMENT.md, LOCAL-DEVELOPMENT.md, the runbook, ADR-015, the domain documents, the task and the LikeC4 sources and PNGs. The locally checkable facts hold: the tag, release ID, received file count and record count match, every link and anchor resolves, the LikeC4 model validates, a re-export of all eight views is byte-identical to the committed PNGs, and no forbidden data is recorded. One medium finding: the enablement record is the only release record of a release that first brought migrations 016 to 019 to production, yet it omits the deployment result, migration and rollback data and the narrow-smoke details the runbook requires for every deployment. The low findings are consistency gaps: three status sentences still describe the enablement as future, open production items are understated in the task or folded into checked items, a stale redaction count, a production reject-prompt claim without a recorded reject call, and an unclear check timeline.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "documentation",
+        "severity": "medium",
+        "summary": "The enablement record omits the deployment result, migration and rollback data and the narrow-smoke details that runbook sections 5, 7 and 11 require for every deployment.",
+        "rationale": "It is the only release record of 20261103T090415Z-df98a2e7c05a, which first brought migrations 016 to 019 and the Prophet worker change to production, yet the migration exit code and scheduler state were not copied, mode, services replaced and result are absent, no expand/contract or rollback option is recorded, the prior tag lacks its image IDs, and the smoke row records only /health and unspecified browser checks without the certificate, consultant and one-worker prediction checks or times.",
+        "recommendation": "Copy the deployment record fields (MODE, MIGRATION_EXIT_CODE, SERVICES_REPLACED, SCHEDULER, STATUS) and the release.env tool versions and memory, record the migration compatibility review and rollback option, link the v0.1.0 image IDs, and record each smoke item with time and result or as an accepted deviation.",
+        "locations": [
+          {
+            "path": "docs/qa/AI-MCP-QA-CHECKLIST.md",
+            "line": 555
+          },
+          {
+            "path": "docs/qa/AI-MCP-QA-CHECKLIST.md",
+            "line": 557
+          },
+          {
+            "path": "docs/qa/AI-MCP-QA-CHECKLIST.md",
+            "line": 559
+          },
+          {
+            "path": "docs/qa/AI-MCP-QA-CHECKLIST.md",
+            "line": 560
+          },
+          {
+            "path": "docs/PRODUCTION-RUNBOOK.md",
+            "line": 754
+          },
+          {
+            "path": "docs/PRODUCTION-RUNBOOK.md",
+            "line": 813
+          },
+          {
+            "path": "docs/PRODUCTION-RUNBOOK.md",
+            "line": 1082
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "Three status sentences still describe the production enablement as future or production as pinned off.",
+        "rationale": "ARCHITECTURE.md says production pins the review switch to false until the enablement, ADR-015 says the vendor connectors' names are checked at production enablement, and DEPLOYMENT.md says the limits' fit with vendor-cloud traffic is recorded at production enablement, while the record shows both switches on from the env file, the names checked and the fit still open.",
+        "recommendation": "Update the three sentences to the 2026-11-03 state.",
+        "locations": [
+          {
+            "path": "ARCHITECTURE.md",
+            "line": 692
+          },
+          {
+            "path": "docs/decisions/ADR-015-ai-via-mcp.md",
+            "line": 258
+          },
+          {
+            "path": "docs/DEPLOYMENT.md",
+            "line": 281
+          }
+        ]
+      },
+      {
+        "id": "F-003",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "The task's acceptance criterion names vendor schema caching as the only open production item, while the checklist keeps several others open.",
+        "rationale": "The checklist still has pending production items for the client cap and rate-limit buckets under vendor-cloud traffic, the concurrency limiter and memory headroom, the partly observed limits and resources, vendor elicitation and the scheduler follow-up, so a reader could close the task once schema caching is checked.",
+        "recommendation": "List every remaining open item in the criterion or point to one list of them in the checklist.",
+        "locations": [
+          {
+            "path": "tasks/TASK-069P-ai-mcp-qa-rollout.md",
+            "line": 166
+          },
+          {
+            "path": "docs/qa/AI-MCP-QA-CHECKLIST.md",
+            "line": 301
+          },
+          {
+            "path": "docs/qa/AI-MCP-QA-CHECKLIST.md",
+            "line": 638
+          }
+        ]
+      },
+      {
+        "id": "F-004",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "Checked items contain required parts the record says were not recorded, and no pending item tracks the always-allow behaviour or the vendor callback choice.",
+        "rationale": "The task and the checks template require recording what each client's always allow does, and section 3 required recording which vendor callback is used, but both now sit inside checked items as not recorded; the label rules in the checklist's introduction still describe only local checks and pending production items.",
+        "recommendation": "Split partial items into a checked and a pending part, keep pending items for the always-allow behaviour and the vendor callback choice, and update the label rules for production evidence.",
+        "locations": [
+          {
+            "path": "docs/qa/AI-MCP-QA-CHECKLIST.md",
+            "line": 16
+          },
+          {
+            "path": "docs/qa/AI-MCP-QA-CHECKLIST.md",
+            "line": 99
+          },
+          {
+            "path": "docs/qa/AI-MCP-QA-CHECKLIST.md",
+            "line": 237
+          },
+          {
+            "path": "docs/qa/AI-MCP-QA-CHECKLIST.md",
+            "line": 603
+          }
+        ]
+      },
+      {
+        "id": "F-005",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "Finding 2 cites three redacted session_state values in the production log, while the final log rerun counted six.",
+        "rationale": "The finding quotes the first scan's count and the enablement record's rerun counts six, so the two production statements disagree.",
+        "recommendation": "Cite both counts or the rerun's.",
+        "locations": [
+          {
+            "path": "docs/qa/AI-MCP-QA-CHECKLIST.md",
+            "line": 405
+          },
+          {
+            "path": "docs/qa/AI-MCP-QA-CHECKLIST.md",
+            "line": 630
+          }
+        ]
+      },
+      {
+        "id": "F-006",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "The production claim that the clients asked before reject_change_set has no recorded production reject call.",
+        "rationale": "The plugin checks record one applied change set and no rejected one, and the connector checks' change sets and organisation are not listed, so it is unclear whether a reject prompt was observed and whether those checks stayed in the isolated test organisation.",
+        "recommendation": "Name the reject call that prompted or narrow the claim to apply_change_set, and state the organisation and change sets of the connector checks.",
+        "locations": [
+          {
+            "path": "docs/qa/AI-MCP-QA-CHECKLIST.md",
+            "line": 234
+          },
+          {
+            "path": "docs/qa/AI-MCP-QA-CHECKLIST.md",
+            "line": 609
+          },
+          {
+            "path": "docs/qa/AI-MCP-QA-CHECKLIST.md",
+            "line": 645
+          },
+          {
+            "path": "docs/PRODUCTION-RUNBOOK.md",
+            "line": 1347
+          }
+        ]
+      },
+      {
+        "id": "F-007",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "The production checks say they ended at 10:23 UTC, the plugin's apply time, although the connector checks and the second log scan came later and have no times.",
+        "rationale": "The first log scan after the plugin checks found only the plugin's registrations and the second followed the connector checks and the product owner's testing, yet the last checked item says the times are recorded.",
+        "recommendation": "Record the time windows of the plugin checks, connector checks, product owner's testing and both scans, and correct the end time.",
+        "locations": [
+          {
+            "path": "docs/qa/AI-MCP-QA-CHECKLIST.md",
+            "line": 583
+          },
+          {
+            "path": "docs/qa/AI-MCP-QA-CHECKLIST.md",
+            "line": 621
+          },
+          {
+            "path": "docs/qa/AI-MCP-QA-CHECKLIST.md",
+            "line": 642
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": []
+  }
+}
