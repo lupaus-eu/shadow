@@ -608,6 +608,18 @@
   gap: var(--space-3);
 }
 
+/*
+ * Four 92px mode buttons are wider than the editor panel once it scrolls
+ * vertically, so here the buttons fit their labels and wrap only as a last resort.
+ */
+.structure-editor-mode .detail-mode-switch {
+  flex-wrap: wrap;
+}
+
+.structure-editor-mode .detail-mode-switch__button {
+  min-width: 0;
+}
+
 .structure-editor-stack {
   display: grid;
   gap: var(--space-4);
@@ -866,6 +878,16 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.timeserie-link-control {
+  display: flex;
+  min-width: 0;
+  gap: var(--space-2);
+}
+
+.timeserie-link-control .searchable-select {
+  flex: 1 1 auto;
+}
+
 .timeserie-status-list {
   display: grid;
   gap: var(--space-3);
@@ -892,6 +914,10 @@
   display: grid;
   min-width: 0;
   gap: var(--space-1);
+}
+
+.timeserie-status-card__title--editable {
+  flex: 1 1 auto;
 }
 
 .timeserie-status-card__title h3 {

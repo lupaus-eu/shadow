@@ -1072,7 +1072,7 @@ Frontend Structure UI checks:
 ```bash
 cd frontend
 pnpm lint
-pnpm test StructureTab GraphViewer graphNames lifetime SearchableSelect
+pnpm test StructureTab GraphViewer graphNames lifetime SearchableSelect TimeseriePanel
 pnpm build
 ```
 
@@ -1094,6 +1094,16 @@ The searchable edge Source and Target dropdowns (TASK-075B) are covered by
 keyboard, mouse, focus and disabled behaviour) and `StructureTab.test.tsx`
 (choosing nodes through the dropdowns, graph clicks, the self-reference block
 and changing an edited edge's target).
+
+The Timeserie panel (TASK-075C) is covered by `TimeseriePanel.test.tsx` (the
+link dropdowns and their loading and failure states, the Clear buttons, Save
+link(s) payloads, the status card preview and Name row, Unlink, creating with
+the default, a custom or no type default id, retrying a failed link, option
+updates after create and delete, and one alert per panel failure) and
+`StructureTab.test.tsx` (saving and unlinking through the real node update, the
+rule context, one alert for a failed Create/Save node or edge, the page-level
+alert for a failed position save or node or edge delete, whose confirmation
+stays open, and a form action clearing that alert).
 
 Run the full frontend test suite when shared API client, workspace selection or
 tab rendering behavior changes:

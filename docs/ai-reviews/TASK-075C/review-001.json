@@ -1,0 +1,192 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-075C/review-001",
+  "task": {
+    "id": "TASK-075C",
+    "path": "tasks/TASK-075C-timeserie-panel-link-and-create.md"
+  },
+  "round": 1,
+  "reviewed_at": "2026-11-05T13:17:54Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": {
+    "number": 133,
+    "url": "https://github.com/reflector-oy/schatten/pull/133"
+  },
+  "source": {
+    "base_sha": "8fe57e12870e4c2b6dda6f6fe493992c0d87c29d",
+    "head_sha": "6aee61c3e580aa3d327c1384a6e922e63a5c5b71",
+    "comparison": "8fe57e12870e4c2b6dda6f6fe493992c0d87c29d...6aee61c3e580aa3d327c1384a6e922e63a5c5b71",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Round 1 reviews the committed TASK-075C task, including the developer's Name row amendment, and its implementation: the Timeserie panel's link dropdowns and Save link(s), the create/edit status cards with the Name row, Unlink and the editable create id, the single-alert handling in the Structure editor forms, the scoped mode-switch CSS change, the domain document and the new and rewritten tests. Every requirement is met in code and every acceptance criterion is covered by tests, except that a failed node or edge delete still showing the page-level save error has no test. There is no backend, API, migration or dependency change and no removed test. Format check, lint, all frontend tests and the build pass. Manual verification against the local HTTPS environment was not performed. Eight low or info findings remain: options created or deleted while the list loads are lost, a pending dropdown selection cannot be cleared, the targeted Structure test command skips the new panel tests, the delete-failure criterion is untested, the mode-switch change is not recorded in the task, the change is about twice the planned size, every panel remount reloads all timeseries with their values, and form actions no longer clear a stale page-level save error.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "bug",
+        "severity": "low",
+        "summary": "A timeserie created or deleted in the panel while the timeseries list is still loading is missing from, or stays in, the dropdown options and the Name row.",
+        "rationale": "Adding and removing options does nothing until the list has loaded, while the create/edit region is usable during loading. If the list response does not reflect the change, a created timeserie never appears as an option or in its Name row, and a deleted one stays selectable until the panel remounts; choosing it shows Missing and saving it fails with 404. Reproduced with a throwaway test that created the secondary default while the list request was pending and then resolved the list without it.",
+        "recommendation": "Remember timeseries created or deleted before the list arrives and apply them to it when it does, or reload the list after a create or delete, and add a test for the loading window.",
+        "locations": [
+          {
+            "path": "frontend/src/features/structure/TimeseriePanel.tsx",
+            "line": 316
+          },
+          {
+            "path": "frontend/src/features/structure/TimeseriePanel.tsx",
+            "line": 337
+          },
+          {
+            "path": "frontend/src/features/structure/TimeseriePanel.tsx",
+            "line": 345
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "bug",
+        "severity": "low",
+        "summary": "A pending link dropdown selection cannot be cleared, so an accidental selection keeps Save link(s) enabled and hides that slot's Unlink.",
+        "rationale": "The searchable dropdown has no empty option or clear action, and Unlink requires the slot to have no pending selection. The only ways out are saving, deleting that timeserie or leaving and reopening the panel. Unlink and create-and-link also remount the panel and drop the other slot's pending selection. The task does not require a clear action, so this is a usability gap rather than a requirement violation.",
+        "recommendation": "Decide with the developer whether the link dropdowns get a clear or no-selection choice, now or as a follow-up task.",
+        "locations": [
+          {
+            "path": "frontend/src/features/structure/TimeseriePanel.tsx",
+            "line": 88
+          },
+          {
+            "path": "frontend/src/features/structure/TimeseriePanel.tsx",
+            "line": 488
+          },
+          {
+            "path": "frontend/src/components/SearchableSelect.tsx",
+            "line": 89
+          }
+        ]
+      },
+      {
+        "id": "F-003",
+        "category": "documentation",
+        "severity": "low",
+        "summary": "The targeted frontend Structure test command does not run the new Timeserie panel tests, and the Structure testing section has no coverage note for TASK-075C.",
+        "rationale": "The documented filter matches five test files, so a targeted Structure run skips the new panel test file. TASK-075A and TASK-075B each added a coverage paragraph to this section.",
+        "recommendation": "Add the panel test file to the targeted command and add a short note on where the panel behaviour and the single-alert form failures are covered.",
+        "locations": [
+          {
+            "path": "docs/TESTING.md",
+            "line": 1075
+          },
+          {
+            "path": "docs/TESTING.md",
+            "line": 1092
+          }
+        ]
+      },
+      {
+        "id": "F-004",
+        "category": "missing_test",
+        "severity": "low",
+        "summary": "The acceptance criterion that a failed node or edge delete still shows the page-level save error once has no test.",
+        "rationale": "The delete handlers are unchanged and still set the page-level error, so the behaviour is correct by inspection, but only the failed position save is tested. A delete-failure test is complicated by the out-of-scope unhandled rejection: the node and edge forms do not catch a failed delete, and the test runner fails on unhandled rejections.",
+        "recommendation": "Add a delete-failure test that handles the rejection, or record in the task or pull request that this criterion is verified by code review and manual QA.",
+        "locations": [
+          {
+            "path": "frontend/src/features/structure/StructureTab.test.tsx",
+            "line": 1437
+          },
+          {
+            "path": "frontend/src/features/structure/StructureTab.tsx",
+            "line": 473
+          },
+          {
+            "path": "frontend/src/features/structure/StructureTab.tsx",
+            "line": 550
+          }
+        ]
+      },
+      {
+        "id": "F-005",
+        "category": "scope",
+        "severity": "info",
+        "summary": "The Structure editor mode-switch CSS change requested by the developer is reasonable but not recorded in the task.",
+        "rationale": "Four mode buttons with a 92px minimum are wider than the editor panel's content once it scrolls vertically, which caused the horizontal scrollbar. The fix is scoped to the Structure editor's mode switch, so the Scenarios and AI panel switches and the mobile rules are unaffected; on desktop the Structure mode buttons no longer have equal widths. Unlike the Name row decision, the request is not in the task.",
+        "recommendation": "Record the developer's request and the CSS change in the task or the pull request description.",
+        "locations": [
+          {
+            "path": "frontend/src/styles/app.css",
+            "line": 615
+          }
+        ]
+      },
+      {
+        "id": "F-006",
+        "category": "scope",
+        "severity": "info",
+        "summary": "The change is about twice the planned size.",
+        "rationale": "Ignoring whitespace the range adds about 926 lines, about 580 of them tests, against the task's estimate of 450 to 550 lines and the project's recommendation of under 500 reviewable lines.",
+        "recommendation": "Note the size in the pull request; no code change is needed.",
+        "locations": [
+          {
+            "path": "tasks/TASK-075C-timeserie-panel-link-and-create.md",
+            "line": 1
+          }
+        ]
+      },
+      {
+        "id": "F-007",
+        "category": "regression",
+        "severity": "info",
+        "summary": "Every Timeserie panel mount reloads all of the scenario's timeseries with all their values.",
+        "rationale": "The panel remounts after every link save, Unlink and create-and-link, and each mount requests the scenario's timeseries list, which the backend returns with every value by default. The task mandates this list, so it is not an implementation defect, but large scenarios pay for it on every link change and it widens the loading window of F-001.",
+        "recommendation": "Consider a follow-up for a values-free timeseries list or for keeping the list across panel remounts.",
+        "locations": [
+          {
+            "path": "frontend/src/features/structure/TimeseriePanel.tsx",
+            "line": 316
+          },
+          {
+            "path": "frontend/src/features/structure/StructureTab.tsx",
+            "line": 798
+          },
+          {
+            "path": "backend/app/api/v1/org_states/org_states_service.py",
+            "line": 798
+          }
+        ]
+      },
+      {
+        "id": "F-008",
+        "category": "regression",
+        "severity": "info",
+        "summary": "Create node, Save node, Create edge and Save edge no longer clear a stale page-level save error when they start.",
+        "rationale": "Before this change these actions cleared the page-level error first. Now an earlier position-save or delete error stays visible until dismissed, so a later form failure shows the stale page alert next to the new form alert. This follows the task's literal instruction to stop setting the page-level error.",
+        "recommendation": "Confirm the intent with the developer; optionally clear the page-level error at the start of these actions without ever setting it.",
+        "locations": [
+          {
+            "path": "frontend/src/features/structure/StructureTab.tsx",
+            "line": 411
+          },
+          {
+            "path": "frontend/src/features/structure/StructureTab.tsx",
+            "line": 439
+          },
+          {
+            "path": "frontend/src/features/structure/StructureTab.tsx",
+            "line": 510
+          },
+          {
+            "path": "frontend/src/features/structure/StructureTab.tsx",
+            "line": 533
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": []
+  }
+}

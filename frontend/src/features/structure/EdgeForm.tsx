@@ -105,8 +105,12 @@ export default function EdgeForm(props: {
 
   async function confirmDelete() {
     if (!props.onDelete) return;
-    await props.onDelete();
-    setConfirmingDelete(false);
+    try {
+      await props.onDelete();
+      setConfirmingDelete(false);
+    } catch {
+      // The owner shows the failure; the confirmation stays open to retry or cancel.
+    }
   }
 
   return (

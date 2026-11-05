@@ -201,6 +201,19 @@ node -> goal node -> selected metric node. It displays connected node names and
 the type catalog's actual `displayName`; missing or ambiguous paths are shown
 explicitly instead of selecting an arbitrary node.
 
+The Structure UI's Timeserie panel (TASK-075C) links a node to existing
+timeseries by choosing them from the scenario's active timeseries; it does not
+accept typed link keys. A pending choice can be cleared before saving, and
+"Save link(s)" patches only the chosen slot or slots.
+A slot whose effective timeserie is missing, or that has no id, offers a create
+form whose id defaults to the type metadata id and can be changed. A timeserie
+created with the type default id is inherited and gets no explicit link; one
+created with another id is then linked to that slot. The create and the link
+are separate requests, so a failed link leaves the created timeserie in place
+and resubmitting the same id retries only the link. "Unlink" sends `null` for
+that slot only, which returns it to its type default without deleting the
+timeserie.
+
 The service function `get_scenario_type_catalog_with_attributes` returns the
 type catalog plus the active type attribute definitions of active node and edge
 types (`TypeCatalogWithAttributesResponse.typeAttributes`). It has no REST

@@ -422,6 +422,7 @@ export default function StructureTab(props: { orgId: string }) {
 
     try {
       setIsMutatingEntity(true);
+      // The form shows its own error; only an earlier page-level error is cleared.
       setActionError("");
       const node = await createGraphNode(
         props.orgId,
@@ -432,9 +433,6 @@ export default function StructureTab(props: { orgId: string }) {
       setGraph((current) => (current ? replaceNode(current, node) : current));
       setVisibleNodeTypeIds((current) => new Set(current).add(node.nodeTypeId));
       setSelected({ kind: "node", id: node.id });
-    } catch (error) {
-      setActionError(messageFromError(error));
-      throw error;
     } finally {
       setIsMutatingEntity(false);
     }
@@ -454,9 +452,6 @@ export default function StructureTab(props: { orgId: string }) {
       );
       setGraph((current) => (current ? replaceNode(current, node) : current));
       setVisibleNodeTypeIds((current) => new Set(current).add(node.nodeTypeId));
-    } catch (error) {
-      setActionError(messageFromError(error));
-      throw error;
     } finally {
       setIsMutatingEntity(false);
     }
@@ -534,9 +529,6 @@ export default function StructureTab(props: { orgId: string }) {
       setGraph((current) => (current ? replaceEdge(current, edge) : current));
       setCreateEdgeDraft(EMPTY_CREATE_EDGE_DRAFT);
       setSelected({ kind: "edge", id: edge.id });
-    } catch (error) {
-      setActionError(messageFromError(error));
-      throw error;
     } finally {
       setIsMutatingEntity(false);
     }
@@ -555,9 +547,6 @@ export default function StructureTab(props: { orgId: string }) {
         payload
       );
       setGraph((current) => (current ? replaceEdge(current, edge) : current));
-    } catch (error) {
-      setActionError(messageFromError(error));
-      throw error;
     } finally {
       setIsMutatingEntity(false);
     }
@@ -812,7 +801,7 @@ export default function StructureTab(props: { orgId: string }) {
           ) : mode === "timeserie" && canUseTimeserieMode && selectedNode ? (
             <TimeseriePanel
               key={
-                `timeserie-node:${selectedNode.id}:` +
+                `timeserie-node:${selectedScenario?.id ?? ""}:${selectedNode.id}:` +
                 `${selectedNode.timeserieId ?? ""}:` +
                 `${selectedNode.timeserieSecondaryId ?? ""}`
               }

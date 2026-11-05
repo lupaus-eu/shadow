@@ -1,0 +1,95 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-075C/review-004",
+  "task": {
+    "id": "TASK-075C",
+    "path": "tasks/TASK-075C-timeserie-panel-link-and-create.md"
+  },
+  "round": 4,
+  "reviewed_at": "2026-11-05T13:48:30Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": {
+    "number": 133,
+    "url": "https://github.com/reflector-oy/schatten/pull/133"
+  },
+  "source": {
+    "base_sha": "8fe57e12870e4c2b6dda6f6fe493992c0d87c29d",
+    "head_sha": "6b9ae2bfaa714753ec8fe6adffbda35bd09ecf1c",
+    "comparison": "8fe57e12870e4c2b6dda6f6fe493992c0d87c29d...6b9ae2bfaa714753ec8fe6adffbda35bd09ecf1c",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Round 4 reviews the whole TASK-075C range including the commit that applies the developer's decisions on the round 1 findings. The new Clear buttons fix F-002 and the form actions now clear but never set the page-level error, fixing F-008; the task's decisions 8 and 9, requirements, acceptance criteria and testing items match the code. The developer accepted F-006 and F-007 for notes in the pull request, and F-004 remains open while the developer considers how to test it. One new low finding: the Clear button makes it easy to lose the create form's memory of a created but unlinked timeserie, so resubmitting creates it again instead of retrying the link. Format check, lint, all frontend tests, the targeted Structure test command, the build and the record validator pass. The Clear button layout was checked from the styles only.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "bug",
+        "severity": "low",
+        "summary": "After a create whose link failed, choosing an option in that slot and pressing Clear brings back the create form without its memory of the created id, so the next submit fails with an already-exists error instead of retrying only the link.",
+        "rationale": "The panel keeps the slot's id draft, but the created-but-unlinked id lives in the create form, which unmounts while a selection hides it and comes back empty after Clear. The requirement that resubmitting the same id retries only the link no longer holds on this path, which the Clear button makes ordinary. Reproduced with a throwaway test; the created timeserie can still be linked from the dropdown, so nothing is lost.",
+        "recommendation": "Keep the created-but-unlinked id per slot in the panel next to the id drafts so it survives the form unmounting, and add the select-then-Clear case to the retry test.",
+        "locations": [
+          {
+            "path": "frontend/src/features/structure/TimeseriePanel.tsx",
+            "line": 213
+          },
+          {
+            "path": "frontend/src/features/structure/TimeseriePanel.tsx",
+            "line": 540
+          },
+          {
+            "path": "frontend/src/features/structure/TimeseriePanel.tsx",
+            "line": 833
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-075C/review-001",
+        "finding_id": "F-002",
+        "disposition": "fixed",
+        "rationale": "As the developer decided, each link dropdown has a Clear button that removes its pending selection and returns focus to the dropdown; the card then shows the saved link or type default, Unlink reappears for a saved link and Save link(s) is disabled without a selection. It is disabled while its dropdown is disabled or empty. A new panel test fails without the change. The remount after Unlink or create-and-link still drops the other slot's pending selection, as the task's remount design implies.",
+        "validated_by": {
+          "review_id": "TASK-075C/review-004",
+          "commit": "6b9ae2bfaa714753ec8fe6adffbda35bd09ecf1c"
+        }
+      },
+      {
+        "record_id": "TASK-075C/review-001",
+        "finding_id": "F-006",
+        "disposition": "accepted_risk",
+        "rationale": "The developer accepted the larger size and decided to note it in the pull request description; no code change.",
+        "validated_by": {
+          "review_id": "TASK-075C/review-004",
+          "commit": "6b9ae2bfaa714753ec8fe6adffbda35bd09ecf1c"
+        }
+      },
+      {
+        "record_id": "TASK-075C/review-001",
+        "finding_id": "F-007",
+        "disposition": "accepted_risk",
+        "rationale": "The developer accepted the full list reload for this task and plans a follow-up for a values-free timeseries list, noted in the pull request description; no code change.",
+        "validated_by": {
+          "review_id": "TASK-075C/review-004",
+          "commit": "6b9ae2bfaa714753ec8fe6adffbda35bd09ecf1c"
+        }
+      },
+      {
+        "record_id": "TASK-075C/review-001",
+        "finding_id": "F-008",
+        "disposition": "fixed",
+        "rationale": "As the developer decided, the four node and edge form actions clear the page-level save error when they start and never set it, so an earlier position-save or delete error does not stay next to a new form error; the Timeserie panel's link paths use the same node update. Only position saves and the two delete actions set the error. A new Structure test fails without the change.",
+        "validated_by": {
+          "review_id": "TASK-075C/review-004",
+          "commit": "6b9ae2bfaa714753ec8fe6adffbda35bd09ecf1c"
+        }
+      }
+    ]
+  }
+}

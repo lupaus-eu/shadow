@@ -38,6 +38,7 @@ vi.mock("../../api/timeseries", async (importOriginal) => {
     ...actual,
     createTimeserie: vi.fn(),
     fetchTimeserieExists: vi.fn(),
+    fetchTimeseries: vi.fn(),
     deleteTimeserie: vi.fn()
   };
 });
@@ -353,6 +354,23 @@ function chooseEdgeNode(panel: HTMLElement, label: "Source" | "Target", nodeName
   fireEvent.click(option);
 }
 
+const timeserieLinkRegion = () =>
+  screen.getByRole("region", { name: "Link to existing timeserie(s)" });
+const timeserieEditRegion = () => screen.getByRole("region", { name: "Create/edit timeserie(s)" });
+
+async function chooseTimeserieLink(slot: "Primary" | "Secondary", timeserieId: string) {
+  const select = within(timeserieLinkRegion()).getByLabelText(`${slot} link`);
+  await waitFor(() => expect(select).toBeEnabled());
+  fireEvent.click(select);
+  const listbox = within(timeserieLinkRegion()).getByRole("listbox");
+  fireEvent.click(within(listbox).getByRole("option", { name: new RegExp(`^${timeserieId} – `) }));
+}
+
+function openTimeseriePanel() {
+  fireEvent.click(screen.getByRole("button", { name: "Select revenue node in graph" }));
+  fireEvent.click(screen.getByRole("button", { name: "Timeserie" }));
+}
+
 describe("StructureTab", () => {
   beforeEach(() => {
     vi.useRealTimers();
@@ -401,9 +419,23 @@ describe("StructureTab", () => {
     vi.mocked(timeseriesApi.fetchTimeserieExists).mockImplementation(
       async (_orgId, _scenarioId, timeserieId) => ({
         id: timeserieId,
-        exists: timeserieId === "id1",
+        exists: timeserieId === "id1" || timeserieId === "id3",
         shortName: timeserieId === "id1" ? "revenue_monthly" : ""
       })
+    );
+    vi.mocked(timeseriesApi.fetchTimeseries).mockResolvedValue(
+      [
+        ["id1", "Revenue"],
+        ["id3", "Revenue target"]
+      ].map(([id, name]) => ({
+        id,
+        name,
+        description: "",
+        unit: "",
+        timeUnit: "month",
+        valueUnit: "number",
+        values: []
+      }))
     );
     vi.mocked(timeseriesApi.createTimeserie).mockImplementation(
       async (_orgId, _scenarioId, payload) => ({
@@ -728,9 +760,10 @@ describe("StructureTab", () => {
     renderStructureTab();
     await screen.findByRole("region", { name: "Person nodes" });
 
-    fireEvent.click(screen.getByRole("button", { name: "Select revenue node in graph" }));
-    fireEvent.click(screen.getByRole("button", { name: "Timeserie" }));
-    expect(screen.getByRole("heading", { name: "Timeserie" })).toBeInTheDocument();
+    openTimeseriePanel();
+    expect(
+      screen.getByRole("heading", { name: "Link to existing timeserie(s)" })
+    ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Select reports edge" }));
 
@@ -746,18 +779,11 @@ describe("StructureTab", () => {
   it("saves and clears selected node timeserie links", async () => {
     renderStructureTab();
     await screen.findByRole("region", { name: "Person nodes" });
+    openTimeseriePanel();
 
-    fireEvent.click(screen.getByRole("button", { name: "Select revenue node in graph" }));
-    fireEvent.click(screen.getByRole("button", { name: "Timeserie" }));
-
-    const panel = screen.getByRole("region", { name: "Timeserie" });
-    fireEvent.change(within(panel).getByLabelText("Primary link"), {
-      target: { value: "id1" }
-    });
-    fireEvent.change(within(panel).getByLabelText("Secondary link"), {
-      target: { value: "id2" }
-    });
-    fireEvent.click(within(panel).getByRole("button", { name: "Save links" }));
+    await chooseTimeserieLink("Primary", "id3");
+    await chooseTimeserieLink("Secondary", "id1");
+    fireEvent.click(within(timeserieLinkRegion()).getByRole("button", { name: "Save link(s)" }));
 
     await waitFor(() => {
       expect(structureApi.updateGraphNode).toHaveBeenCalledWith(
@@ -765,27 +791,21 @@ describe("StructureTab", () => {
         "future",
         "draft",
         "node_revenue",
-        { timeserieId: "id1", timeserieSecondaryId: "id2" }
+        { timeserieId: "id3", timeserieSecondaryId: "id1" }
       );
     });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 
     vi.mocked(structureApi.updateGraphNode).mockClear();
+    const primaryCard = () =>
+      within(timeserieEditRegion()).getByRole("region", { name: "Primary timeserie" });
     await waitFor(() => {
-      expect(
-        within(screen.getByRole("region", { name: "Timeserie" })).getByLabelText("Primary link")
-      ).toHaveValue("id1");
-      expect(
-        within(screen.getByRole("region", { name: "Timeserie" })).getByLabelText("Secondary link")
-      ).toHaveValue("id2");
+      expect(within(primaryCard()).getByText("id3")).toBeInTheDocument();
     });
-    const updatedPanel = screen.getByRole("region", { name: "Timeserie" });
-    fireEvent.change(within(updatedPanel).getByLabelText("Primary link"), {
-      target: { value: "" }
-    });
-    fireEvent.change(within(updatedPanel).getByLabelText("Secondary link"), {
-      target: { value: "" }
-    });
-    fireEvent.click(within(updatedPanel).getByRole("button", { name: "Save links" }));
+    expect(within(timeserieLinkRegion()).getByLabelText("Primary link")).toHaveTextContent(
+      "Select existing timeseries id"
+    );
+    fireEvent.click(within(primaryCard()).getByRole("button", { name: "Unlink" }));
 
     await waitFor(() => {
       expect(structureApi.updateGraphNode).toHaveBeenCalledWith(
@@ -793,9 +813,14 @@ describe("StructureTab", () => {
         "future",
         "draft",
         "node_revenue",
-        { timeserieId: null, timeserieSecondaryId: null }
+        { timeserieId: null }
       );
     });
+    await waitFor(() => {
+      expect(within(primaryCard()).getByText("Type default")).toBeInTheDocument();
+    });
+    expect(within(primaryCard()).getByText("id1")).toBeInTheDocument();
+    expect(within(primaryCard()).queryByRole("button", { name: "Unlink" })).toBeNull();
   });
 
   it("shows rule context and the selected metric as an explicit link source", async () => {
@@ -804,20 +829,17 @@ describe("StructureTab", () => {
     renderStructureTab();
     await screen.findByRole("region", { name: "Person nodes" });
 
-    fireEvent.click(screen.getByRole("button", { name: "Select revenue node in graph" }));
-    fireEvent.click(screen.getByRole("button", { name: "Timeserie" }));
+    openTimeseriePanel();
 
-    const panel = screen.getByRole("region", { name: "Timeserie" });
+    const panel = timeserieLinkRegion();
     expect(panel).toHaveTextContent("Measured by from Grow revenue (Goal)");
     expect(panel).toHaveTextContent("Has goal from Sales (Team)");
 
-    fireEvent.change(within(panel).getByLabelText("Primary link"), {
-      target: { value: "id1" }
+    await chooseTimeserieLink("Primary", "id3");
+    const primary = within(timeserieEditRegion()).getByRole("region", {
+      name: "Primary timeserie"
     });
-    const primary = within(panel).getByRole("region", { name: "Primary timeserie" });
-    await waitFor(() => {
-      expect(within(primary).getByText("Revenue (Metric)")).toBeInTheDocument();
-    });
+    expect(within(primary).getByText("Revenue (Metric)")).toBeInTheDocument();
   });
 
   it("shows an explicit missing rule-context fallback", async () => {
@@ -828,12 +850,9 @@ describe("StructureTab", () => {
     renderStructureTab();
     await screen.findByRole("region", { name: "Person nodes" });
 
-    fireEvent.click(screen.getByRole("button", { name: "Select revenue node in graph" }));
-    fireEvent.click(screen.getByRole("button", { name: "Timeserie" }));
+    openTimeseriePanel();
 
-    expect(screen.getByRole("region", { name: "Timeserie" })).toHaveTextContent(
-      "Measured by from No linked goal"
-    );
+    expect(timeserieLinkRegion()).toHaveTextContent("Measured by from No linked goal");
   });
 
   it("shows an explicit ambiguous rule-context fallback", async () => {
@@ -873,22 +892,18 @@ describe("StructureTab", () => {
     renderStructureTab();
     await screen.findByRole("region", { name: "Person nodes" });
 
-    fireEvent.click(screen.getByRole("button", { name: "Select revenue node in graph" }));
-    fireEvent.click(screen.getByRole("button", { name: "Timeserie" }));
+    openTimeseriePanel();
 
-    expect(screen.getByRole("region", { name: "Timeserie" })).toHaveTextContent(
-      "Measured by from Multiple linked goals"
-    );
+    expect(timeserieLinkRegion()).toHaveTextContent("Measured by from Multiple linked goals");
   });
 
   it("shows effective timeserie states and creates a missing record", async () => {
     renderStructureTab();
     await screen.findByRole("region", { name: "Person nodes" });
 
-    fireEvent.click(screen.getByRole("button", { name: "Select revenue node in graph" }));
-    fireEvent.click(screen.getByRole("button", { name: "Timeserie" }));
+    openTimeseriePanel();
 
-    const panel = screen.getByRole("region", { name: "Timeserie" });
+    const panel = timeserieEditRegion();
     const primary = within(panel).getByRole("region", { name: "Primary timeserie" });
     const secondary = within(panel).getByRole("region", {
       name: "Secondary timeserie"
@@ -934,10 +949,9 @@ describe("StructureTab", () => {
     renderStructureTab();
     await screen.findByRole("region", { name: "Person nodes" });
 
-    fireEvent.click(screen.getByRole("button", { name: "Select revenue node in graph" }));
-    fireEvent.click(screen.getByRole("button", { name: "Timeserie" }));
+    openTimeseriePanel();
 
-    const panel = screen.getByRole("region", { name: "Timeserie" });
+    const panel = timeserieEditRegion();
     const primary = within(panel).getByRole("region", { name: "Primary timeserie" });
     await waitFor(() => {
       expect(within(primary).getByText("Exists")).toBeInTheDocument();
@@ -1359,5 +1373,141 @@ describe("StructureTab", () => {
     fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Graph failed");
+  });
+
+  describe("shows one alert, in the form, when a form action fails", () => {
+    const failure = new Error("API request failed (422). Invalid");
+
+    it.each([
+      {
+        action: "Create node",
+        fail: () => vi.mocked(structureApi.createGraphNode).mockRejectedValue(failure),
+        open: () => {
+          const panel = screen.getByRole("region", { name: "Create node" });
+          fireEvent.change(within(panel).getByLabelText("Name"), {
+            target: { value: "Operations" }
+          });
+          return panel;
+        }
+      },
+      {
+        action: "Save node",
+        fail: () => vi.mocked(structureApi.updateGraphNode).mockRejectedValue(failure),
+        open: () => {
+          fireEvent.click(screen.getByRole("button", { name: "CEO Chief executive" }));
+          return screen.getByRole("region", { name: "Edit node" });
+        }
+      },
+      {
+        action: "Create edge",
+        fail: () => vi.mocked(structureApi.createGraphEdge).mockRejectedValue(failure),
+        open: () => {
+          const panel = screen.getByRole("region", { name: "Create edge" });
+          fireEvent.change(within(panel).getByLabelText("Name"), {
+            target: { value: "Reports to" }
+          });
+          chooseEdgeNode(panel, "Source", "CFO");
+          chooseEdgeNode(panel, "Target", "CEO");
+          return panel;
+        }
+      },
+      {
+        action: "Save edge",
+        fail: () => vi.mocked(structureApi.updateGraphEdge).mockRejectedValue(failure),
+        open: () => {
+          fireEvent.click(screen.getByRole("button", { name: "Show & Edit" }));
+          fireEvent.click(screen.getByRole("button", { name: "Select reports edge" }));
+          return screen.getByRole("region", { name: "Edit edge" });
+        }
+      }
+    ])("$action", async ({ action, fail, open }) => {
+      fail();
+      renderStructureTab();
+      await screen.findByRole("region", { name: "Person nodes" });
+
+      const panel = open();
+      fireEvent.click(within(panel).getByRole("button", { name: action }));
+
+      expect(await within(panel).findByRole("alert")).toHaveTextContent(failure.message);
+      expect(screen.getAllByRole("alert")).toHaveLength(1);
+      expect(screen.queryByText("Structure save error")).not.toBeInTheDocument();
+    });
+  });
+
+  it("shows a failed position save once as a Structure save error", async () => {
+    vi.mocked(structureApi.bulkUpdatePositions).mockRejectedValue(new Error("Positions failed"));
+    renderStructureTab();
+    await screen.findByRole("region", { name: "Person nodes" });
+
+    vi.useFakeTimers();
+    fireEvent.click(screen.getByRole("button", { name: "Move CEO" }));
+    await act(async () => {
+      vi.advanceTimersByTime(400);
+      await Promise.resolve();
+    });
+    vi.useRealTimers();
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Structure save error");
+    expect(alert).toHaveTextContent("Positions failed");
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+  });
+
+  it.each([
+    {
+      kind: "node",
+      fail: () =>
+        vi.mocked(structureApi.deleteGraphNode).mockRejectedValue(new Error("Delete failed")),
+      open: () => fireEvent.click(screen.getByRole("button", { name: "CEO Chief executive" }))
+    },
+    {
+      kind: "edge",
+      fail: () =>
+        vi.mocked(structureApi.deleteGraphEdge).mockRejectedValue(new Error("Delete failed")),
+      open: () => {
+        fireEvent.click(screen.getByRole("button", { name: "Show & Edit" }));
+        fireEvent.click(screen.getByRole("button", { name: "Select reports edge" }));
+      }
+    }
+  ])("shows a failed $kind delete once as a Structure save error", async ({ kind, fail, open }) => {
+    fail();
+    renderStructureTab();
+    await screen.findByRole("region", { name: "Person nodes" });
+    open();
+
+    fireEvent.click(screen.getByRole("button", { name: `Delete selected ${kind}` }));
+    fireEvent.click(screen.getByRole("button", { name: "Yes" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Structure save error");
+    expect(alert).toHaveTextContent("Delete failed");
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+    // The confirmation stays open, so the delete can be retried or cancelled.
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Yes" })).toBeEnabled());
+  });
+
+  it("clears an earlier Structure save error when a form action starts", async () => {
+    vi.mocked(structureApi.bulkUpdatePositions).mockRejectedValue(new Error("Positions failed"));
+    vi.mocked(structureApi.createGraphNode).mockRejectedValue(new Error("Create failed"));
+    renderStructureTab();
+    await screen.findByRole("region", { name: "Person nodes" });
+
+    vi.useFakeTimers();
+    fireEvent.click(screen.getByRole("button", { name: "Move CEO" }));
+    await act(async () => {
+      vi.advanceTimersByTime(400);
+      await Promise.resolve();
+    });
+    vi.useRealTimers();
+    expect(await screen.findByRole("alert")).toHaveTextContent("Structure save error");
+
+    const panel = screen.getByRole("region", { name: "Create node" });
+    fireEvent.change(within(panel).getByLabelText("Name"), { target: { value: "Operations" } });
+    fireEvent.click(within(panel).getByRole("button", { name: "Create node" }));
+
+    expect(await within(panel).findByRole("alert")).toHaveTextContent("Create failed");
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+    expect(screen.queryByText("Structure save error")).not.toBeInTheDocument();
   });
 });

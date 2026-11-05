@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-075C/review-005",
+  "task": {
+    "id": "TASK-075C",
+    "path": "tasks/TASK-075C-timeserie-panel-link-and-create.md"
+  },
+  "round": 5,
+  "reviewed_at": "2026-11-05T13:53:25Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": {
+    "number": 133,
+    "url": "https://github.com/reflector-oy/schatten/pull/133"
+  },
+  "source": {
+    "base_sha": "8fe57e12870e4c2b6dda6f6fe493992c0d87c29d",
+    "head_sha": "a649ba1c4cf43101ca590c28e5b2838b0fbd9b76",
+    "comparison": "8fe57e12870e4c2b6dda6f6fe493992c0d87c29d...a649ba1c4cf43101ca590c28e5b2838b0fbd9b76",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "clean",
+    "summary": "Round 5 reviews the whole TASK-075C range including the round 4 fix commit. The round 4 finding is fixed and the fix commit introduced no regression or new finding; the panel test mock now follows the tests' own creates and deletes, which makes the existing tests stricter. Throwaway tests, all deleted, with a wrapper that remounts the panel after a successful link confirmed that the same id created for both slots shows one already-exists message, that deleting the remembered id from the other slot's card makes the next submit create again, that default-id creates are not remembered and that a successful retry and remount reset the memory. Only the last created id per slot is remembered and any remount forgets it; both match the task, which says a changed id creates again and an existing id is linked through the dropdowns. Round 1 finding F-004 remains open for the developer. Format check, lint, all frontend tests, the targeted Structure test command, the build and the record validator pass.",
+    "findings": [],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-075C/review-004",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "The panel, not the create form, keeps each slot's created-but-unlinked id when it differs from the type default and forgets it when the panel deletes that timeserie, so choosing an option and pressing Clear brings the form back still retrying only the link. A new panel test for this path fails without the fix, and another covers creating again after the remembered timeserie is deleted.",
+        "validated_by": {
+          "review_id": "TASK-075C/review-005",
+          "commit": "a649ba1c4cf43101ca590c28e5b2838b0fbd9b76"
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-075C/review-002",
+  "task": {
+    "id": "TASK-075C",
+    "path": "tasks/TASK-075C-timeserie-panel-link-and-create.md"
+  },
+  "round": 2,
+  "reviewed_at": "2026-11-05T13:24:40Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": {
+    "number": 133,
+    "url": "https://github.com/reflector-oy/schatten/pull/133"
+  },
+  "source": {
+    "base_sha": "8fe57e12870e4c2b6dda6f6fe493992c0d87c29d",
+    "head_sha": "c58d74500dd4e4cb49d6a54aa3eeabb0fa88c545",
+    "comparison": "8fe57e12870e4c2b6dda6f6fe493992c0d87c29d...c58d74500dd4e4cb49d6a54aa3eeabb0fa88c545",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Round 2 reviews the whole TASK-075C range including the round 1 fix commit. Round 1 findings F-001, F-003 and F-005 are fixed and the fix commit introduced no regression; F-002, F-004, F-006, F-007 and F-008 are unchanged and remain open for the developer. Throwaway tests, all deleted, confirmed that creates and deletes made while the timeseries list loads survive a create-then-delete of the same id, a list load failure, a remount and a strict-mode double mount. One new low finding remains in that handling: a timeserie deleted and then re-created with the same id while the list loads shows the deleted timeserie's old name. Format check, lint, all frontend tests, the targeted Structure test command, the build and the record validator pass. The editor panel width criterion was checked from the styles only, not visually.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "bug",
+        "severity": "low",
+        "summary": "A timeserie deleted and then re-created with the same id while the timeseries list loads shows the deleted timeserie's old name in the dropdown option and the Name row.",
+        "rationale": "Re-creating the id removes it from the panel's deleted ids, so the stale entry from a list read before the delete survives, and merging the panel's creates keeps that loaded entry instead of the re-created one. Reproduced with a throwaway test that deleted the primary default, re-created it under a new name and then resolved the older list. It needs two actions inside the loading window and clears on the next remount.",
+        "recommendation": "When merging, let the panel's own creates replace loaded entries with the same id, and add the delete-then-re-create case to the loading-window tests.",
+        "locations": [
+          {
+            "path": "frontend/src/features/structure/TimeseriePanel.tsx",
+            "line": 72
+          },
+          {
+            "path": "frontend/src/features/structure/TimeseriePanel.tsx",
+            "line": 339
+          },
+          {
+            "path": "frontend/src/features/structure/TimeseriePanel.test.tsx",
+            "line": 374
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-075C/review-001",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "While the list loads, the panel keeps its own creates and deletes and applies them when the list arrives, so a created timeserie appears in the options and its Name row and a deleted one is dropped even if the list predates them. A new panel test fails without the fix and passes with it; the remaining delete-then-re-create edge case is recorded as this round's F-001.",
+        "validated_by": {
+          "review_id": "TASK-075C/review-002",
+          "commit": "c58d74500dd4e4cb49d6a54aa3eeabb0fa88c545"
+        }
+      },
+      {
+        "record_id": "TASK-075C/review-001",
+        "finding_id": "F-003",
+        "disposition": "fixed",
+        "rationale": "The targeted frontend Structure test command also runs the Timeserie panel tests, and the Structure testing section states where TASK-075C is covered and that a failed delete is not tested; the command runs six files that all pass.",
+        "validated_by": {
+          "review_id": "TASK-075C/review-002",
+          "commit": "c58d74500dd4e4cb49d6a54aa3eeabb0fa88c545"
+        }
+      },
+      {
+        "record_id": "TASK-075C/review-001",
+        "finding_id": "F-005",
+        "disposition": "fixed",
+        "rationale": "The task records the developer's request that the Structure editor panel never scrolls horizontally as a decision, a requirement scoped to the Structure editor's mode switch and an acceptance criterion, matching the committed styles.",
+        "validated_by": {
+          "review_id": "TASK-075C/review-002",
+          "commit": "c58d74500dd4e4cb49d6a54aa3eeabb0fa88c545"
+        }
+      }
+    ]
+  }
+}

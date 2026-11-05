@@ -11,6 +11,7 @@ import {
   createTimeserie,
   deleteTimeserie,
   fetchTimeserieExists,
+  fetchTimeseries,
   updateTimeserieShortName
 } from "../../api/timeseries";
 import type {
@@ -19,9 +20,11 @@ import type {
   TimeserieValueUnit
 } from "../../api/timeseries";
 import Alert from "../../components/Alert";
+import SearchableSelect from "../../components/SearchableSelect";
 
 const TIME_UNIT_OPTIONS: TimeserieTimeUnit[] = ["day", "week", "month", "year"];
 const VALUE_UNIT_OPTIONS: TimeserieValueUnit[] = ["number", "string", "boolean"];
+const LINK_PLACEHOLDER = "Select existing timeseries id";
 
 type TimeserieSlot = "primary" | "secondary";
 
@@ -31,7 +34,17 @@ type EffectiveTimeserieItem = {
   id: string;
   inheritedId: string;
   source: "node" | "type" | "none";
+  // A saved node link without a pending dropdown selection can be unlinked.
+  canUnlink: boolean;
 };
+
+type TimeserieOption = { id: string; name: string };
+
+// While loading, the state keeps the panel's own creates and deletes to apply to the list.
+type TimeserieOptionsState =
+  | { status: "loading"; created: TimeserieOption[]; deletedIds: string[] }
+  | { status: "ready"; items: TimeserieOption[] }
+  | { status: "error" };
 
 type ExistenceStatus =
   | { state: "loading" }
@@ -54,6 +67,37 @@ function inputValueToPayload(value: string): string | null {
 
 function uniqueValues(values: string[]): string[] {
   return values.filter((value, index) => value && values.indexOf(value) === index);
+}
+
+function withOption(items: TimeserieOption[], option: TimeserieOption): TimeserieOption[] {
+  return items.some((item) => item.id === option.id) ? items : [...items, option];
+}
+
+function withoutOption(items: TimeserieOption[], timeserieId: string): TimeserieOption[] {
+  return items.filter((item) => item.id !== timeserieId);
+}
+
+function slotLinkPatch(slot: TimeserieSlot, timeserieId: string | null): GraphNodeUpdateRequest {
+  return slot === "primary" ? { timeserieId } : { timeserieSecondaryId: timeserieId };
+}
+
+// The effective id is the pending dropdown selection, else the saved node link, else the type default.
+function effectiveItem(
+  slot: TimeserieSlot,
+  label: string,
+  selection: string,
+  linkedId: string,
+  inheritedId: string
+): EffectiveTimeserieItem {
+  const nodeId = selection || linkedId;
+  return {
+    slot,
+    label,
+    id: nodeId || inheritedId,
+    inheritedId,
+    source: nodeId ? "node" : inheritedId ? "type" : "none",
+    canUnlink: Boolean(linkedId) && !selection
+  };
 }
 
 function statusLabel(status: ExistenceStatus | undefined, id: string): string {
@@ -157,38 +201,57 @@ export default function TimeseriePanel(props: {
   onUpdateLinks: (payload: GraphNodeUpdateRequest) => Promise<void>;
   onTimeserieDeleted: (timeserieId: string) => void;
 }) {
-  const [primaryId, setPrimaryId] = useState(props.node.timeserieId ?? "");
-  const [secondaryId, setSecondaryId] = useState(props.node.timeserieSecondaryId ?? "");
+  const [primarySelection, setPrimarySelection] = useState("");
+  const [secondarySelection, setSecondarySelection] = useState("");
+  const [timeseriesOptions, setTimeseriesOptions] = useState<TimeserieOptionsState>({
+    status: "loading",
+    created: [],
+    deletedIds: []
+  });
+  const [optionsError, setOptionsError] = useState("");
+  const [linkError, setLinkError] = useState("");
+  const [createIdDrafts, setCreateIdDrafts] = useState<
+    Partial<Record<TimeserieSlot, { baseId: string; value: string }>>
+  >({});
+  // A timeserie each slot created whose link has not succeeded; the create form may unmount
+  // while a selection hides it, so the panel keeps this for retrying only the link.
+  const [unlinkedCreatedIds, setUnlinkedCreatedIds] = useState<Record<TimeserieSlot, string>>({
+    primary: "",
+    secondary: ""
+  });
   const [existenceById, setExistenceById] = useState<Record<string, ExistenceStatus>>({});
   const [panelError, setPanelError] = useState("");
-  const [busyTimeserieId, setBusyTimeserieId] = useState<string | null>(null);
+  const [busySlot, setBusySlot] = useState<TimeserieSlot | null>(null);
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
   const [editingShortNameId, setEditingShortNameId] = useState<string | null>(null);
   const [shortNameDraft, setShortNameDraft] = useState("");
 
-  const effectiveItems = useMemo<EffectiveTimeserieItem[]>(() => {
-    const inheritedPrimaryId = trimmed(props.nodeType?.timeserieId);
-    const inheritedSecondaryId = trimmed(props.nodeType?.timeserieSecondaryId);
-    const explicitPrimaryId = primaryId.trim();
-    const explicitSecondaryId = secondaryId.trim();
-
-    return [
-      {
-        slot: "primary",
-        label: "Primary",
-        id: explicitPrimaryId || inheritedPrimaryId,
-        inheritedId: inheritedPrimaryId,
-        source: explicitPrimaryId ? "node" : inheritedPrimaryId ? "type" : "none"
-      },
-      {
-        slot: "secondary",
-        label: "Secondary",
-        id: explicitSecondaryId || inheritedSecondaryId,
-        inheritedId: inheritedSecondaryId,
-        source: explicitSecondaryId ? "node" : inheritedSecondaryId ? "type" : "none"
-      }
-    ];
-  }, [primaryId, props.nodeType?.timeserieId, props.nodeType?.timeserieSecondaryId, secondaryId]);
+  const effectiveItems = useMemo<EffectiveTimeserieItem[]>(
+    () => [
+      effectiveItem(
+        "primary",
+        "Primary",
+        primarySelection,
+        trimmed(props.node.timeserieId),
+        trimmed(props.nodeType?.timeserieId)
+      ),
+      effectiveItem(
+        "secondary",
+        "Secondary",
+        secondarySelection,
+        trimmed(props.node.timeserieSecondaryId),
+        trimmed(props.nodeType?.timeserieSecondaryId)
+      )
+    ],
+    [
+      primarySelection,
+      props.node.timeserieId,
+      props.node.timeserieSecondaryId,
+      props.nodeType?.timeserieId,
+      props.nodeType?.timeserieSecondaryId,
+      secondarySelection
+    ]
+  );
 
   const effectiveIds = useMemo(
     () => uniqueValues(effectiveItems.map((item) => item.id)),
@@ -196,6 +259,27 @@ export default function TimeseriePanel(props: {
   );
   const effectiveIdSignature = effectiveIds.join("\n");
   const formDisabled = props.disabled || props.saving;
+  const actionsDisabled = formDisabled || busySlot !== null;
+  const linkSelectDisabled = formDisabled || timeseriesOptions.status !== "ready";
+  const linkOptions = useMemo(
+    () =>
+      timeseriesOptions.status === "ready"
+        ? [...timeseriesOptions.items]
+            .sort((left, right) => left.id.localeCompare(right.id))
+            .map((item) => ({ value: item.id, label: `${item.id} – ${item.name}` }))
+        : [],
+    [timeseriesOptions]
+  );
+  // The existence check has no name, so the cards take it from the timeseries list.
+  const timeserieNames = useMemo(
+    () =>
+      new Map(
+        timeseriesOptions.status === "ready"
+          ? timeseriesOptions.items.map((item) => [item.id, item.name])
+          : []
+      ),
+    [timeseriesOptions]
+  );
   const ruleLines = useMemo(
     () =>
       ruleLinesForNode({
@@ -248,25 +332,112 @@ export default function TimeseriePanel(props: {
     return () => ac.abort();
   }, [effectiveIdSignature, props.orgId, props.scenarioId]);
 
+  useEffect(() => {
+    if (!props.scenarioId) return;
+
+    const ac = new AbortController();
+    fetchTimeseries(props.orgId, props.scenarioId, ac.signal)
+      .then((timeseries) => {
+        const loaded = timeseries.map((item) => ({ id: item.id, name: item.name }));
+        setTimeseriesOptions((current) => {
+          if (current.status !== "loading") return { status: "ready", items: loaded };
+          // The list may predate timeseries created or deleted here while it loaded,
+          // so those replace or remove its entries with the same id.
+          const localIds = new Set([
+            ...current.deletedIds,
+            ...current.created.map((item) => item.id)
+          ]);
+          const remaining = loaded.filter((item) => !localIds.has(item.id));
+          return { status: "ready", items: [...remaining, ...current.created] };
+        });
+      })
+      .catch((error) => {
+        const err = error as { name?: string };
+        if (err.name === "AbortError") return;
+        setTimeseriesOptions({ status: "error" });
+        setOptionsError(messageFromError(error));
+      });
+
+    return () => ac.abort();
+  }, [props.orgId, props.scenarioId]);
+
+  function addOption(option: TimeserieOption) {
+    setTimeseriesOptions((current) => {
+      if (current.status === "ready") {
+        return { status: "ready", items: withOption(current.items, option) };
+      }
+      if (current.status === "loading") {
+        return {
+          status: "loading",
+          created: withOption(current.created, option),
+          deletedIds: current.deletedIds.filter((id) => id !== option.id)
+        };
+      }
+      return current;
+    });
+  }
+
+  function removeOption(timeserieId: string) {
+    setTimeseriesOptions((current) => {
+      if (current.status === "ready") {
+        return { status: "ready", items: withoutOption(current.items, timeserieId) };
+      }
+      if (current.status === "loading") {
+        return {
+          status: "loading",
+          created: withoutOption(current.created, timeserieId),
+          deletedIds: [...current.deletedIds, timeserieId]
+        };
+      }
+      return current;
+    });
+  }
+
+  function createIdFor(item: EffectiveTimeserieItem): string {
+    const draft = createIdDrafts[item.slot];
+    return draft && draft.baseId === item.id ? draft.value : item.id;
+  }
+
   async function saveLinks(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
-    setPanelError("");
+    setLinkError("");
+    const payload: GraphNodeUpdateRequest = {};
+    if (primarySelection) payload.timeserieId = primarySelection;
+    if (secondarySelection) payload.timeserieSecondaryId = secondarySelection;
 
     try {
-      await props.onUpdateLinks({
-        timeserieId: inputValueToPayload(primaryId),
-        timeserieSecondaryId: inputValueToPayload(secondaryId)
-      });
+      await props.onUpdateLinks(payload);
+      // Saving the current link does not remount the panel, so reset the dropdowns here.
+      setPrimarySelection("");
+      setSecondarySelection("");
     } catch (error) {
-      setPanelError(messageFromError(error));
+      setLinkError(messageFromError(error));
     }
   }
 
-  async function createMissingTimeserie(payload: TimeserieCreateRequest) {
+  async function unlink(item: EffectiveTimeserieItem) {
     try {
       setPanelError("");
-      setBusyTimeserieId(payload.id);
+      setBusySlot(item.slot);
+      await props.onUpdateLinks(slotLinkPatch(item.slot, null));
+    } catch (error) {
+      setPanelError(messageFromError(error));
+    } finally {
+      setBusySlot(null);
+    }
+  }
+
+  // The create form shows create and link errors, so these rethrow without a panel error.
+  async function createSlotTimeserie(
+    item: EffectiveTimeserieItem,
+    payload: TimeserieCreateRequest
+  ) {
+    try {
+      setBusySlot(item.slot);
       await createTimeserie(props.orgId, props.scenarioId, payload);
+      if (payload.id !== item.inheritedId) {
+        setUnlinkedCreatedIds((current) => ({ ...current, [item.slot]: payload.id }));
+      }
       setExistenceById((current) => ({
         ...current,
         [payload.id]: {
@@ -275,36 +446,52 @@ export default function TimeseriePanel(props: {
           shortNameEditable: true
         }
       }));
-    } catch (error) {
-      setPanelError(messageFromError(error));
-      throw error;
+      addOption({ id: payload.id, name: payload.name });
     } finally {
-      setBusyTimeserieId(null);
+      setBusySlot(null);
     }
   }
 
-  async function confirmDelete(timeserieId: string) {
+  async function linkSlotTimeserie(slot: TimeserieSlot, timeserieId: string) {
+    try {
+      setBusySlot(slot);
+      await props.onUpdateLinks(slotLinkPatch(slot, timeserieId));
+    } finally {
+      setBusySlot(null);
+    }
+  }
+
+  async function confirmDelete(item: EffectiveTimeserieItem) {
+    const timeserieId = item.id;
     try {
       setPanelError("");
-      setBusyTimeserieId(timeserieId);
+      setBusySlot(item.slot);
       await deleteTimeserie(props.orgId, props.scenarioId, timeserieId);
       setExistenceById((current) => ({
         ...current,
         [timeserieId]: { state: "missing" }
+      }));
+      removeOption(timeserieId);
+      setPrimarySelection((current) => (current === timeserieId ? "" : current));
+      setSecondarySelection((current) => (current === timeserieId ? "" : current));
+      setUnlinkedCreatedIds((current) => ({
+        primary: current.primary === timeserieId ? "" : current.primary,
+        secondary: current.secondary === timeserieId ? "" : current.secondary
       }));
       props.onTimeserieDeleted(timeserieId);
       setConfirmingDeleteId(null);
     } catch (error) {
       setPanelError(messageFromError(error));
     } finally {
-      setBusyTimeserieId(null);
+      setBusySlot(null);
     }
   }
 
-  async function saveShortName(timeserieId: string) {
+  async function saveShortName(item: EffectiveTimeserieItem) {
+    const timeserieId = item.id;
     try {
       setPanelError("");
-      setBusyTimeserieId(timeserieId);
+      setBusySlot(item.slot);
       const updated = await updateTimeserieShortName(
         props.orgId,
         props.scenarioId,
@@ -323,230 +510,336 @@ export default function TimeseriePanel(props: {
     } catch (error) {
       setPanelError(messageFromError(error));
     } finally {
-      setBusyTimeserieId(null);
+      setBusySlot(null);
     }
   }
 
   return (
-    <section className="detail-card" aria-labelledby="structure-timeserie-title">
-      <div className="detail-card__header">
-        <h2 id="structure-timeserie-title" className="section-title">
-          Timeserie
-        </h2>
-      </div>
+    <div className="structure-editor-stack">
+      <section className="detail-card" aria-labelledby="structure-timeserie-link-title">
+        <div className="detail-card__header">
+          <h2 id="structure-timeserie-link-title" className="section-title">
+            Link to existing timeserie(s)
+          </h2>
+        </div>
 
-      <form onSubmit={saveLinks}>
-        <div className="form-row">
-          <label className="form-label" htmlFor="structure-timeserie-primary">
-            Primary link
-          </label>
-          <input
-            id="structure-timeserie-primary"
-            className="input"
-            value={primaryId}
-            onChange={(event) => setPrimaryId(event.target.value)}
-            disabled={formDisabled}
+        {optionsError ? (
+          <Alert
+            variant="danger"
+            role="alert"
+            title="Timeserie list error"
+            message={optionsError}
+            onDismiss={() => setOptionsError("")}
           />
-        </div>
-        <div className="form-row">
-          <label className="form-label" htmlFor="structure-timeserie-secondary">
-            Secondary link
-          </label>
-          <input
-            id="structure-timeserie-secondary"
-            className="input"
-            value={secondaryId}
-            onChange={(event) => setSecondaryId(event.target.value)}
-            disabled={formDisabled}
-          />
-        </div>
-        <div className="form-actions">
-          <button className="btn btn--primary" type="submit" disabled={formDisabled}>
-            {props.saving ? "Saving..." : "Save links"}
-          </button>
-        </div>
-      </form>
+        ) : null}
 
-      {props.nodeType?.timeserieIdRule ? (
-        <dl className="detail-meta">
-          <div className="detail-meta__row">
-            <dt>Rule</dt>
-            <dd>
-              {ruleLines.map((line, index) => (
-                <Fragment key={line}>
-                  {index > 0 ? <br /> : null}
-                  {line}
-                </Fragment>
-              ))}
-            </dd>
-          </div>
-        </dl>
-      ) : null}
-
-      {panelError ? (
-        <Alert
-          variant="danger"
-          role="alert"
-          title="Timeserie error"
-          message={panelError}
-          onDismiss={() => setPanelError("")}
-        />
-      ) : null}
-
-      <div className="timeserie-status-list">
-        {effectiveItems.map((item) => {
-          const status = item.id ? existenceById[item.id] : undefined;
-          const isBusy = busyTimeserieId === item.id;
-          const isDeleting = confirmingDeleteId === item.id;
-
-          return (
-            <section
-              key={item.slot}
-              className="timeserie-status-card"
-              aria-label={`${item.label} timeserie`}
-            >
-              <div className="timeserie-status-card__header">
-                <div className="timeserie-status-card__title">
-                  <h3>{item.label}</h3>
-                  <code className="metadata-code">{item.id || "No id"}</code>
-                </div>
-                <span className={statusClass(status, item.id)}>{statusLabel(status, item.id)}</span>
+        <form onSubmit={saveLinks}>
+          {(
+            [
+              ["primary", "Primary", primarySelection, setPrimarySelection],
+              ["secondary", "Secondary", secondarySelection, setSecondarySelection]
+            ] as const
+          ).map(([slot, label, selection, setSelection]) => (
+            <div key={slot} className="form-row">
+              <label className="form-label" htmlFor={`structure-timeserie-${slot}`}>
+                {label} link
+              </label>
+              <div className="timeserie-link-control">
+                <SearchableSelect
+                  id={`structure-timeserie-${slot}`}
+                  options={linkOptions}
+                  value={selection}
+                  onChange={setSelection}
+                  placeholder={LINK_PLACEHOLDER}
+                  searchLabel={`Search ${slot} timeseries`}
+                  disabled={linkSelectDisabled}
+                />
+                <button
+                  className="btn btn--secondary"
+                  type="button"
+                  aria-label={`Clear ${slot} link selection`}
+                  disabled={linkSelectDisabled || !selection}
+                  onClick={() => {
+                    setSelection("");
+                    // The button disables itself, so focus returns to the dropdown.
+                    document.getElementById(`structure-timeserie-${slot}`)?.focus();
+                  }}
+                >
+                  Clear
+                </button>
               </div>
-              {item.source !== "none" || status?.state === "exists" ? (
-                <dl className="detail-meta">
-                  {item.source !== "none" ? (
-                    <div className="detail-meta__row">
-                      <dt>Source</dt>
-                      <dd>{item.source === "node" ? nodeSourceLabel : "Type default"}</dd>
-                    </div>
-                  ) : null}
-                  {item.inheritedId && item.source === "node" ? (
-                    <div className="detail-meta__row">
-                      <dt>Default</dt>
-                      <dd>{item.inheritedId}</dd>
-                    </div>
-                  ) : null}
-                  {status?.state === "exists" ? (
-                    <div className="detail-meta__row">
-                      <dt>Short name</dt>
-                      <dd>{status.shortName || "Not set"}</dd>
-                    </div>
-                  ) : null}
-                </dl>
-              ) : null}
-              {item.id && status?.state === "exists" ? (
-                <div className="form-actions">
-                  {status.shortNameEditable ? (
-                    editingShortNameId === item.id ? (
+            </div>
+          ))}
+          <div className="form-actions">
+            <button
+              className="btn btn--primary"
+              type="submit"
+              disabled={formDisabled || (!primarySelection && !secondarySelection)}
+            >
+              {props.saving ? "Saving..." : "Save link(s)"}
+            </button>
+          </div>
+          {linkError ? (
+            <Alert
+              variant="danger"
+              role="alert"
+              message={linkError}
+              onDismiss={() => setLinkError("")}
+            />
+          ) : null}
+        </form>
+
+        {props.nodeType?.timeserieIdRule ? (
+          <dl className="detail-meta">
+            <div className="detail-meta__row">
+              <dt>Rule</dt>
+              <dd>
+                {ruleLines.map((line, index) => (
+                  <Fragment key={line}>
+                    {index > 0 ? <br /> : null}
+                    {line}
+                  </Fragment>
+                ))}
+              </dd>
+            </div>
+          </dl>
+        ) : null}
+      </section>
+
+      <section className="detail-card" aria-labelledby="structure-timeserie-edit-title">
+        <div className="detail-card__header">
+          <h2 id="structure-timeserie-edit-title" className="section-title">
+            Create/edit timeserie(s)
+          </h2>
+        </div>
+
+        {panelError ? (
+          <Alert
+            variant="danger"
+            role="alert"
+            title="Timeserie error"
+            message={panelError}
+            onDismiss={() => setPanelError("")}
+          />
+        ) : null}
+
+        <div className="timeserie-status-list">
+          {effectiveItems.map((item) => {
+            const status = item.id ? existenceById[item.id] : undefined;
+            const isBusy = busySlot === item.slot;
+            const isDeleting = confirmingDeleteId === item.id;
+            const showCreateForm = !item.id || status?.state === "missing";
+            const createIdPrefix = `structure-${item.slot}-timeserie`;
+            const timeserieName =
+              status?.state === "exists" ? timeserieNames.get(item.id) : undefined;
+
+            return (
+              <section
+                key={item.slot}
+                className="timeserie-status-card"
+                aria-label={`${item.label} timeserie`}
+              >
+                <div className="timeserie-status-card__header">
+                  <div
+                    className={
+                      showCreateForm
+                        ? "timeserie-status-card__title timeserie-status-card__title--editable"
+                        : "timeserie-status-card__title"
+                    }
+                  >
+                    <h3>{item.label}</h3>
+                    {showCreateForm ? (
                       <>
-                        <label className="visually-hidden" htmlFor={`short-name-${item.slot}`}>
-                          Short name for {item.label}
+                        <label className="visually-hidden" htmlFor={`${createIdPrefix}-id`}>
+                          {item.label} timeserie id
                         </label>
+                        {/* Shown in the card header, but submitted with the create form below. */}
                         <input
-                          id={`short-name-${item.slot}`}
+                          id={`${createIdPrefix}-id`}
                           className="input"
-                          value={shortNameDraft}
-                          onChange={(event) => setShortNameDraft(event.target.value)}
-                          disabled={isBusy || formDisabled}
+                          form={`${createIdPrefix}-form`}
+                          required
+                          value={createIdFor(item)}
+                          onChange={(event) => {
+                            const value = event.target.value;
+                            setCreateIdDrafts((current) => ({
+                              ...current,
+                              [item.slot]: { baseId: item.id, value }
+                            }));
+                          }}
+                          disabled={actionsDisabled}
                         />
+                      </>
+                    ) : (
+                      <code className="metadata-code">{item.id}</code>
+                    )}
+                  </div>
+                  <span className={statusClass(status, item.id)}>
+                    {statusLabel(status, item.id)}
+                  </span>
+                </div>
+                {item.source !== "none" || status?.state === "exists" ? (
+                  <dl className="detail-meta">
+                    {timeserieName ? (
+                      <div className="detail-meta__row">
+                        <dt>Name</dt>
+                        <dd>{timeserieName}</dd>
+                      </div>
+                    ) : null}
+                    {item.source !== "none" ? (
+                      <div className="detail-meta__row">
+                        <dt>Source</dt>
+                        <dd>{item.source === "node" ? nodeSourceLabel : "Type default"}</dd>
+                      </div>
+                    ) : null}
+                    {item.inheritedId && item.source === "node" ? (
+                      <div className="detail-meta__row">
+                        <dt>Default</dt>
+                        <dd>{item.inheritedId}</dd>
+                      </div>
+                    ) : null}
+                    {status?.state === "exists" ? (
+                      <div className="detail-meta__row">
+                        <dt>Short name</dt>
+                        <dd>{status.shortName || "Not set"}</dd>
+                      </div>
+                    ) : null}
+                  </dl>
+                ) : null}
+                {status?.state === "exists" || item.canUnlink ? (
+                  <div className="form-actions">
+                    {status?.state !== "exists" ? null : status.shortNameEditable ? (
+                      editingShortNameId === item.id ? (
+                        <>
+                          <label className="visually-hidden" htmlFor={`short-name-${item.slot}`}>
+                            Short name for {item.label}
+                          </label>
+                          <input
+                            id={`short-name-${item.slot}`}
+                            className="input"
+                            value={shortNameDraft}
+                            onChange={(event) => setShortNameDraft(event.target.value)}
+                            disabled={isBusy || formDisabled}
+                          />
+                          <button
+                            className="btn btn--secondary"
+                            type="button"
+                            disabled={isBusy || formDisabled}
+                            onClick={() => void saveShortName(item)}
+                          >
+                            {isBusy ? "Saving..." : "Save shortname"}
+                          </button>
+                        </>
+                      ) : (
                         <button
                           className="btn btn--secondary"
                           type="button"
-                          disabled={isBusy || formDisabled}
-                          onClick={() => void saveShortName(item.id)}
+                          disabled={actionsDisabled}
+                          onClick={() => {
+                            setShortNameDraft(status.shortName);
+                            setEditingShortNameId(item.id);
+                          }}
                         >
-                          {isBusy ? "Saving..." : "Save shortname"}
+                          Set shortname
                         </button>
-                      </>
+                      )
                     ) : (
+                      <span className="muted">Short name is locked by a derived metric.</span>
+                    )}
+                    {item.canUnlink ? (
                       <button
                         className="btn btn--secondary"
                         type="button"
-                        disabled={formDisabled || Boolean(busyTimeserieId)}
-                        onClick={() => {
-                          setShortNameDraft(status.shortName);
-                          setEditingShortNameId(item.id);
-                        }}
+                        disabled={actionsDisabled}
+                        onClick={() => void unlink(item)}
                       >
-                        Set shortname
-                      </button>
-                    )
-                  ) : (
-                    <span className="muted">Short name is locked by a derived metric.</span>
-                  )}
-                </div>
-              ) : null}
-              {status?.state === "error" ? <p className="muted">{status.message}</p> : null}
-              {item.id && status?.state === "missing" ? (
-                <MissingTimeserieForm
-                  key={`${item.slot}:${item.id}`}
-                  idPrefix={`structure-${item.slot}-timeserie`}
-                  timeserieId={item.id}
-                  nodeName={props.node.name}
-                  slotLabel={item.label}
-                  saving={isBusy}
-                  disabled={formDisabled || Boolean(busyTimeserieId)}
-                  onCreate={createMissingTimeserie}
-                />
-              ) : null}
-              {item.id && status?.state === "exists" ? (
-                <section
-                  className="destructive-action-section"
-                  aria-label={`${item.label} deletion`}
-                >
-                  <div className="form-actions">
-                    {!isDeleting ? (
-                      <button
-                        className="btn btn--danger"
-                        type="button"
-                        disabled={formDisabled || Boolean(busyTimeserieId)}
-                        onClick={() => setConfirmingDeleteId(item.id)}
-                      >
-                        Delete timeserie
+                        Unlink
                       </button>
                     ) : null}
                   </div>
-                  {isDeleting ? (
-                    <div className="delete-confirmation" role="alertdialog">
-                      <p>Are you sure you want to delete this timeserie?</p>
-                      <div className="form-actions">
+                ) : null}
+                {status?.state === "error" ? <p className="muted">{status.message}</p> : null}
+                {showCreateForm ? (
+                  <MissingTimeserieForm
+                    key={`${item.slot}:${item.id}`}
+                    formId={`${createIdPrefix}-form`}
+                    idPrefix={createIdPrefix}
+                    timeserieId={createIdFor(item)}
+                    defaultId={item.inheritedId}
+                    createdId={unlinkedCreatedIds[item.slot]}
+                    nodeName={props.node.name}
+                    slotLabel={item.label}
+                    saving={isBusy}
+                    disabled={actionsDisabled}
+                    onCreate={(payload) => createSlotTimeserie(item, payload)}
+                    onLink={(timeserieId) => linkSlotTimeserie(item.slot, timeserieId)}
+                  />
+                ) : null}
+                {item.id && status?.state === "exists" ? (
+                  <section
+                    className="destructive-action-section"
+                    aria-label={`${item.label} deletion`}
+                  >
+                    <div className="form-actions">
+                      {!isDeleting ? (
                         <button
                           className="btn btn--danger"
                           type="button"
-                          disabled={formDisabled || isBusy}
-                          onClick={() => void confirmDelete(item.id)}
+                          disabled={actionsDisabled}
+                          onClick={() => setConfirmingDeleteId(item.id)}
                         >
-                          {isBusy ? "Deleting..." : "Yes"}
+                          Delete timeserie
                         </button>
-                        <button
-                          className="btn btn--secondary"
-                          type="button"
-                          disabled={formDisabled || isBusy}
-                          onClick={() => setConfirmingDeleteId(null)}
-                        >
-                          No
-                        </button>
-                      </div>
+                      ) : null}
                     </div>
-                  ) : null}
-                </section>
-              ) : null}
-            </section>
-          );
-        })}
-      </div>
-    </section>
+                    {isDeleting ? (
+                      <div className="delete-confirmation" role="alertdialog">
+                        <p>Are you sure you want to delete this timeserie?</p>
+                        <div className="form-actions">
+                          <button
+                            className="btn btn--danger"
+                            type="button"
+                            disabled={formDisabled || isBusy}
+                            onClick={() => void confirmDelete(item)}
+                          >
+                            {isBusy ? "Deleting..." : "Yes"}
+                          </button>
+                          <button
+                            className="btn btn--secondary"
+                            type="button"
+                            disabled={formDisabled || isBusy}
+                            onClick={() => setConfirmingDeleteId(null)}
+                          >
+                            No
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
+                  </section>
+                ) : null}
+              </section>
+            );
+          })}
+        </div>
+      </section>
+    </div>
   );
 }
 
 function MissingTimeserieForm(props: {
+  formId: string;
   idPrefix: string;
+  // The id input sits in the card header and belongs to this form through its form attribute.
   timeserieId: string;
+  defaultId: string;
+  // A timeserie this slot created whose link failed; submitting it again retries the link only.
+  createdId: string;
   nodeName: string;
   slotLabel: string;
   saving: boolean;
   disabled: boolean;
   onCreate: (payload: TimeserieCreateRequest) => Promise<void>;
+  onLink: (timeserieId: string) => Promise<void>;
 }) {
   const [name, setName] = useState(`${props.nodeName} ${props.slotLabel}`);
   const [shortName, setShortName] = useState("");
@@ -555,29 +848,44 @@ function MissingTimeserieForm(props: {
   const [timeUnit, setTimeUnit] = useState<TimeserieTimeUnit>("month");
   const [valueUnit, setValueUnit] = useState<TimeserieValueUnit>("number");
   const [formError, setFormError] = useState("");
-  const submitDisabled = props.disabled || !name.trim();
+  const submitDisabled = props.disabled || !name.trim() || !props.timeserieId.trim();
 
   async function submit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     setFormError("");
+    const timeserieId = props.timeserieId.trim();
+
+    if (timeserieId !== props.createdId) {
+      try {
+        await props.onCreate({
+          id: timeserieId,
+          name: name.trim(),
+          shortName: inputValueToPayload(shortName),
+          description: inputValueToPayload(description),
+          unit: inputValueToPayload(unit),
+          timeUnit,
+          valueUnit
+        });
+      } catch (error) {
+        setFormError(error instanceof Error ? error.message : "Could not create timeserie.");
+        return;
+      }
+    }
+
+    // A timeserie with the type default id is inherited, so it needs no explicit link.
+    if (timeserieId === props.defaultId) return;
 
     try {
-      await props.onCreate({
-        id: props.timeserieId,
-        name: name.trim(),
-        shortName: inputValueToPayload(shortName),
-        description: inputValueToPayload(description),
-        unit: inputValueToPayload(unit),
-        timeUnit,
-        valueUnit
-      });
+      await props.onLink(timeserieId);
     } catch (error) {
-      setFormError(error instanceof Error ? error.message : "Could not create timeserie.");
+      setFormError(
+        `Timeserie ${timeserieId} was created but could not be linked: ${messageFromError(error)}`
+      );
     }
   }
 
   return (
-    <form className="timeserie-create-form" onSubmit={submit}>
+    <form id={props.formId} className="timeserie-create-form" onSubmit={submit}>
       <div className="form-row">
         <label className="form-label form-label--required" htmlFor={`${props.idPrefix}-name`}>
           Name

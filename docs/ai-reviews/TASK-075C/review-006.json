@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-075C/review-006",
+  "task": {
+    "id": "TASK-075C",
+    "path": "tasks/TASK-075C-timeserie-panel-link-and-create.md"
+  },
+  "round": 6,
+  "reviewed_at": "2026-11-05T14:00:07Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": {
+    "number": 133,
+    "url": "https://github.com/reflector-oy/schatten/pull/133"
+  },
+  "source": {
+    "base_sha": "8fe57e12870e4c2b6dda6f6fe493992c0d87c29d",
+    "head_sha": "e6e4bbb0d017cf1e7de8c01ceb083263394612f0",
+    "comparison": "8fe57e12870e4c2b6dda6f6fe493992c0d87c29d...e6e4bbb0d017cf1e7de8c01ceb083263394612f0",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "clean",
+    "summary": "Round 6 reviews the whole TASK-075C range including the commit that applies the developer's decision on round 1 finding F-004. The node and edge forms now catch a failed delete, keep the confirmation open and leave the page-level save error as the only alert; the task's decision 10, requirement, acceptance criterion, expected files and testing item and the testing document match the code. The forms are rendered only in the Structure tab, and successful deletes, the No button, the saving states and the disabled Delete for an element already removed in the selected org state are unchanged. No regression or new finding. Format check, lint, all frontend tests without unhandled errors, the targeted Structure test command, the build and the record validator pass. Every TASK-075C finding is now fixed or accepted by the developer.",
+    "findings": [],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-075C/review-001",
+        "finding_id": "F-004",
+        "disposition": "fixed",
+        "rationale": "As the developer decided, the node and edge forms catch a failed delete instead of leaving an unhandled rejection, so new Structure tests can check that a failed node or edge delete shows exactly one page-level save error and keeps the confirmation open for a retry. Run against the previous forms, the same tests fail the run on two unhandled rejections; the reviewer did not repeat that check because the review is read-only.",
+        "validated_by": {
+          "review_id": "TASK-075C/review-006",
+          "commit": "e6e4bbb0d017cf1e7de8c01ceb083263394612f0"
+        }
+      }
+    ]
+  }
+}

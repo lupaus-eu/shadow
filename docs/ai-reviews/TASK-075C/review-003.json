@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-075C/review-003",
+  "task": {
+    "id": "TASK-075C",
+    "path": "tasks/TASK-075C-timeserie-panel-link-and-create.md"
+  },
+  "round": 3,
+  "reviewed_at": "2026-11-05T13:27:30Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": {
+    "number": 133,
+    "url": "https://github.com/reflector-oy/schatten/pull/133"
+  },
+  "source": {
+    "base_sha": "8fe57e12870e4c2b6dda6f6fe493992c0d87c29d",
+    "head_sha": "5332755a5ac2fff80d7167fadb946d451b6f1849",
+    "comparison": "8fe57e12870e4c2b6dda6f6fe493992c0d87c29d...5332755a5ac2fff80d7167fadb946d451b6f1849",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "clean",
+    "summary": "Round 3 reviews the whole TASK-075C range including the round 2 fix commit. The round 2 finding is fixed and the fix commit introduced no regression or new finding. Throwaway tests, all deleted, confirmed that a timeserie created, deleted and re-created while the list loads shows its latest name whether or not the loaded list already holds it, that a re-created and again deleted id is gone, that changes after the list is ready still update the options and the Name row, and that the options stay sorted by id. Round 1 findings F-002, F-004, F-006, F-007 and F-008 are unchanged and remain open for the developer's decision in human review. Format check, lint, all frontend tests, the targeted Structure test command, the build and the record validator pass.",
+    "findings": [],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-075C/review-002",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "When the list arrives, entries for every id the panel created or deleted while it loaded are dropped and the panel's own creates are appended, so a re-created timeserie replaces the stale entry and no id appears twice. A new panel test for delete-then-re-create fails without the fix and passes with it.",
+        "validated_by": {
+          "review_id": "TASK-075C/review-003",
+          "commit": "5332755a5ac2fff80d7167fadb946d451b6f1849"
+        }
+      }
+    ]
+  }
+}
