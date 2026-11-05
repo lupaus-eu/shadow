@@ -715,6 +715,17 @@
   margin-bottom: var(--space-3);
 }
 
+.structure-name-help {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-meta-size);
+  line-height: var(--text-meta-lh);
+}
+
+.structure-name-help--error {
+  color: var(--color-danger-500);
+}
+
 .structure-type-count {
   flex: 0 0 auto;
   color: var(--color-text-secondary);
@@ -825,6 +836,7 @@
 .graph-viewer__popover-title {
   margin-bottom: var(--space-1);
   font-weight: 600;
+  overflow-wrap: anywhere;
 }
 
 .graph-viewer__popover-description {

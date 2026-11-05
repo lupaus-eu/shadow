@@ -8,6 +8,8 @@ import type {
   GraphNodeDto
 } from "../../api/orgTwinStructure";
 import Alert from "../../components/Alert";
+import GraphNameField from "./GraphNameField";
+import { graphNameTooLong } from "./graphNames";
 
 export type EdgeFormCreatePayload = Omit<GraphEdgeCreateRequest, "attributes" | "id">;
 
@@ -56,6 +58,7 @@ export default function EdgeForm(props: {
   const submitDisabled =
     formDisabled ||
     !name.trim() ||
+    graphNameTooLong(name) ||
     !selectedEdgeTypeId ||
     !sourceNodeId ||
     !targetNodeId ||
@@ -121,19 +124,14 @@ export default function EdgeForm(props: {
       {!hasNodeChoices && !showNoAllowedEdgeTypes ? (
         <p className="muted">Create nodes and load edge type metadata before saving edges.</p>
       ) : null}
-      <form onSubmit={submit}>
-        <div className="form-row">
-          <label className="form-label form-label--required" htmlFor={`${props.idPrefix}-name`}>
-            Name
-          </label>
-          <input
-            id={`${props.idPrefix}-name`}
-            className="input"
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            disabled={formDisabled}
-          />
-        </div>
+      {/* The name check counts code points; native maxlength counts UTF-16 units. */}
+      <form onSubmit={submit} noValidate>
+        <GraphNameField
+          idPrefix={props.idPrefix}
+          value={name}
+          onChange={setName}
+          disabled={formDisabled}
+        />
         <div className="form-row">
           <label className="form-label form-label--required" htmlFor={`${props.idPrefix}-type`}>
             Type

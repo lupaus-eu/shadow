@@ -919,6 +919,126 @@ def test_edge_validation_rejects_duplicates_missing_nodes_and_disallowed_connect
     )
 
 
+def test_graph_names_and_keys_have_length_limits(client: TestClient) -> None:
+    organisation_key = _create_organisation(client)
+    graph_path = _graph_path(organisation_key, "initial_state")
+    longest_name = "N" * 60
+    too_long_name = "N" * 61
+    name_error = "Name must be at most 60 characters."
+
+    def node(key: str, name: str) -> dict[str, str]:
+        return {"id": key, "name": name, "nodeTypeId": "nt_person"}
+
+    def edge(key: str, name: str) -> dict[str, str]:
+        return {
+            "id": key,
+            "name": name,
+            "edgeTypeId": "et_reports_to",
+            "sourceNodeId": "node_a",
+            "targetNodeId": "node_b",
+        }
+
+    response = client.post(f"{graph_path}/nodes", json=node("node_a", too_long_name))
+    assert response.status_code == 422
+    assert name_error in response.text
+
+    # Surrounding spaces are trimmed before the length is counted.
+    response = client.post(
+        f"{graph_path}/nodes", json=node("node_a", f"  {longest_name}  ")
+    )
+    assert response.status_code == 201
+    assert response.json()["name"] == longest_name
+    assert (
+        client.post(f"{graph_path}/nodes", json=node("node_b", "B")).status_code
+        == 201
+    )
+
+    response = client.patch(
+        f"{graph_path}/nodes/node_a", json={"name": too_long_name}
+    )
+    assert response.status_code == 422
+    assert name_error in response.text
+    response = client.patch(
+        f"{graph_path}/nodes/node_a", json={"name": f" {longest_name} "}
+    )
+    assert response.status_code == 200
+    assert response.json()["name"] == longest_name
+
+    assert (
+        client.post(f"{graph_path}/nodes", json=node("n" * 129, "Key")).status_code
+        == 422
+    )
+    assert (
+        client.post(f"{graph_path}/nodes", json=node("n" * 128, "Key")).status_code
+        == 201
+    )
+
+    response = client.post(f"{graph_path}/edges", json=edge("edge_a", too_long_name))
+    assert response.status_code == 422
+    assert name_error in response.text
+    assert (
+        client.post(f"{graph_path}/edges", json=edge("e" * 129, "Edge")).status_code
+        == 422
+    )
+    response = client.post(
+        f"{graph_path}/edges", json=edge("edge_a", f" {longest_name} ")
+    )
+    assert response.status_code == 201
+    assert response.json()["name"] == longest_name
+
+    response = client.patch(
+        f"{graph_path}/edges/edge_a", json={"name": too_long_name}
+    )
+    assert response.status_code == 422
+    assert name_error in response.text
+    response = client.patch(
+        f"{graph_path}/edges/edge_a", json={"name": f" {longest_name} "}
+    )
+    assert response.status_code == 200
+    assert response.json()["name"] == longest_name
+
+
+def test_graph_read_returns_names_stored_before_the_length_limit(
+    client: TestClient,
+    session_factory: sessionmaker[Session],
+) -> None:
+    organisation_key = _create_organisation(client)
+    graph_path = _graph_path(organisation_key, "initial_state")
+    for key in ("node_a", "node_b"):
+        response = client.post(
+            f"{graph_path}/nodes",
+            json={"id": key, "name": key, "nodeTypeId": "nt_person"},
+        )
+        assert response.status_code == 201
+    response = client.post(
+        f"{graph_path}/edges",
+        json={
+            "id": "edge_a",
+            "name": "Edge A",
+            "edgeTypeId": "et_reports_to",
+            "sourceNodeId": "node_a",
+            "targetNodeId": "node_b",
+        },
+    )
+    assert response.status_code == 201
+
+    long_name = "Loremipsum" * 30
+    with session_factory() as session:
+        node = session.scalar(select(GraphNode).where(GraphNode.node_key == "node_a"))
+        edge = session.scalar(select(GraphEdge).where(GraphEdge.edge_key == "edge_a"))
+        assert node is not None
+        assert edge is not None
+        node.name = long_name
+        edge.name = long_name
+        session.commit()
+
+    response = client.get(graph_path)
+    assert response.status_code == 200
+    graph = response.json()
+    assert {item["id"]: item["name"] for item in graph["nodes"]}["node_a"] == long_name
+    assert graph["edges"][0]["name"] == long_name
+
+
 def _seed_default_metamodel(factory: sessionmaker[Session]) -> None:
     with factory() as session:
         metamodel = Metamodel(version=1)

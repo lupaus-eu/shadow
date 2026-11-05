@@ -7,6 +7,8 @@ import type {
   NodeTypeMetadataDto
 } from "../../api/orgTwinStructure";
 import Alert from "../../components/Alert";
+import GraphNameField from "./GraphNameField";
+import { graphNameTooLong } from "./graphNames";
 
 export type NodeFormCreatePayload = Omit<GraphNodeCreateRequest, "attributes" | "id" | "position">;
 
@@ -39,7 +41,7 @@ export default function NodeForm(props: {
   const deleteDate = props.node?.deleteDate ?? null;
   const removedInOrgState = Boolean(deleteDate) && deleteDate === props.lifetime?.targetDate;
   const formDisabled = props.disabled || props.saving || !hasNodeTypes;
-  const submitDisabled = formDisabled || !name.trim() || !nodeTypeId;
+  const submitDisabled = formDisabled || !name.trim() || graphNameTooLong(name) || !nodeTypeId;
   const nodeTypeHelp = useMemo(() => {
     if (hasNodeTypes) return "";
     return "Node type metadata is required before nodes can be saved.";
@@ -88,19 +90,14 @@ export default function NodeForm(props: {
         </p>
       ) : null}
       {nodeTypeHelp ? <p className="muted">{nodeTypeHelp}</p> : null}
-      <form onSubmit={submit}>
-        <div className="form-row">
-          <label className="form-label form-label--required" htmlFor={`${props.idPrefix}-name`}>
-            Name
-          </label>
-          <input
-            id={`${props.idPrefix}-name`}
-            className="input"
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            disabled={formDisabled}
-          />
-        </div>
+      {/* The name check counts code points; native maxlength counts UTF-16 units. */}
+      <form onSubmit={submit} noValidate>
+        <GraphNameField
+          idPrefix={props.idPrefix}
+          value={name}
+          onChange={setName}
+          disabled={formDisabled}
+        />
         <div className="form-row">
           <label className="form-label form-label--required" htmlFor={`${props.idPrefix}-type`}>
             Type

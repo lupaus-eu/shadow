@@ -10,6 +10,7 @@ import type {
   StylesheetJson
 } from "cytoscape";
 import type { GraphDto, GraphPosition, GraphTypeCatalogDto } from "../../api/orgTwinStructure";
+import { displayGraphName } from "./graphNames";
 
 export type GraphSelection = { kind: "node"; id: string } | { kind: "edge"; id: string };
 
@@ -39,6 +40,8 @@ const GRAPH_STYLES = [
       "text-valign": "center",
       "text-halign": "center",
       "text-wrap": "wrap",
+      // Wrap words wider than the label too, so a long name cannot widen the graph.
+      "text-overflow-wrap": "anywhere",
       "text-max-width": 120,
       width: 138,
       height: 60,
@@ -62,6 +65,7 @@ const GRAPH_STYLES = [
       "target-arrow-shape": "data(targetArrow)",
       "source-arrow-shape": "data(sourceArrow)",
       "text-wrap": "wrap",
+      "text-overflow-wrap": "anywhere",
       "text-max-width": 140,
       "text-background-color": "#ffffff",
       "text-background-opacity": 1,
@@ -140,7 +144,7 @@ function typeDisplayName(
 }
 
 function buildInstanceLabel(typeName: string, instanceName: string): string {
-  return `${typeName}:\n${instanceName}`;
+  return `${typeName}:\n${displayGraphName(instanceName)}`;
 }
 
 function viewportCenter(cy: Core): GraphPosition {
@@ -700,7 +704,7 @@ export default function GraphViewer(props: {
               visibility: "hidden"
             }}
           >
-            <p className="graph-viewer__popover-title">{hoveredElement.name}</p>
+            <p className="graph-viewer__popover-title">{displayGraphName(hoveredElement.name)}</p>
             {hoveredElement.description ? (
               <p className="graph-viewer__popover-description">{hoveredElement.description}</p>
             ) : null}

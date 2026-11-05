@@ -78,6 +78,7 @@ from app.api.v1.org_states.schemas import (
     TimeserieValuesPatchRequest,
 )
 from app.api.v1.org_twin_structure import org_twin_structure_service
+from app.api.v1.org_twin_structure.schemas import STORED_GRAPH_PAYLOAD
 from app.api.v1.organisations.models import Organisation
 from app.api.v1.organisations.service import get_active_organisation
 from app.api.v1.timeserie_generation.generator import (
@@ -1447,7 +1448,10 @@ def _staged(row: AiChangeSetOperation) -> StagedOperation:
         data["ref"] = row.ref
     return StagedOperation(
         position=row.position,
-        operation=OPERATION_ADAPTER.validate_python(data),
+        # Rows staged before the graph name and key limits must stay readable.
+        operation=OPERATION_ADAPTER.validate_python(
+            data, context={STORED_GRAPH_PAYLOAD: True}
+        ),
         frozen_values=(
             FrozenValues.model_validate(row.frozen_values)
             if row.frozen_values is not None

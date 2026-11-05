@@ -1,5 +1,8 @@
 import { authenticatedFetch } from "./client";
 
+/** Longest graph node or edge name the API accepts, counted after trimming. */
+export const GRAPH_NAME_MAX_LENGTH = 60;
+
 export type JsonObject = Record<string, unknown>;
 
 export type GraphPosition = {

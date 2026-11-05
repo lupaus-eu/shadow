@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-075A/review-002",
+  "task": {
+    "id": "TASK-075A",
+    "path": "tasks/TASK-075A-graph-name-length-limit.md"
+  },
+  "round": 2,
+  "reviewed_at": "2026-11-05T10:50:37Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "4e9c00b868d2191051524f52faf4b10fd2f57704",
+    "head_sha": "30a9e11b3349fce3bb6aaf5144e1c870b10c1447",
+    "comparison": "4e9c00b868d2191051524f52faf4b10fd2f57704...30a9e11b3349fce3bb6aaf5144e1c870b10c1447",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Round 2 reviews the whole TASK-075A range including the round 1 fix commit. All three round 1 findings are fixed and the fix commit introduced no regression. Stored change-set operations are parsed only through the engine's single parse point with the stored-payload context, the review response returns stored payloads without re-validating them, and new operations stay strictly validated through REST and MCP. Requirements and acceptance criteria are met in code, nothing is out of scope, and there is no new dependency, migration, database constraint or removed test. Backend and frontend tests, lint, type checks and the record validator pass; the manual check in a real browser was not repeated. One info finding remains: the targeted backend Structure test command does not run the change-set engine tests that the task's testing note lists as coverage.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "documentation",
+        "severity": "info",
+        "summary": "The targeted backend command in the Structure testing section does not run the change-set engine tests that the same section lists as coverage for the name and key limits.",
+        "rationale": "The Structure request schemas now carry the stored-payload context the change-set engine relies on, so a later schema change that breaks stored-row leniency would pass the documented targeted Structure checks and fail only in the engine tests, which are documented in the AI section. This is the backend counterpart of round 1 F-003.",
+        "recommendation": "Add the change-set engine test module to the targeted backend Structure command, or state that changes to the graph request schemas must also run the change-set engine tests.",
+        "locations": [
+          {
+            "path": "docs/TESTING.md",
+            "line": 1055
+          },
+          {
+            "path": "docs/TESTING.md",
+            "line": 1083
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-075A/review-001",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "The node and edge forms turn off native validation, so the input's code-unit length check can no longer block submit while Save looks enabled and only the code-point check decides. Neither form has another native constraint, a test asserts the setting and the domain document states the remaining input cap.",
+        "validated_by": {
+          "review_id": "TASK-075A/review-002",
+          "commit": "30a9e11b3349fce3bb6aaf5144e1c870b10c1447"
+        }
+      },
+      {
+        "record_id": "TASK-075A/review-001",
+        "finding_id": "F-002",
+        "disposition": "fixed",
+        "rationale": "A new engine test rewrites stored node and edge rows to over-limit names and keys, checks that a too-long new operation is still rejected, adds a valid one and runs validate, submit and apply, asserting the long names are stored. The edge key case and a 60-character edge rename with trimming are covered too.",
+        "validated_by": {
+          "review_id": "TASK-075A/review-002",
+          "commit": "30a9e11b3349fce3bb6aaf5144e1c870b10c1447"
+        }
+      },
+      {
+        "record_id": "TASK-075A/review-001",
+        "finding_id": "F-003",
+        "disposition": "fixed",
+        "rationale": "The documented targeted frontend command now filters to the Structure tab, graph viewer and name helper test files, and running it executes exactly those three files.",
+        "validated_by": {
+          "review_id": "TASK-075A/review-002",
+          "commit": "30a9e11b3349fce3bb6aaf5144e1c870b10c1447"
+        }
+      }
+    ]
+  }
+}

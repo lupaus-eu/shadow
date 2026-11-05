@@ -1052,9 +1052,12 @@ Backend Structure API checks:
 ```bash
 cd backend
 uv run ruff check .
-uv run pytest tests/test_org_twin_structure_api.py -v
+uv run pytest tests/test_org_twin_structure_api.py tests/test_ai_change_set_engine.py -v
 uv run pyright
 ```
+
+AI change sets reuse the graph request schemas and re-read stored operations
+with them, so the Structure checks also run the change-set engine tests.
 
 Run the full backend pytest suite when shared service behavior, database models
 or scenario/org-state interactions change:
@@ -1069,13 +1072,22 @@ Frontend Structure UI checks:
 ```bash
 cd frontend
 pnpm lint
-pnpm test -- StructureTab GraphViewer
+pnpm test StructureTab GraphViewer graphNames lifetime
 pnpm build
 ```
 
 `lifetime.test.ts`, `GraphViewer.test.tsx` and `StructureTab.test.tsx` cover
 the marking of elements that end in the selected organisation state, including
 the next-state comparison, the org-state load fallback and the disabled Delete.
+
+The 60-character node and edge name limit (TASK-075A) is covered by
+`test_org_twin_structure_api.py` (create and patch, trimming, the 128-character
+key limit, and stored longer names still loading),
+`test_ai_change_set_engine.py` (change-set operations, and stored operations
+re-read without the limits), `graphNames.test.ts` (code-point counting),
+`GraphViewer.test.tsx` (shortened labels and popover titles, label wrapping)
+and `StructureTab.test.tsx` (the name field limit and hint, and a stored longer
+name blocking Save until it is shortened).
 
 Run the full frontend test suite when shared API client, workspace selection or
 tab rendering behavior changes:

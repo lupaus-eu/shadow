@@ -24,8 +24,11 @@ from app.api.v1.ai_change_sets.models import AiChangeSet, AiChangeSetOperation
 from app.api.v1.ai_change_sets.schemas import (
     OPERATION_ADAPTER,
     ChangeSetOperation,
+    CreateEdgeOperation,
+    CreateNodeOperation,
     ExecutionResult,
     NodeReplacement,
+    PatchNodeOperation,
     ReplacementReport,
     TimeserieReplacement,
 )
@@ -1378,6 +1381,161 @@ def test_refs_only_name_server_generated_keys() -> None:
             "payload": {},
         }
     )
+
+
+def test_graph_names_and_keys_have_length_limits() -> None:
+    def rejected(raw: dict[str, Any]) -> str:
+        with pytest.raises(ValidationError) as error:
+            OPERATION_ADAPTER.validate_python(raw)
+        return str(error.value)
+
+    too_long = "N" * 61
+    node: dict[str, Any] = {
+        "type": "create_node",
+        "scenario_key": "reality",
+        "org_state_key": "initial_state",
+        "payload": {"id": "hq", "name": "N" * 60, "nodeTypeId": "nt_person"},
+    }
+    edge: dict[str, Any] = {
+        "type": "create_edge",
+        "scenario_key": "reality",
+        "org_state_key": "initial_state",
+        "payload": {
+            "id": "edge",
+            "name": "N" * 60,
+            "edgeTypeId": "et_reports_to",
+            "sourceNodeId": "hq",
+            "targetNodeId": "lab",
+        },
+    }
+    OPERATION_ADAPTER.validate_python(node)
+    OPERATION_ADAPTER.validate_python(edge)
+
+    message = "Name must be at most 60 characters."
+    assert message in rejected(
+        {**node, "payload": {**node["payload"], "name": too_long}}
+    )
+    assert message in rejected(
+        {**edge, "payload": {**edge["payload"], "name": too_long}}
+    )
+    assert message in rejected(
+        {
+            "type": "patch_node",
+            "scenario_key": "reality",
+            "org_state_key": "initial_state",
+            "node_key": "hq",
+            "payload": {"name": too_long},
+        }
+    )
+    assert "at most 128 characters" in rejected(
+        {**node, "payload": {**node["payload"], "id": "n" * 129}}
+    )
+    assert "at most 128 characters" in rejected(
+        {**edge, "payload": {**edge["payload"], "id": "e" * 129}}
+    )
+
+    # Rows staged before the limits stay readable, like other stored names.
+    stored_payloads: dict[str, dict[str, Any]] = {
+        "create_node": {
+            **node["payload"],
+            "id": "n" * 129,
+            "name": too_long,
+        },
+        "create_edge": {**edge["payload"], "id": "e" * 129, "name": too_long},
+        "patch_node": {"name": too_long},
+    }
+    for op_type, payload in stored_payloads.items():
+        row = AiChangeSetOperation(
+            position=0,
+            op_type=op_type,
+            payload={
+                "scenario_key": "reality",
+                "org_state_key": "initial_state",
+                **({"node_key": "hq"} if op_type == "patch_node" else {}),
+                "payload": payload,
+            },
+        )
+        operation = engine.staged_operation(row).operation
+        assert isinstance(
+            operation, CreateNodeOperation | CreateEdgeOperation | PatchNodeOperation
+        )
+        assert operation.payload.name == too_long
+
+
+def test_change_set_staged_before_the_name_limits_still_applies(
+    session_factory: sessionmaker[Session], organisation_key: str
+) -> None:
+    change_set_key = _create_change_set(
+        session_factory, organisation_key, END_TO_END_OPERATIONS[:5]
+    )
+    long_name = "N" * 61
+    node_key = "n" * 129
+    edge_key = "e" * 129
+
+    # Rewrite the stored rows as a change set staged before the limits looks.
+    with session_factory() as session:
+        rows = session.scalars(
+            select(AiChangeSetOperation).order_by(AiChangeSetOperation.position)
+        ).all()
+        node_row, edge_row = rows[2], rows[4]
+        assert (node_row.op_type, edge_row.op_type) == ("create_node", "create_edge")
+        node_row.payload = {
+            **node_row.payload,
+            "payload": {
+                **node_row.payload["payload"],
+                "id": node_key,
+                "name": long_name,
+            },
+        }
+        edge_row.payload = {
+            **edge_row.payload,
+            "payload": {
+                **edge_row.payload["payload"],
+                "id": edge_key,
+                "name": long_name,
+                "sourceNodeId": node_key,
+            },
+        }
+        session.commit()
+
+    # A new operation is still checked strictly; a valid one joins the old rows.
+    too_long_node: dict[str, Any] = {
+        "type": "create_node",
+        "scenario_key": "$plan",
+        "org_state_key": "$start",
+        "payload": {"id": "team_c", "name": long_name, "nodeTypeId": "nt_person"},
+    }
+    with pytest.raises(ValidationError, match="Name must be at most 60 characters."):
+        _operations([too_long_node])
+    with session_factory() as session:
+        engine.add_operations(
+            session,
+            _load(session, change_set_key),
+            _operations(
+                [
+                    {
+                        **too_long_node,
+                        "payload": {**too_long_node["payload"], "name": "C"},
+                    }
+                ]
+            ),
+            CREATOR_USER_ID,
+        )
+        session.commit()
+
+    assert _validate(session_factory, change_set_key).ok
+    assert _submit(session_factory, change_set_key).ok
+    assert _apply(session_factory, organisation_key, change_set_key).ok
+
+    with session_factory() as session:
+        node = session.scalar(select(GraphNode).where(GraphNode.node_key == node_key))
+        edge = session.scalar(select(GraphEdge).where(GraphEdge.edge_key == edge_key))
+        assert node is not None
+        assert edge is not None
+        assert (node.name, edge.name) == (long_name, long_name)
+        assert session.scalar(
+            select(GraphNode).where(GraphNode.node_key == "team_c")
+        ) is not None
 
 
 def test_new_nodes_and_edges_are_referred_to_verbatim(

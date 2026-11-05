@@ -498,6 +498,71 @@ describe("StructureTab", () => {
     });
   });
 
+  it("limits node and edge names to 60 characters", async () => {
+    renderStructureTab();
+    await screen.findByRole("region", { name: "Person nodes" });
+
+    for (const panelName of ["Create node", "Create edge"]) {
+      const panel = screen.getByRole("region", { name: panelName });
+      const nameInput = within(panel).getByLabelText("Name");
+      expect(nameInput).toHaveAttribute("maxLength", "60");
+      expect(nameInput).toHaveAccessibleDescription("Max 60 characters.");
+      // The app's code-point check decides, not the browser's code-unit maxlength.
+      expect(nameInput.closest("form")).toHaveAttribute("novalidate");
+    }
+  });
+
+  it("blocks saving a stored name longer than 60 characters until it is shortened", async () => {
+    const longName = "C".repeat(61);
+    vi.mocked(structureApi.fetchGraph).mockResolvedValue({
+      ...graph,
+      nodes: graph.nodes.map((node) =>
+        node.id === "node_ceo" ? { ...node, name: longName } : node
+      ),
+      edges: graph.edges.map((edge) =>
+        edge.id === "edge_reports" ? { ...edge, name: longName } : edge
+      )
+    });
+    renderStructureTab();
+    await screen.findByRole("region", { name: "Person nodes" });
+
+    fireEvent.click(screen.getByRole("button", { name: /Chief executive/ }));
+    const editNodePanel = screen.getByRole("region", { name: "Edit node" });
+    const nameInput = within(editNodePanel).getByLabelText("Name");
+    const saveButton = within(editNodePanel).getByRole("button", { name: "Save node" });
+    expect(nameInput).toHaveValue(longName);
+    expect(nameInput).toHaveAttribute("aria-invalid", "true");
+    expect(nameInput).toHaveAccessibleDescription("Name must be at most 60 characters.");
+    expect(saveButton).toBeDisabled();
+
+    fireEvent.change(nameInput, { target: { value: "CEO" } });
+    expect(nameInput).not.toHaveAttribute("aria-invalid");
+    expect(nameInput).toHaveAccessibleDescription("Max 60 characters.");
+    expect(saveButton).toBeEnabled();
+    fireEvent.click(saveButton);
+
+    await waitFor(() => {
+      expect(structureApi.updateGraphNode).toHaveBeenCalledWith(
+        "acme",
+        "future",
+        "draft",
+        "node_ceo",
+        expect.objectContaining({ name: "CEO" })
+      );
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Select reports edge" }));
+    const editEdgePanel = screen.getByRole("region", { name: "Edit edge" });
+    expect(within(editEdgePanel).getByLabelText("Name")).toHaveAccessibleDescription(
+      "Name must be at most 60 characters."
+    );
+    expect(within(editEdgePanel).getByRole("button", { name: "Save edge" })).toBeDisabled();
+    fireEvent.change(within(editEdgePanel).getByLabelText("Name"), {
+      target: { value: "Reports to" }
+    });
+    expect(within(editEdgePanel).getByRole("button", { name: "Save edge" })).toBeEnabled();
+  });
+
   it("starts edge creation with no preselected nodes and shows the click hint", async () => {
     renderStructureTab();
     await screen.findByRole("region", { name: "Person nodes" });

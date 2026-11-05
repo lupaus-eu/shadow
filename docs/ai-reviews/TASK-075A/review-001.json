@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-075A/review-001",
+  "task": {
+    "id": "TASK-075A",
+    "path": "tasks/TASK-075A-graph-name-length-limit.md"
+  },
+  "round": 1,
+  "reviewed_at": "2026-11-05T10:08:23Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "4e9c00b868d2191051524f52faf4b10fd2f57704",
+    "head_sha": "bb80e0f204b7127d7a1f9007f35b29599e649ab5",
+    "comparison": "4e9c00b868d2191051524f52faf4b10fd2f57704...bb80e0f204b7127d7a1f9007f35b29599e649ab5",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Round 1 reviews the committed TASK-075A task and implementation: the 60-character name limit counted after trimming on node and edge create and patch requests, the 128-character create key limit shared with AI change-set keys, stored change-set operations re-read without the limits, the shared form name field, shortened graph labels and popover titles with label wrapping, and the documentation. The validation context reaches every stored-operation path through the engine's single parse point, and new operations stay strictly validated through MCP and REST; a throwaway scratch test confirmed validate, submit and apply with over-limit stored rows. Backend and frontend checks pass, with no new dependency, migration or removed test, and nothing out of scope. Before this commit, a review of the uncommitted work found four issues (stored change sets failing to parse, code-unit versus code-point counting in the form check, no test for stored long names loading, and popover truncation not recorded), which were fixed before committing. Three low or info findings remain: the input's native length limit counts code units while the form check and backend count code points, stored-operation leniency is tested only at parse level, and the documented targeted test command skips the new name helper test.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "bug",
+        "severity": "low",
+        "summary": "The name input's native maxlength counts UTF-16 code units, while the form check, the backend and the domain document count code points.",
+        "rationale": "Emoji and other astral characters count twice in the input, so only 30 can be typed or pasted although the hint and the API allow 60. A name of 31 to 60 such characters created through the API can be opened, but after a user edit the browser's own constraint validation blocks submit with its own message while the form shows Save as enabled. Derived from the HTML length rules; jsdom does not apply maxlength and the case was not reproduced in a real browser.",
+        "recommendation": "Use one unit and document it: keep maxlength and let the application's own check decide on submit (for example by turning off native form validation on the node and edge forms), stating the input cap in the domain document, or replace native maxlength with code-point truncation with developer approval.",
+        "locations": [
+          {
+            "path": "frontend/src/features/structure/GraphNameField.tsx",
+            "line": 24
+          },
+          {
+            "path": "frontend/src/features/structure/graphNames.ts",
+            "line": 8
+          },
+          {
+            "path": "docs/domains/ORG_TWIN_STRUCTURE.md",
+            "line": 184
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "missing_test",
+        "severity": "low",
+        "summary": "The criterion that a change set staged before the task can still be read and applied is tested only at parse level.",
+        "rationale": "The committed test only checks that stored over-limit rows parse. No test runs validate, submit or apply on such a change set or adds a new operation next to such rows, so a future change that re-validates payloads during execution without the context would not fail any test. The change-set test also covers the 129-character key only for node creation, and the REST edge rename is not tested at the 60-character boundary.",
+        "recommendation": "Add an engine test that rewrites a change set's stored rows to an over-limit name and key, then adds a strictly validated operation, validates, submits and applies, and asserts the long names are stored; add the edge-creation key case and a 60-character edge rename.",
+        "locations": [
+          {
+            "path": "backend/tests/test_ai_change_set_engine.py",
+            "line": 1386
+          },
+          {
+            "path": "backend/tests/test_ai_change_set_engine.py",
+            "line": 1455
+          },
+          {
+            "path": "backend/tests/test_org_twin_structure_api.py",
+            "line": 994
+          }
+        ]
+      },
+      {
+        "id": "F-003",
+        "category": "documentation",
+        "severity": "info",
+        "summary": "The targeted frontend test command in the Structure testing section does not run the new name helper test that the same section lists as coverage.",
+        "rationale": "The documented filter matches only the Structure tab and graph viewer test files, so following the targeted checks skips the code-point counting tests.",
+        "recommendation": "Add the name helper test to the documented filter or reword the command.",
+        "locations": [
+          {
+            "path": "docs/TESTING.md",
+            "line": 1072
+          },
+          {
+            "path": "docs/TESTING.md",
+            "line": 1084
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": []
+  }
+}

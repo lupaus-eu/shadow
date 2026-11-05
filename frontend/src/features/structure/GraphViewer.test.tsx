@@ -703,4 +703,74 @@ describe("GraphViewer", () => {
     cytoscapeMock.trigger("mouseout", edgeTarget("2026-02-01"), "edge");
     await waitFor(() => expect(screen.queryByRole("tooltip")).not.toBeInTheDocument());
   });
+
+  it("shortens names longer than the limit in labels and on hover", async () => {
+    const longNodeName = "Loremipsum".repeat(10);
+    const longEdgeName = "E".repeat(61);
+    const sixtyCharacters = "N".repeat(60);
+    render(
+      <GraphViewer
+        graph={{
+          ...graph,
+          nodes: [
+            { ...graph.nodes[0], name: longNodeName },
+            { ...graph.nodes[0], id: "node_max", name: sixtyCharacters }
+          ],
+          edges: [{ ...graph.edges[0], name: longEdgeName }]
+        }}
+        catalog={catalog}
+        visibleNodeTypeIds={new Set(["nt_person"])}
+        endingNodeIds={noEnding}
+        endingEdgeIds={noEnding}
+        selected={null}
+        centerNodeRequest={null}
+        fitRequestId={1}
+        onSelect={vi.fn()}
+        onNodePositionChange={vi.fn()}
+        onViewportCenterChange={vi.fn()}
+      />
+    );
+
+    await waitFor(() => expect(cytoscapeMock.cyAdd).toHaveBeenCalled());
+    const elements = cytoscapeMock.cyAdd.mock.calls.at(-1)?.[0] as Array<{
+      data: Record<string, string>;
+    }>;
+    expect(elements.map((element) => element.data)).toEqual([
+      expect.objectContaining({
+        id: "node_ceo",
+        name: longNodeName,
+        label: `Person:\n${longNodeName.slice(0, 60)}…`
+      }),
+      expect.objectContaining({ id: "node_max", label: `Person:\n${sixtyCharacters}` }),
+      expect.objectContaining({
+        id: "edge_visible",
+        label: `Reports to:\n${"E".repeat(60)}…`
+      })
+    ]);
+
+    const options = vi.mocked(cytoscape).mock.calls.at(-1)?.[0] as unknown as {
+      style: Array<{ selector: string; style: Record<string, unknown> }>;
+    };
+    for (const selector of ["node", "edge"]) {
+      expect(options.style.find((entry) => entry.selector === selector)?.style).toEqual(
+        expect.objectContaining({ "text-wrap": "wrap", "text-overflow-wrap": "anywhere" })
+      );
+    }
+
+    cytoscapeMock.trigger(
+      "mouseover",
+      {
+        id: () => "node_ceo",
+        data: (key: string) =>
+          ({ name: longNodeName, description: "Pasted text" })[key as "name" | "description"],
+        renderedPosition: () => ({ x: 180, y: 220 })
+      },
+      "node"
+    );
+
+    const tooltip = await screen.findByRole("tooltip");
+    expect(tooltip.querySelector(".graph-viewer__popover-title")).toHaveTextContent(
+      `${longNodeName.slice(0, 60)}…`
+    );
+  });
 });

@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-075A/review-003",
+  "task": {
+    "id": "TASK-075A",
+    "path": "tasks/TASK-075A-graph-name-length-limit.md"
+  },
+  "round": 3,
+  "reviewed_at": "2026-11-05T11:04:00Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": null,
+  "source": {
+    "base_sha": "4e9c00b868d2191051524f52faf4b10fd2f57704",
+    "head_sha": "9c4ad927d0beac83a13672286aa7f0a34c3c377d",
+    "comparison": "4e9c00b868d2191051524f52faf4b10fd2f57704...9c4ad927d0beac83a13672286aa7f0a34c3c377d",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "clean",
+    "summary": "Round 3 reviews the whole TASK-075A range, most closely the round 2 fix commit, which changes only the Structure testing documentation: the targeted backend command also runs the change-set engine tests with a sentence explaining why, and the targeted frontend filter again includes the lifetime tests that the same section lists as coverage. The code is unchanged since round 2: stored change-set operations are re-parsed only at the engine's single parse point under the stored-payload context, new operations stay strictly validated, the graph request schemas are used only as request payloads, and the forms' disabled native validation bypasses no other constraint. The documented commands as written, the full frontend suite, the backend suite without the PostgreSQL modules, lint, type checks, formatting and the record validator pass; the production build and the manual browser check were not repeated. No new findings.",
+    "findings": [],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-075A/review-002",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "The targeted backend Structure command now also runs the change-set engine test module; run exactly as written it collects and passes the structure API tests and the engine tests, including the length-limit and stored-operation tests.",
+        "validated_by": {
+          "review_id": "TASK-075A/review-003",
+          "commit": "9c4ad927d0beac83a13672286aa7f0a34c3c377d"
+        }
+      }
+    ]
+  }
+}

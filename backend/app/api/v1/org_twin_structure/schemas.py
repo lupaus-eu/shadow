@@ -1,12 +1,16 @@
 from datetime import date
 from typing import Annotated
 
-from pydantic import Field, field_validator
+from pydantic import Field, ValidationInfo, field_validator
 
-from app.core.schemas import StrictBaseModel
+from app.core.schemas import MAX_KEY_LENGTH, StrictBaseModel
 
 MIN_POSITION = -100_000.0
 MAX_POSITION = 100_000.0
+GRAPH_NAME_MAX_LENGTH = 60
+# Validation context key set when stored AI change-set operations are re-read.
+# They may predate the name and key limits and stay readable, like stored names.
+STORED_GRAPH_PAYLOAD = "stored_graph_payload"
 
 type PositionCoordinate = Annotated[
     float,
@@ -41,8 +45,14 @@ class BulkPositionUpdate(StrictBaseModel):
 
 
 class GraphNodeCreateRequest(StrictBaseModel):
-    id: str = Field(min_length=1, description="Stable graph node key.")
-    name: str = Field(min_length=1, description="Graph node display name.")
+    id: str = Field(
+        min_length=1,
+        description="Stable graph node key, at most 128 characters.",
+    )
+    name: str = Field(
+        min_length=1,
+        description="Graph node display name, at most 60 characters after trimming.",
+    )
     description: str | None = Field(
         default=None,
         description="Graph node description.",
@@ -58,17 +68,27 @@ class GraphNodeCreateRequest(StrictBaseModel):
         description="Dynamic node attributes.",
     )
 
-    @field_validator("id", "name", "node_type_id")
+    @field_validator("node_type_id")
     @classmethod
     def text_fields_must_not_be_blank(cls, value: str) -> str:
         return _stripped_non_blank(value, "Value must not be blank.")
+
+    @field_validator("id")
+    @classmethod
+    def key_must_fit(cls, value: str, info: ValidationInfo) -> str:
+        return _graph_key(value, info)
+
+    @field_validator("name")
+    @classmethod
+    def name_must_fit(cls, value: str, info: ValidationInfo) -> str:
+        return _graph_name(value, info)
 
 
 class GraphNodePatchRequest(StrictBaseModel):
     name: str | None = Field(
         default=None,
         min_length=1,
-        description="Graph node display name.",
+        description="Graph node display name, at most 60 characters after trimming.",
     )
     description: str | None = Field(
         default=None,
@@ -98,17 +118,30 @@ class GraphNodePatchRequest(StrictBaseModel):
         description="Stable secondary timeserie key, or null to clear.",
     )
 
-    @field_validator("name", "node_type_id", "timeserie_id", "timeserie_secondary_id")
+    @field_validator("node_type_id", "timeserie_id", "timeserie_secondary_id")
     @classmethod
     def text_fields_must_not_be_blank(cls, value: str | None) -> str | None:
         if value is None:
             return None
         return _stripped_non_blank(value, "Value must not be blank.")
 
+    @field_validator("name")
+    @classmethod
+    def name_must_fit(cls, value: str | None, info: ValidationInfo) -> str | None:
+        if value is None:
+            return None
+        return _graph_name(value, info)
+
 
 class GraphEdgeCreateRequest(StrictBaseModel):
-    id: str = Field(min_length=1, description="Stable graph edge key.")
-    name: str = Field(min_length=1, description="Graph edge display name.")
+    id: str = Field(
+        min_length=1,
+        description="Stable graph edge key, at most 128 characters.",
+    )
+    name: str = Field(
+        min_length=1,
+        description="Graph edge display name, at most 60 characters after trimming.",
+    )
     description: str | None = Field(
         default=None,
         description="Graph edge description.",
@@ -133,17 +166,27 @@ class GraphEdgeCreateRequest(StrictBaseModel):
         description="Dynamic edge attributes.",
     )
 
-    @field_validator("id", "name", "edge_type_id", "source_node_id", "target_node_id")
+    @field_validator("edge_type_id", "source_node_id", "target_node_id")
     @classmethod
     def text_fields_must_not_be_blank(cls, value: str) -> str:
         return _stripped_non_blank(value, "Value must not be blank.")
+
+    @field_validator("id")
+    @classmethod
+    def key_must_fit(cls, value: str, info: ValidationInfo) -> str:
+        return _graph_key(value, info)
+
+    @field_validator("name")
+    @classmethod
+    def name_must_fit(cls, value: str, info: ValidationInfo) -> str:
+        return _graph_name(value, info)
 
 
 class GraphEdgePatchRequest(StrictBaseModel):
     name: str | None = Field(
         default=None,
         min_length=1,
-        description="Graph edge display name.",
+        description="Graph edge display name, at most 60 characters after trimming.",
     )
     description: str | None = Field(
         default=None,
@@ -172,12 +215,19 @@ class GraphEdgePatchRequest(StrictBaseModel):
         description="Dynamic edge attributes.",
     )
 
-    @field_validator("name", "edge_type_id", "source_node_id", "target_node_id")
+    @field_validator("edge_type_id", "source_node_id", "target_node_id")
     @classmethod
     def text_fields_must_not_be_blank(cls, value: str | None) -> str | None:
         if value is None:
             return None
         return _stripped_non_blank(value, "Value must not be blank.")
+
+    @field_validator("name")
+    @classmethod
+    def name_must_fit(cls, value: str | None, info: ValidationInfo) -> str | None:
+        if value is None:
+            return None
+        return _graph_name(value, info)
 
 
 class GraphNodeResponse(StrictBaseModel):
@@ -349,3 +399,23 @@ def _stripped_non_blank(value: str, message: str) -> str:
     if not stripped:
         raise ValueError(message)
     return stripped
+
+
+def _is_stored_payload(info: ValidationInfo) -> bool:
+    context: object = info.context
+    return isinstance(context, dict) and STORED_GRAPH_PAYLOAD in context
+
+
+def _graph_name(value: str, info: ValidationInfo) -> str:
+    # Counted after trimming, as the Structure forms trim before saving.
+    name = _stripped_non_blank(value, "Value must not be blank.")
+    if len(name) > GRAPH_NAME_MAX_LENGTH and not _is_stored_payload(info):
+        raise ValueError(f"Name must be at most {GRAPH_NAME_MAX_LENGTH} characters.")
+    return name
+
+
+def _graph_key(value: str, info: ValidationInfo) -> str:
+    key = _stripped_non_blank(value, "Value must not be blank.")
+    if len(key) > MAX_KEY_LENGTH and not _is_stored_payload(info):
+        raise ValueError(f"Key must be at most {MAX_KEY_LENGTH} characters.")
+    return key

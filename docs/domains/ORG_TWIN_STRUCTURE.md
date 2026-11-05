@@ -170,6 +170,22 @@ Frontend API client:
 
 - `frontend/src/api/orgTwinStructure.ts`
 
+Graph node and edge create and patch requests accept names of 1 to 60
+characters, counted after trimming surrounding whitespace. Create requests
+accept stable keys of at most 128 characters (`MAX_KEY_LENGTH` in
+`backend/app/core/schemas.py`, shared with AI change-set keys). AI change-set
+graph operations reuse these request schemas, so the same limits apply when an
+operation is added. Operations already stored are re-read without the name and
+key limits (the `STORED_GRAPH_PAYLOAD` validation context), so a change set
+staged before TASK-075A can still be reviewed and applied. Responses do not
+check name length. A longer name stored before TASK-075A stays readable: the
+Structure graph labels and hover popovers show its first 60 characters followed
+by "…", and the edit form requires shortening it before saving. Names are
+counted in characters (code points) in the backend and in the form check. The
+name input's native `maxlength` counts UTF-16 code units, so typing and
+pasting stop at 60 units (30 emoji). The node and edge forms turn off native
+form validation, so the form check alone decides whether a name can be saved.
+
 Graph node responses expose stable primary and secondary timeserie keys as
 `timeserieId` and `timeserieSecondaryId`. Graph node patch requests may update
 these links by stable scenario-owned timeserie key or clear them with `null`.

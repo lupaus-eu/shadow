@@ -36,11 +36,10 @@ from app.api.v1.timeserie_generation.schemas import (
     GeneratedPoint,
     TimeserieGenerationSpec,
 )
-from app.core.schemas import StrictBaseModel
+from app.core.schemas import MAX_KEY_LENGTH, StrictBaseModel
 
 MAX_CHANGE_SET_OPERATIONS = 500
 MAX_CHANGE_SET_VALUES = 20_000
-MAX_KEY_LENGTH = 128
 REF_PATTERN = re.compile(r"\$[A-Za-z][A-Za-z0-9_]{0,63}")
 
 type RefKind = Literal["scenario", "org_state", "event", "derived_metric"]
