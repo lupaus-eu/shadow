@@ -38,6 +38,7 @@ vi.mock("../../api/timeseries", async (importOriginal) => {
     ...actual,
     createTimeserie: vi.fn(),
     fetchTimeserieExists: vi.fn(),
+    fetchTimeserieSummaries: vi.fn(),
     fetchTimeseries: vi.fn(),
     deleteTimeserie: vi.fn()
   };
@@ -423,7 +424,7 @@ describe("StructureTab", () => {
         shortName: timeserieId === "id1" ? "revenue_monthly" : ""
       })
     );
-    vi.mocked(timeseriesApi.fetchTimeseries).mockResolvedValue(
+    vi.mocked(timeseriesApi.fetchTimeserieSummaries).mockResolvedValue(
       [
         ["id1", "Revenue"],
         ["id3", "Revenue target"]
@@ -433,8 +434,7 @@ describe("StructureTab", () => {
         description: "",
         unit: "",
         timeUnit: "month",
-        valueUnit: "number",
-        values: []
+        valueUnit: "number"
       }))
     );
     vi.mocked(timeseriesApi.createTimeserie).mockImplementation(

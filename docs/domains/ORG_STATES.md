@@ -222,7 +222,7 @@ DELETE /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/events/
 Timeserie endpoints:
 
 ```text
-GET /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/timeseries
+GET /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/timeseries[?includeValues=false]
 POST /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/timeseries
 GET /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/timeseries/{timeserie_key}
 GET /api/v1/organisations/{organisation_key}/scenarios/{scenario_key}/timeseries/{timeserie_key}/exists
@@ -351,6 +351,13 @@ Scenario timeseries list returns active timeseries sorted by stable timeserie
 id. Timeserie `values` contain active values sorted by `date`; soft-deleted
 values are excluded from list and get responses.
 
+The list takes an optional boolean query parameter `includeValues`, default
+`true` (TASK-076). With `includeValues=false` it returns the same timeseries
+and fields, but reads no values and every `values` list is empty, so an empty
+list there does not mean the timeserie has no values. The Structure UI's
+Timeserie panel uses it for its link options; the Metrics, Predictions and
+Summary views use the default list with values.
+
 Timeserie value replacement uses:
 
 ```json
@@ -388,8 +395,10 @@ For the MCP read tools (TASK-069H, `docs/domains/AI.md`) the service also
 offers `get_timeserie_values_page`, which returns a timeserie with at most a
 given number of its values within inclusive dates and the count of values
 within them, and `list_scenario_timeseries(include_values=False)`, which reads
-no values. Neither has a REST route, and the REST timeserie responses are
-unchanged.
+no values. `get_timeserie_values_page` has no REST route. Since TASK-076 the
+REST timeseries list reaches `include_values=False` through
+`includeValues=false`; its default response and the other REST timeserie
+responses are unchanged.
 
 ---
 

@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-076/review-001",
+  "task": {
+    "id": "TASK-076",
+    "path": "tasks/TASK-076-values-free-timeseries-list.md"
+  },
+  "round": 1,
+  "reviewed_at": "2026-11-05T15:42:02Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": {
+    "number": 134,
+    "url": "https://github.com/reflector-oy/schatten/pull/134"
+  },
+  "source": {
+    "base_sha": "6beb64c1ddf5fc7b6ae00c7aa5abe29cd138011f",
+    "head_sha": "c3c6773a5838da01d44b77b208ec5be93d047813",
+    "comparison": "6beb64c1ddf5fc7b6ae00c7aa5abe29cd138011f...c3c6773a5838da01d44b77b208ec5be93d047813",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Round 1 reviews the committed TASK-076 task, with decision D1 recorded as option A, and its implementation: the includeValues query parameter on the scenario timeseries list, the values-free frontend client function and summary type, the shared normalization, the Timeserie panel switch, the domain and testing documents and the new and updated tests. Every requirement is met and every acceptance criterion is covered by a test. The default list, the Metrics, Predictions and Summary callers, the MCP list_timeseries tool and the TASK-075C panel behaviour are unchanged; the route keeps its router-level authorization, and a throwaway test, deleted afterwards, confirmed that anonymous requests with the new parameter or an invalid value are rejected before validation. There is no migration, dependency, ADR, diagram or MCP change and no removed test. Format check, lint, all frontend tests, the build, ruff, pyright, the full backend suite and the record validator pass. The developer reports the manual browser verification as done without issues; the reviewer did not repeat it. One info finding remains: the documented targeted Structure frontend test command does not run the new timeseries client test.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "documentation",
+        "severity": "info",
+        "summary": "The targeted Frontend Structure UI test command in the testing document does not run the new timeseries client test, although the new TASK-076 paragraph names that file as coverage.",
+        "rationale": "The documented filter list matches six test files, and none of its filters matches the new client test's path, so running the command skips it. The new TASK-076 paragraph adds a targeted backend command but no frontend one. The impact is small because the same document asks for the full frontend suite when a shared API client changes, and the full suite includes the file.",
+        "recommendation": "Add a filter that matches the new client test to the Structure frontend command, or add a frontend run command to the TASK-076 paragraph.",
+        "locations": [
+          {
+            "path": "docs/TESTING.md",
+            "line": 1074
+          },
+          {
+            "path": "docs/TESTING.md",
+            "line": 1108
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": []
+  }
+}

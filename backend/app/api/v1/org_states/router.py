@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.orm import Session
 
 from app.api.v1.auth.dependencies import (
@@ -194,11 +194,22 @@ def list_scenario_timeseries(
     organisation_key: str,
     scenario_key: str,
     session: SessionDependency,
+    include_values: Annotated[
+        bool,
+        Query(
+            alias="includeValues",
+            description=(
+                "Return each timeserie's values. With false no value is read "
+                "and every values list is empty."
+            ),
+        ),
+    ] = True,
 ) -> list[TimeserieResponse]:
     return org_states_service.list_scenario_timeseries(
         session,
         organisation_key,
         scenario_key,
+        include_values=include_values,
     )
 
 

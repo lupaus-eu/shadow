@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { GraphNodeDto, NodeTypeMetadataDto } from "../../api/orgTwinStructure";
 import * as timeseriesApi from "../../api/timeseries";
-import type { TimeserieDto } from "../../api/timeseries";
+import type { TimeserieDto, TimeserieSummaryDto } from "../../api/timeseries";
 import TimeseriePanel from "./TimeseriePanel";
 
 vi.mock("../../api/timeseries", async (importOriginal) => {
@@ -12,6 +12,7 @@ vi.mock("../../api/timeseries", async (importOriginal) => {
     createTimeserie: vi.fn(),
     deleteTimeserie: vi.fn(),
     fetchTimeserieExists: vi.fn(),
+    fetchTimeserieSummaries: vi.fn(),
     fetchTimeseries: vi.fn()
   };
 });
@@ -42,23 +43,26 @@ const revenueNode: GraphNodeDto = {
   timeserieSecondaryId: null
 };
 
-function timeserie(id: string, name: string): TimeserieDto {
+function summary(id: string, name: string): TimeserieSummaryDto {
   return {
     id,
     name,
     description: "",
     unit: "",
     timeUnit: "month",
-    valueUnit: "number",
-    values: []
+    valueUnit: "number"
   };
+}
+
+function timeserie(id: string, name: string): TimeserieDto {
+  return { ...summary(id, name), values: [] };
 }
 
 // Unsorted, to check that the options are sorted by id.
 const scenarioTimeseries = [
-  timeserie("ts_margin", "Margin"),
-  timeserie("id1", "Revenue"),
-  timeserie("ts_cost", "Cost")
+  summary("ts_margin", "Margin"),
+  summary("id1", "Revenue"),
+  summary("ts_cost", "Cost")
 ];
 
 type Slot = "Primary" | "Secondary";
@@ -124,7 +128,7 @@ describe("TimeseriePanel", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     const existingIds = new Set(["id1", "ts_cost", "ts_margin"]);
-    vi.mocked(timeseriesApi.fetchTimeseries).mockResolvedValue(scenarioTimeseries);
+    vi.mocked(timeseriesApi.fetchTimeserieSummaries).mockResolvedValue(scenarioTimeseries);
     vi.mocked(timeseriesApi.fetchTimeserieExists).mockImplementation(async (_o, _s, id) => ({
       id,
       exists: existingIds.has(id),
@@ -154,16 +158,29 @@ describe("TimeseriePanel", () => {
   });
 
   it("disables the dropdowns while loading and aborts the list request on unmount", () => {
-    vi.mocked(timeseriesApi.fetchTimeseries).mockReturnValue(new Promise(() => {}));
+    vi.mocked(timeseriesApi.fetchTimeserieSummaries).mockReturnValue(new Promise(() => {}));
     const { unmount } = renderPanel();
 
     expect(linkSelect("Primary")).toBeDisabled();
     expect(linkSelect("Secondary")).toBeDisabled();
-    const signal = vi.mocked(timeseriesApi.fetchTimeseries).mock.calls[0][2];
-    expect(timeseriesApi.fetchTimeseries).toHaveBeenCalledWith("acme", "future", signal);
+    const signal = vi.mocked(timeseriesApi.fetchTimeserieSummaries).mock.calls[0][2];
+    expect(timeseriesApi.fetchTimeserieSummaries).toHaveBeenCalledWith("acme", "future", signal);
 
     unmount();
     expect(signal?.aborted).toBe(true);
+  });
+
+  it("loads the options from the values-free list, not the list with values", async () => {
+    renderPanel();
+    await waitForOptions();
+
+    expect(timeseriesApi.fetchTimeserieSummaries).toHaveBeenCalledTimes(1);
+    expect(timeseriesApi.fetchTimeserieSummaries).toHaveBeenCalledWith(
+      "acme",
+      "future",
+      expect.any(AbortSignal)
+    );
+    expect(timeseriesApi.fetchTimeseries).not.toHaveBeenCalled();
   });
 
   it("lists the scenario's timeseries sorted by id", async () => {
@@ -178,7 +195,7 @@ describe("TimeseriePanel", () => {
   });
 
   it("keeps the dropdowns disabled and shows one closable alert when the list fails", async () => {
-    vi.mocked(timeseriesApi.fetchTimeseries).mockRejectedValue(new Error("List failed"));
+    vi.mocked(timeseriesApi.fetchTimeserieSummaries).mockRejectedValue(new Error("List failed"));
     renderPanel();
 
     expect(await within(linkRegion()).findByRole("alert")).toHaveTextContent("List failed");
@@ -459,9 +476,9 @@ describe("TimeseriePanel", () => {
   });
 
   // Holds the list request open; the returned function resolves it.
-  function pendingList(): (items: TimeserieDto[]) => Promise<void> {
-    let resolveList: (items: TimeserieDto[]) => void = () => {};
-    vi.mocked(timeseriesApi.fetchTimeseries).mockReturnValue(
+  function pendingList(): (items: TimeserieSummaryDto[]) => Promise<void> {
+    let resolveList: (items: TimeserieSummaryDto[]) => void = () => {};
+    vi.mocked(timeseriesApi.fetchTimeserieSummaries).mockReturnValue(
       new Promise((resolve) => {
         resolveList = resolve;
       })

@@ -7,7 +7,7 @@ import pytest
 from auth_helpers import TEST_ACTOR_USER_ID, authenticate_test_client
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
-from sqlalchemy import StaticPool, create_engine, select
+from sqlalchemy import StaticPool, create_engine, event, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -1885,6 +1885,166 @@ def test_timeseries_list_returns_sorted_rows_and_active_sorted_values(
         {"date": "2030-01-01", "value": 1000},
         {"date": "2030-02-01", "value": 2000},
     ]
+
+
+def test_timeseries_list_without_values_returns_same_rows_and_reads_no_values(
+    client: TestClient,
+    session_factory: sessionmaker[Session],
+) -> None:
+    organisation_key = _create_organisation(client)
+    scenario_path = f"/api/v1/organisations/{organisation_key}/scenarios/reality"
+    path = f"{scenario_path}/timeseries"
+    for timeserie_id, short_name, value_unit, values in (
+        ("revenue", "revenue", "number", [100, 200, 300]),
+        ("cost", "cost", "number", [40]),
+        ("status", "status", "string", ["open"]),
+        ("capacity", "capacity", "boolean", [True]),
+        ("retired", "retired", "number", [1]),
+    ):
+        created = client.post(
+            path,
+            json={
+                "id": timeserie_id,
+                "name": timeserie_id.title(),
+                "shortName": short_name,
+                "timeUnit": "month",
+                "valueUnit": value_unit,
+            },
+        )
+        assert created.status_code == 201
+        replaced = client.patch(
+            f"{path}/{timeserie_id}/values",
+            json={
+                "values": [
+                    {"date": f"2030-{month:02d}-01", "value": value}
+                    for month, value in enumerate(values, start=1)
+                ]
+            },
+        )
+        assert replaced.status_code == 200
+    # Replacing revenue's values soft-deletes its third value.
+    assert (
+        client.patch(
+            f"{path}/revenue/values",
+            json={
+                "values": [
+                    {"date": "2030-01-01", "value": 100},
+                    {"date": "2030-02-01", "value": 200},
+                ]
+            },
+        ).status_code
+        == 200
+    )
+    assert client.delete(f"{path}/retired").status_code == 204
+    derived = client.post(
+        f"{scenario_path}/derived-metrics",
+        json={"name": "Margin", "unit": "EUR", "formula": "revenue - cost"},
+    )
+    assert derived.status_code == 201
+    derived_id = derived.json()["id"]
+
+    statements: list[str] = []
+
+    def record_statement(
+        _connection: object,
+        _cursor: object,
+        statement: str,
+        *_args: object,
+    ) -> None:
+        statements.append(statement)
+
+    engine = session_factory.kw["bind"]
+    event.listen(engine, "before_cursor_execute", record_statement)
+    try:
+        with_values = client.get(path)
+        value_statements = [s for s in statements if "timeserie_values" in s]
+        statements.clear()
+        without_values = client.get(path, params={"includeValues": "false"})
+        statements_without_values = list(statements)
+    finally:
+        event.remove(engine, "before_cursor_execute", record_statement)
+
+    assert with_values.status_code == 200
+    assert without_values.status_code == 200
+    # The recorder sees the value read when values are requested ...
+    assert value_statements
+    # ... and none when they are not.
+    assert statements_without_values
+    assert not [s for s in statements_without_values if "timeserie_values" in s]
+
+    with_values_rows = with_values.json()
+    without_values_rows = without_values.json()
+    assert [row["id"] for row in without_values_rows] == sorted(
+        ["capacity", "cost", derived_id, "revenue", "status"]
+    )
+    assert [row["id"] for row in without_values_rows] == [
+        row["id"] for row in with_values_rows
+    ]
+    assert all(row["values"] == [] for row in without_values_rows)
+    assert [{**row, "values": []} for row in with_values_rows] == without_values_rows
+    by_id = {row["id"]: row for row in with_values_rows}
+    assert by_id["revenue"]["values"] == [
+        {"date": "2030-01-01", "value": 100},
+        {"date": "2030-02-01", "value": 200},
+    ]
+    assert by_id[derived_id]["isDerived"] is True
+    assert by_id[derived_id]["values"] == [{"date": "2030-01-01", "value": 60.0}]
+    derived_without_values = next(
+        row for row in without_values_rows if row["id"] == derived_id
+    )
+    assert derived_without_values["isDerived"] is True
+    assert derived_without_values["derivedFormula"] == "revenue - cost"
+    assert by_id["revenue"]["shortNameEditable"] is False
+
+
+def test_timeseries_list_include_values_defaults_to_true(
+    client: TestClient,
+) -> None:
+    organisation_key = _create_organisation(client)
+    path = f"/api/v1/organisations/{organisation_key}/scenarios/reality/timeseries"
+    assert (
+        client.post(
+            path,
+            json={
+                "id": "revenue",
+                "name": "Revenue",
+                "timeUnit": "month",
+                "valueUnit": "number",
+            },
+        ).status_code
+        == 201
+    )
+    assert (
+        client.patch(
+            f"{path}/revenue/values",
+            json={"values": [{"date": "2030-01-01", "value": 1000}]},
+        ).status_code
+        == 200
+    )
+
+    expected_values = [{"date": "2030-01-01", "value": 1000}]
+    omitted = client.get(path)
+    explicit = client.get(path, params={"includeValues": "true"})
+    assert omitted.status_code == 200
+    assert explicit.status_code == 200
+    assert omitted.json()[0]["values"] == expected_values
+    assert explicit.json() == omitted.json()
+    assert client.get(path, params={"includeValues": "maybe"}).status_code == 422
+
+
+def test_timeseries_list_without_values_returns_same_not_found_errors(
+    client: TestClient,
+) -> None:
+    organisation_key = _create_organisation(client)
+    for path in (
+        "/api/v1/organisations/missing/scenarios/reality/timeseries",
+        f"/api/v1/organisations/{organisation_key}/scenarios/missing/timeseries",
+    ):
+        with_values = client.get(path)
+        without_values = client.get(path, params={"includeValues": "false"})
+        assert with_values.status_code == 404
+        assert without_values.status_code == 404
+        assert without_values.json() == with_values.json()
 
 
 def test_timeserie_values_replace_number_values_and_soft_delete_omissions(

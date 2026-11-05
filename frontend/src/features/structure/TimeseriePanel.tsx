@@ -11,7 +11,7 @@ import {
   createTimeserie,
   deleteTimeserie,
   fetchTimeserieExists,
-  fetchTimeseries,
+  fetchTimeserieSummaries,
   updateTimeserieShortName
 } from "../../api/timeseries";
 import type {
@@ -336,7 +336,8 @@ export default function TimeseriePanel(props: {
     if (!props.scenarioId) return;
 
     const ac = new AbortController();
-    fetchTimeseries(props.orgId, props.scenarioId, ac.signal)
+    // Only ids and names are needed, so the values-free list is enough.
+    fetchTimeserieSummaries(props.orgId, props.scenarioId, ac.signal)
       .then((timeseries) => {
         const loaded = timeseries.map((item) => ({ id: item.id, name: item.name }));
         setTimeseriesOptions((current) => {

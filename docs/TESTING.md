@@ -1072,7 +1072,7 @@ Frontend Structure UI checks:
 ```bash
 cd frontend
 pnpm lint
-pnpm test StructureTab GraphViewer graphNames lifetime SearchableSelect TimeseriePanel
+pnpm test StructureTab GraphViewer graphNames lifetime SearchableSelect TimeseriePanel api/timeseries
 pnpm build
 ```
 
@@ -1104,6 +1104,21 @@ updates after create and delete, and one alert per panel failure) and
 rule context, one alert for a failed Create/Save node or edge, the page-level
 alert for a failed position save or node or edge delete, whose confirmation
 stays open, and a form action clearing that alert).
+
+The panel's values-free timeseries list (TASK-076) is covered by
+`backend/tests/test_users_organisations_api.py` (`includeValues=false` returns
+the same rows and fields as the default list without values, issues no
+`timeserie_values` query, which the test checks by recording the executed SQL,
+and returns the same 404s; the parameter defaults to `true`),
+`frontend/src/api/timeseries.test.ts` (the `fetchTimeserieSummaries` URL, abort
+signal and value-free mapping, and the unchanged `fetchTimeseries` request) and
+`TimeseriePanel.test.tsx` (the panel loads its options from the values-free list
+and never calls `fetchTimeseries`). Run the backend file with:
+
+```bash
+cd backend
+uv run pytest tests/test_users_organisations_api.py -k timeseries_list -v
+```
 
 Run the full frontend test suite when shared API client, workspace selection or
 tab rendering behavior changes:

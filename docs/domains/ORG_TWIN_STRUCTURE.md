@@ -203,8 +203,11 @@ explicitly instead of selecting an arbitrary node.
 
 The Structure UI's Timeserie panel (TASK-075C) links a node to existing
 timeseries by choosing them from the scenario's active timeseries; it does not
-accept typed link keys. A pending choice can be cleared before saving, and
-"Save link(s)" patches only the chosen slot or slots.
+accept typed link keys. The panel loads these options from the Org States
+timeseries list with `includeValues=false` (TASK-076), so its mounts, which
+follow every link change, read no timeserie values. A pending choice can be
+cleared before saving, and "Save link(s)" patches only the chosen slot or
+slots.
 A slot whose effective timeserie is missing, or that has no id, offers a create
 form whose id defaults to the type metadata id and can be changed. A timeserie
 created with the type default id is inherited and gets no explicit link; one

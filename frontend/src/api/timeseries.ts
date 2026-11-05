@@ -23,6 +23,9 @@ export type TimeserieDto = {
   shortNameEditable?: boolean;
 };
 
+/** A timeserie without its values, from the values-free list. */
+export type TimeserieSummaryDto = Omit<TimeserieDto, "values">;
+
 export type TimeserieCreateRequest = {
   id: string;
   name: string;
@@ -141,7 +144,7 @@ function normalizeTimeserieValue(payload: unknown): TimeserieValueDto {
   };
 }
 
-function normalizeTimeserie(payload: unknown, index = 0): TimeserieDto {
+function normalizeTimeserieSummary(payload: unknown, index = 0): TimeserieSummaryDto {
   const item = asRecord(payload);
   const id = pickString(item, [
     "id",
@@ -165,7 +168,6 @@ function normalizeTimeserie(payload: unknown, index = 0): TimeserieDto {
     unit: pickString(item, ["unit", "valueLabel", "value_label"]),
     timeUnit: normalizeTimeUnit(pickString(item, ["timeUnit", "time_unit"])),
     valueUnit: normalizeValueUnit(pickString(item, ["valueUnit", "value_unit"])),
-    values: pickArray(item.values, ["values", "items", "data"]).map(normalizeTimeserieValue),
     isDerived: item.isDerived === true || item.is_derived === true,
     derivedFormula:
       typeof item.derivedFormula === "string"
@@ -174,6 +176,14 @@ function normalizeTimeserie(payload: unknown, index = 0): TimeserieDto {
           ? item.derived_formula
           : null,
     shortNameEditable: item.shortNameEditable !== false && item.short_name_editable !== false
+  };
+}
+
+function normalizeTimeserie(payload: unknown, index = 0): TimeserieDto {
+  const item = asRecord(payload);
+  return {
+    ...normalizeTimeserieSummary(item, index),
+    values: pickArray(item.values, ["values", "items", "data"]).map(normalizeTimeserieValue)
   };
 }
 
@@ -222,6 +232,26 @@ export async function fetchTimeseries(
 ): Promise<TimeserieDto[]> {
   return normalizeTimeseries(
     await requestJson<unknown>(timeseriesPath(orgId, scenarioId), { method: "GET" }, signal)
+  );
+}
+
+/**
+ * Lists the scenario's active timeseries without their values. The backend
+ * reads no values for this request, so use it when only the timeseries
+ * themselves are needed, for example for a picker.
+ */
+export async function fetchTimeserieSummaries(
+  orgId: string,
+  scenarioId: string,
+  signal?: AbortSignal
+): Promise<TimeserieSummaryDto[]> {
+  const payload = await requestJson<unknown>(
+    `${timeseriesPath(orgId, scenarioId)}?includeValues=false`,
+    { method: "GET" },
+    signal
+  );
+  return pickArray(payload, ["timeseries", "items", "data"]).map((item, index) =>
+    normalizeTimeserieSummary(item, index)
   );
 }
 
