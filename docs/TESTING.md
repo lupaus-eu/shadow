@@ -1072,7 +1072,7 @@ Frontend Structure UI checks:
 ```bash
 cd frontend
 pnpm lint
-pnpm test StructureTab GraphViewer graphNames lifetime
+pnpm test StructureTab GraphViewer graphNames lifetime SearchableSelect
 pnpm build
 ```
 
@@ -1088,6 +1088,12 @@ re-read without the limits), `graphNames.test.ts` (code-point counting),
 `GraphViewer.test.tsx` (shortened labels and popover titles, label wrapping)
 and `StructureTab.test.tsx` (the name field limit and hint, and a stored longer
 name blocking Save until it is shortened).
+
+The searchable edge Source and Target dropdowns (TASK-075B) are covered by
+`SearchableSelect.test.tsx` (the shared component's filtering, clear button,
+keyboard, mouse, focus and disabled behaviour) and `StructureTab.test.tsx`
+(choosing nodes through the dropdowns, graph clicks, the self-reference block
+and changing an edited edge's target).
 
 Run the full frontend test suite when shared API client, workspace selection or
 tab rendering behavior changes:

@@ -8,6 +8,7 @@ import type {
   GraphNodeDto
 } from "../../api/orgTwinStructure";
 import Alert from "../../components/Alert";
+import SearchableSelect from "../../components/SearchableSelect";
 import GraphNameField from "./GraphNameField";
 import { graphNameTooLong } from "./graphNames";
 
@@ -45,6 +46,7 @@ export default function EdgeForm(props: {
   const isCreateSelectionControlled =
     !isEdit && props.sourceNodeId !== undefined && props.targetNodeId !== undefined;
   const hasNodeChoices = props.nodes.length > 0;
+  const nodeOptions = props.nodes.map((node) => ({ value: node.id, label: node.name }));
   const hasEdgeTypeChoices = props.edgeTypes.length > 0;
   const sourceNodeId = isCreateSelectionControlled ? (props.sourceNodeId ?? "") : localSourceNodeId;
   const targetNodeId = isCreateSelectionControlled ? (props.targetNodeId ?? "") : localTargetNodeId;
@@ -159,53 +161,41 @@ export default function EdgeForm(props: {
             <label className="form-label form-label--required" htmlFor={`${props.idPrefix}-source`}>
               Source
             </label>
-            <select
+            <SearchableSelect
               id={`${props.idPrefix}-source`}
-              className="select"
+              options={nodeOptions}
               value={sourceNodeId}
-              onChange={(event) => {
-                const nextNodeId = event.target.value;
+              onChange={(nextNodeId) => {
                 if (isCreateSelectionControlled) {
                   props.onSourceNodeIdChange?.(nextNodeId);
                 } else {
                   setLocalSourceNodeId(nextNodeId);
                 }
               }}
+              placeholder="Select source node"
+              searchLabel="Search source nodes"
               disabled={sourceTargetDisabled}
-            >
-              {!isEdit ? <option value="">Select source node</option> : null}
-              {props.nodes.map((node) => (
-                <option key={node.id} value={node.id}>
-                  {node.name}
-                </option>
-              ))}
-            </select>
+            />
           </div>
           <div className="form-row">
             <label className="form-label form-label--required" htmlFor={`${props.idPrefix}-target`}>
               Target
             </label>
-            <select
+            <SearchableSelect
               id={`${props.idPrefix}-target`}
-              className="select"
+              options={nodeOptions}
               value={targetNodeId}
-              onChange={(event) => {
-                const nextNodeId = event.target.value;
+              onChange={(nextNodeId) => {
                 if (isCreateSelectionControlled) {
                   props.onTargetNodeIdChange?.(nextNodeId);
                 } else {
                   setLocalTargetNodeId(nextNodeId);
                 }
               }}
+              placeholder="Select target node"
+              searchLabel="Search target nodes"
               disabled={sourceTargetDisabled}
-            >
-              {!isEdit ? <option value="">Select target node</option> : null}
-              {props.nodes.map((node) => (
-                <option key={node.id} value={node.id}>
-                  {node.name}
-                </option>
-              ))}
-            </select>
+            />
           </div>
         </div>
         <div className="form-row">

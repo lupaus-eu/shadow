@@ -337,6 +337,22 @@ function renderStructureTab(value: WorkspaceValue = workspaceValue()) {
   );
 }
 
+// Source and Target are searchable dropdowns that show the selected node as text.
+function edgeNodeSelect(panel: HTMLElement, label: "Source" | "Target") {
+  return within(panel).getByLabelText(label);
+}
+
+function edgeNodeOptions(panel: HTMLElement) {
+  return within(within(panel).getByRole("listbox")).getAllByRole("option");
+}
+
+function chooseEdgeNode(panel: HTMLElement, label: "Source" | "Target", nodeName: string) {
+  fireEvent.click(edgeNodeSelect(panel, label));
+  const option = edgeNodeOptions(panel).find((item) => item.textContent === nodeName);
+  if (!option) throw new Error(`No ${label} option ${nodeName}`);
+  fireEvent.click(option);
+}
+
 describe("StructureTab", () => {
   beforeEach(() => {
     vi.useRealTimers();
@@ -571,8 +587,8 @@ describe("StructureTab", () => {
     expect(
       within(createEdgePanel).getByText("Click two nodes to connect, or use the dropdown menus...")
     ).toBeInTheDocument();
-    expect(within(createEdgePanel).getByLabelText("Source")).toHaveValue("");
-    expect(within(createEdgePanel).getByLabelText("Target")).toHaveValue("");
+    expect(edgeNodeSelect(createEdgePanel, "Source")).toHaveTextContent("Select source node");
+    expect(edgeNodeSelect(createEdgePanel, "Target")).toHaveTextContent("Select target node");
   });
 
   it("updates create-edge source and target from the last two graph node clicks", async () => {
@@ -580,21 +596,21 @@ describe("StructureTab", () => {
     await screen.findByRole("region", { name: "Person nodes" });
 
     const createEdgePanel = screen.getByRole("region", { name: "Create edge" });
-    const sourceSelect = within(createEdgePanel).getByLabelText("Source");
-    const targetSelect = within(createEdgePanel).getByLabelText("Target");
+    const sourceSelect = edgeNodeSelect(createEdgePanel, "Source");
+    const targetSelect = edgeNodeSelect(createEdgePanel, "Target");
     const typeSelect = within(createEdgePanel).getByLabelText("Type");
 
     fireEvent.click(screen.getByRole("button", { name: "Select CEO node in graph" }));
-    expect(sourceSelect).toHaveValue("node_ceo");
-    expect(targetSelect).toHaveValue("");
+    expect(sourceSelect).toHaveTextContent("CEO");
+    expect(targetSelect).toHaveTextContent("Select target node");
 
     fireEvent.click(screen.getByRole("button", { name: "Select CEO node in graph" }));
-    expect(sourceSelect).toHaveValue("node_ceo");
-    expect(targetSelect).toHaveValue("");
+    expect(sourceSelect).toHaveTextContent("CEO");
+    expect(targetSelect).toHaveTextContent("Select target node");
 
     fireEvent.click(screen.getByRole("button", { name: "Select sales node in graph" }));
-    expect(sourceSelect).toHaveValue("node_ceo");
-    expect(targetSelect).toHaveValue("node_sales");
+    expect(sourceSelect).toHaveTextContent("CEO");
+    expect(targetSelect).toHaveTextContent("Sales");
     expect(typeSelect).toHaveValue("et_partners_with");
     expect(
       within(createEdgePanel).queryByText(
@@ -603,8 +619,8 @@ describe("StructureTab", () => {
     ).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Select CEO node in graph" }));
-    expect(sourceSelect).toHaveValue("node_sales");
-    expect(targetSelect).toHaveValue("node_ceo");
+    expect(sourceSelect).toHaveTextContent("Sales");
+    expect(targetSelect).toHaveTextContent("CEO");
     expect(typeSelect).toHaveValue("");
     expect(within(createEdgePanel).getByText("No allowed edge types")).toBeInTheDocument();
     expect(sourceSelect).not.toBeDisabled();
@@ -631,12 +647,24 @@ describe("StructureTab", () => {
     fireEvent.change(within(createEdgePanel).getByLabelText("Name"), {
       target: { value: "Partners with" }
     });
-    fireEvent.change(within(createEdgePanel).getByLabelText("Source"), {
-      target: { value: "node_ceo" }
+    chooseEdgeNode(createEdgePanel, "Source", "CEO");
+    expect(edgeNodeSelect(createEdgePanel, "Source")).toHaveTextContent("CEO");
+
+    fireEvent.click(edgeNodeSelect(createEdgePanel, "Target"));
+    const targetSearch = within(createEdgePanel).getByRole("combobox", {
+      name: "Search target nodes"
     });
-    fireEvent.change(within(createEdgePanel).getByLabelText("Target"), {
-      target: { value: "node_sales" }
-    });
+    expect(edgeNodeOptions(createEdgePanel).map((option) => option.textContent)).toEqual([
+      "CEO",
+      "Sales",
+      "CFO",
+      "Revenue"
+    ]);
+    fireEvent.change(targetSearch, { target: { value: "SAL" } });
+    expect(edgeNodeOptions(createEdgePanel).map((option) => option.textContent)).toEqual(["Sales"]);
+    fireEvent.click(edgeNodeOptions(createEdgePanel)[0]);
+    expect(edgeNodeSelect(createEdgePanel, "Target")).toHaveTextContent("Sales");
+    expect(within(createEdgePanel).getByLabelText("Type")).toHaveValue("et_partners_with");
 
     fireEvent.click(within(createEdgePanel).getByRole("button", { name: "Create edge" }));
 
@@ -940,12 +968,9 @@ describe("StructureTab", () => {
     fireEvent.change(within(createEdgePanel).getByLabelText("Name"), {
       target: { value: "Reports to self" }
     });
-    fireEvent.change(within(createEdgePanel).getByLabelText("Source"), {
-      target: { value: "node_ceo" }
-    });
-    fireEvent.change(within(createEdgePanel).getByLabelText("Target"), {
-      target: { value: "node_ceo" }
-    });
+    chooseEdgeNode(createEdgePanel, "Source", "CEO");
+    chooseEdgeNode(createEdgePanel, "Target", "CEO");
+    expect(edgeNodeSelect(createEdgePanel, "Target")).toHaveTextContent("CEO");
 
     const createButton = within(createEdgePanel).getByRole("button", { name: "Create edge" });
     expect(createButton).toBeDisabled();
@@ -953,6 +978,49 @@ describe("StructureTab", () => {
       "title",
       "Self referencing edges not allowed"
     );
+  });
+
+  it("changes an edited edge's target through the searchable dropdown", async () => {
+    vi.mocked(structureApi.updateGraphEdge).mockResolvedValue({
+      ...graph.edges[0],
+      targetNodeId: "node_cfo"
+    });
+    renderStructureTab();
+    await screen.findByRole("region", { name: "Person nodes" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Show & Edit" }));
+    fireEvent.click(screen.getByRole("button", { name: "Select reports edge" }));
+    const editEdgePanel = screen.getByRole("region", { name: "Edit edge" });
+    expect(edgeNodeSelect(editEdgePanel, "Source")).toHaveTextContent("Sales");
+    const targetSelect = edgeNodeSelect(editEdgePanel, "Target");
+    expect(targetSelect).toHaveTextContent("CEO");
+
+    fireEvent.keyDown(targetSelect, { key: "ArrowDown" });
+    const targetSearch = within(editEdgePanel).getByRole("combobox", {
+      name: "Search target nodes"
+    });
+    expect(targetSearch).toHaveFocus();
+    expect(
+      within(within(editEdgePanel).getByRole("listbox")).getByRole("option", { selected: true })
+    ).toHaveTextContent("CEO");
+    fireEvent.change(targetSearch, { target: { value: "c" } });
+    fireEvent.keyDown(targetSearch, { key: "ArrowDown" });
+    fireEvent.keyDown(targetSearch, { key: "Enter" });
+
+    expect(targetSelect).toHaveTextContent("CFO");
+    expect(targetSelect).toHaveFocus();
+    expect(structureApi.updateGraphEdge).not.toHaveBeenCalled();
+    fireEvent.click(within(editEdgePanel).getByRole("button", { name: "Save edge" }));
+
+    await waitFor(() => {
+      expect(structureApi.updateGraphEdge).toHaveBeenCalledWith(
+        "acme",
+        "future",
+        "draft",
+        "edge_reports",
+        expect.objectContaining({ sourceNodeId: "node_sales", targetNodeId: "node_cfo" })
+      );
+    });
   });
 
   it("debounces drag position persistence", async () => {

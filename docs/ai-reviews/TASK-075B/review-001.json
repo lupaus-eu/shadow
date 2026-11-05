@@ -1,0 +1,86 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-075B/review-001",
+  "task": {
+    "id": "TASK-075B",
+    "path": "tasks/TASK-075B-searchable-edge-node-dropdowns.md"
+  },
+  "round": 1,
+  "reviewed_at": "2026-11-05T12:08:34Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": {
+    "number": 132,
+    "url": "https://github.com/reflector-oy/schatten/pull/132"
+  },
+  "source": {
+    "base_sha": "a76d92bc6f4f82d8d85ac1a0ad042c32b596c0ee",
+    "head_sha": "9d64390f562e149b4149a6e9629f63e5a6bca66d",
+    "comparison": "a76d92bc6f4f82d8d85ac1a0ad042c32b596c0ee...9d64390f562e149b4149a6e9629f63e5a6bca66d",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "findings",
+    "summary": "Round 1 reviews the committed TASK-075B task and implementation: the new reusable searchable dropdown, its use for the Source and Target nodes of the Create edge and Edit edge forms, its styles and the rewritten Structure tests. Every requirement and acceptance criterion is met in code, including the developer's later decision that the open list floats over the content below it; the list extends the scrollable editor panel's scroll area and opening scrolls it into view, so the panel does not clip it. Graph clicks, the self-reference block and its tooltip, the disabled states and the native Type select are unchanged. Format check, lint, all frontend tests and the build pass, a throwaway real-browser harness at 1280px and 700px confirmed the keyboard, mouse and clipping behaviour, and there is no new dependency, removed test or out-of-scope change. Three low or info findings remain: clicking an empty part of the open panel moves focus out of the search field while the panel stays open, the trigger's accessible name does not include the selected node, and the documented targeted Structure test command skips the new component tests.",
+    "findings": [
+      {
+        "id": "F-001",
+        "category": "bug",
+        "severity": "low",
+        "summary": "Clicking an empty part of the open panel, such as the no-matches row, the padding or the gaps between options, moves focus to the page body while the panel stays open.",
+        "rationale": "Only the option rows and the clear button keep focus in the search field on mousedown, and all key handling lives on the search field. After such a click, Escape, the arrow keys, Enter and typing do nothing; Tab moves to the next control but leaves the panel open and expanded, so a second dropdown can be opened next to it. Only a pointerdown outside the component closes it. Reproduced in Chromium; a scratch test confirmed the mousedown is not prevented on the no-matches row and the panel.",
+        "recommendation": "Keep focus in the search field for a mousedown anywhere in the panel except the search field itself, or close the panel when focus leaves the component, and add a test for a click on the no-matches row or the panel.",
+        "locations": [
+          {
+            "path": "frontend/src/components/SearchableSelect.tsx",
+            "line": 27
+          },
+          {
+            "path": "frontend/src/components/SearchableSelect.tsx",
+            "line": 201
+          },
+          {
+            "path": "frontend/src/components/SearchableSelect.tsx",
+            "line": 254
+          }
+        ]
+      },
+      {
+        "id": "F-002",
+        "category": "regression",
+        "severity": "low",
+        "summary": "Screen readers hear only the label of the Source or Target trigger, not the selected node that the replaced native select announced.",
+        "rationale": "The associated label takes precedence over the button's content in its accessible name, so a trigger showing a selected node is announced only as the field name, collapsed. The existing test pins the name to the label alone with a node selected. Opening the list announces the selected option, which only partly mitigates it. The task's requirement that the label names the trigger is met; exposing the value is an additional gap. Not verified with a real screen reader.",
+        "recommendation": "Keep the label association and also expose the shown value, for example as the trigger's accessible description, and assert it in the component tests.",
+        "locations": [
+          {
+            "path": "frontend/src/components/SearchableSelect.tsx",
+            "line": 184
+          },
+          {
+            "path": "frontend/src/components/SearchableSelect.test.tsx",
+            "line": 60
+          }
+        ]
+      },
+      {
+        "id": "F-003",
+        "category": "documentation",
+        "severity": "info",
+        "summary": "The targeted frontend Structure test command does not run the new searchable dropdown tests that the edge form now depends on.",
+        "rationale": "The documented filter matches only the Structure tab, graph viewer, name and lifetime test files, so a targeted Structure run skips the component's tests, and the section's coverage notes do not mention the dropdowns. The task asks for no documentation changes, so this is optional.",
+        "recommendation": "Add the component test to the targeted command and state in one sentence where the searchable Source and Target dropdowns are covered.",
+        "locations": [
+          {
+            "path": "docs/TESTING.md",
+            "line": 1075
+          }
+        ]
+      }
+    ],
+    "prior_finding_dispositions": []
+  }
+}

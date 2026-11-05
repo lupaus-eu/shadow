@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "record_id": "TASK-075B/review-002",
+  "task": {
+    "id": "TASK-075B",
+    "path": "tasks/TASK-075B-searchable-edge-node-dropdowns.md"
+  },
+  "round": 2,
+  "reviewed_at": "2026-11-05T12:14:32Z",
+  "reviewer": {
+    "label": "Claude Code review agent"
+  },
+  "pull_request": {
+    "number": 132,
+    "url": "https://github.com/reflector-oy/schatten/pull/132"
+  },
+  "source": {
+    "base_sha": "a76d92bc6f4f82d8d85ac1a0ad042c32b596c0ee",
+    "head_sha": "76500aca3ba30109cd30ce538912602ce02c6f9c",
+    "comparison": "a76d92bc6f4f82d8d85ac1a0ad042c32b596c0ee...76500aca3ba30109cd30ce538912602ce02c6f9c",
+    "excluded_paths": [
+      "docs/ai-reviews/**"
+    ]
+  },
+  "review": {
+    "outcome": "clean",
+    "summary": "Round 2 reviews the whole TASK-075B range including the round 1 fix commit. All three round 1 findings are fixed and the fix commit introduced no regression. In Chromium, through a throwaway harness that renders the real edge form with the application styles, clicks on the no-matches row, the panel padding and the clear button keep focus and keyboard handling in the search field, Tab and Escape still close the panel, dragging the list's scrollbar still scrolls it, and clicks in the search field still place the caret and select text. Option selection by mouse and keyboard is unchanged. Requirements and acceptance criteria remain met, nothing is out of scope, and there is no new dependency or removed test. Format check, lint, all frontend tests, the targeted Structure test command, the build and the record validator pass. Browsers other than Chromium and a real screen reader were not tried.",
+    "findings": [],
+    "prior_finding_dispositions": [
+      {
+        "record_id": "TASK-075B/review-001",
+        "finding_id": "F-001",
+        "disposition": "fixed",
+        "rationale": "A mousedown anywhere in the open panel except the search field now keeps focus in the search field, replacing the separate handling on options and the clear button. In Chromium, clicks on the no-matches row and the padding leave the keyboard working and Tab closes the panel, so two panels can no longer be open at once; scrollbar dragging and caret placement still work. A new component test asserts the behaviour for the panel, the list, an option, the no-matches row and the clear button, and that the search field itself still takes clicks.",
+        "validated_by": {
+          "review_id": "TASK-075B/review-002",
+          "commit": "76500aca3ba30109cd30ce538912602ce02c6f9c"
+        }
+      },
+      {
+        "record_id": "TASK-075B/review-001",
+        "finding_id": "F-002",
+        "disposition": "fixed",
+        "rationale": "The shown value is now the trigger's accessible description while the label still names it, so screen readers announce the selected node or the placeholder after the label, as for the replaced native select. Component tests assert the description with and without a selection. Not tried with a real screen reader.",
+        "validated_by": {
+          "review_id": "TASK-075B/review-002",
+          "commit": "76500aca3ba30109cd30ce538912602ce02c6f9c"
+        }
+      },
+      {
+        "record_id": "TASK-075B/review-001",
+        "finding_id": "F-003",
+        "disposition": "fixed",
+        "rationale": "The targeted frontend Structure test command also runs the component tests, and the Structure testing section states where the searchable Source and Target dropdowns are covered; the command runs five files that all pass.",
+        "validated_by": {
+          "review_id": "TASK-075B/review-002",
+          "commit": "76500aca3ba30109cd30ce538912602ce02c6f9c"
+        }
+      }
+    ]
+  }
+}
