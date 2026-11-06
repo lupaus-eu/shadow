@@ -588,6 +588,24 @@ def test_soft_deleted_client_or_user_cannot_redeem_a_code(
     _assert_oauth_error(_exchange(client, other_client_id, other_code), "invalid_grant")
 
 
+def test_platform_account_cannot_redeem_a_code_or_refresh(
+    client: TestClient, session_factory: sessionmaker[Session]
+) -> None:
+    client_id = _register(client)
+    issued = _issued(client, client_id)
+    code = _approved_code(client, client_id)
+    with session_factory() as session:
+        user = session.get(User, TEST_ACTOR_USER_ID)
+        assert user is not None
+        user.account_class = "platform"
+        session.commit()
+
+    _assert_oauth_error(_exchange(client, client_id, code), "invalid_grant")
+    _assert_oauth_error(
+        _refresh(client, client_id, issued["refresh_token"]), "invalid_grant"
+    )
+
+
 @pytest.mark.parametrize(
     ("content", "headers"),
     [
@@ -1413,6 +1431,12 @@ def _delete_user(session: Session, _issued: dict[str, Any]) -> None:
     user.deleted_time = datetime.now(UTC)
 
 
+def _reclassify_user_as_platform(session: Session, _issued: dict[str, Any]) -> None:
+    user = session.get(User, TEST_ACTOR_USER_ID)
+    assert user is not None
+    user.account_class = "platform"
+
+
 @pytest.mark.parametrize(
     "mutate",
     [
@@ -1421,6 +1445,7 @@ def _delete_user(session: Session, _issued: dict[str, Any]) -> None:
         pytest.param(_revoke_grant_row, id="revoked-grant"),
         pytest.param(_expire_grant, id="expired-grant"),
         pytest.param(_delete_user, id="deleted-user"),
+        pytest.param(_reclassify_user_as_platform, id="platform-account"),
     ],
 )
 def test_verify_access_token_rejects_invalid_state(

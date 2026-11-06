@@ -57,6 +57,10 @@ _Avoid_: AI Extraction (a separate, unplanned candidate concept)
 A customer or customer organisation of the company using Shadow, with its Contacts and Customer Addresses.
 _Avoid_: Organisation, Invoice, User
 
+**Account class**:
+Whether a User account is a `customer` account (it signs in to the application) or a `platform` account (an operator, used only in the separate platform console). Existing and new Users are customer accounts; application routes, the Users API, MCP grants and the application's sign-in treat only customer accounts as Users (ADR-016).
+_Avoid_: role (a role says what a customer account may do)
+
 **User**:
 A person with access to Shadow. Today every User has one application-wide role, `admin` or `consultant`, and both may use every Organisation; `admin` also administers Users.
 _Avoid_: Contact
@@ -72,6 +76,8 @@ and are **not yet canonical**. Settle them in the tenancy PRD and move them to
 - **Membership** of a person in a company, with the roles **Owner**, **Admin**,
   and **Member**.
 - **Platform account** of an operator, with the roles **Platform Admin** and
-  **Support Agent**, used only in the separate platform console.
+  **Support Agent**, used only in the separate platform console. Its *account
+  class* is canonical (see **Account class**); the console and its roles arrive
+  with step 7 of the plan.
 - **Seat**, **Subscription**, **Legal document**, and **Support Access** as in
   Yearclock.

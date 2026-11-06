@@ -103,11 +103,12 @@ db/migrations/022_create_audit_events.sql
 db/migrations/023_create_background_queue.sql
 db/migrations/024_create_notifications.sql
 db/migrations/025_add_auth_session_id_token.sql
+db/migrations/026_add_user_account_class_and_locale.sql
 ```
 
 | Table | Purpose | Notes |
 | --- | --- | --- |
-| `users` | Application users | Required email; active emails are case-insensitively unique. `role` is `consultant` or `admin`. |
+| `users` | Application users | Required email; active emails are case-insensitively unique. `role` is `consultant` or `admin`. `account_class` is `customer` (signs in to the application, the default) or `platform` (an operator; only the platform console, step 7) and `locale` is `fi` or `en` (default `en`) (migration 026, ADR-016); platform accounts are refused by every application route, by the application's sign-in and by MCP grants, and are invisible to the Users API. |
 | `user_identities` | Durable provider-neutral identities | Exact `(issuer, subject)` binds to one User; one identity per User and issuer. |
 | `oidc_login_transactions` | Browser-bound OIDC flow state | SHA-256 state/browser hashes, nonce, PKCE, return path and ten-minute expiry; no provider tokens. |
 | `auth_sessions` | Opaque application sessions | SHA-256 session-id hash, User, CSRF token, activity and absolute-expiry timestamps, and the nullable `id_token` of the sign-in (migration 025, ADR-017): kept only to send `id_token_hint` at sign-out so that the Authentik session ends too, never returned or logged, stored in plain text (a signed token with email and name, so it is also in backups) and deleted with the session. |

@@ -21,6 +21,7 @@ def authenticate_test_client(
     raw_session_id: str = TEST_RAW_SESSION_ID,
     csrf_token: str = TEST_CSRF_TOKEN,
     create_user: bool = True,
+    account_class: str = "customer",
 ) -> int:
     """Sign the client in; `create_user=False` signs in an existing User."""
     now = datetime.now(UTC)
@@ -32,6 +33,7 @@ def authenticate_test_client(
                     name=f"Test {role.title()}",
                     email=f"test-{abs(user_id)}@example.test",
                     role=role,
+                    account_class=account_class,
                 )
             )
             # Insert the User first for test databases that enforce foreign keys.

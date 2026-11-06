@@ -103,6 +103,7 @@ The current ordered migration chain is:
 023_create_background_queue.sql
 024_create_notifications.sql
 025_add_auth_session_id_token.sql
+026_add_user_account_class_and_locale.sql
 ```
 
 Jokaisella yllä olevalla tiedostolla on vastaava `.down.sql`-tiedosto.

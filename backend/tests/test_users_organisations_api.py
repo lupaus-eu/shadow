@@ -30,6 +30,7 @@ from app.api.v1.org_twin_structure.models import (
     TypeAttribute,
 )
 from app.api.v1.organisations.models import Organisation
+from app.api.v1.users.models import User
 from app.core.database import get_db_session
 from app.core.models import Base
 from app.main import create_app
@@ -174,6 +175,38 @@ def test_users_crud_excludes_soft_deleted_rows(client: TestClient) -> None:
         TEST_ACTOR_USER_ID
     ]
     assert client.get(f"/api/v1/users/{user_id}").status_code == 404
+
+
+def test_platform_accounts_are_invisible_to_the_users_api(
+    client: TestClient, session_factory: sessionmaker[Session]
+) -> None:
+    with session_factory() as session:
+        operator = User(
+            name="Operator",
+            email="operator@example.test",
+            role="admin",
+            account_class="platform",
+        )
+        session.add(operator)
+        session.commit()
+        operator_id = operator.user_id
+
+    listed = client.get("/api/v1/users").json()
+    assert "operator@example.test" not in {user["email"] for user in listed}
+    path = f"/api/v1/users/{operator_id}"
+    assert client.get(path).status_code == 404
+    assert client.patch(path, json={"name": "Renamed"}).status_code == 404
+    assert client.patch(path, json={"email": "mine@example.test"}).status_code == 404
+    assert client.delete(path).status_code == 404
+    assert client.post(f"{path}/sessions/revoke").status_code == 404
+    with session_factory() as session:
+        stored = session.get(User, operator_id)
+        assert stored is not None
+        assert (stored.name, stored.email, stored.deleted_time) == (
+            "Operator",
+            "operator@example.test",
+            None,
+        )
 
 
 def test_user_create_rejects_invalid_role(client: TestClient) -> None:

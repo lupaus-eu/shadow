@@ -19,6 +19,8 @@ entity "users" as users {
   name : TEXT
   email : TEXT
   role : TEXT
+  account_class : TEXT
+  locale : TEXT
   deleted_time : TIMESTAMPTZ
 }
 

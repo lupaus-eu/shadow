@@ -56,6 +56,10 @@ class User(Base):
     __tablename__ = "users"
     __table_args__ = (
         CheckConstraint("role IN ('consultant', 'admin')", name="ck_users_role"),
+        CheckConstraint(
+            "account_class IN ('customer', 'platform')", name="ck_users_account_class"
+        ),
+        CheckConstraint("locale IN ('fi', 'en')", name="ck_users_locale"),
         *non_blank_constraints("email", "ck_users_email_non_blank"),
     )
 
@@ -67,6 +71,12 @@ class User(Base):
     name: Mapped[str] = mapped_column(Text)
     email: Mapped[str] = mapped_column(Text)
     role: Mapped[str] = mapped_column(Text)
+    # ADR-016: `customer` accounts sign in to the application, `platform` accounts
+    # (operators) only to the platform console (step 7).
+    account_class: Mapped[str] = mapped_column(
+        Text, server_default="customer", default="customer"
+    )
+    locale: Mapped[str] = mapped_column(Text, server_default="en", default="en")
     created_by: Mapped[int | None] = mapped_column(
         BigInteger,
         ForeignKey("users.user_id"),

@@ -64,6 +64,25 @@ User `role` must be one of:
 - One User can have at most one identity per issuer.
 - Authentication never creates a User or silently relinks an identity.
 
+## Account Class And Locale
+
+- Every User has an `account_class`: `customer` (the default) or `platform`
+  (ADR-016). Customer accounts use the application; platform accounts exist only
+  for the platform console (step 7 of the SaaS plan).
+- Application routes (`require_business_request`, `require_admin`,
+  `require_unsafe_request`) refuse a platform account with `403`; the
+  application's sign-in refuses it with the generic failure. A platform account
+  can see its own session and sign out. `require_platform_session` is the
+  dependency of the console's routes.
+- `/auth/login?audience=` accepts `customer` (default); `platform` answers `422`
+  until the console exists, and any other value is a `422`. The Users API never
+  creates or promotes a platform account, and does not list, read or change one
+  (a platform id answers `404`); they come from a CLI in step 7. A refused sign-in
+  neither links an identity to a platform account nor records a login, and MCP
+  grants of a person reclassified as platform stop working.
+- `locale` (`fi` or `en`, default `en`) is the language of text built for the
+  person (notifications and email); nothing sets it from the interface yet.
+
 ## Login Transactions And Sessions
 
 - Login transactions persist separate SHA-256 state and initiating-browser

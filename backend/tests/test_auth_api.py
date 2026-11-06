@@ -6,7 +6,7 @@ from urllib.parse import parse_qs, urlencode, urlsplit
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import StaticPool, create_engine, func, select
+from sqlalchemy import StaticPool, create_engine, func, select, update
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.api.v1.auth.logging import SensitiveQueryFilter
@@ -428,6 +428,92 @@ def test_logout_requires_exact_origin_and_csrf(
     if expected == 200:
         assert response.json()["logoutUrl"].startswith("https://issuer.test/logout?")
         assert client.get("/api/v1/auth/session").status_code == 401
+
+
+def test_audience_defaults_to_customer_and_platform_is_not_available_yet(
+    client: TestClient, provider: FakeProvider
+) -> None:
+    customer = client.get("/api/v1/auth/login", params={"audience": "customer"})
+    assert customer.status_code == 302
+
+    platform = client.get("/api/v1/auth/login", params={"audience": "platform"})
+    assert platform.status_code == 422
+    assert platform.json()["error"]["code"] == "AUDIENCE_NOT_AVAILABLE"
+    unknown = client.get("/api/v1/auth/login", params={"audience": "operator"})
+    assert unknown.status_code == 422
+    # Neither refused request reached the provider.
+    assert len(provider.authorization_requests) == 1
+
+
+def test_a_platform_account_cannot_sign_in_to_the_application(
+    client: TestClient,
+    provider: FakeProvider,
+    session_factory: sessionmaker[Session],
+) -> None:
+    with session_factory() as session:
+        session.execute(update(User).values(account_class="platform"))
+        session.commit()
+
+    state, _ = _start(client)
+    response = client.get(
+        "/api/v1/auth/callback", params={"state": state, "code": "provider-code"}
+    )
+
+    assert response.status_code == 303
+    assert "workspace" not in response.headers["location"]
+    assert client.get("/api/v1/auth/session").status_code == 401
+    with session_factory() as session:
+        assert session.scalars(select(AuthSession)).all() == []
+        # The refused sign-in must not bind the identity to the platform account.
+        assert session.scalars(select(UserIdentity)).all() == []
+    # The login transaction was consumed: replaying the state fails the same way.
+    replay = client.get(
+        "/api/v1/auth/callback", params={"state": state, "code": "provider-code"}
+    )
+    assert replay.status_code == 303
+    assert "workspace" not in replay.headers["location"]
+    assert len(provider.exchange_requests) == 1
+
+
+def test_an_already_linked_platform_account_is_refused_without_a_login_record(
+    client: TestClient,
+    session_factory: sessionmaker[Session],
+) -> None:
+    with session_factory() as session:
+        user = session.scalars(select(User)).one()
+        recorded = datetime(2026, 1, 1, tzinfo=UTC)
+        session.add(
+            UserIdentity(
+                user_id=user.user_id,
+                issuer="https://issuer.test",
+                subject="subject-1",
+                created_time=recorded,
+                last_login_time=recorded,
+            )
+        )
+        user.account_class = "platform"
+        session.commit()
+
+    state, _ = _start(client)
+    response = client.get(
+        "/api/v1/auth/callback", params={"state": state, "code": "provider-code"}
+    )
+
+    assert "workspace" not in response.headers["location"]
+    assert client.get("/api/v1/auth/session").status_code == 401
+    with session_factory() as session:
+        identity = session.scalars(select(UserIdentity)).one()
+        assert identity.last_login_time.replace(tzinfo=UTC) == recorded
+
+
+def test_new_accounts_are_customers_with_english(
+    session_factory: sessionmaker[Session],
+) -> None:
+    with session_factory() as session:
+        user = User(name="New", email="new@example.test", role="consultant")
+        session.add(user)
+        session.commit()
+        assert (user.account_class, user.locale) == ("customer", "en")
 
 
 def test_the_id_token_is_kept_with_the_session_and_sent_as_the_logout_hint(

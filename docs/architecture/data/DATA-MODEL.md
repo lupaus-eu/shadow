@@ -35,7 +35,7 @@ Lue nämä yhdessä datamallin kanssa:
 
 | Entity | Notes |
 | --- | --- |
-| User | Application user allowlist entry with required email and role `consultant` or `admin`. |
+| User | Application user allowlist entry with required email, role `consultant` or `admin`, account class `customer` (default) or `platform`, and locale `fi` or `en` (default). |
 | User Identity | Permanent exact `(issuer, subject)` binding to one User. |
 | OIDC Login Transaction | Ten-minute browser-bound, single-use login flow state. |
 | Authentication Session | Opaque server-side session represented by a hashed identifier. |

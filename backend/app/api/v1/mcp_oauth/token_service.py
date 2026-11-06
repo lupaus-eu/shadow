@@ -910,8 +910,14 @@ def _load_client(
 
 
 def _active_user(session: Session, user_id: int) -> User | None:
+    # ADR-016: an MCP grant acts as a customer account; a person reclassified as an
+    # operator (platform account) loses the access of grants made earlier.
     return session.scalar(
-        select(User).where(User.user_id == user_id, User.deleted_time.is_(None))
+        select(User).where(
+            User.user_id == user_id,
+            User.deleted_time.is_(None),
+            User.account_class == "customer",
+        )
     )
 
 

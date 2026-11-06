@@ -203,7 +203,16 @@ def consume_login(
     return consumed
 
 
-def resolve_identity(session: Session, claims: NormalizedClaims) -> User:
+def resolve_identity(
+    session: Session,
+    claims: NormalizedClaims,
+    *,
+    account_class: str = "customer",
+) -> User:
+    """Link or find the account of a verified identity, of the given account class only.
+
+    A refused class neither links an identity nor records a login (ADR-016).
+    """
     now = datetime.now(UTC)
     identity = session.scalar(
         select(UserIdentity)
@@ -218,6 +227,7 @@ def resolve_identity(session: Session, claims: NormalizedClaims) -> User:
             select(User).where(
                 User.user_id == identity.user_id,
                 User.deleted_time.is_(None),
+                User.account_class == account_class,
             )
         )
         if user is None:
@@ -235,6 +245,7 @@ def resolve_identity(session: Session, claims: NormalizedClaims) -> User:
         .where(
             func.lower(func.trim(User.email)) == claims.email,
             User.deleted_time.is_(None),
+            User.account_class == account_class,
         )
         .with_for_update()
         .limit(2)

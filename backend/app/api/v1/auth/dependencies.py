@@ -69,12 +69,24 @@ AuthenticatedSessionDependency = Annotated[
 ]
 
 
+CUSTOMER_ACCOUNT = "customer"
+PLATFORM_ACCOUNT = "platform"
+
+
+def _require_account_class(active: ActiveSession, account_class: str) -> ActiveSession:
+    """ADR-016: the application serves customer accounts; the console platform ones."""
+    if active.user.account_class != account_class:
+        raise AuthHttpError(403, "FORBIDDEN", "Forbidden")
+    return active
+
+
 def require_business_request(
     request: Request,
     session: SessionDependency,
     settings: SettingsDependency,
     active: UntouchedAuthenticatedSessionDependency,
 ) -> ActiveSession:
+    _require_account_class(active, CUSTOMER_ACCOUNT)
     if request.method not in {"POST", "PUT", "PATCH", "DELETE"}:
         touch_active_session(session, settings, active)
     return active
@@ -83,26 +95,17 @@ def require_business_request(
 BusinessSessionDependency = Annotated[ActiveSession, Depends(require_business_request)]
 
 
-def require_admin(active: AuthenticatedSessionDependency) -> ActiveSession:
-    if active.user.role != "admin":
-        raise AuthHttpError(403, "FORBIDDEN", "Forbidden")
-    return active
-
-
-AdminSessionDependency = Annotated[ActiveSession, Depends(require_admin)]
-
-
 def require_business_admin(active: BusinessSessionDependency) -> ActiveSession:
     if active.user.role != "admin":
         raise AuthHttpError(403, "FORBIDDEN", "Forbidden")
     return active
 
 
-def require_unsafe_request(
+def _unsafe_request(
     request: Request,
     session: SessionDependency,
     settings: SettingsDependency,
-    active: UntouchedAuthenticatedSessionDependency,
+    active: ActiveSession,
 ) -> ActiveSession:
     origins = request.headers.getlist("origin")
     csrf_tokens = request.headers.getlist("x-csrf-token")
@@ -120,4 +123,40 @@ def require_unsafe_request(
     return active
 
 
+def require_unsafe_request(
+    request: Request,
+    session: SessionDependency,
+    settings: SettingsDependency,
+    active: UntouchedAuthenticatedSessionDependency,
+) -> ActiveSession:
+    """An unsafe request of a customer account (every application route)."""
+    _require_account_class(active, CUSTOMER_ACCOUNT)
+    return _unsafe_request(request, session, settings, active)
+
+
+def require_unsafe_any_account_request(
+    request: Request,
+    session: SessionDependency,
+    settings: SettingsDependency,
+    active: UntouchedAuthenticatedSessionDependency,
+) -> ActiveSession:
+    """An unsafe request any account may make, such as signing out."""
+    return _unsafe_request(request, session, settings, active)
+
+
+def require_platform_session(
+    session: SessionDependency,
+    settings: SettingsDependency,
+    active: UntouchedAuthenticatedSessionDependency,
+) -> ActiveSession:
+    """A platform account's session, for the platform console (step 7)."""
+    _require_account_class(active, PLATFORM_ACCOUNT)
+    touch_active_session(session, settings, active)
+    return active
+
+
+PlatformSessionDependency = Annotated[ActiveSession, Depends(require_platform_session)]
 UnsafeRequestDependency = Annotated[ActiveSession, Depends(require_unsafe_request)]
+AnyAccountUnsafeRequestDependency = Annotated[
+    ActiveSession, Depends(require_unsafe_any_account_request)
+]

@@ -2374,3 +2374,60 @@ def test_auth_session_id_token_column_is_optional_nonblank_and_reversible(
         "WHERE table_schema = current_schema() AND table_name = 'auth_sessions' "
         "AND column_name = 'id_token')",
     )
+
+
+def test_users_that_exist_before_026_become_customers_with_english(
+    migration_database_url: str,
+) -> None:
+    execute_command(UpCommand(), database_url=migration_database_url)
+    _roll_back_after_020(migration_database_url)
+    with psycopg.connect(migration_database_url) as connection:
+        connection.execute(
+            "INSERT INTO users (name, role, email) "
+            "VALUES ('Existing', 'consultant', 'existing@example.test')"
+        )
+        connection.commit()
+
+    execute_command(UpCommand(), database_url=migration_database_url)
+
+    assert _scalar(
+        migration_database_url,
+        "SELECT account_class || '/' || locale FROM users "
+        "WHERE email = 'existing@example.test'",
+    ) == "customer/en"
+
+
+def test_user_account_class_and_locale_have_defaults_checks_and_roll_back(
+    migration_database_url: str,
+) -> None:
+    execute_command(UpCommand(), database_url=migration_database_url)
+    with psycopg.connect(migration_database_url) as connection:
+        connection.execute(
+            "INSERT INTO users (name, role, email) "
+            "VALUES ('Default Class', 'admin', 'class@example.test')"
+        )
+        row = connection.execute(
+            "SELECT account_class, locale FROM users WHERE email = 'class@example.test'"
+        ).fetchone()
+        assert row == ("customer", "en")
+        connection.execute(
+            "INSERT INTO users (name, role, email, account_class, locale) "
+            "VALUES ('Operator', 'admin', 'operator@example.test', 'platform', 'fi')"
+        )
+        connection.commit()
+        for values in (("support", "en"), ("customer", "sv"), ("customer", None)):
+            with pytest.raises(psycopg.errors.Error):
+                connection.execute(
+                    "INSERT INTO users (name, role, email, account_class, locale) "
+                    "VALUES ('Bad', 'admin', %s, %s, %s)",
+                    (f"bad-{values[0]}-{values[1]}@example.test", *values),
+                )
+            connection.rollback()
+
+    _roll_back_after_020(migration_database_url)
+    assert not _scalar(
+        migration_database_url,
+        "SELECT EXISTS (SELECT 1 FROM information_schema.columns "
+        "WHERE table_schema = current_schema() AND table_name = 'users' "
+        "AND column_name IN ('account_class', 'locale'))",
+    )

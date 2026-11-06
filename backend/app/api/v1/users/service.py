@@ -25,8 +25,11 @@ def to_user_response(user: User) -> UserResponse:
 
 
 def list_users(session: Session) -> list[UserResponse]:
+    # Platform accounts (operators) are not managed through the application (ADR-016).
     users = session.scalars(
-        select(User).where(User.deleted_time.is_(None)).order_by(User.user_id),
+        select(User)
+        .where(User.deleted_time.is_(None), User.account_class == "customer")
+        .order_by(User.user_id),
     ).all()
 
     return [to_user_response(user) for user in users]
@@ -117,6 +120,7 @@ def _get_active_user(session: Session, user_id: int) -> User:
         select(User).where(
             User.user_id == user_id,
             User.deleted_time.is_(None),
+            User.account_class == "customer",
         ),
     )
 

@@ -1,13 +1,15 @@
+from typing import Literal
+
 from fastapi import APIRouter, Request, Response, status
 from fastapi.responses import RedirectResponse
 
 from app.api.v1.auth.dependencies import (
+    AnyAccountUnsafeRequestDependency,
     AuthenticatedSessionDependency,
     AuthHttpError,
     ProviderDependency,
     SessionDependency,
     SettingsDependency,
-    UnsafeRequestDependency,
 )
 from app.api.v1.auth.provider import OidcProviderError
 from app.api.v1.auth.schemas import (
@@ -37,8 +39,15 @@ def login(
     settings: SettingsDependency,
     provider: ProviderDependency,
     return_to: str | None = None,
+    audience: Literal["customer", "platform"] = "customer",
 ) -> Response:
     _enforce_rate_limit(request, "login", 20)
+    if audience != "customer":
+        # The platform console (step 7 of the SaaS plan) signs operators in through its
+        # own flow; until then only customer accounts sign in.
+        raise AuthHttpError(
+            422, "AUDIENCE_NOT_AVAILABLE", "This sign-in audience is not available"
+        )
     try:
         started = start_login(
             session,
@@ -105,6 +114,9 @@ def callback(
             pkce_verifier=consumed.pkce_verifier,
         )
         user = resolve_identity(session, claims)
+        if user.account_class != "customer":
+            # Platform accounts do not sign in to the application (ADR-016).
+            raise AuthenticationError("Identity resolution failed")
         created = create_session(
             session,
             settings,
@@ -162,7 +174,7 @@ def logout(
     session: SessionDependency,
     settings: SettingsDependency,
     provider: ProviderDependency,
-    active: UnsafeRequestDependency,
+    active: AnyAccountUnsafeRequestDependency,
 ) -> LogoutResponse:
     # Read before the row is deleted: the hint ends Authentik's session as well.
     id_token_hint = active.auth_session.id_token

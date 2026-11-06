@@ -286,6 +286,21 @@ def test_consultants_cannot_administer_users(
     assert response.json()["error"]["code"] == "FORBIDDEN"
 
 
+@pytest.mark.parametrize(("configuration", "method", "path"), BUSINESS_ROUTES)
+def test_platform_accounts_cannot_use_any_business_route(
+    session_factory: sessionmaker[Session], configuration: str, method: str, path: str
+) -> None:
+    """ADR-016: operators use the platform console, never the application routes."""
+    with _client(session_factory, configuration=configuration) as client:
+        authenticate_test_client(
+            client, session_factory, role="admin", account_class="platform"
+        )
+        response = client.request(method, path, json={})
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "FORBIDDEN"
+
+
 @pytest.mark.parametrize("role", ["admin", "consultant"])
 def test_both_roles_can_access_every_organisation(
     session_factory: sessionmaker[Session], role: str
@@ -866,3 +881,42 @@ def _seed_default_metamodel(factory: sessionmaker[Session]) -> None:
             )
         )
         session.commit()
+
+
+def test_platform_session_dependency_admits_only_platform_accounts(
+    session_factory: sessionmaker[Session],
+) -> None:
+    from app.api.v1.auth.dependencies import PlatformSessionDependency
+
+    app = create_app(settings=Settings())
+
+    @app.get("/probe-platform")
+    def probe(active: PlatformSessionDependency) -> dict[str, str]:  # pyright: ignore[reportUnusedFunction]
+        return {"class": active.user.account_class}
+
+    def override_get_db_session() -> Iterator[Session]:
+        with session_factory() as session:
+            yield session
+
+    app.dependency_overrides[get_db_session] = override_get_db_session
+    with TestClient(app) as client:
+        assert client.get("/probe-platform").status_code == 401
+        authenticate_test_client(client, session_factory, role="admin")
+        assert client.get("/probe-platform").status_code == 403
+
+    with TestClient(app) as platform_client:
+        authenticate_test_client(
+            platform_client,
+            session_factory,
+            user_id=77,
+            role="admin",
+            account_class="platform",
+            raw_session_id="p" * 43,
+        )
+        response = platform_client.get("/probe-platform")
+        assert response.status_code == 200
+        assert response.json() == {"class": "platform"}
+        # A platform account can see its session and sign out.
+        assert platform_client.get("/api/v1/auth/session").status_code == 200
+        logout = platform_client.post("/api/v1/auth/logout")
+        assert logout.status_code == 200
