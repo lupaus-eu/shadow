@@ -1,5 +1,5 @@
 /*
- * Yearclock design foundation (docs/design/ui-foundation.md).
+ * Shadow design foundation (docs/design/ui-foundation.md).
  * Tailwind's theme and utilities without its preflight reset; the base rules
  * below set the page font and focus ring, and the components layer holds the
  * circle's SVG styles and the `.ui-native` bridge. This is the only stylesheet.
@@ -187,7 +187,7 @@
 }
 
 /*
- * The circle (YearclockView). SVG drawing keeps a few class rules because
+ * The circle (ShadowView). SVG drawing keeps a few class rules because
  * markers combine element type, state, and focus; every colour is a token.
  */
 @layer components {
@@ -328,7 +328,7 @@
   }
 }
 
-/* Printing (Yearclock V2 P7): the chrome is hidden with `print:hidden`; these rules size the circle and keep colours. */
+/* Printing (Shadow V2 P7): the chrome is hidden with `print:hidden`; these rules size the circle and keep colours. */
 @layer components {
   @media print {
     html, body {

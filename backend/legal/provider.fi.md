@@ -7,11 +7,11 @@ acceptance: none
 ---
 > **Luonnos juristin tarkastettavaksi.** Tuotetiimi on laatinut tämän repositorion dokumentaation pohjalta. Se ei ole oikeudellista neuvontaa, eikä juristi ole tarkastanut sitä. `TODO(lawyer)` merkitsee asiaa, joka on tuntematon tai tarvitsee juristin sanamuodon. Mikään tässä ei ole voimassa.
 
-## Kuka tarjoaa Yearclockin
+## Kuka tarjoaa Shadowin
 
 | | |
 | --- | --- |
-| Palvelu | Yearclock |
+| Palvelu | Shadow |
 | Virallinen nimi | Lupaus Palvelut Oy (palvelussa käytettävä nimi: Lupaus) |
 | Y-tunnus | 2355166-5 |
 | Kotipaikka | Helsinki |
@@ -21,4 +21,4 @@ acceptance: none
 | Yhteystieto lakiasioissa ja tietosuoja-asioissa | `TODO(lawyer)` osoite, joka on asetettu muuttujaan `LEGAL_CONTACT_EMAIL` |
 | Tietosuojan valvontaviranomainen | Tietosuojavaltuutettu, Suomi |
 
-Yearclockin tarjoaa Lupaus Palvelut Oy, suomalaisessa omistuksessa oleva suomalainen yhtiö, vain yritysasiakkaille.
+Shadowin tarjoaa Lupaus Palvelut Oy, suomalaisessa omistuksessa oleva suomalainen yhtiö, vain yritysasiakkaille.

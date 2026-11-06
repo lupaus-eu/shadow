@@ -39,7 +39,7 @@ function LegalFrame({ locale, onLocaleChange, children }: { locale: Locale; onLo
     <div className="ui-root min-h-screen bg-canvas px-4 py-8">
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
         <header className="flex flex-wrap items-center justify-between gap-3">
-          <a href="/" aria-label="Yearclock"><Logo /></a>
+          <a href="/" aria-label="Shadow"><Logo /></a>
           <SegmentedControl
             label={text.language}
             value={locale}
@@ -77,7 +77,7 @@ function useDocuments<T>(load: (signal: AbortSignal) => Promise<T>, deps: unknow
 function LegalIndex({ locale }: { locale: Locale }) {
   const text = legalMessages(locale);
   const state = useDocuments((signal) => loadLegalDocuments(locale, signal), [locale]);
-  useEffect(() => { document.title = `${text.indexTitle} · Yearclock`; }, [text.indexTitle]);
+  useEffect(() => { document.title = `${text.indexTitle} · Shadow`; }, [text.indexTitle]);
   return (
     <>
       <h1 className="text-xl font-semibold">{text.indexTitle}</h1>
@@ -112,7 +112,7 @@ function LegalText({ locale }: { locale: Locale }) {
   const text = legalMessages(locale);
   const state = useDocuments((signal) => loadLegalDocument(key, locale, signal), [key, locale]);
   const title = state.status === "ready" ? state.value.title : text.indexTitle;
-  useEffect(() => { document.title = `${title} · Yearclock`; }, [title]);
+  useEffect(() => { document.title = `${title} · Shadow`; }, [title]);
   return (
     <>
       <Link className="text-[13px] text-accent" to="/legal">{text.back}</Link>

@@ -21,8 +21,8 @@ import {
   type Locale,
 } from "./i18n";
 
-const hadSessionKey = "yearclock.had-session";
-const signedOutKey = "yearclock.signed-out";
+const hadSessionKey = "shadow.had-session";
+const signedOutKey = "shadow.signed-out";
 
 type AuthState =
   | { state: "loading"; locale: Locale }

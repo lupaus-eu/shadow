@@ -2,7 +2,7 @@
 
 export type OrganizationRole = "owner" | "admin" | "member";
 
-export const ADMIN_SECTIONS = ["people", "groups", "yearclocks", "classification", "activity", "support", "agents", "billing", "settings"] as const;
+export const ADMIN_SECTIONS = ["people", "activity", "support", "agents", "billing", "settings"] as const;
 export type AdminSection = (typeof ADMIN_SECTIONS)[number];
 
 /** Billing and Organization settings (with deletion) are the Owner's; Members have no administration. */
@@ -18,13 +18,4 @@ export function isAdminSection(value: string | undefined, role: OrganizationRole
 }
 
 export const organizationHref = (organizationId: string) => `/organizations/${organizationId}`;
-export const yearclockHref = (organizationId: string, yearclockId: string) => `${organizationHref(organizationId)}/yearclocks/${yearclockId}`;
 export const adminHref = (organizationId: string, section: AdminSection) => `${organizationHref(organizationId)}/admin/${section}`;
-
-/** Recent Yearclocks first (as recorded), then the rest in their order; unknown ids are dropped. */
-export function sidebarYearclocks<T extends { id: string }>(yearclocks: T[], recentIds: string[] = [], recentLimit = 3): { recent: T[]; others: T[] } {
-  const byId = new Map(yearclocks.map((yearclock) => [yearclock.id, yearclock]));
-  const recent = recentIds.map((id) => byId.get(id)).filter((item): item is T => item !== undefined).slice(0, recentLimit);
-  const shown = new Set(recent.map((item) => item.id));
-  return { recent, others: yearclocks.filter((yearclock) => !shown.has(yearclock.id)) };
-}

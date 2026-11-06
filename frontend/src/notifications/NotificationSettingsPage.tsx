@@ -21,9 +21,6 @@ export function NotificationSettingsPage() {
   const [failed, setFailed] = useState(false);
   useEffect(() => { void loadSettings(organizationId).then(setSettings, () => setFailed(true)); }, [organizationId]);
   const change = (key: string, channel: "in_app" | "email", value: boolean) => setSettings((current) => (current ? { ...current, items: current.items.map((item) => (item.key === key ? { ...item, [channel]: value } : item)) } : null));
-  const summary = settings?.summary;
-  const setSummary = (next: Partial<NonNullable<typeof summary>>) => setSettings((current) => (current ? { ...current, summary: { ...current.summary, ...next } } : null));
-  const clocks = workspace.yearclocks.filter((clock) => !(clock as { archived_at?: string | null }).archived_at);
   async function save() {
     if (!settings) return;
     setFailed(false);
@@ -55,24 +52,6 @@ export function NotificationSettingsPage() {
       {failed ? <Alert tone="danger" role="alert">{copy.settings.failed}</Alert> : null}
       {group("everyone", copy.settings.groupEveryone)}
       {group("managers", copy.settings.groupManagers)}
-      {summary ? (
-        <fieldset className="m-0 flex flex-col gap-2 border-0 p-0">
-          <legend className="mb-1 p-0 text-[13px] font-semibold">{copy.summary.title}</legend>
-          <p className="m-0 text-xs text-ink-muted">{copy.summary.description}</p>
-          {(["off", "weekly", "daily"] as const).map((value) => <Choice key={value} type="radio" name="summary-frequency" checked={summary.frequency === value} onChange={() => setSummary({ frequency: value })} label={copy.summary.frequency[value]} />)}
-          {summary.frequency !== "off" ? (
-            <div className="ml-6 flex flex-col gap-1.5">
-              <Choice type="radio" name="summary-scope" checked={summary.yearclock_ids === null} onChange={() => setSummary({ yearclock_ids: null })} label={copy.summary.allYearclocks} />
-              <Choice type="radio" name="summary-scope" checked={summary.yearclock_ids !== null} onChange={() => setSummary({ yearclock_ids: summary.yearclock_ids ?? clocks.map((clock) => clock.id) })} label={copy.summary.chosenYearclocks} />
-              {summary.yearclock_ids !== null ? (
-                <ul className="m-0 ml-6 flex list-none flex-col gap-1 p-0" aria-label={copy.summary.chosenYearclocks}>
-                  {clocks.map((clock) => <li key={clock.id}><Choice type="checkbox" checked={summary.yearclock_ids!.includes(clock.id)} onChange={(event) => setSummary({ yearclock_ids: event.target.checked ? [...summary.yearclock_ids!, clock.id] : summary.yearclock_ids!.filter((id) => id !== clock.id) })} label={clock.name} /></li>)}
-                </ul>
-              ) : null}
-            </div>
-          ) : null}
-        </fieldset>
-      ) : null}
       <div><Button variant="primary" disabled={!settings} onClick={() => void save()}>{copy.settings.save}</Button></div>
     </Section>
   );

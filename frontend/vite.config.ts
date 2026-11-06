@@ -21,7 +21,7 @@ function publishThemeStylesheet(): Plugin {
 
 export default defineConfig({
   plugins: [react(), tailwindcss(), publishThemeStylesheet()],
-  // Yearclock owns host ports 8100-8199; see docs/architecture/docker.md.
+  // Shadow owns host ports 8100-8199; see docs/architecture/docker.md.
   server: {
     host: "0.0.0.0",
     port: 8173,

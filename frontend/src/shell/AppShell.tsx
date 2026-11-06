@@ -5,8 +5,6 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode 
 import { Link, useLocation } from "react-router";
 
 import { logoutUrl, type UserAccount } from "../auth-client";
-import { loadTransferOrganizations } from "../data-transfer/client";
-import { dataTransferMessages } from "../data-transfer/messages";
 import { messages, workspaceMessages, type Locale } from "../i18n";
 import { LegalFooterLink } from "../legal/LegalFooterLink";
 import { SystemReadiness } from "../components/SystemReadiness";
@@ -101,12 +99,6 @@ function UserMenu() {
   const text = messages(locale);
   const languages = workspaceMessages(locale);
   const form = useRef<HTMLFormElement>(null);
-  const [canTransfer, setCanTransfer] = useState(false);
-  useEffect(() => {
-    const controller = new AbortController();
-    loadTransferOrganizations(controller.signal).then((items) => setCanTransfer(items.length > 0)).catch(() => setCanTransfer(false));
-    return () => controller.abort();
-  }, [userAccount.id]);
   return (
     <>
       <form ref={form} action={logoutUrl} method="post" hidden />
@@ -130,12 +122,6 @@ function UserMenu() {
                 </DropdownMenu.RadioItem>
               ))}
             </DropdownMenu.RadioGroup>
-            {canTransfer ? (
-              <>
-                <DropdownMenu.Separator className="my-1 h-px bg-line" />
-                <DropdownMenu.Item asChild className={ITEM}><Link to="/data-transfer">{dataTransferMessages(locale).menu}</Link></DropdownMenu.Item>
-              </>
-            ) : null}
             <DropdownMenu.Separator className="my-1 h-px bg-line" />
             <DropdownMenu.Item className={ITEM} onSelect={() => { onLogout(); form.current?.submit(); }}>
               <LogOut size={14} aria-hidden="true" />{text.signOut}

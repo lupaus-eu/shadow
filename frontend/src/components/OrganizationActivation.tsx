@@ -191,7 +191,7 @@ function OrganizationActivationStatus({
       <h2 className={heading}>{labels.active(signup.organization_name)}</h2>
       <p className={text}>{labels.ownerActive}</p>
       <p className="m-0 text-[13px] font-medium">
-        {signup.initial_content?.yearclock_name} ·{" "}
+        {signup.initial_content?.shadow_name} ·{" "}
         {signup.initial_content?.lane_name}
       </p>
       <a

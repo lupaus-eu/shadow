@@ -7,7 +7,7 @@ acceptance: none
 ---
 > **Luonnos juristin tarkastettavaksi.** Tuotetiimi on laatinut tämän repositorion dokumentaation pohjalta. Se ei ole oikeudellista neuvontaa, eikä juristi ole tarkastanut sitä. `TODO(lawyer)` merkitsee asiaa, joka on tuntematon tai tarvitsee juristin sanamuodon. Mikään tässä ei ole voimassa.
 
-Tämä seloste kertoo Yearclockin käyttäjille, mitä henkilötietoja Yearclock itse rekisterinpitäjänä käsittelee ja miksi. Asiakkaan syöttämän suunnittelusisällön osalta Yearclock toimii asiakkaan lukuun henkilötietojen käsittelijänä (ks. tietojenkäsittelysopimus), ja asiakas tiedottaa omille henkilöilleen.
+Tämä seloste kertoo Shadowin käyttäjille, mitä henkilötietoja Shadow itse rekisterinpitäjänä käsittelee ja miksi. Asiakkaan syöttämän suunnittelusisällön osalta Shadow toimii asiakkaan lukuun henkilötietojen käsittelijänä (ks. tietojenkäsittelysopimus), ja asiakas tiedottaa omille henkilöilleen.
 
 ## Kuka vastaa
 Rekisterinpitäjä on palveluntarjoajan tiedot -sivulla nimetty tarjoaja. Yhteystieto tietosuoja-asioissa: `TODO(lawyer)` lakiasioiden yhteysosoite. `TODO(lawyer)` onko tietosuojavastaava pakollinen (tuotetiimin seulontamuistion mukaan ei, ellei juristi ole eri mieltä).
@@ -26,12 +26,12 @@ Rekisterinpitäjä on palveluntarjoajan tiedot -sivulla nimetty tarjoaja. Yhteys
 | Jonossa oleva sähköposti (vastaanottaja, otsikko, teksti) | Luotettava toimitus | `TODO(lawyer)` aika (ei vielä määritelty) |
 | Hyväksyntätiedot (kuka hyväksyi minkä asiakirjan version ja milloin) | Osoittaaksemme, mitä on sovittu | Säilytetään sopimusnäyttönä `TODO(lawyer)` aika |
 
-Yearclock ei tallenna salasanoja, avainkoodeja, MFA-salaisuuksia eikä maksukorttitietoja. Se ei käytä analytiikkaa tai mainontaa eikä myy henkilötietoja.
+Shadow ei tallenna salasanoja, avainkoodeja, MFA-salaisuuksia eikä maksukorttitietoja. Se ei käytä analytiikkaa tai mainontaa eikä myy henkilötietoja.
 
 `TODO(lawyer)` kunkin käyttötarkoituksen oikeusperuste (sopimus, oikeutettu etu, lakisääteinen velvoite) lain vaatimassa muodossa.
 
 ## Kuka saa tietoja
-Alikäsittelijät-sivulla luetellut alikäsittelijät (ylläpito, sähköposti, laskutus, varmuuskopiot) saavat tietoja vain palvelun tuottamiseen. Alustan henkilöstö näkee organisaation vain tukipääsyn kautta, jonka organisaation omistajat hyväksyvät. Jos yhdistät tekoälyagentin Yearclockiin, agentin tarjoaja on oma valintasi ja käsittelee sen, mitä agentti lukee; Yearclock ei tallenna agenttien keskusteluja.
+Alikäsittelijät-sivulla luetellut alikäsittelijät (ylläpito, sähköposti, laskutus, varmuuskopiot) saavat tietoja vain palvelun tuottamiseen. Alustan henkilöstö näkee organisaation vain tukipääsyn kautta, jonka organisaation omistajat hyväksyvät. Jos yhdistät tekoälyagentin Shadowiin, agentin tarjoaja on oma valintasi ja käsittelee sen, mitä agentti lukee; Shadow ei tallenna agenttien keskusteluja.
 
 ## Siirrot EU:n ja ETA:n ulkopuolelle
 `TODO(lawyer)` luettele siirrot ja niiden suojatoimet (ks. alikäsittelijät-sivu).

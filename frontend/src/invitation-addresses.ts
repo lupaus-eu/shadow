@@ -1,4 +1,4 @@
-/** Split a pasted list of addresses (Yearclock V2 bulk invitations). The server decides validity. */
+/** Split a pasted list of addresses (Shadow V2 bulk invitations). The server decides validity. */
 export function parseAddresses(text: string): string[] {
   const seen = new Set<string>();
   const result: string[] = [];

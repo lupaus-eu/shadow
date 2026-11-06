@@ -10,7 +10,7 @@ const copy: NotificationCopy = {
   roleChanged: (from, to) => `${from}>${to}`, invitationAccepted: (name, role) => `${name} joined as ${role}`, ownerGained: (name) => `${name} owner`, ownerLost: (name) => `${name} not owner`, legalPublished: (k, v, d, a) => `legal ${k} v${v} ${d} ${a}`, unknown: "?",
 };
 const item = (type: string, params: Record<string, unknown>): NotificationItem => ({ id: "1", type, params, created_at: "2026-10-05T08:00:00Z", read_at: null });
-const access = (from: string, to: string) => item("access_changed", { yearclock_id: "y1", yearclock_name: "Plan", from_role: from, to_role: to });
+const access = (from: string, to: string) => item("access_changed", { shadow_id: "y1", shadow_name: "Plan", from_role: from, to_role: to });
 
 test("access notifications say what the person can now do", () => {
   assert.equal(notificationText(access("none", "editor"), copy), "edit Plan");
@@ -28,8 +28,8 @@ test("role, invitation, and ownership notifications use role names", () => {
   assert.equal(notificationText(item("something_new", {}), copy), "?");
 });
 
-test("only a Yearclock the person can still open is linked", () => {
-  assert.equal(notificationHref(access("none", "viewer"), "o1"), "/organizations/o1/yearclocks/y1");
+test("only a Shadow the person can still open is linked", () => {
+  assert.equal(notificationHref(access("none", "viewer"), "o1"), "/organizations/o1/shadows/y1");
   assert.equal(notificationHref(access("viewer", "none"), "o1"), null);
   assert.equal(notificationHref(item("role_changed", {}), "o1"), null);
 });

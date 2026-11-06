@@ -1,15 +1,15 @@
 # yaml-language-server: $schema=https://goauthentik.io/blueprints/schema.json
 version: 1
 metadata:
-  name: Yearclock strong customer authentication
+  name: Shadow strong customer authentication
   labels:
     blueprints.goauthentik.io/instantiate: "false"
 entries:
-  - id: yearclock-record-verified-email
+  - id: shadow-record-verified-email
     model: authentik_policies_expression.expressionpolicy
     state: present
     identifiers:
-      name: yearclock-record-verified-email
+      name: shadow-record-verified-email
     attrs:
       expression: |
         flow_plan = request.context.get("flow_plan")
@@ -17,7 +17,7 @@ entries:
         if not user or not user.email or not user.is_active:
             return False
         attributes = dict(user.attributes)
-        attributes["yearclock_email_verified"] = True
+        attributes["shadow_email_verified"] = True
         user.attributes = attributes
         user.save(update_fields=["attributes"])
         return True
@@ -25,11 +25,11 @@ entries:
   # Enrollment needs an invitation link created in Authentik (Directory,
   # Invitations) unless AUTHENTIK_ENROLLMENT_OPEN is "true". Production compose
   # defaults to closed; local development defaults to open.
-  - id: yearclock-enrollment-invitation
+  - id: shadow-enrollment-invitation
     model: authentik_stages_invitation.invitationstage
     state: present
     identifiers:
-      name: yearclock-enrollment-invitation
+      name: shadow-enrollment-invitation
     attrs:
       continue_flow_without_invitation: !Env [AUTHENTIK_ENROLLMENT_OPEN, "false"]
 
@@ -37,10 +37,10 @@ entries:
     state: present
     identifiers:
       target: !Find [authentik_flows.flow, [slug, default-enrollment-flow]]
-      stage: !KeyOf yearclock-enrollment-invitation
+      stage: !KeyOf shadow-enrollment-invitation
       order: 0
 
-  - id: yearclock-enrollment-login-binding
+  - id: shadow-enrollment-login-binding
     model: authentik_flows.flowstagebinding
     state: present
     identifiers:
@@ -54,8 +54,8 @@ entries:
   - model: authentik_policies.policybinding
     state: present
     identifiers:
-      policy: !KeyOf yearclock-record-verified-email
-      target: !KeyOf yearclock-enrollment-login-binding
+      policy: !KeyOf shadow-record-verified-email
+      target: !KeyOf shadow-enrollment-login-binding
       order: 0
     attrs:
       enabled: true
@@ -63,7 +63,7 @@ entries:
       timeout: 30
       failure_result: false
 
-  - id: yearclock-webauthn-setup
+  - id: shadow-webauthn-setup
     model: authentik_stages_authenticator_webauthn.authenticatorwebauthnstage
     state: present
     identifiers:
@@ -75,7 +75,7 @@ entries:
       resident_key_requirement: required
       user_verification: required
 
-  - id: yearclock-login-mfa
+  - id: shadow-login-mfa
     model: authentik_stages_authenticator_validate.authenticatorvalidatestage
     state: present
     identifiers:
@@ -87,10 +87,10 @@ entries:
         - webauthn
       configuration_stages:
         - !Find [authentik_stages_authenticator_totp.authenticatortotpstage, [name, default-authenticator-totp-setup]]
-        - !KeyOf yearclock-webauthn-setup
+        - !KeyOf shadow-webauthn-setup
       webauthn_user_verification: required
 
-  - id: yearclock-recovery-mfa
+  - id: shadow-recovery-mfa
     model: authentik_stages_authenticator_validate.authenticatorvalidatestage
     state: present
     identifiers:
@@ -120,4 +120,4 @@ entries:
         - username
       enrollment_flow: !Find [authentik_flows.flow, [slug, default-enrollment-flow]]
       recovery_flow: !Find [authentik_flows.flow, [slug, default-recovery-flow]]
-      webauthn_stage: !KeyOf yearclock-login-mfa
+      webauthn_stage: !KeyOf shadow-login-mfa

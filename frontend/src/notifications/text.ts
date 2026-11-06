@@ -33,7 +33,7 @@ export function notificationText(item: NotificationItem, copy: NotificationCopy,
   const role = (value: unknown) => copy.roles[text(value) as keyof NotificationCopy["roles"]] ?? text(value);
   switch (item.type) {
     case "access_changed": {
-      const name = text(params.yearclock_name);
+      const name = text(params.shadow_name);
       const to = text(params.to_role);
       if (to === "editor") return copy.canEdit(name);
       if (to === "viewer") return text(params.from_role) === "editor" ? copy.viewOnly(name) : copy.canView(name);
@@ -55,12 +55,12 @@ export function notificationText(item: NotificationItem, copy: NotificationCopy,
   }
 }
 
-/** Where a notification leads, if anywhere: the Yearclock whose access changed, when it can still be opened. */
+/** Where a notification leads, if anywhere: the Shadow whose access changed, when it can still be opened. */
 export function notificationHref(item: NotificationItem, organizationId: string): string | null {
   if (item.type === "support_access_requested" || item.type === "support_access_ended") return `/organizations/${organizationId}/admin/support`;
   if (item.type === "billing_problem" || item.type === "subscription_cancel_scheduled" || item.type === "subscription_cancel_undone" || item.type === "subscription_resumed" || item.type === "billing_contact_changed") return `/organizations/${organizationId}/admin/billing`;
   if (item.type === "legal_document_published") return `/organizations/${organizationId}/admin/settings`;
   if (item.type === "deletion_scheduled") return `/organizations/${organizationId}/admin/settings`;
-  if (item.type !== "access_changed" || text(item.params.to_role) === "none" || !text(item.params.yearclock_id)) return null;
-  return `/organizations/${organizationId}/yearclocks/${text(item.params.yearclock_id)}`;
+  if (item.type !== "access_changed" || text(item.params.to_role) === "none" || !text(item.params.shadow_id)) return null;
+  return `/organizations/${organizationId}/shadows/${text(item.params.shadow_id)}`;
 }

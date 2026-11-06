@@ -7,10 +7,10 @@ acceptance: none
 ---
 > **Luonnos juristin tarkastettavaksi.** Tuotetiimi on laatinut tämän repositorion dokumentaation pohjalta. Se ei ole oikeudellista neuvontaa, eikä juristi ole tarkastanut sitä. `TODO(lawyer)` merkitsee asiaa, joka on tuntematon tai tarvitsee juristin sanamuodon. Mikään tässä ei ole voimassa.
 
-Tämä on yhteenveto teknisistä ja organisatorisista toimista, jotka suojaavat Yearclockia. Se on myös tietojenkäsittelysopimuksen tietoturvaliite. `TODO(lawyer)` päätä, miten avoimet asiat kuvataan (merkitty alla "ei vielä tehty").
+Tämä on yhteenveto teknisistä ja organisatorisista toimista, jotka suojaavat Shadowia. Se on myös tietojenkäsittelysopimuksen tietoturvaliite. `TODO(lawyer)` päätä, miten avoimet asiat kuvataan (merkitty alla "ei vielä tehty").
 
 ## Kirjautuminen ja istunnot
-- Kirjautuminen käyttää ulkoista identiteettipalvelua OpenID Connect -valtuutuskoodikululla, PKCE:llä sekä `state`- ja `nonce`-arvoilla. Salasanakirjautuminen vaatii toisen tekijän; avainkoodit (passkey) ovat tuettuja. Yearclock ei tallenna salasanoja, avainkoodeja eikä MFA-salaisuuksia.
+- Kirjautuminen käyttää ulkoista identiteettipalvelua OpenID Connect -valtuutuskoodikululla, PKCE:llä sekä `state`- ja `nonce`-arvoilla. Salasanakirjautuminen vaatii toisen tekijän; avainkoodit (passkey) ovat tuettuja. Shadow ei tallenna salasanoja, avainkoodeja eikä MFA-salaisuuksia.
 - Istunto on satunnainen tunniste, joka tallennetaan vain tiivisteenä. Eväste on `HttpOnly`, `SameSite=Lax` ja tuotannossa `Secure`, kestää oletuksena enintään 8 tuntia ja mitätöidään palvelimella uloskirjautuessa.
 - Tilaa muuttavat pyynnöt epäluotetusta alkuperästä hylätään.
 
@@ -18,7 +18,7 @@ Tämä on yhteenveto teknisistä ja organisatorisista toimista, jotka suojaavat 
 - Kunkin organisaation tiedot erotetaan tietokannassa pakotetulla rivitason suojauksella rajoitetun tietokantaroolin alla; reitit tarkistavat lisäksi jäsenyyden ja roolin. Automaattiset testit kattavat tämän organisaatioiden välillä.
 - Jäsenet eivät voi korottaa omaa rooliaan tai pääsyään; ylläpitäjät eivät voi luoda omistajia tai tulla omistajiksi.
 
-## Yearclockin henkilöstön pääsy
+## Shadowin henkilöstön pääsy
 - Alustan henkilöstö pääsee organisaatioon vain tukipääsyn kautta: omistajat hyväksyvät pyynnön rajauksella ja kestolla, pääsy valvotaan tietokannassa ja päättyy itsestään, ja jokainen käyttö kirjataan. `TODO(lawyer)` henkilöstön salassapitositoumukset.
 
 ## Sovellus ja infrastruktuuri

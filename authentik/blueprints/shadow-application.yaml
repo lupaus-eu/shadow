@@ -1,31 +1,31 @@
 # yaml-language-server: $schema=https://goauthentik.io/blueprints/schema.json
 version: 1
 metadata:
-  name: Yearclock OIDC application
+  name: Shadow OIDC application
   labels:
     blueprints.goauthentik.io/instantiate: "true"
 entries:
-  - id: yearclock-email-scope
+  - id: shadow-email-scope
     model: authentik_providers_oauth2.scopemapping
     state: present
     identifiers:
-      name: Yearclock verified email
+      name: Shadow verified email
     attrs:
       scope_name: email
-      description: Yearclock email address and explicit verification state
+      description: Shadow email address and explicit verification state
       expression: |
         return {
           "email": request.user.email,
           "email_verified": bool(
-            request.user.attributes.get("yearclock_email_verified", False)
+            request.user.attributes.get("shadow_email_verified", False)
           ),
         }
 
-  - id: yearclock-provider
+  - id: shadow-provider
     model: authentik_providers_oauth2.oauth2provider
     state: present
     identifiers:
-      name: Yearclock
+      name: Shadow
     attrs:
       client_type: confidential
       client_id: !Env OIDC_CLIENT_ID
@@ -47,7 +47,7 @@ entries:
       property_mappings:
         - !Find [authentik_providers_oauth2.scopemapping, [scope_name, openid]]
         - !Find [authentik_providers_oauth2.scopemapping, [scope_name, profile]]
-        - !KeyOf yearclock-email-scope
+        - !KeyOf shadow-email-scope
       signing_key: !Find [authentik_crypto.certificatekeypair, [name, authentik Self-signed Certificate]]
       sub_mode: hashed_user_id
       issuer_mode: per_provider
@@ -55,9 +55,9 @@ entries:
   - model: authentik_core.application
     state: present
     identifiers:
-      slug: yearclock
+      slug: shadow
     attrs:
-      name: Yearclock
-      provider: !KeyOf yearclock-provider
+      name: Shadow
+      provider: !KeyOf shadow-provider
       policy_engine_mode: any
       meta_launch_url: !Env FRONTEND_URL

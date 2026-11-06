@@ -1,1 +1,1 @@
-CREATE DATABASE yearclock_test OWNER yearclock;
+CREATE DATABASE shadow_test OWNER shadow;

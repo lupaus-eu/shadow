@@ -19,7 +19,7 @@ import {
   loadPlatformSession,
   loadSupportEvents,
   loadSupportGrants,
-  loadSupportYearclocks,
+  loadSupportShadows,
   requestSupportAccess,
   platformLoginUrl,
   platformLogoutUrl,
@@ -30,7 +30,7 @@ import {
   type PlatformSession,
   type SupportEvent,
   type SupportGrant,
-  type SupportYearclock,
+  type SupportShadow,
 } from "./platform-client";
 
 type ConsoleState =
@@ -155,7 +155,7 @@ function Organizations({ text, locale }: { text: PlatformMessages; locale: Local
     <Section title={text.organizations}>
       {failed || blockFailed ? <Alert tone="danger" role="alert">{text.failed}</Alert> : null}
       <Table caption={text.organizations}>
-        <thead><tr><th scope="col">{text.name}</th><th scope="col">{text.status}</th><th scope="col">{text.subscription}</th><th scope="col" className="text-right">{text.seats}</th><th scope="col" className="text-right">{text.members}</th><th scope="col" className="text-right">{text.yearclocks}</th><th scope="col">{text.deletion}</th><th scope="col">{text.mcp}</th></tr></thead>
+        <thead><tr><th scope="col">{text.name}</th><th scope="col">{text.status}</th><th scope="col">{text.subscription}</th><th scope="col" className="text-right">{text.seats}</th><th scope="col" className="text-right">{text.members}</th><th scope="col" className="text-right">{text.shadows}</th><th scope="col">{text.deletion}</th><th scope="col">{text.mcp}</th></tr></thead>
         <tbody>{(value ?? []).map((organization) => (
           <tr key={organization.id}>
             <th scope="row" className="text-left font-semibold">{organization.name}</th>
@@ -163,7 +163,7 @@ function Organizations({ text, locale }: { text: PlatformMessages; locale: Local
             <td>{organization.subscription.state}{organization.subscription.cancel_at_period_end ? ` · ${text.cancelScheduled}` : ""}</td>
             <td className="text-right tabular-nums">{organization.purchased_seats}</td>
             <td className="text-right tabular-nums">{organization.members}</td>
-            <td className="text-right tabular-nums">{organization.yearclocks}</td>
+            <td className="text-right tabular-nums">{organization.shadows}</td>
             <td>{format(organization.deletion_requested_at)}</td>
             <td>
               <span className="flex flex-wrap items-center gap-2">
@@ -249,11 +249,11 @@ function SupportAccessConsole({ text, locale }: { text: PlatformMessages; locale
 
 function SupportContent({ grant, text, onClose }: { grant: SupportGrant; text: PlatformMessages; onClose: () => void }) {
   const copy = text.support;
-  const [clocks, setClocks] = useState<SupportYearclock[] | null>(null);
+  const [clocks, setClocks] = useState<SupportShadow[] | null>(null);
   const [events, setEvents] = useState<Record<string, SupportEvent[]>>({});
   const [failed, setFailed] = useState(false);
   useEffect(() => {
-    loadSupportYearclocks(grant.id)
+    loadSupportShadows(grant.id)
       .then(async (items) => {
         setClocks(items);
         const loaded = await Promise.all(items.map(async (clock) => [clock.id, await loadSupportEvents(grant.id, clock.id)] as const));

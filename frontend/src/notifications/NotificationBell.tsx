@@ -7,7 +7,7 @@ import { workspaceMessages } from "../i18n";
 import { organizationHref } from "../shell/nav";
 import { loadUnreadCount } from "./client";
 
-export const NOTIFICATIONS_CHANGED = "yearclock:notifications-changed";
+export const NOTIFICATIONS_CHANGED = "shadow:notifications-changed";
 const POLL_MILLISECONDS = 60_000;
 
 /** The top-bar bell: a link to the inbox with the unread count, refreshed every minute while the tab is visible. */

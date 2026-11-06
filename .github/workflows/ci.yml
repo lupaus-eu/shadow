@@ -35,19 +35,19 @@ jobs:
       postgres:
         image: postgres:17-alpine
         env:
-          POSTGRES_DB: yearclock_test
-          POSTGRES_USER: yearclock
-          POSTGRES_PASSWORD: yearclock
+          POSTGRES_DB: shadow_test
+          POSTGRES_USER: shadow
+          POSTGRES_PASSWORD: shadow
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U yearclock -d yearclock_test"
+          --health-cmd "pg_isready -U shadow -d shadow_test"
           --health-interval 2s
           --health-timeout 5s
           --health-retries 15
     env:
-      DATABASE_URL: postgresql+psycopg://yearclock:yearclock@localhost:5432/yearclock_test
-      TEST_DATABASE_URL: postgresql+psycopg://yearclock:yearclock@localhost:5432/yearclock_test
+      DATABASE_URL: postgresql+psycopg://shadow:shadow@localhost:5432/shadow_test
+      TEST_DATABASE_URL: postgresql+psycopg://shadow:shadow@localhost:5432/shadow_test
     defaults:
       run:
         working-directory: backend

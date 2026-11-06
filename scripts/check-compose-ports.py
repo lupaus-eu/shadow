@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Check that Compose files use Yearclock's project name and host port range.
+"""Check that Compose files use Shadow's project name and host port range.
 
 Shared development machines run several projects side by side. Each project
 owns one host port range (see docs/architecture/docker.md). This check fails
 when a Compose file:
 
-- lacks the top-level `name: yearclock`, or sets `container_name`;
-- publishes a port without a `${YEARCLOCK_*_PORT:-NNNN}` host variable, or
+- lacks the top-level `name: shadow`, or sets `container_name`;
+- publishes a port without a `${SHADOW_*_PORT:-NNNN}` host variable, or
   uses the long port syntax;
 - in the production file, leaves any service without a rotated `json-file`
   log (`max-size` and `max-file`), which could fill the host disk;
@@ -25,15 +25,15 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-PROJECT_NAME = "yearclock"
+PROJECT_NAME = "shadow"
 PORT_RANGE = range(8100, 8200)
 PRODUCTION_FILE = "docker-compose.prod.yml"
 DEFAULT_HOST = "127.0.0.1"
 COMPOSE_GLOBS = ("docker-compose*.yml", "docker-compose*.yaml", "compose*.yml", "compose*.yaml")
 REQUIRED_VARIABLE = re.compile(r"\$\{([A-Z0-9_]+):\?")
 SHORT_PORT = re.compile(
-    r'^"\$\{YEARCLOCK_[A-Z_]*BIND_ADDRESS:-127\.0\.0\.1\}'
-    r':\$\{YEARCLOCK_[A-Z_]+_PORT:-(\d+)\}:(\d+)(/(tcp|udp))?"$'
+    r'^"\$\{SHADOW_[A-Z_]*BIND_ADDRESS:-127\.0\.0\.1\}'
+    r':\$\{SHADOW_[A-Z_]+_PORT:-(\d+)\}:(\d+)(/(tcp|udp))?"$'
 )
 
 
@@ -78,7 +78,7 @@ def check(path: Path) -> list[str]:
         if not SHORT_PORT.match(entry):
             errors.append(
                 f"{name}:{number}: port {entry} must be written as "
-                '"${YEARCLOCK_BIND_ADDRESS:-127.0.0.1}:${YEARCLOCK_<SERVICE>_PORT:-NNNN}:<container port>"'
+                '"${SHADOW_BIND_ADDRESS:-127.0.0.1}:${SHADOW_<SERVICE>_PORT:-NNNN}:<container port>"'
             )
 
     config = _resolved_config(path)

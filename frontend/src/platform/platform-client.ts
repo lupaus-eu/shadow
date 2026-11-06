@@ -12,7 +12,7 @@ export type PlatformOrganization = {
   subscription: { state: string; writable: boolean; grace_expires_at: string | null; cancel_at_period_end: boolean; current_period_end: string | null };
   purchased_seats: number;
   members: number;
-  yearclocks: number;
+  shadows: number;
   activated_at: string | null;
   deletion_requested_at: string | null;
   mcp_enabled: boolean;
@@ -50,12 +50,12 @@ export const platformLogoutUrl = `${apiBaseUrl}/api/v1/platform/logout`;
 
 export type SupportStatus = "pending" | "approved" | "rejected" | "revoked" | "expired";
 export type SupportGrant = { id: string; organization_id: string; case_reference: string; scope: "read" | "write"; status: SupportStatus; requested_hours: number; requested_by: string; created_at: string; decided_at: string | null; expires_at: string | null };
-export type SupportYearclock = { id: string; name: string; lanes: Array<{ id: string; name: string; position: number }>; categories: Array<{ id: string; name: string; color: string | null }> };
+export type SupportShadow = { id: string; name: string; lanes: Array<{ id: string; name: string; position: number }>; categories: Array<{ id: string; name: string; color: string | null }> };
 export type SupportEvent = { id: string; lane_id: string; category_id: string | null; title: string; starts_on: string; ends_on: string | null; version: number };
 
 export const loadSupportGrants = () => get<SupportGrant[]>("/support-access");
-export const loadSupportYearclocks = (grantId: string) => get<SupportYearclock[]>(`/support-access/${grantId}/yearclocks`);
-export const loadSupportEvents = (grantId: string, yearclockId: string) => get<SupportEvent[]>(`/support-access/${grantId}/yearclocks/${yearclockId}/events`);
+export const loadSupportShadows = (grantId: string) => get<SupportShadow[]>(`/support-access/${grantId}/shadows`);
+export const loadSupportEvents = (grantId: string, shadowId: string) => get<SupportEvent[]>(`/support-access/${grantId}/shadows/${shadowId}/events`);
 
 export async function requestSupportAccess(body: { organization_id: string; case_reference: string; scope: "read" | "write"; hours: number }): Promise<SupportGrant> {
   return platformResponse(await fetch(`${apiBaseUrl}/api/v1/platform/support-access`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }));

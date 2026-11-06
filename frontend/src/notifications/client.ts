@@ -30,8 +30,7 @@ export async function markAllRead(organizationId: string): Promise<void> {
 }
 
 export type SettingItem = { key: string; audience: "everyone" | "managers"; in_app: boolean; email: boolean };
-export type SummaryChoice = { frequency: "off" | "daily" | "weekly"; yearclock_ids: string[] | null };
-export type Settings = { items: SettingItem[]; summary: SummaryChoice };
+export type Settings = { items: SettingItem[] };
 
 const settingsUrl = (organizationId: string) => `${apiBaseUrl}/api/v1/organizations/${organizationId}/notification-settings`;
 
@@ -39,8 +38,8 @@ export async function loadSettings(organizationId: string): Promise<Settings> {
   return (await call(settingsUrl(organizationId))).json();
 }
 
-export async function saveSettings(organizationId: string, { items, summary }: Settings): Promise<Settings> {
+export async function saveSettings(organizationId: string, { items }: Settings): Promise<Settings> {
   const settings = Object.fromEntries(items.map((item) => [item.key, { in_app: item.in_app, email: item.email }]));
-  const response = await call(settingsUrl(organizationId), { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ settings, summary }) });
+  const response = await call(settingsUrl(organizationId), { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ settings }) });
   return response.json();
 }

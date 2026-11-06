@@ -5,7 +5,7 @@ import { test } from "node:test";
 // The Authentik sign-in pages bridge the application's tokens (ADR-0039). If a token is renamed or
 // changes value, the bridge's variables or fallbacks would silently drift from the application.
 const theme = readFileSync(new URL("../../src/theme.css", import.meta.url), "utf8");
-const bridge = readFileSync(new URL("../../../authentik/blueprints/yearclock-brand.css", import.meta.url), "utf8");
+const bridge = readFileSync(new URL("../../../authentik/blueprints/shadow-brand.css", import.meta.url), "utf8");
 
 const tokens = new Map([...theme.matchAll(/^\s*(--[a-z0-9-]+):\s*(.+?);\s*$/gm)].map((match) => [match[1], match[2]]));
 const uses = [...bridge.matchAll(/var\((--[a-z0-9-]+),\s*([^;]+?)\)\s*[;}]/g)].map((match) => ({ name: match[1], fallback: match[2].trim() }));

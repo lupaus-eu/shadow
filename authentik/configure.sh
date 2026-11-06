@@ -8,7 +8,7 @@ set -eu
 # is kept in the authentik_media volume (production); without the volume it lives
 # in the stopped container. Set AUTHENTIK_CONFIG_FORCE=true to apply regardless,
 # for example after the Authentik database was recreated but the volume was not.
-marker=/media/.yearclock-config-applied
+marker=/media/.shadow-config-applied
 fingerprint=$(
     {
         cat /config/configure.sh /blueprints/custom/*.yaml /blueprints/custom/*.css \
@@ -27,10 +27,10 @@ ak apply_blueprint \
     /blueprints/example/flows-enrollment-email-verification.yaml \
     /blueprints/example/flows-recovery-email-mfa-verification.yaml
 
-ak apply_blueprint /blueprints/custom/yearclock-identity-flows.yaml
-ak apply_blueprint /blueprints/custom/yearclock-application.yaml
-ak apply_blueprint /blueprints/custom/yearclock-mcp-application.yaml
-ak apply_blueprint /blueprints/custom/yearclock-brand.yaml
+ak apply_blueprint /blueprints/custom/shadow-identity-flows.yaml
+ak apply_blueprint /blueprints/custom/shadow-application.yaml
+ak apply_blueprint /blueprints/custom/shadow-mcp-application.yaml
+ak apply_blueprint /blueprints/custom/shadow-brand.yaml
 
 # Record success only after every blueprint applied; a failed run is retried.
 echo "$fingerprint" > "$marker" 2>/dev/null || echo "Could not record the configuration fingerprint at $marker; the next run applies it again."

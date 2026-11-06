@@ -7,7 +7,7 @@ acceptance: none
 ---
 > **Draft for legal review.** Prepared by the product team from the repository's documentation. It is not legal advice and has not been reviewed by a lawyer. `TODO(lawyer)` marks what is unknown or needs legal wording. Nothing here is in force.
 
-Yearclock stores only what it needs to run the service and what you choose yourself. It uses no analytics, advertising, or tracking storage, so it shows no consent banner. `TODO(lawyer)` confirm that this fits section 205 of the Finnish Act on Electronic Communications Services and the Data Protection Ombudsman's current guidance.
+Shadow stores only what it needs to run the service and what you choose yourself. It uses no analytics, advertising, or tracking storage, so it shows no consent banner. `TODO(lawyer)` confirm that this fits section 205 of the Finnish Act on Electronic Communications Services and the Data Protection Ombudsman's current guidance.
 
 This list is kept equal to the code by automated tests (`backend/legal/browser-storage.json`).
 
@@ -22,12 +22,9 @@ This list is kept equal to the code by automated tests (`backend/legal/browser-s
 
 | Key | Purpose | Lifetime |
 | --- | --- | --- |
-| `yearclock.locale` | Remembers your language. | Until you clear site data. |
-| `yearclock.filters.<Yearclock>` | Remembers the filters you chose for one Yearclock. | Until cleared or you clear site data. |
-| `yearclock.display.<Yearclock>` | Remembers the display you chose for one Yearclock. | Until you choose the default or clear site data. |
-| `yearclock.length.<Yearclock>` | Remembers the planning window length for one Yearclock. | Until you choose the default or clear site data. |
-| `yearclock.had-session` (session storage) | Lets the sign-in page say that your session ended. | Until you close the tab. |
-| `yearclock.signed-out` (session storage) | Lets the sign-in page confirm your sign-out once. | Removed after one use. |
+| `shadow.locale` | Remembers your language. | Until you clear site data. |
+| `shadow.had-session` (session storage) | Lets the sign-in page say that your session ended. | Until you close the tab. |
+| `shadow.signed-out` (session storage) | Lets the sign-in page confirm your sign-out once. | Removed after one use. |
 
 ## Sign-in pages
 

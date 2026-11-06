@@ -14,9 +14,9 @@ You can take your data out at any time and move to another provider. This page d
 | What | Who | Format |
 | --- | --- | --- |
 | **Organization Export**: all content of an Organization plus its members' names, emails, and roles | Owners | JSON file (it cannot be imported back) |
-| **Export and import of all your data**: Yearclocks, Lanes, Categories, Labels, Events, and recurring Series of every Organization you administer | Owners and Admins | One CSV file (`yearclock-data/1`), which the same page can import again; people, access rights, deleted Events, history, and billing data are left out |
-| **Events to a spreadsheet** | Anyone who may read a Yearclock | Excel or CSV, for one Yearclock |
-| Print or image of a Yearclock | Anyone who may read it | Print layout or image file |
+| **Export and import of all your data**: Shadows, Lanes, Categories, Labels, Events, and recurring Series of every Organization you administer | Owners and Admins | One CSV file (`shadow-data/1`), which the same page can import again; people, access rights, deleted Events, history, and billing data are left out |
+| **Events to a spreadsheet** | Anyone who may read a Shadow | Excel or CSV, for one Shadow |
+| Print or image of a Shadow | Anyone who may read it | Print layout or image file |
 
 Exports are recorded in the Audit Log by count and format, never by content.
 

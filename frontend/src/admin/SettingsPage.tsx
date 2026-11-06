@@ -1,10 +1,7 @@
-import { Download } from "lucide-react";
 import { useState } from "react";
 
 import { messages, workspaceMessages, type Locale } from "../i18n";
 import { requestOrganizationDeletion, type OrganizationWorkspace } from "../organization-client";
-import { RateLimitedError, exportOrganization } from "../exchange/client";
-import { saveBlob } from "../exchange/image";
 import { Alert, Button, Choice, useToast } from "../ui";
 import { MUTED, Section } from "./Section";
 
@@ -40,34 +37,6 @@ export function OrganizationDeletion({ organizationId, name, locale }: { organiz
         <div><Button variant="danger" disabled={!confirmed} onClick={() => void remove()}>{text.request}</Button></div>
         {failed ? <Alert tone="danger" role="alert">{text.failed}</Alert> : null}
       </div>
-    </Section>
-  );
-}
-
-/** The Owner's download of everything the Organization has stored (Yearclock V2 P7). */
-export function OrganizationExport({ organizationId, locale }: { organizationId: string; locale: Locale }) {
-  const text = messages(locale).shell.admin.export;
-  const toast = useToast();
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  async function download() {
-    setBusy(true);
-    setError(null);
-    try {
-      const file = await exportOrganization(organizationId);
-      saveBlob(file.blob, file.fileName);
-      toast(text.saved);
-    } catch (cause) {
-      setError(cause instanceof RateLimitedError ? text.rateLimited(Math.max(1, Math.ceil(cause.retryAfterSeconds / 60))) : text.failed);
-    }
-    setBusy(false);
-  }
-  return (
-    <Section title={text.title} description={text.description} className="organization-export">
-      <p className={`m-0 ${MUTED}`}>{text.includes}</p>
-      <p className={`m-0 ${MUTED}`}>{text.excludes}</p>
-      {error ? <Alert tone="danger" role="alert">{error}</Alert> : null}
-      <div><Button disabled={busy} icon={<Download size={14} />} onClick={() => void download()}>{busy ? text.working : text.action}</Button></div>
     </Section>
   );
 }

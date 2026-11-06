@@ -15,7 +15,7 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 # shellcheck disable=SC1091
 . "$HERE/lib-backup-env.sh"
 RESTIC=${RESTIC:-restic}
-BACKUP_DIR=${BACKUP_DIR:-/var/backups/yearclock}
+BACKUP_DIR=${BACKUP_DIR:-/var/backups/shadow}
 LOCAL_KEEP_DAYS=${LOCAL_KEEP_DAYS:-2}
 KEEP_HOURLY=${KEEP_HOURLY:-24}
 KEEP_DAILY=${KEEP_DAILY:-30}
@@ -43,8 +43,8 @@ failed() {
     status=$?
     trap - EXIT
     echo "backup failed (exit $status)" >&2
-    "$HERE/notify-email.sh" "Yearclock backup FAILED on $(hostname)" \
-        "The backup run at $(date -u +%Y-%m-%dT%H:%M:%SZ) failed with exit status $status. See: journalctl -u yearclock-backup" || true
+    "$HERE/notify-email.sh" "Shadow backup FAILED on $(hostname)" \
+        "The backup run at $(date -u +%Y-%m-%dT%H:%M:%SZ) failed with exit status $status. See: journalctl -u shadow-backup" || true
     ping /fail
     exit "$status"
 }
@@ -62,9 +62,9 @@ if ! $RESTIC cat config >/dev/null 2>&1; then
 fi
 
 # shellcheck disable=SC2086
-$RESTIC backup --host yearclock --tag yearclock $dumps $BACKUP_EXTRA_FILES
+$RESTIC backup --host shadow --tag shadow $dumps $BACKUP_EXTRA_FILES
 # Dump file names change on every run, so group by tag, not by path.
-$RESTIC forget --prune --host yearclock --tag yearclock --group-by host,tags \
+$RESTIC forget --prune --host shadow --tag shadow --group-by host,tags \
     --keep-hourly "$KEEP_HOURLY" --keep-daily "$KEEP_DAILY" --keep-monthly "$KEEP_MONTHLY"
 $RESTIC check
 
@@ -73,6 +73,6 @@ find "$BACKUP_DIR" -name '*.dump' -mtime "+$LOCAL_KEEP_DAYS" -delete
 trap - EXIT
 ping ""
 if [ "${BACKUP_SUCCESS_EMAIL:-false}" = true ]; then
-    "$HERE/notify-email.sh" "Yearclock backup OK on $(hostname)" "Backed up at $(date -u +%Y-%m-%dT%H:%M:%SZ): $(echo "$dumps" | tr '\n' ' ')" || true
+    "$HERE/notify-email.sh" "Shadow backup OK on $(hostname)" "Backed up at $(date -u +%Y-%m-%dT%H:%M:%SZ): $(echo "$dumps" | tr '\n' ' ')" || true
 fi
 echo "backup OK: $(echo "$dumps" | tr '\n' ' ')"

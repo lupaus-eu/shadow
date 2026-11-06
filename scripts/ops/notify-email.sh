@@ -29,7 +29,7 @@ json() {
 
 BODY=$(printf '{"project_id":"%s","from":{"email":"%s","name":"%s"},"to":[{"email":"%s"}],"subject":"%s","text":"%s"}' \
     "$(json "$SCW_DEFAULT_PROJECT_ID")" "$(json "$SCW_TEM_DEFAULT_SENDER_EMAIL")" \
-    "$(json "${SCW_TEM_DEFAULT_SENDER_NAME:-Yearclock}")" "$(json "$BACKUP_ALERT_EMAIL")" \
+    "$(json "${SCW_TEM_DEFAULT_SENDER_NAME:-Shadow}")" "$(json "$BACKUP_ALERT_EMAIL")" \
     "$(json "$SUBJECT")" "$(json "$TEXT")")
 
 curl -fsS -m 20 -o /dev/null -X POST "$API/$REGION/emails" \

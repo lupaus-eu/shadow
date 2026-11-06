@@ -5,7 +5,7 @@ import { loadAuditEvents, type AuditItem } from "../organization-client";
 import { Alert, Badge, Button, EmptyState, Field, Select } from "../ui";
 import { formatDateTime, MUTED, ROW, ROWS, Section } from "./Section";
 
-const AUDIT_AREAS = ["", "organization", "yearclock", "lane", "category", "label", "event", "series", "occurrence", "support_access"] as const;
+const AUDIT_AREAS = ["", "organization", "shadow", "lane", "category", "label", "event", "series", "occurrence", "support_access"] as const;
 
 export function ActivityLog({ organizationId, locale }: { organizationId: string; locale: Locale }) {
   const text = workspaceMessages(locale).activity;

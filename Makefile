@@ -14,7 +14,7 @@ help: ## List the targets
 
 up: ## Build and start the local stack in the background
 	$(COMPOSE) up -d --build
-	@echo "Yearclock: http://localhost:8173  API: http://localhost:8100  Authentik: http://localhost:8190"
+	@echo "Shadow: http://localhost:8173  API: http://localhost:8100  Authentik: http://localhost:8190"
 
 down: ## Stop the local stack (data volumes are kept)
 	$(COMPOSE) down
@@ -44,12 +44,12 @@ check-ports: ## Verify Compose ports stay inside 8100-8199
 models: ## Validate the C4 model and the DBML schema (docs/architecture/c4, dbml)
 	$(LIKEC4) validate docs/architecture/c4
 	cd backend && ../.venv/bin/python -m pytest -q tests/test_dbml_model.py
-	cd "$$(mktemp -d)" && $(DBML_CLI) "$(CURDIR)/docs/architecture/dbml/yearclock.dbml" --postgres -o schema.sql
+	cd "$$(mktemp -d)" && $(DBML_CLI) "$(CURDIR)/docs/architecture/dbml/shadow.dbml" --postgres -o schema.sql
 
 c4: ## Browse the C4 views at http://localhost:8176
 	$(LIKEC4) start --port 8176 docs/architecture/c4
 
-dbml: ## Regenerate docs/architecture/dbml/yearclock.dbml from the migrated test database
+dbml: ## Regenerate docs/architecture/dbml/shadow.dbml from the migrated test database
 	cd backend && UPDATE_DBML=1 ../.venv/bin/python -m pytest -q tests/test_dbml_model.py
 
 stripe-listen: ## Forward Stripe test-mode webhooks to the local backend

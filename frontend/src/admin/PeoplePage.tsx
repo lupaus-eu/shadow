@@ -1,14 +1,12 @@
 import { Fragment, useEffect, useState } from "react";
 
-import { describeSource } from "../access-sources";
-import { BulkInvitations, GroupChoice, useGroups } from "../components/BulkInvitations";
+import { BulkInvitations } from "../components/BulkInvitations";
 import { messages, workspaceMessages, type Locale } from "../i18n";
 import {
   changeMembershipRole,
   inviteOrganizationUser,
   loadInvitations,
   loadMemberships,
-  loadPersonAccess,
   leaveOrganization,
   removeMembership,
   resendInvitation,
@@ -16,7 +14,6 @@ import {
   transferOwnership,
   type OrganizationInvitation,
   type OrganizationMembership,
-  type PersonAccess,
 } from "../organization-client";
 import { useNavigate } from "react-router";
 
@@ -29,15 +26,13 @@ export function Invitations({ organizationId, locale, isOwner }: { organizationI
   const admin = messages(locale).shell.admin;
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<OrganizationInvitation["role"]>("member");
-  const [groupIds, setGroupIds] = useState<string[]>([]);
-  const groups = useGroups(organizationId);
   const [invitations, setInvitations] = useState<OrganizationInvitation[]>([]);
   const [failed, setFailed] = useState(false);
   const refresh = () => void loadInvitations(organizationId).then(setInvitations).catch(() => setFailed(true));
   useEffect(refresh, [organizationId]);
   async function invite() {
     setFailed(false);
-    try { await inviteOrganizationUser(organizationId, email, role, groupIds); setEmail(""); setGroupIds([]); refresh(); } catch { setFailed(true); }
+    try { await inviteOrganizationUser(organizationId, email, role); setEmail(""); refresh(); } catch { setFailed(true); }
   }
   async function act(action: () => Promise<unknown>) {
     setFailed(false);
@@ -52,7 +47,6 @@ export function Invitations({ organizationId, locale, isOwner }: { organizationI
         <Field label={copy.role} className="w-44">{(control) => <Select {...control} value={role} onChange={(event) => setRole(event.target.value as OrganizationInvitation["role"])}><option value="member">{copy.organizationUser}</option><option value="admin">{copy.administrator}</option>{isOwner ? <option value="owner">{copy.owner}</option> : null}</Select>}</Field>
         <Button type="submit" variant="primary" disabled={!email}>{copy.sendInvitation}</Button>
       </form>
-      <GroupChoice groups={groups} chosen={groupIds} onChange={setGroupIds} legend={copy.bulkInvite.groups} />
       {failed ? <Alert tone="danger" role="alert">{copy.invitationFailed}</Alert> : null}
       <BulkInvitations organizationId={organizationId} locale={locale} isOwner={isOwner} onSent={refresh} />
       <h3 className="m-0 text-[13px] font-semibold">{admin.pendingInvitations}</h3>
@@ -89,7 +83,6 @@ export function Memberships({ organizationId, locale, isOwner, readOnly, onChang
   const overview = workspaceMessages(locale).accessOverview;
   const [memberships, setMemberships] = useState<OrganizationMembership[]>([]);
   const [failed, setFailed] = useState(false);
-  const [open, setOpen] = useState<PersonAccess | null>(null);
   const refresh = () => void loadMemberships(organizationId).then(setMemberships).catch(() => setFailed(true));
   useEffect(refresh, [organizationId]);
   const ownerCount = memberships.filter((item) => item.role === "owner").length;
@@ -113,17 +106,11 @@ export function Memberships({ organizationId, locale, isOwner, readOnly, onChang
       if (outcome === "last_member") setFailed(false);
     } catch { setFailed(true); }
   }
-  async function showAccess(membership: OrganizationMembership) {
-    if (open?.person.membership_id === membership.id) { setOpen(null); return; }
-    try { setOpen(await loadPersonAccess(organizationId, membership.id)); } catch { setFailed(true); }
-  }
   async function remove(membership: OrganizationMembership) {
     setFailed(false);
     const name = membership.display_name || membership.email;
-    let lost: string[] = [];
-    try { lost = (await loadPersonAccess(organizationId, membership.id)).yearclocks.filter((item) => !item.sources.some((source) => source.kind === "role")).map((item) => `${item.name} (${overview.sources.roles[item.role]})`); } catch { /* the confirmation still asks */ }
-    if (!(await confirm({ title: overview.confirmRemove(name, lost), confirmLabel: text.remove, destructive: true }))) return;
-    try { await removeMembership(organizationId, membership); setOpen(null); refresh(); } catch { setFailed(true); }
+    if (!(await confirm({ title: overview.confirmRemove(name, []), confirmLabel: text.remove, destructive: true }))) return;
+    try { await removeMembership(organizationId, membership); refresh(); } catch { setFailed(true); }
   }
   return (
     <Section title={text.title} actions={isOwner && !readOnly ? <Button onClick={() => setTransferring(true)}>{text.transfer.action}</Button> : undefined}>
@@ -136,7 +123,6 @@ export function Memberships({ organizationId, locale, isOwner, readOnly, onChang
               const name = membership.display_name || membership.email;
               const finalOwner = membership.role === "owner" && ownerCount === 1;
               const manageable = !readOnly && !finalOwner && (isOwner || membership.role !== "owner");
-              const expanded = open?.person.membership_id === membership.id;
               return (
                 <Fragment key={membership.id}>
                   <tr>
@@ -151,30 +137,11 @@ export function Memberships({ organizationId, locale, isOwner, readOnly, onChang
                     </td>
                     <td>
                       <div className="flex justify-end gap-2">
-                        <Button size="sm" aria-expanded={expanded} aria-label={overview.accessFor(name)} onClick={() => void showAccess(membership)}>{overview.access}</Button>
                         {manageable && membership.id !== me?.id ? <Button size="sm" variant="ghost-danger" aria-label={`${text.remove} ${name}`} onClick={() => void remove(membership)}>{text.remove}</Button> : null}
                         {!readOnly && membership.id === me?.id ? <Button size="sm" variant="ghost-danger" aria-label={`${text.leave} ${name}`} onClick={() => void startLeaving(membership)}>{text.leave}</Button> : null}
                       </div>
                     </td>
                   </tr>
-                  {expanded && open ? (
-                    <tr>
-                      <td colSpan={3} className="bg-surface-subtle">
-                        <section aria-label={overview.accessFor(name)} className="access-overview">
-                          {open.yearclocks.length ? (
-                            <ul className="m-0 flex list-none flex-col gap-2 p-0">
-                              {open.yearclocks.map((item) => (
-                                <li key={item.id}>
-                                  <strong>{item.name}</strong>{item.archived ? ` (${overview.archived})` : ""} — {overview.sources.roles[item.role]}
-                                  <ul className="m-0 list-disc pl-5 text-[13px] text-ink-muted">{item.sources.map((source, index) => <li key={index}>{describeSource(source, overview.sources)}</li>)}</ul>
-                                </li>
-                              ))}
-                            </ul>
-                          ) : <p className="m-0">{overview.none}</p>}
-                        </section>
-                      </td>
-                    </tr>
-                  ) : null}
                 </Fragment>
               );
             })}

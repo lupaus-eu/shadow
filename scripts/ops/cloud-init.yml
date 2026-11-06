@@ -1,5 +1,5 @@
 #cloud-config
-# Prepares a fresh Ubuntu LTS host (UpCloud) for the Yearclock production stack:
+# Prepares a fresh Ubuntu LTS host (UpCloud) for the Shadow production stack:
 # Docker with the Compose plugin, restic and git, 2 GB of swap, a host firewall,
 # and automatic security updates. Paste it into the server's "User data" field when
 # creating the host (docs/runbooks/first-deployment.md, section 3).
@@ -8,7 +8,7 @@
 # not start the stack: the registry login, `.env.production`, and `docker compose`
 # are the steps in first-deployment.md sections 4 and 5. UpCloud's own firewall is
 # the primary one; ufw here is a second layer. Progress is in
-# /var/log/cloud-init-output.log; /var/lib/yearclock-init.done appears when it ends.
+# /var/log/cloud-init-output.log; /var/lib/shadow-init.done appears when it ends.
 
 package_update: true
 package_upgrade: true
@@ -47,5 +47,5 @@ runcmd:
   - ufw --force enable
   - systemctl enable --now fail2ban
   # Directory for the repository files and .env.production.
-  - mkdir -p /opt/yearclock
-  - touch /var/lib/yearclock-init.done
+  - mkdir -p /opt/shadow
+  - touch /var/lib/shadow-init.done

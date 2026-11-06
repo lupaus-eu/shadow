@@ -4,19 +4,19 @@
 #   docker compose -f docker-compose.prod.yml --env-file .env.production up -d
 #
 # Images are built in CI and pushed to GHCR (.github/workflows/images.yml,
-# ADR-0035); this file builds nothing. YEARCLOCK_TAG selects the release
+# ADR-0035); this file builds nothing. SHADOW_TAG selects the release
 # (a v* tag or sha-<short>); roll back by setting the previous tag.
 #
 # Only Caddy publishes ports. The defaults keep scripts/check-compose-ports.py
 # (127.0.0.1, 8100-8199) satisfied; production sets
-# YEARCLOCK_EDGE_BIND_ADDRESS=0.0.0.0, YEARCLOCK_HTTP_PORT=80, and
-# YEARCLOCK_HTTPS_PORT=443. Values marked :? are required secrets.
-name: yearclock
+# SHADOW_EDGE_BIND_ADDRESS=0.0.0.0, SHADOW_HTTP_PORT=80, and
+# SHADOW_HTTPS_PORT=443. Values marked :? are required secrets.
+name: shadow
 
-x-backend-image: &backend_image ${YEARCLOCK_IMAGE_PREFIX:-ghcr.io/lupaus-eu/yearclock}-backend:${YEARCLOCK_TAG:?set YEARCLOCK_TAG}
+x-backend-image: &backend_image ${SHADOW_IMAGE_PREFIX:-ghcr.io/lupaus-eu/shadow}-backend:${SHADOW_TAG:?set SHADOW_TAG}
 
-x-yearclock-database: &yearclock_database
-  DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:?set POSTGRES_USER}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-yearclock}
+x-shadow-database: &shadow_database
+  DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:?set POSTGRES_USER}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-shadow}
 
 x-scaleway: &scaleway
   SCW_SECRET_KEY: ${SCW_SECRET_KEY:?set SCW_SECRET_KEY}
@@ -24,7 +24,7 @@ x-scaleway: &scaleway
   SCW_TEM_REGION: ${SCW_TEM_REGION:-fr-par}
   SCW_TEM_API_BASE_URL: ${SCW_TEM_API_BASE_URL:-https://api.scaleway.com/transactional-email/v1alpha1/regions}
   SCW_TEM_DEFAULT_SENDER_EMAIL: ${SCW_TEM_DEFAULT_SENDER_EMAIL:?set SCW_TEM_DEFAULT_SENDER_EMAIL}
-  SCW_TEM_DEFAULT_SENDER_NAME: ${SCW_TEM_DEFAULT_SENDER_NAME:-Yearclock}
+  SCW_TEM_DEFAULT_SENDER_NAME: ${SCW_TEM_DEFAULT_SENDER_NAME:-Shadow}
 
 x-lifecycle: &lifecycle
   RECURRENCE_BUFFER_DAYS: ${RECURRENCE_BUFFER_DAYS:-366}
@@ -46,7 +46,7 @@ services:
     image: postgres:17-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-yearclock}
+      POSTGRES_DB: ${POSTGRES_DB:-shadow}
       POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
       AUTHENTIK_POSTGRES_DB: ${AUTHENTIK_POSTGRES_DB:-authentik}
@@ -70,10 +70,10 @@ services:
       PGHOST: db
       PGUSER: ${POSTGRES_USER:?set POSTGRES_USER}
       PGPASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
-      PGDATABASE: ${POSTGRES_DB:-yearclock}
+      PGDATABASE: ${POSTGRES_DB:-shadow}
       POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB:-yearclock}
+      POSTGRES_DB: ${POSTGRES_DB:-shadow}
       AUTHENTIK_POSTGRES_DB: ${AUTHENTIK_POSTGRES_DB:-authentik}
       AUTHENTIK_POSTGRES_USER: ${AUTHENTIK_POSTGRES_USER:-authentik}
       AUTHENTIK_POSTGRES_PASSWORD: ${AUTHENTIK_POSTGRES_PASSWORD:?set AUTHENTIK_POSTGRES_PASSWORD}
@@ -157,7 +157,7 @@ services:
     logging: *default_logging
     image: *backend_image
     command: ["alembic", "upgrade", "head"]
-    environment: *yearclock_database
+    environment: *shadow_database
     depends_on:
       db:
         condition: service_healthy
@@ -168,18 +168,18 @@ services:
     restart: unless-stopped
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "${BACKEND_WORKERS:-2}", "--proxy-headers", "--forwarded-allow-ips", "*"]
     environment:
-      <<: [*yearclock_database, *scaleway, *lifecycle]
-      PROJECT_NAME: ${PROJECT_NAME:-Yearclock}
+      <<: [*shadow_database, *scaleway, *lifecycle]
+      PROJECT_NAME: ${PROJECT_NAME:-Shadow}
       FRONTEND_ORIGINS: ${FRONTEND_URL:?set FRONTEND_URL}
       PUBLIC_API_BASE_URL: ${PUBLIC_API_BASE_URL:?set PUBLIC_API_BASE_URL}
       FRONTEND_URL: ${FRONTEND_URL:?set FRONTEND_URL}
       AUTH_COOKIE_SECURE: "true"
       AUTH_SESSION_MAX_AGE_SECONDS: ${AUTH_SESSION_MAX_AGE_SECONDS:-28800}
-      LIMIT_YEARCLOCKS_PER_ORGANIZATION: ${LIMIT_YEARCLOCKS_PER_ORGANIZATION:-50}
-      LIMIT_LANES_PER_YEARCLOCK: ${LIMIT_LANES_PER_YEARCLOCK:-12}
-      LIMIT_CATEGORIES_PER_YEARCLOCK: ${LIMIT_CATEGORIES_PER_YEARCLOCK:-40}
-      LIMIT_EVENTS_PER_YEARCLOCK: ${LIMIT_EVENTS_PER_YEARCLOCK:-3000}
-      LIMIT_SERIES_PER_YEARCLOCK: ${LIMIT_SERIES_PER_YEARCLOCK:-100}
+      LIMIT_SHADOWS_PER_ORGANIZATION: ${LIMIT_SHADOWS_PER_ORGANIZATION:-50}
+      LIMIT_LANES_PER_SHADOW: ${LIMIT_LANES_PER_SHADOW:-12}
+      LIMIT_CATEGORIES_PER_SHADOW: ${LIMIT_CATEGORIES_PER_SHADOW:-40}
+      LIMIT_EVENTS_PER_SHADOW: ${LIMIT_EVENTS_PER_SHADOW:-3000}
+      LIMIT_SERIES_PER_SHADOW: ${LIMIT_SERIES_PER_SHADOW:-100}
       LIMIT_LABELS_PER_ORGANIZATION: ${LIMIT_LABELS_PER_ORGANIZATION:-200}
       LIMIT_LABELS_PER_EVENT: ${LIMIT_LABELS_PER_EVENT:-10}
       LIMIT_ORGANIZATION_CATEGORIES: ${LIMIT_ORGANIZATION_CATEGORIES:-40}
@@ -219,7 +219,7 @@ services:
     restart: unless-stopped
     command: ["python", "-m", "app.worker"]
     environment:
-      <<: [*yearclock_database, *scaleway, *lifecycle]
+      <<: [*shadow_database, *scaleway, *lifecycle]
       WORKER_SCHEDULE_INTERVAL_SECONDS: ${WORKER_SCHEDULE_INTERVAL_SECONDS:-3600}
       DATABASE_POOL_SIZE: ${WORKER_DATABASE_POOL_SIZE:-2}
       DATABASE_MAX_OVERFLOW: "0"
@@ -229,7 +229,7 @@ services:
 
   frontend:
     logging: *default_logging
-    image: ${YEARCLOCK_IMAGE_PREFIX:-ghcr.io/lupaus-eu/yearclock}-frontend:${YEARCLOCK_TAG:?set YEARCLOCK_TAG}
+    image: ${SHADOW_IMAGE_PREFIX:-ghcr.io/lupaus-eu/shadow}-frontend:${SHADOW_TAG:?set SHADOW_TAG}
     restart: unless-stopped
 
   caddy:
@@ -237,11 +237,11 @@ services:
     image: caddy:2-alpine
     restart: unless-stopped
     environment:
-      YEARCLOCK_SITE_ADDRESS: ${YEARCLOCK_SITE_ADDRESS:?set YEARCLOCK_SITE_ADDRESS}
-      YEARCLOCK_IDENTITY_ADDRESS: ${YEARCLOCK_IDENTITY_ADDRESS:?set YEARCLOCK_IDENTITY_ADDRESS}
+      SHADOW_SITE_ADDRESS: ${SHADOW_SITE_ADDRESS:?set SHADOW_SITE_ADDRESS}
+      SHADOW_IDENTITY_ADDRESS: ${SHADOW_IDENTITY_ADDRESS:?set SHADOW_IDENTITY_ADDRESS}
     ports:
-      - "${YEARCLOCK_EDGE_BIND_ADDRESS:-127.0.0.1}:${YEARCLOCK_HTTP_PORT:-8180}:80"
-      - "${YEARCLOCK_EDGE_BIND_ADDRESS:-127.0.0.1}:${YEARCLOCK_HTTPS_PORT:-8143}:443"
+      - "${SHADOW_EDGE_BIND_ADDRESS:-127.0.0.1}:${SHADOW_HTTP_PORT:-8180}:80"
+      - "${SHADOW_EDGE_BIND_ADDRESS:-127.0.0.1}:${SHADOW_HTTPS_PORT:-8143}:443"
     volumes:
       # The directory, not the file: a file mount keeps pointing at the old inode after a deploy replaces
       # the Caddyfile, so `caddy reload` would never see the change.

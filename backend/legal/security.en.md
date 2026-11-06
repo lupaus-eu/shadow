@@ -7,10 +7,10 @@ acceptance: none
 ---
 > **Draft for legal review.** Prepared by the product team from the repository's documentation. It is not legal advice and has not been reviewed by a lawyer. `TODO(lawyer)` marks what is unknown or needs legal wording. Nothing here is in force.
 
-This is a summary of the technical and organisational measures that protect Yearclock. It is also the security annex of the data processing agreement. `TODO(lawyer)` decide how to describe items that are still open (marked "not yet done" below).
+This is a summary of the technical and organisational measures that protect Shadow. It is also the security annex of the data processing agreement. `TODO(lawyer)` decide how to describe items that are still open (marked "not yet done" below).
 
 ## Sign-in and sessions
-- Sign-in uses an external identity provider with the OpenID Connect authorization-code flow, PKCE, `state`, and `nonce`. Password sign-in needs a second factor; passkeys are supported. Yearclock stores no passwords, passkeys, or MFA secrets.
+- Sign-in uses an external identity provider with the OpenID Connect authorization-code flow, PKCE, `state`, and `nonce`. Password sign-in needs a second factor; passkeys are supported. Shadow stores no passwords, passkeys, or MFA secrets.
 - A session is a random token stored only as a hash. The cookie is `HttpOnly`, `SameSite=Lax`, and `Secure` in production, lasts at most 8 hours by default, and is revoked on the server at sign-out.
 - State-changing requests from an untrusted origin are refused.
 
@@ -18,7 +18,7 @@ This is a summary of the technical and organisational measures that protect Year
 - Each Organization's data is separated in the database by forced row-level security under a restricted database role; routes also check membership and role. Automated tests cover this across Organizations.
 - Members cannot raise their own role or access; Admins cannot create or become Owners.
 
-## Access by Yearclock's staff
+## Access by Shadow's staff
 - Platform staff reach an Organization only through Support Access: the Owners approve a request with a scope and a duration, access is enforced in the database and expires by itself, and every use is audited. `TODO(lawyer)` confidentiality undertakings of staff.
 
 ## Application and infrastructure

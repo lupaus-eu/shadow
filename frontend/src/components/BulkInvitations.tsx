@@ -1,35 +1,16 @@
-import { useEffect, useId, useState } from "react";
+import { useId, useState } from "react";
 
 import { workspaceMessages, type Locale } from "../i18n";
 import { parseAddresses } from "../invitation-addresses";
-import { Alert, Button, Choice, Select, TextArea } from "../ui";
-import { inviteMany, loadGroups, SeatsNeededError, type BulkInvitationResult, type Group, type OrganizationInvitation } from "../organization-client";
+import { Alert, Button, Select, TextArea } from "../ui";
+import { inviteMany, SeatsNeededError, type BulkInvitationResult, type OrganizationInvitation } from "../organization-client";
 
-/** Pick Groups that an invited person joins on acceptance. */
-export function GroupChoice({ groups, chosen, onChange, legend }: { groups: Group[]; chosen: string[]; onChange: (ids: string[]) => void; legend: string }) {
-  if (!groups.length) return null;
-  return (
-    <fieldset className="m-0 flex flex-wrap items-center gap-x-4 gap-y-1 border-0 p-0">
-      <legend className="mb-1 p-0 text-[13px] font-medium">{legend}</legend>
-      {groups.map((group) => <Choice key={group.id} checked={chosen.includes(group.id)} onChange={(event) => onChange(event.target.checked ? [...chosen, group.id] : chosen.filter((id) => id !== group.id))} label={group.name} />)}
-    </fieldset>
-  );
-}
-
-export function useGroups(organizationId: string): Group[] {
-  const [groups, setGroups] = useState<Group[]>([]);
-  useEffect(() => { void loadGroups(organizationId).then(setGroups).catch(() => setGroups([])); }, [organizationId]);
-  return groups;
-}
-
-/** Invite up to 50 people at once, previewing skips and seats first (Yearclock V2). */
+/** Invite up to 50 people at once, previewing skips and seats first (Shadow V2). */
 export function BulkInvitations({ organizationId, locale, isOwner, onSent }: { organizationId: string; locale: Locale; isOwner: boolean; onSent: () => void }) {
   const copy = workspaceMessages(locale);
   const text = copy.bulkInvite;
-  const groups = useGroups(organizationId);
   const [addresses, setAddresses] = useState("");
   const [role, setRole] = useState<OrganizationInvitation["role"]>("member");
-  const [groupIds, setGroupIds] = useState<string[]>([]);
   const [preview, setPreview] = useState<BulkInvitationResult | null>(null);
   const [seatsNeeded, setSeatsNeeded] = useState(0);
   const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);
@@ -40,7 +21,7 @@ export function BulkInvitations({ organizationId, locale, isOwner, onSent }: { o
     setNotice(null);
     if (emails.length > 50) { setNotice({ ok: false, text: text.tooMany }); return; }
     try {
-      const result = await inviteMany(organizationId, emails, role, groupIds, dryRun);
+      const result = await inviteMany(organizationId, emails, role, dryRun);
       if (dryRun) { setPreview(result); setSeatsNeeded(result.seats_needed); return; }
       setPreview(null); setAddresses("");
       setNotice({ ok: true, text: text.sent(result.created) });
@@ -62,7 +43,6 @@ export function BulkInvitations({ organizationId, locale, isOwner, onSent }: { o
           <label htmlFor={ids.role} className="text-[13px] font-medium">{text.role}</label>
           <Select id={ids.role} className="w-44" value={role} onChange={(event) => changed(() => setRole(event.target.value as OrganizationInvitation["role"]))}><option value="member">{copy.organizationUser}</option><option value="admin">{copy.administrator}</option>{isOwner ? <option value="owner">{copy.owner}</option> : null}</Select>
         </div>
-        <GroupChoice groups={groups} chosen={groupIds} onChange={(next) => changed(() => setGroupIds(next))} legend={text.groups} />
         <div><Button disabled={!emails.length} onClick={() => void send(true)}>{text.preview}</Button></div>
         {preview ? (
           <div role="status" className="flex flex-col gap-2 rounded-[10px] bg-surface-subtle p-3 text-[13px]">

@@ -7,10 +7,10 @@ acceptance: required
 ---
 > **Draft for legal review.** Prepared by the product team from the repository's documentation. It is not legal advice and has not been reviewed by a lawyer. `TODO(lawyer)` marks what is unknown or needs legal wording. Nothing here is in force.
 
-These terms govern the customer's use of Yearclock. `TODO(lawyer)` the whole text needs legal wording; this draft only collects what the product and the operator's decisions already state.
+These terms govern the customer's use of Shadow. `TODO(lawyer)` the whole text needs legal wording; this draft only collects what the product and the operator's decisions already state.
 
 ## The service and who may use it
-- Yearclock is a yearly planning service provided to **business customers only**. The customer is an Organization; its Owners and Admins act for it. `TODO(lawyer)` a clause on authority and on consumers being excluded.
+- Shadow is a yearly planning service provided to **business customers only**. The customer is an Organization; its Owners and Admins act for it. `TODO(lawyer)` a clause on authority and on consumers being excluded.
 - The service is described by the product as it is when the customer uses it. `TODO(lawyer)` the beta wording: the service is a product beta and may change.
 
 ## Price and payment
@@ -20,8 +20,8 @@ These terms govern the customer's use of Yearclock. `TODO(lawyer)` the whole tex
 - The price, the terms, and the end of a beta change only with at least 30 days' notice to the Owners, with a right to object `TODO(lawyer)` the effect of an objection.
 
 ## The customer's data
-- The customer owns the content it puts into Yearclock and may export it at any time (see the switching page). Yearclock processes personal data in that content under the data processing agreement.
-- Yearclock may use the customer's data only to provide the service `TODO(lawyer)`.
+- The customer owns the content it puts into Shadow and may export it at any time (see the switching page). Shadow processes personal data in that content under the data processing agreement.
+- Shadow may use the customer's data only to provide the service `TODO(lawyer)`.
 
 ## Acceptable use
 `TODO(lawyer)` acceptable-use rules.

@@ -7,11 +7,11 @@ acceptance: none
 ---
 > **Draft for legal review.** Prepared by the product team from the repository's documentation. It is not legal advice and has not been reviewed by a lawyer. `TODO(lawyer)` marks what is unknown or needs legal wording. Nothing here is in force.
 
-## Who provides Yearclock
+## Who provides Shadow
 
 | | |
 | --- | --- |
-| Service | Yearclock |
+| Service | Shadow |
 | Legal name | Lupaus Palvelut Oy (trade name used in the service: Lupaus) |
 | Business ID (Y-tunnus) | 2355166-5 |
 | Registered office | Helsinki, Finland |
@@ -21,4 +21,4 @@ acceptance: none
 | Contact for legal and privacy matters | `TODO(lawyer)` the address in `LEGAL_CONTACT_EMAIL` |
 | Supervisory authority for data protection | The Data Protection Ombudsman (tietosuojavaltuutettu), Finland |
 
-Yearclock is provided by Lupaus Palvelut Oy, a Finnish company in Finnish ownership, to business customers only.
+Shadow is provided by Lupaus Palvelut Oy, a Finnish company in Finnish ownership, to business customers only.

@@ -7,10 +7,10 @@ acceptance: required
 ---
 > **Luonnos juristin tarkastettavaksi.** Tuotetiimi on laatinut tämän repositorion dokumentaation pohjalta. Se ei ole oikeudellista neuvontaa, eikä juristi ole tarkastanut sitä. `TODO(lawyer)` merkitsee asiaa, joka on tuntematon tai tarvitsee juristin sanamuodon. Mikään tässä ei ole voimassa.
 
-Nämä ehdot koskevat asiakkaan Yearclockin käyttöä. `TODO(lawyer)` koko teksti tarvitsee juristin sanamuodon; tämä luonnos kokoaa vain sen, minkä tuote ja operaattorin päätökset jo kertovat.
+Nämä ehdot koskevat asiakkaan Shadowin käyttöä. `TODO(lawyer)` koko teksti tarvitsee juristin sanamuodon; tämä luonnos kokoaa vain sen, minkä tuote ja operaattorin päätökset jo kertovat.
 
 ## Palvelu ja sen käyttäjät
-- Yearclock on vuosisuunnittelupalvelu, joka tarjotaan **vain yritysasiakkaille**. Asiakas on organisaatio; sen omistajat ja ylläpitäjät toimivat sen puolesta. `TODO(lawyer)` kohta valtuuksista ja kuluttajien rajaamisesta pois.
+- Shadow on vuosisuunnittelupalvelu, joka tarjotaan **vain yritysasiakkaille**. Asiakas on organisaatio; sen omistajat ja ylläpitäjät toimivat sen puolesta. `TODO(lawyer)` kohta valtuuksista ja kuluttajien rajaamisesta pois.
 - Palvelu on sellainen kuin tuote on asiakkaan käyttäessä sitä. `TODO(lawyer)` beetasanamuoto: palvelu on tuotebeeta ja voi muuttua.
 
 ## Hinta ja maksu
@@ -20,8 +20,8 @@ Nämä ehdot koskevat asiakkaan Yearclockin käyttöä. `TODO(lawyer)` koko teks
 - Hinta, ehdot ja beetan päättyminen muuttuvat vain ilmoittamalla omistajille vähintään 30 päivää etukäteen, vastustusoikeudella `TODO(lawyer)` vastustuksen vaikutus.
 
 ## Asiakkaan tiedot
-- Asiakas omistaa Yearclockiin kirjaamansa sisällön ja voi viedä sen milloin tahansa (ks. vaihtosivu). Yearclock käsittelee sisällön henkilötietoja tietojenkäsittelysopimuksen mukaisesti.
-- Yearclock saa käyttää asiakkaan tietoja vain palvelun tuottamiseen `TODO(lawyer)`.
+- Asiakas omistaa Shadowiin kirjaamansa sisällön ja voi viedä sen milloin tahansa (ks. vaihtosivu). Shadow käsittelee sisällön henkilötietoja tietojenkäsittelysopimuksen mukaisesti.
+- Shadow saa käyttää asiakkaan tietoja vain palvelun tuottamiseen `TODO(lawyer)`.
 
 ## Hyväksyttävä käyttö
 `TODO(lawyer)` hyväksyttävän käytön säännöt.

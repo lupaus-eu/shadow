@@ -35,7 +35,7 @@ type Copy = {
 const en: Copy = {
   footerLink: "Terms and privacy",
   indexTitle: "Terms, privacy, and security",
-  indexIntro: "The documents that govern the Yearclock service.",
+  indexIntro: "The documents that govern the Shadow service.",
   indexEmpty: "No documents are published yet.",
   version: (version, date) => `Version ${version}, in force from ${date}`,
   draftBanner: "Draft, not in force. This text is a placeholder and does not bind anyone.",
@@ -72,7 +72,7 @@ const en: Copy = {
 const fi: Copy = {
   footerLink: "Ehdot ja tietosuoja",
   indexTitle: "Ehdot, tietosuoja ja tietoturva",
-  indexIntro: "Yearclock-palvelua koskevat asiakirjat.",
+  indexIntro: "Shadow-palvelua koskevat asiakirjat.",
   indexEmpty: "Asiakirjoja ei ole vielä julkaistu.",
   version: (version, date) => `Versio ${version}, voimassa ${date} alkaen`,
   draftBanner: "Luonnos, ei voimassa. Teksti on paikkamerkki, eikä se sido ketään.",

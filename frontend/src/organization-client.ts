@@ -20,8 +20,8 @@ export type OrganizationSignup = {
   checkout_url: string | null;
   initial_content: {
     owner_user_account_id: string;
-    yearclock_id: string;
-    yearclock_name: string;
+    shadow_id: string;
+    shadow_name: string;
     lane_id: string;
     lane_name: string;
   } | null;
@@ -45,20 +45,7 @@ export type OrganizationWorkspace = {
     role: "owner" | "admin" | "member";
   };
   subscription: Subscription;
-  yearclocks: WorkspaceYearclock[];
-  recent_yearclock_ids?: string[];
 };
-
-/** Remember that the user opened a Yearclock; failures are harmless and ignored by callers. */
-export async function recordYearclockVisit(organizationId: string, yearclockId: string): Promise<{ previous_visited_at: string | null }> {
-  const response = await fetch(`${apiBaseUrl}/api/v1/organizations/${organizationId}/yearclocks/${yearclockId}/visit`, { method: "POST", credentials: "include" });
-  return response.ok ? ((await response.json().catch(() => ({ previous_visited_at: null }))) as { previous_visited_at: string | null }) : { previous_visited_at: null };
-}
-
-/** What others changed in a Yearclock (and its readable Linked Lanes) after ``since``. */
-export async function loadChanges(organizationId: string, yearclockId: string, since: string, limit = 200): Promise<import("./yearclock/history").ChangesPage> {
-  return yearclockResponse(await fetch(`${apiBaseUrl}/api/v1/organizations/${organizationId}/yearclocks/${yearclockId}/changes?since=${encodeURIComponent(since)}&limit=${limit}`, { credentials: "include" }));
-}
 
 export type Subscription = {
   state: "active" | "grace" | "read_only";
@@ -71,15 +58,6 @@ export type Subscription = {
 };
 
 export type AuditItem = { id: string; actor: string | null; support_access_id: string | null; action: string; target_type: string; target_id: string; occurred_at: string; change_summary: Record<string, unknown> };
-
-export async function loadAuditEvents(organizationId: string, { prefix, offset = 0, limit = 25 }: { prefix?: string; offset?: number; limit?: number } = {}): Promise<{ items: AuditItem[]; next_offset: number | null }> {
-  const params = new URLSearchParams({ offset: String(offset), limit: String(limit) });
-  if (prefix) params.set("prefix", prefix);
-  const response = await fetch(`${apiBaseUrl}/api/v1/organizations/${organizationId}/audit-events?${params.toString()}`, { credentials: "include" });
-  if (response.status === 401) throw new AuthenticationRequiredError();
-  if (!response.ok) throw new Error("Audit request failed");
-  return (await response.json()) as { items: AuditItem[]; next_offset: number | null };
-}
 
 export type SupportAccessStatus = "pending" | "approved" | "rejected" | "revoked" | "expired";
 export type SupportAccessRequest = { id: string; organization_id: string; case_reference: string; scope: "read" | "write"; status: SupportAccessStatus; requested_hours: number; requested_by: string; created_at: string; decided_at: string | null; expires_at: string | null };
@@ -169,23 +147,6 @@ export async function startResubscription(organizationId: string, seats: number)
 export const cancelSubscription = (organizationId: string, reason: CancelReason | null) => subscriptionCall(organizationId, "cancel", { reason });
 export const undoCancellation = (organizationId: string) => subscriptionCall(organizationId, "cancel/undo");
 
-export type WorkspaceYearclock = {
-  id: string;
-  name: string;
-  version: number;
-  access_role: "editor" | "viewer";
-  lanes: Lane[];
-  start_month?: number;
-  show_week_ring?: boolean;
-  show_quarter_ring?: boolean;
-};
-
-export type LayoutChanges = { start_month?: number; show_week_ring?: boolean; show_quarter_ring?: boolean };
-
-export async function updateLayout(organizationId: string, yearclock: { id: string; version: number }, changes: LayoutChanges): Promise<{ id: string; version: number; start_month: number }> {
-  return yearclockResponse(await fetch(`${apiBaseUrl}/api/v1/organizations/${organizationId}/yearclocks/${yearclock.id}/layout`, { method: "PATCH", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...changes, expected_version: yearclock.version }) }));
-}
-
 export type SeatProjection = {
   purchased: number;
   occupied: number;
@@ -227,90 +188,9 @@ export type OrganizationMembership = {
   version: number;
 };
 
-export type Lane = {
-  id: string;
-  name: string;
-  display_order: number;
-  version: number;
-  tint?: string | null;
-  height?: "normal" | "tall";
-  source_lane_id?: string | null;
-  source?: LinkSource | null;
-};
-
-/** What the viewer may know about a Linked Lane's source (Yearclock V2). */
-export type LinkSource = { available: boolean; reason: "no_access" | "deleted" | null; yearclock_id: string | null; yearclock_name: string | null; lane_name: string | null };
-
-export type ManagedYearclock = {
-  id: string;
-  name: string;
-  display_order: number;
-  version: number;
-  archived_at: string | null;
-  deleted_at?: string | null;
-  purge_after?: string | null;
-  lanes: Lane[];
-  organization_access?: OrganizationAccess;
-};
-
-export type OrganizationAccess = "none" | "viewer" | "editor";
-
 export class ConfirmationRequiredError extends Error {
   constructor(readonly members: number) { super("confirmation required"); }
 }
-
-/** Share a Yearclock with every member of the Organization (Yearclock V2). */
-export async function setOrganizationAccess(organizationId: string, yearclock: { id: string; version: number }, role: OrganizationAccess, confirm = false): Promise<{ organization_access: OrganizationAccess; version: number }> {
-  const response = await fetch(`${apiBaseUrl}/api/v1/organizations/${organizationId}/yearclocks/${yearclock.id}/organization-access`, { method: "PUT", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ role, expected_version: yearclock.version, confirm }) });
-  if (response.status === 409) {
-    const detail = ((await response.json().catch(() => null)) as { detail?: { reason?: string; members?: number } } | null)?.detail;
-    if (detail?.reason === "confirmation_required") throw new ConfirmationRequiredError(detail.members ?? 0);
-    throw new ConflictError("The Yearclock changed");
-  }
-  return yearclockResponse(response);
-}
-
-export type YearclockAccessGrant = {
-  id: string;
-  user_account_id: string;
-  role: "editor" | "viewer";
-  version: number;
-};
-
-import type { EventLink } from "./yearclock/event-links";
-
-export type YearclockEvent = {
-  id: string;
-  lane_id: string;
-  category_id: string | null;
-  label_ids?: string[];
-  title: string;
-  description: string | null;
-  description_format?: "plain" | "markdown";
-  location?: string | null;
-  links?: EventLink[];
-  starts_at?: string | null;
-  ends_at?: string | null;
-  starts_on: string;
-  ends_on: string | null;
-  version: number;
-  occurrence_id?: string | null;
-  series_id?: string | null;
-  series_date?: string | null;
-  exception?: boolean;
-  skipped?: boolean;
-  deleted_at?: string | null;
-  purge_after?: string | null;
-  linked?: boolean;
-  source_yearclock_id?: string | null;
-};
-
-export type EventInput = Pick<YearclockEvent, "title" | "lane_id" | "category_id" | "starts_on" | "ends_on" | "description"> & { description_format: "plain" | "markdown"; location: string | null; links: EventLink[]; starts_at: string | null; ends_at: string | null } & { label_ids?: string[]; origin?: "duplicate" | "plan_again" };
-export type YearclockCategory = { id: string; name: string; color: string | null; display_order: number; version: number; scope?: "organization" | "yearclock" | "linked"; usage?: number | null; source_yearclock_id?: string | null; source_yearclock_name?: string | null };
-export type SeriesInput = { title: string; lane_id: string; category_id: string | null; description: string | null; description_format: "plain" | "markdown"; location: string | null; links: EventLink[]; starts_at: string | null; ends_at: string | null; starts_on: string; frequency: "WEEKLY" | "MONTHLY" | "YEARLY"; interval: number; until: string | null; occurrence_count: number | null; last_day: boolean; label_ids?: string[] };
-export type OccurrenceEdit = Partial<Pick<YearclockEvent, "title" | "description" | "description_format" | "location" | "links" | "starts_at" | "ends_at" | "lane_id" | "category_id" | "starts_on">> & { label_ids?: string[] };
-export type SeriesChanges = Partial<Pick<YearclockEvent, "title" | "description" | "description_format" | "location" | "links" | "starts_at" | "ends_at" | "lane_id" | "category_id">> & { label_ids?: string[] };
-export type YearclockSeries = { id: string; title: string; frequency: SeriesInput["frequency"]; interval: number; starts_on: string; effective_from: string; until: string | null; occurrence_count: number | null; last_day: boolean; rrule: string; version: number };
 
 export class ConflictError extends Error {}
 
@@ -470,25 +350,10 @@ export async function loadInvitations(organizationId: string): Promise<Organizat
   return invitationResponse(await fetch(`${apiBaseUrl}/api/v1/organizations/${organizationId}/invitations`, { credentials: "include" }));
 }
 
-export async function inviteOrganizationUser(organizationId: string, email: string, role: OrganizationInvitation["role"] = "member", groupIds: string[] = []): Promise<OrganizationInvitation> {
-  return invitationResponse(await fetch(`${apiBaseUrl}/api/v1/organizations/${organizationId}/invitations`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, role, ...(groupIds.length ? { group_ids: groupIds } : {}) }) }));
-}
-
 export type BulkInvitationResult = { invite: string[]; skipped: Array<{ email: string; reason: "invalid" | "duplicate" | "member" | "invited" }>; seats_needed: number; created: number };
 export class SeatsNeededError extends Error {
   constructor(readonly seats: number) { super("seats needed"); }
 }
-/** Invite up to 50 people; a dry run only previews (Yearclock V2). */
-export async function inviteMany(organizationId: string, emails: string[], role: OrganizationInvitation["role"], groupIds: string[], dryRun: boolean): Promise<BulkInvitationResult> {
-  const response = await fetch(`${apiBaseUrl}/api/v1/organizations/${organizationId}/invitations/bulk`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ emails, role, group_ids: groupIds, dry_run: dryRun }) });
-  if (response.status === 409) {
-    const detail = ((await response.json().catch(() => null)) as { detail?: { reason?: string; seats_needed?: number } } | null)?.detail;
-    if (detail?.reason === "seats_needed") throw new SeatsNeededError(detail.seats_needed ?? 0);
-  }
-  if (!response.ok) throw new Error("Bulk invitation failed");
-  return (await response.json()) as BulkInvitationResult;
-}
-
 export async function resendInvitation(organizationId: string, invitation: OrganizationInvitation): Promise<OrganizationInvitation> {
   return invitationResponse(await fetch(`${apiBaseUrl}/api/v1/organizations/${organizationId}/invitations/${invitation.id}/resend?expected_version=${invitation.version}`, { method: "POST", credentials: "include" }));
 }
@@ -503,56 +368,7 @@ export async function acceptInvitation(token: string): Promise<OrganizationInvit
   return invitationResponse(await fetch(`${apiBaseUrl}/api/v1/invitations/accept`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token }) }));
 }
 
-export type GroupMember = { membership_id: string; name: string; email: string };
-export type Group = { id: string; name: string; version: number; members: GroupMember[] };
-export type OwnGroup = { id: string; name: string; access: Array<{ yearclock_id: string; yearclock_name: string; role: "editor" | "viewer" }> };
-export type GroupImpact = { members: number; yearclocks: number; losing_access: Array<{ name: string; yearclock_name: string }> };
-export class GroupConfirmationRequiredError extends Error {
-  constructor(readonly impact: GroupImpact) { super("confirmation required"); }
-}
 export class DuplicateNameError extends Error {}
-
-async function groupResponse<T>(response: Response): Promise<T> {
-  if (response.status === 409) {
-    const detail = ((await response.clone().json().catch(() => null)) as { detail?: Record<string, unknown> } | null)?.detail;
-    if (detail?.reason === "confirmation_required") throw new GroupConfirmationRequiredError(detail as unknown as GroupImpact);
-    if (detail?.reason === "duplicate_name") throw new DuplicateNameError("duplicate");
-  }
-  return yearclockResponse(response);
-}
-const groupsUrl = (organizationId: string) => `${apiBaseUrl}/api/v1/organizations/${organizationId}/groups`;
-export async function loadGroups(organizationId: string): Promise<Group[]> { return groupResponse(await fetch(groupsUrl(organizationId), { credentials: "include" })); }
-export async function loadOwnGroups(organizationId: string): Promise<OwnGroup[]> { return groupResponse(await fetch(`${apiBaseUrl}/api/v1/organizations/${organizationId}/me/groups`, { credentials: "include" })); }
-export async function createGroup(organizationId: string, name: string): Promise<Group> { return groupResponse(await fetch(groupsUrl(organizationId), { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) })); }
-export async function renameGroup(organizationId: string, group: Group, name: string): Promise<Group> { return groupResponse(await fetch(`${groupsUrl(organizationId)}/${group.id}`, { method: "PATCH", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, expected_version: group.version }) })); }
-export async function deleteGroup(organizationId: string, group: Group, confirm = false): Promise<void> {
-  const response = await fetch(`${groupsUrl(organizationId)}/${group.id}?expected_version=${group.version}${confirm ? "&confirm=true" : ""}`, { method: "DELETE", credentials: "include" });
-  if (response.status === 204) return;
-  await groupResponse(response);
-}
-export async function addGroupMember(organizationId: string, group: Group, membershipId: string): Promise<Group> { return groupResponse(await fetch(`${groupsUrl(organizationId)}/${group.id}/members/${membershipId}`, { method: "PUT", credentials: "include" })); }
-export async function removeGroupMember(organizationId: string, group: Group, membershipId: string): Promise<Group> { return groupResponse(await fetch(`${groupsUrl(organizationId)}/${group.id}/members/${membershipId}`, { method: "DELETE", credentials: "include" })); }
-
-export type GroupGrant = { group_id: string; name: string; role: "editor" | "viewer"; version: number };
-export async function loadGroupGrants(organizationId: string, yearclockId: string): Promise<GroupGrant[]> {
-  return yearclockResponse(await fetch(`${apiBaseUrl}/api/v1/organizations/${organizationId}/yearclocks/${yearclockId}/group-access`, { credentials: "include" }));
-}
-export async function grantGroupAccess(organizationId: string, yearclockId: string, groupId: string, role: GroupGrant["role"], existing?: GroupGrant): Promise<GroupGrant> {
-  return yearclockResponse(await fetch(`${apiBaseUrl}/api/v1/organizations/${organizationId}/yearclocks/${yearclockId}/group-access`, { method: "PUT", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ group_id: groupId, role, ...(existing ? { expected_version: existing.version } : {}) }) }));
-}
-export async function revokeGroupAccess(organizationId: string, yearclockId: string, grant: GroupGrant): Promise<void> {
-  const response = await fetch(`${apiBaseUrl}/api/v1/organizations/${organizationId}/yearclocks/${yearclockId}/group-access/${grant.group_id}?expected_version=${grant.version}`, { method: "DELETE", credentials: "include" });
-  if (!response.ok) throw new Error("Group access request failed");
-}
-
-export type PersonAccess = { person: { membership_id: string; name: string; email: string; organization_role: string }; yearclocks: Array<{ id: string; name: string; archived: boolean; role: "editor" | "viewer"; sources: import("./access-sources").AccessSource[] }> };
-export type YearclockPeople = { id: string; name: string; people: Array<{ membership_id: string; name: string; email: string; organization_role: string; role: "editor" | "viewer"; sources: import("./access-sources").AccessSource[] }> };
-export async function loadPersonAccess(organizationId: string, membershipId: string): Promise<PersonAccess> {
-  return yearclockResponse(await fetch(`${apiBaseUrl}/api/v1/organizations/${organizationId}/access-overview/people/${membershipId}`, { credentials: "include" }));
-}
-export async function loadYearclockPeople(organizationId: string, yearclockId: string): Promise<YearclockPeople> {
-  return yearclockResponse(await fetch(`${apiBaseUrl}/api/v1/organizations/${organizationId}/access-overview/yearclocks/${yearclockId}`, { credentials: "include" }));
-}
 
 export async function loadMemberships(organizationId: string): Promise<OrganizationMembership[]> {
   return invitationResponse(await fetch(`${apiBaseUrl}/api/v1/organizations/${organizationId}/memberships`, { credentials: "include" }));
@@ -589,204 +405,7 @@ export class LimitReachedError extends Error {
   constructor(readonly limit: string, readonly maximum: number) { super(`limit reached: ${limit}`); }
 }
 
-async function yearclockResponse<T>(response: Response): Promise<T> {
-  if (response.status === 401) throw new AuthenticationRequiredError();
-  if (response.status === 409) {
-    const detail = ((await response.json().catch(() => null)) as { detail?: { reason?: string; limit?: string; maximum?: number } } | null)?.detail;
-    if (detail?.reason === "limit_reached") throw new LimitReachedError(detail.limit ?? "", detail.maximum ?? 0);
-    throw new ConflictError("The resource changed");
-  }
-  if (!response.ok) throw new Error("Yearclock request failed");
-  return (await response.json()) as T;
-}
-
-export async function loadManagedYearclocks(organizationId: string, includeArchived = true): Promise<ManagedYearclock[]> {
-  return yearclockResponse(await fetch(`${apiBaseUrl}/api/v1/organizations/${organizationId}/yearclocks?include_archived=${includeArchived}&include_deleted=true`, { credentials: "include" }));
-}
-
-export async function deleteYearclock(organizationId: string, yearclock: ManagedYearclock): Promise<void> {
-  const response = await fetch(`${apiBaseUrl}/api/v1/organizations/${organizationId}/yearclocks/${yearclock.id}?expected_version=${yearclock.version}`, { method: "DELETE", credentials: "include" });
-  if (response.status === 401) throw new AuthenticationRequiredError();
-  if (response.status === 409) throw new ConflictError("The Yearclock changed");
-  if (!response.ok) throw new Error("Yearclock request failed");
-}
-
-export async function recoverYearclock(organizationId: string, yearclock: ManagedYearclock): Promise<ManagedYearclock> {
-  return yearclockResponse(await fetch(`${apiBaseUrl}/api/v1/organizations/${organizationId}/yearclocks/${yearclock.id}/recover?expected_version=${yearclock.version}`, { method: "POST", credentials: "include" }));
-}
-
-export async function createYearclock(organizationId: string, name: string): Promise<ManagedYearclock> {
-  return yearclockResponse(await fetch(`${apiBaseUrl}/api/v1/organizations/${organizationId}/yearclocks`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) }));
-}
-
-export async function renameYearclock(organizationId: string, yearclock: ManagedYearclock, name: string): Promise<ManagedYearclock> {
-  return yearclockResponse(await fetch(`${apiBaseUrl}/api/v1/organizations/${organizationId}/yearclocks/${yearclock.id}`, { method: "PATCH", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, expected_version: yearclock.version }) }));
-}
-
-export async function archiveYearclock(organizationId: string, yearclock: ManagedYearclock, restore = false): Promise<ManagedYearclock> {
-  const action = restore ? "restore" : "archive";
-  return yearclockResponse(await fetch(`${apiBaseUrl}/api/v1/organizations/${organizationId}/yearclocks/${yearclock.id}/${action}`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: yearclock.name, expected_version: yearclock.version }) }));
-}
-
-export async function reorderYearclocks(organizationId: string, yearclocks: ManagedYearclock[], orderedIds: string[]): Promise<ManagedYearclock[]> {
-  const expectedVersions = Object.fromEntries(yearclocks.map((yearclock) => [yearclock.id, yearclock.version]));
-  return yearclockResponse(await fetch(`${apiBaseUrl}/api/v1/organizations/${organizationId}/yearclocks/order`, { method: "PUT", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ordered_ids: orderedIds, expected_versions: expectedVersions }) }));
-}
-
-export async function createLane(organizationId: string, yearclockId: string, name: string): Promise<Lane> {
-  return yearclockResponse(await fetch(`${apiBaseUrl}/api/v1/organizations/${organizationId}/yearclocks/${yearclockId}/lanes`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) }));
-}
-
-export async function copyLane(organizationId: string, yearclockId: string, sourceLaneId: string, includeEvents: boolean): Promise<{ lane: Lane; events: number; series: number; categories_created: number }> {
-  return yearclockResponse(await fetch(`${apiBaseUrl}/api/v1/organizations/${organizationId}/yearclocks/${yearclockId}/lanes/copy`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ source_lane_id: sourceLaneId, include_events: includeEvents }) }));
-}
-
-export async function linkLane(organizationId: string, yearclockId: string, sourceLaneId: string): Promise<Lane> {
-  return yearclockResponse(await fetch(`${apiBaseUrl}/api/v1/organizations/${organizationId}/yearclocks/${yearclockId}/lanes/link`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ source_lane_id: sourceLaneId }) }));
-}
-
-export async function renameLane(organizationId: string, yearclockId: string, lane: Lane, name: string, appearance: { tint?: string | null; height?: "normal" | "tall" } = {}): Promise<Lane> {
-  return yearclockResponse(await fetch(`${apiBaseUrl}/api/v1/organizations/${organizationId}/yearclocks/${yearclockId}/lanes/${lane.id}`, { method: "PATCH", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, ...appearance, expected_version: lane.version }) }));
-}
-
-export async function reorderLanes(organizationId: string, yearclock: { id: string; version: number }, orderedIds: string[]): Promise<Lane[]> {
-  return yearclockResponse(await fetch(`${apiBaseUrl}/api/v1/organizations/${organizationId}/yearclocks/${yearclock.id}/lanes/order`, { method: "PUT", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ordered_ids: orderedIds, expected_version: yearclock.version }) }));
-}
-
-export class LaneHasEventsError extends Error {
-  constructor(readonly events: number, readonly series: number) { super("Lane has Events"); }
-}
-
-export async function deleteLane(organizationId: string, yearclockId: string, lane: Lane): Promise<void> {
-  const response = await fetch(`${apiBaseUrl}/api/v1/organizations/${organizationId}/yearclocks/${yearclockId}/lanes/${lane.id}?expected_version=${lane.version}`, { method: "DELETE", credentials: "include" });
-  if (response.status === 401) throw new AuthenticationRequiredError();
-  if (response.status === 409) {
-    const detail = ((await response.json()) as { detail?: { reason?: string; events?: number; series?: number } }).detail;
-    if (detail?.reason === "lane_has_events") throw new LaneHasEventsError(detail.events ?? 0, detail.series ?? 0);
-    throw new ConflictError(detail?.reason ?? "The Lane changed");
-  }
-  if (!response.ok) throw new Error("Lane request failed");
-}
-
-export async function moveLaneEvents(organizationId: string, yearclockId: string, lane: Lane, targetLaneId: string): Promise<void> {
-  await yearclockResponse(await fetch(`${apiBaseUrl}/api/v1/organizations/${organizationId}/yearclocks/${yearclockId}/lanes/${lane.id}/move-events`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ target_lane_id: targetLaneId, expected_version: lane.version }) }));
-}
-
-export async function loadYearclockAccess(organizationId: string, yearclockId: string): Promise<YearclockAccessGrant[]> {
-  return yearclockResponse(await fetch(`${apiBaseUrl}/api/v1/organizations/${organizationId}/yearclocks/${yearclockId}/access`, { credentials: "include" }));
-}
-
-export async function grantYearclockAccess(organizationId: string, yearclockId: string, userAccountId: string, role: YearclockAccessGrant["role"]): Promise<YearclockAccessGrant> {
-  return yearclockResponse(await fetch(`${apiBaseUrl}/api/v1/organizations/${organizationId}/yearclocks/${yearclockId}/access`, { method: "PUT", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user_account_id: userAccountId, role }) }));
-}
-
-export async function revokeYearclockAccess(organizationId: string, yearclockId: string, grant: YearclockAccessGrant): Promise<void> {
-  const response = await fetch(`${apiBaseUrl}/api/v1/organizations/${organizationId}/yearclocks/${yearclockId}/access/${grant.user_account_id}?expected_version=${grant.version}`, { method: "DELETE", credentials: "include" });
-  if (response.status === 401) throw new AuthenticationRequiredError();
-  if (!response.ok) throw new Error("Yearclock access request failed");
-}
-
-export async function loadEvents(organizationId: string, yearclockId: string, windowStart?: string, includeSkipped = false, months = 12): Promise<YearclockEvent[]> {
-  const params = new URLSearchParams();
-  if (windowStart) params.set("window_start", windowStart);
-  if (months !== 12) params.set("months", String(months));
-  if (includeSkipped) params.set("include_skipped", "true");
-  const query = params.size ? `?${params.toString()}` : "";
-  return yearclockResponse(await fetch(`${apiBaseUrl}/api/v1/organizations/${organizationId}/yearclocks/${yearclockId}/events${query}`, { credentials: "include" }));
-}
-
-export async function createEvent(organizationId: string, yearclockId: string, input: EventInput): Promise<YearclockEvent> {
-  return yearclockResponse(await fetch(`${apiBaseUrl}/api/v1/organizations/${organizationId}/yearclocks/${yearclockId}/events`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) }));
-}
-
-export async function updateEvent(organizationId: string, yearclockId: string, event: YearclockEvent, input: EventInput): Promise<YearclockEvent> {
-  return yearclockResponse(await fetch(`${apiBaseUrl}/api/v1/organizations/${organizationId}/yearclocks/${yearclockId}/events/${event.id}`, { method: "PATCH", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...input, expected_version: event.version }) }));
-}
-
-export type BulkAction = { action: "move"; lane_id: string } | { action: "categorize"; category_id: string | null } | { action: "label"; add_label_ids?: string[]; remove_label_ids?: string[] } | { action: "delete" };
-export async function bulkEdit(organizationId: string, yearclockId: string, events: YearclockEvent[], change: BulkAction): Promise<{ bulk_id: string; changed: number; items: YearclockEvent[] }> {
-  return yearclockResponse(await fetch(`${apiBaseUrl}/api/v1/organizations/${organizationId}/yearclocks/${yearclockId}/events/bulk`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items: events.map((event) => ({ id: event.id, expected_version: event.version })), ...change }) }));
-}
-export type PlanAgainInput = { season_start: string; lane_ids: string[]; category_ids: string[]; include_uncategorized: boolean; date_rule: "same_date" | "same_weekday" };
-export type PlanAgainResult = { to_create: number; skipped_existing: number; limit_exceeded: boolean; maximum: number; created_ids: string[] };
-export async function planAgain(organizationId: string, yearclockId: string, input: PlanAgainInput, dryRun: boolean): Promise<PlanAgainResult> {
-  return yearclockResponse(await fetch(`${apiBaseUrl}/api/v1/organizations/${organizationId}/yearclocks/${yearclockId}/plan-again`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...input, dry_run: dryRun }) }));
-}
-export async function loadEventHistory(organizationId: string, yearclockId: string, eventId: string, offset = 0): Promise<import("./yearclock/history").HistoryPage> {
-  return yearclockResponse(await fetch(`${apiBaseUrl}/api/v1/organizations/${organizationId}/yearclocks/${yearclockId}/events/${eventId}/history?offset=${offset}`, { credentials: "include" }));
-}
-export type RestorePreview = { changes: import("./yearclock/history").HistoryChange[]; category_removed: boolean; labels_removed: number; lane_missing: boolean };
-export async function previewVersionRestore(organizationId: string, yearclockId: string, eventId: string, revisionId: string): Promise<RestorePreview> {
-  return yearclockResponse(await fetch(`${apiBaseUrl}/api/v1/organizations/${organizationId}/yearclocks/${yearclockId}/events/${eventId}/history/${revisionId}/restore-preview`, { credentials: "include" }));
-}
-export async function restoreVersion(organizationId: string, yearclockId: string, event: YearclockEvent, revisionId: string, laneId?: string): Promise<YearclockEvent> {
-  return yearclockResponse(await fetch(`${apiBaseUrl}/api/v1/organizations/${organizationId}/yearclocks/${yearclockId}/events/${event.id}/history/${revisionId}/restore`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ expected_version: event.version, ...(laneId ? { lane_id: laneId } : {}) }) }));
-}
-export async function deleteEvent(organizationId: string, yearclockId: string, event: YearclockEvent): Promise<void> {
-  const response = await fetch(`${apiBaseUrl}/api/v1/organizations/${organizationId}/yearclocks/${yearclockId}/events/${event.id}?expected_version=${event.version}`, { method: "DELETE", credentials: "include" });
-  if (response.status === 401) throw new AuthenticationRequiredError();
-  if (response.status === 409) throw new ConflictError("The Event changed");
-  if (!response.ok) throw new Error("Event request failed");
-}
-export async function loadDeletedEvents(organizationId: string, yearclockId: string): Promise<YearclockEvent[]> {
-  return yearclockResponse(await fetch(`${apiBaseUrl}/api/v1/organizations/${organizationId}/yearclocks/${yearclockId}/deleted-events`, { credentials: "include" }));
-}
-export async function restoreEvent(organizationId: string, yearclockId: string, event: YearclockEvent): Promise<YearclockEvent> {
-  return yearclockResponse(await fetch(`${apiBaseUrl}/api/v1/organizations/${organizationId}/yearclocks/${yearclockId}/events/${event.id}/restore?expected_version=${event.version}`, { method: "POST", credentials: "include" }));
-}
-export async function skipOccurrence(organizationId: string, yearclockId: string, occurrenceId: string, skipped = true): Promise<void> { await yearclockResponse(await fetch(`${apiBaseUrl}/api/v1/organizations/${organizationId}/yearclocks/${yearclockId}/occurrences/${occurrenceId}/skip?skipped=${skipped}`, { method: "POST", credentials: "include" })); }
-export async function editOccurrence(organizationId: string, yearclockId: string, event: YearclockEvent, input: OccurrenceEdit): Promise<void> { await yearclockResponse(await fetch(`${apiBaseUrl}/api/v1/organizations/${organizationId}/yearclocks/${yearclockId}/occurrences/${event.occurrence_id}`, { method: "PATCH", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...input, expected_version: event.version }) })); }
-export async function restoreOccurrence(organizationId: string, yearclockId: string, event: YearclockEvent): Promise<void> { await yearclockResponse(await fetch(`${apiBaseUrl}/api/v1/organizations/${organizationId}/yearclocks/${yearclockId}/occurrences/${event.occurrence_id}/restore?expected_version=${event.version}`, { method: "POST", credentials: "include" })); }
-export async function loadSeries(organizationId: string, yearclockId: string, seriesId: string): Promise<YearclockSeries> { return yearclockResponse(await fetch(`${apiBaseUrl}/api/v1/organizations/${organizationId}/yearclocks/${yearclockId}/series/${seriesId}`, { credentials: "include" })); }
-export async function splitSeries(organizationId: string, yearclockId: string, series: YearclockSeries, event: YearclockEvent, changes: SeriesChanges): Promise<YearclockSeries> { return yearclockResponse(await fetch(`${apiBaseUrl}/api/v1/organizations/${organizationId}/yearclocks/${yearclockId}/series/${series.id}/split`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...changes, from_occurrence_id: event.occurrence_id, expected_version: series.version }) })); }
-export async function endSeries(organizationId: string, yearclockId: string, series: YearclockSeries, event: YearclockEvent): Promise<{ removed_occurrences: number }> { return yearclockResponse(await fetch(`${apiBaseUrl}/api/v1/organizations/${organizationId}/yearclocks/${yearclockId}/series/${series.id}/end`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ from_occurrence_id: event.occurrence_id, expected_version: series.version }) })); }
-
-export async function loadCategories(organizationId: string, yearclockId: string): Promise<YearclockCategory[]> { return yearclockResponse(await fetch(`${apiBaseUrl}/api/v1/organizations/${organizationId}/yearclocks/${yearclockId}/categories`, { credentials: "include" })); }
-export async function createCategory(organizationId: string, yearclockId: string, name: string, color: string | null): Promise<YearclockCategory> { return yearclockResponse(await fetch(`${apiBaseUrl}/api/v1/organizations/${organizationId}/yearclocks/${yearclockId}/categories`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, color }) })); }
-export async function updateCategory(organizationId: string, yearclockId: string, category: YearclockCategory, name: string, color: string | null): Promise<YearclockCategory> { return yearclockResponse(await fetch(`${apiBaseUrl}/api/v1/organizations/${organizationId}/yearclocks/${yearclockId}/categories/${category.id}`, { method: "PATCH", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, color, expected_version: category.version }) })); }
-export async function reorderCategories(organizationId: string, yearclockId: string, categories: YearclockCategory[], orderedIds: string[]): Promise<YearclockCategory[]> { const expectedVersions = Object.fromEntries(categories.map((category) => [category.id, category.version])); return yearclockResponse(await fetch(`${apiBaseUrl}/api/v1/organizations/${organizationId}/yearclocks/${yearclockId}/categories/order`, { method: "PUT", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ordered_ids: orderedIds, expected_versions: expectedVersions }) })); }
-export async function deleteCategory(organizationId: string, yearclockId: string, category: YearclockCategory): Promise<void> { const response = await fetch(`${apiBaseUrl}/api/v1/organizations/${organizationId}/yearclocks/${yearclockId}/categories/${category.id}?expected_version=${category.version}&confirm=true`, { method: "DELETE", credentials: "include" }); if (!response.ok) throw new Error("Category request failed"); }
-export async function createSeries(organizationId: string, yearclockId: string, input: SeriesInput): Promise<void> { await yearclockResponse(await fetch(`${apiBaseUrl}/api/v1/organizations/${organizationId}/yearclocks/${yearclockId}/series`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) })); }
-
-/** Label swatch palette; keep in sync with `LABEL_COLORS` in backend/app/label_routes.py. */
-export const LABEL_COLORS = ["#1f5f99", "#2e7d32", "#8e24aa", "#c62828", "#ef6c00", "#00838f", "#5d4037", "#455a64", "#ad1457", "#283593", "#827717", "#6a1b9a"] as const;
-
-export type Label = { id: string; name: string; color: string; version: number; usage: number };
-
-async function labelResponse<T>(response: Response): Promise<T> {
-  if (response.status === 401) throw new AuthenticationRequiredError();
-  if (response.status === 409) {
-    const detail = ((await response.json().catch(() => null)) as { detail?: { reason?: string; limit?: string; maximum?: number } } | null)?.detail;
-    if (detail?.reason === "limit_reached") throw new LimitReachedError(detail.limit ?? "", detail.maximum ?? 0);
-    throw new ConflictError(detail?.reason ?? "The Label changed");
-  }
-  if (!response.ok) throw new Error("Label request failed");
-  return (response.status === 204 ? undefined : await response.json()) as T;
-}
-
-const labelsUrl = (organizationId: string) => `${apiBaseUrl}/api/v1/organizations/${organizationId}/labels`;
 const json = (method: string, body: unknown): RequestInit => ({ method, credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-
-export const loadLabels = async (organizationId: string): Promise<Label[]> => labelResponse(await fetch(labelsUrl(organizationId), { credentials: "include" }));
-export const createLabel = async (organizationId: string, name: string, color: string): Promise<Label> => labelResponse(await fetch(labelsUrl(organizationId), json("POST", { name, color })));
-export const updateLabel = async (organizationId: string, label: Label, name: string, color: string): Promise<Label> => labelResponse(await fetch(`${labelsUrl(organizationId)}/${label.id}`, json("PATCH", { name, color, expected_version: label.version })));
-export const mergeLabel = async (organizationId: string, label: Label, into: Label): Promise<Label> => labelResponse(await fetch(`${labelsUrl(organizationId)}/${label.id}/merge`, json("POST", { into_label_id: into.id, expected_version: label.version, confirm: true })));
-export const deleteLabel = async (organizationId: string, label: Label): Promise<void> => labelResponse(await fetch(`${labelsUrl(organizationId)}/${label.id}?expected_version=${label.version}&confirm=true`, { method: "DELETE", credentials: "include" }));
-
-const organizationCategoriesUrl = (organizationId: string) => `${apiBaseUrl}/api/v1/organizations/${organizationId}/categories`;
-
-export const loadOrganizationCategories = async (organizationId: string): Promise<YearclockCategory[]> => labelResponse(await fetch(organizationCategoriesUrl(organizationId), { credentials: "include" }));
-export const createOrganizationCategory = async (organizationId: string, name: string, color: string): Promise<YearclockCategory> => labelResponse(await fetch(organizationCategoriesUrl(organizationId), json("POST", { name, color })));
-export const updateOrganizationCategory = async (organizationId: string, category: YearclockCategory, name: string, color: string): Promise<YearclockCategory> => labelResponse(await fetch(`${organizationCategoriesUrl(organizationId)}/${category.id}`, json("PATCH", { name, color, expected_version: category.version })));
-export const reorderOrganizationCategories = async (organizationId: string, categories: YearclockCategory[], orderedIds: string[]): Promise<YearclockCategory[]> => labelResponse(await fetch(`${organizationCategoriesUrl(organizationId)}/order`, json("PUT", { ordered_ids: orderedIds, expected_versions: Object.fromEntries(categories.map((category) => [category.id, category.version])) })));
-export const deleteOrganizationCategory = async (organizationId: string, category: YearclockCategory): Promise<void> => labelResponse(await fetch(`${organizationCategoriesUrl(organizationId)}/${category.id}?expected_version=${category.version}&confirm=true`, { method: "DELETE", credentials: "include" }));
-
-export type SearchResult = { items: YearclockEvent[]; next_offset: number | null; total: number; includes_recurring: boolean };
-
-export async function searchYearclock(organizationId: string, yearclockId: string, query: string, offset = 0): Promise<SearchResult> {
-  const params = new URLSearchParams({ q: query, offset: String(offset) });
-  return yearclockResponse(await fetch(`${apiBaseUrl}/api/v1/organizations/${organizationId}/yearclocks/${yearclockId}/search?${params.toString()}`, { credentials: "include" }));
-}
 
 export type McpConnection = { interface_available: boolean; enabled: boolean; platform_blocked: boolean; server_url: string; client_id: string; secret_configured: boolean };
 
@@ -838,3 +457,27 @@ export async function loadPayments(organizationId: string, signal?: AbortSignal)
     return { status: "unavailable", invoices: [] };
   }
 }
+
+export async function loadAuditEvents(organizationId: string, { prefix, offset = 0, limit = 25 }: { prefix?: string; offset?: number; limit?: number } = {}): Promise<{ items: AuditItem[]; next_offset: number | null }> {
+  const params = new URLSearchParams({ offset: String(offset), limit: String(limit) });
+  if (prefix) params.set("prefix", prefix);
+  const response = await fetch(`${apiBaseUrl}/api/v1/organizations/${organizationId}/audit-events?${params.toString()}`, { credentials: "include" });
+  if (response.status === 401) throw new AuthenticationRequiredError();
+  if (!response.ok) throw new Error("Audit request failed");
+  return (await response.json()) as { items: AuditItem[]; next_offset: number | null };
+}
+
+export async function inviteOrganizationUser(organizationId: string, email: string, role: OrganizationInvitation["role"] = "member"): Promise<OrganizationInvitation> {
+  return invitationResponse(await fetch(`${apiBaseUrl}/api/v1/organizations/${organizationId}/invitations`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, role }) }));
+}
+
+export async function inviteMany(organizationId: string, emails: string[], role: OrganizationInvitation["role"], dryRun: boolean): Promise<BulkInvitationResult> {
+  const response = await fetch(`${apiBaseUrl}/api/v1/organizations/${organizationId}/invitations/bulk`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ emails, role, dry_run: dryRun }) });
+  if (response.status === 409) {
+    const detail = ((await response.json().catch(() => null)) as { detail?: { reason?: string; seats_needed?: number } } | null)?.detail;
+    if (detail?.reason === "seats_needed") throw new SeatsNeededError(detail.seats_needed ?? 0);
+  }
+  if (!response.ok) throw new Error("Bulk invitation failed");
+  return (await response.json()) as BulkInvitationResult;
+}
+

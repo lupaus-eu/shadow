@@ -23,17 +23,17 @@ export RESTIC_REPOSITORY
 
 mkdir -p "$TARGET"
 if [ "$SNAPSHOT" = latest ]; then
-    $RESTIC restore latest --host yearclock --tag yearclock --target "$TARGET"
+    $RESTIC restore latest --host shadow --tag shadow --target "$TARGET"
 else
     $RESTIC restore "$SNAPSHOT" --target "$TARGET"
 fi
 
-yearclock_dump=$(find "$TARGET" -name 'yearclock-*.dump' | sort | tail -n 1)
+shadow_dump=$(find "$TARGET" -name 'shadow-*.dump' | sort | tail -n 1)
 authentik_dump=$(find "$TARGET" -name 'authentik-*.dump' | sort | tail -n 1)
-[ -n "$yearclock_dump" ] && [ -n "$authentik_dump" ] || { echo "the snapshot holds no dump pair" >&2; exit 1; }
-echo "yearclock dump: $yearclock_dump"
+[ -n "$shadow_dump" ] && [ -n "$authentik_dump" ] || { echo "the snapshot holds no dump pair" >&2; exit 1; }
+echo "shadow dump: $shadow_dump"
 echo "authentik dump: $authentik_dump"
 
 if [ "${DRILL:-0}" = 1 ]; then
-    "$HERE/restore-drill.sh" "$yearclock_dump" "$authentik_dump"
+    "$HERE/restore-drill.sh" "$shadow_dump" "$authentik_dump"
 fi

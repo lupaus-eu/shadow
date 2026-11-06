@@ -26,9 +26,9 @@ ping() {
 if [ "$USED" -ge "$MAX" ]; then
     echo "disk usage on $CHECK_PATH is ${USED}% (limit ${MAX}%)" >&2
     # One email per six hours, not one per check.
-    STATE=${DISK_ALERT_STATE_FILE:-/var/tmp/yearclock-disk-alert}
+    STATE=${DISK_ALERT_STATE_FILE:-/var/tmp/shadow-disk-alert}
     if [ -z "$(find "$STATE" -mmin -360 2>/dev/null)" ]; then
-        "$HERE/notify-email.sh" "Yearclock disk is ${USED}% full on $(hostname)" \
+        "$HERE/notify-email.sh" "Shadow disk is ${USED}% full on $(hostname)" \
             "Disk usage on $CHECK_PATH is ${USED}% (limit ${MAX}%). Free space or grow the disk." && touch "$STATE" || true
     fi
     ping /fail

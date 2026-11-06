@@ -1,25 +1,25 @@
-# Yearclock owns host ports 8100-8199 (see docs/architecture/docker.md).
+# Shadow owns host ports 8100-8199 (see docs/architecture/docker.md).
 # Every published port binds to 127.0.0.1 by default and is overridable through
-# a YEARCLOCK_*_PORT variable; scripts/check-compose-ports.py enforces this.
-name: yearclock
+# a SHADOW_*_PORT variable; scripts/check-compose-ports.py enforces this.
+name: shadow
 
 services:
   db:
     image: postgres:17-alpine
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-yearclock}
-      POSTGRES_USER: ${POSTGRES_USER:-yearclock}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-yearclock}
+      POSTGRES_DB: ${POSTGRES_DB:-shadow}
+      POSTGRES_USER: ${POSTGRES_USER:-shadow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-shadow}
       AUTHENTIK_POSTGRES_DB: ${AUTHENTIK_POSTGRES_DB:-authentik}
       AUTHENTIK_POSTGRES_USER: ${AUTHENTIK_POSTGRES_USER:-authentik}
       AUTHENTIK_POSTGRES_PASSWORD: ${AUTHENTIK_POSTGRES_PASSWORD:-authentik}
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-yearclock} -d ${POSTGRES_DB:-yearclock}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-shadow} -d ${POSTGRES_DB:-shadow}"]
       interval: 2s
       timeout: 5s
       retries: 15
     ports:
-      - "${YEARCLOCK_BIND_ADDRESS:-127.0.0.1}:${YEARCLOCK_DB_PORT:-8132}:5432"
+      - "${SHADOW_BIND_ADDRESS:-127.0.0.1}:${SHADOW_DB_PORT:-8132}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
@@ -29,12 +29,12 @@ services:
     command: ["/scripts/02-create-authentik-database.sh"]
     environment:
       PGHOST: db
-      PGUSER: ${POSTGRES_USER:-yearclock}
-      PGPASSWORD: ${POSTGRES_PASSWORD:-yearclock}
-      PGDATABASE: ${POSTGRES_DB:-yearclock}
-      POSTGRES_USER: ${POSTGRES_USER:-yearclock}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-yearclock}
-      POSTGRES_DB: ${POSTGRES_DB:-yearclock}
+      PGUSER: ${POSTGRES_USER:-shadow}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-shadow}
+      PGDATABASE: ${POSTGRES_DB:-shadow}
+      POSTGRES_USER: ${POSTGRES_USER:-shadow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-shadow}
+      POSTGRES_DB: ${POSTGRES_DB:-shadow}
       AUTHENTIK_POSTGRES_DB: ${AUTHENTIK_POSTGRES_DB:-authentik}
       AUTHENTIK_POSTGRES_USER: ${AUTHENTIK_POSTGRES_USER:-authentik}
       AUTHENTIK_POSTGRES_PASSWORD: ${AUTHENTIK_POSTGRES_PASSWORD:-authentik}
@@ -55,7 +55,7 @@ services:
       AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY:-local-development-secret-change-me}
       # authentik 2026.8 honours X-Forwarded-* only from these networks (ADR-0036).
       AUTHENTIK_LISTEN__TRUSTED_PROXY_CIDRS: ${AUTHENTIK_TRUSTED_PROXY_CIDRS:-127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fe80::/10,::1/128}
-      AUTHENTIK_WEB__BASE_URL: ${AUTHENTIK_BASE_URL:-http://localhost:${YEARCLOCK_AUTHENTIK_PORT:-8190}}
+      AUTHENTIK_WEB__BASE_URL: ${AUTHENTIK_BASE_URL:-http://localhost:${SHADOW_AUTHENTIK_PORT:-8190}}
       AUTHENTIK_ENROLLMENT_OPEN: ${AUTHENTIK_ENROLLMENT_OPEN:-true}
       AUTHENTIK_BOOTSTRAP_PASSWORD: ${AUTHENTIK_BOOTSTRAP_PASSWORD:-local-admin-change-me}
       AUTHENTIK_EMAIL__HOST: smtp.tem.scaleway.com
@@ -64,16 +64,16 @@ services:
       AUTHENTIK_EMAIL__PASSWORD: ${SCW_SECRET_KEY:-}
       AUTHENTIK_EMAIL__USE_TLS: "true"
       AUTHENTIK_EMAIL__FROM: ${SCW_TEM_DEFAULT_SENDER_EMAIL:-identity@example.com}
-      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-yearclock-local}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-shadow-local}
       OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-replace-with-a-random-oidc-secret}
       OIDC_REDIRECT_URI: ${OIDC_REDIRECT_URI:-http://localhost:8100/api/v1/auth/callback}
-      MCP_OIDC_CLIENT_ID: ${MCP_OIDC_CLIENT_ID:-yearclock-mcp-local}
+      MCP_OIDC_CLIENT_ID: ${MCP_OIDC_CLIENT_ID:-shadow-mcp-local}
       MCP_OIDC_CLIENT_SECRET: ${MCP_OIDC_CLIENT_SECRET:-replace-with-a-random-mcp-secret}
       # The web application's stylesheet for the sign-in pages (ADR-0039); the Vite dev server serves it at this address.
       AUTHENTIK_THEME_CSS_URL: ${AUTHENTIK_THEME_CSS_URL:-http://localhost:8173/src/theme.css?direct}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:8173}
     ports:
-      - "${YEARCLOCK_BIND_ADDRESS:-127.0.0.1}:${YEARCLOCK_AUTHENTIK_PORT:-8190}:9000"
+      - "${SHADOW_BIND_ADDRESS:-127.0.0.1}:${SHADOW_AUTHENTIK_PORT:-8190}:9000"
     volumes:
       - authentik_media:/media
       - authentik_templates:/templates
@@ -109,7 +109,7 @@ services:
       context: ./backend
     command: ["alembic", "upgrade", "head"]
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://yearclock:yearclock@db:5432/yearclock}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://shadow:shadow@db:5432/shadow}
     depends_on:
       db:
         condition: service_healthy
@@ -121,7 +121,7 @@ services:
     environment:
       VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8100}
     ports:
-      - "${YEARCLOCK_BIND_ADDRESS:-127.0.0.1}:${YEARCLOCK_FRONTEND_PORT:-8173}:8173"
+      - "${SHADOW_BIND_ADDRESS:-127.0.0.1}:${SHADOW_FRONTEND_PORT:-8173}:8173"
     depends_on:
       - backend
 
@@ -129,18 +129,18 @@ services:
     build:
       context: ./backend
     environment:
-      PROJECT_NAME: ${PROJECT_NAME:-Yearclock}
+      PROJECT_NAME: ${PROJECT_NAME:-Shadow}
       FRONTEND_ORIGINS: ${FRONTEND_ORIGINS:-http://localhost:8173,http://127.0.0.1:8173}
-      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://yearclock:yearclock@db:5432/yearclock}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://shadow:shadow@db:5432/shadow}
       PUBLIC_API_BASE_URL: ${PUBLIC_API_BASE_URL:-http://localhost:8100}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:8173}
       AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
       AUTH_SESSION_MAX_AGE_SECONDS: ${AUTH_SESSION_MAX_AGE_SECONDS:-28800}
-      LIMIT_YEARCLOCKS_PER_ORGANIZATION: ${LIMIT_YEARCLOCKS_PER_ORGANIZATION:-50}
-      LIMIT_LANES_PER_YEARCLOCK: ${LIMIT_LANES_PER_YEARCLOCK:-12}
-      LIMIT_CATEGORIES_PER_YEARCLOCK: ${LIMIT_CATEGORIES_PER_YEARCLOCK:-40}
-      LIMIT_EVENTS_PER_YEARCLOCK: ${LIMIT_EVENTS_PER_YEARCLOCK:-3000}
-      LIMIT_SERIES_PER_YEARCLOCK: ${LIMIT_SERIES_PER_YEARCLOCK:-100}
+      LIMIT_SHADOWS_PER_ORGANIZATION: ${LIMIT_SHADOWS_PER_ORGANIZATION:-50}
+      LIMIT_LANES_PER_SHADOW: ${LIMIT_LANES_PER_SHADOW:-12}
+      LIMIT_CATEGORIES_PER_SHADOW: ${LIMIT_CATEGORIES_PER_SHADOW:-40}
+      LIMIT_EVENTS_PER_SHADOW: ${LIMIT_EVENTS_PER_SHADOW:-3000}
+      LIMIT_SERIES_PER_SHADOW: ${LIMIT_SERIES_PER_SHADOW:-100}
       LIMIT_LABELS_PER_ORGANIZATION: ${LIMIT_LABELS_PER_ORGANIZATION:-200}
       LIMIT_LABELS_PER_EVENT: ${LIMIT_LABELS_PER_EVENT:-10}
       LIMIT_ORGANIZATION_CATEGORIES: ${LIMIT_ORGANIZATION_CATEGORIES:-40}
@@ -150,25 +150,25 @@ services:
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
       STRIPE_MONTHLY_SEAT_PRICE_ID: ${STRIPE_MONTHLY_SEAT_PRICE_ID:-}
-      OIDC_ISSUER: ${OIDC_ISSUER:-http://localhost:8190/application/o/yearclock/}
+      OIDC_ISSUER: ${OIDC_ISSUER:-http://localhost:8190/application/o/shadow/}
       OIDC_INTERNAL_BASE_URL: ${OIDC_INTERNAL_BASE_URL:-http://authentik-server:9000}
       # The MCP interface (ADR-0037, ADR-0038); off until the MCP provider is configured in Authentik.
       MCP_ENABLED: ${MCP_ENABLED:-false}
       LEGAL_SHOW_DRAFTS: ${LEGAL_SHOW_DRAFTS:-true}
-      LEGAL_CONTACT_EMAIL: ${LEGAL_CONTACT_EMAIL:-legal@yearclock.example.com}
-      MCP_OIDC_ISSUER: ${MCP_OIDC_ISSUER:-http://localhost:8190/application/o/yearclock-mcp/}
-      MCP_OIDC_CLIENT_ID: ${MCP_OIDC_CLIENT_ID:-yearclock-mcp-local}
+      LEGAL_CONTACT_EMAIL: ${LEGAL_CONTACT_EMAIL:-legal@shadow.example.com}
+      MCP_OIDC_ISSUER: ${MCP_OIDC_ISSUER:-http://localhost:8190/application/o/shadow-mcp/}
+      MCP_OIDC_CLIENT_ID: ${MCP_OIDC_CLIENT_ID:-shadow-mcp-local}
       MCP_OIDC_CLIENT_SECRET: ${MCP_OIDC_CLIENT_SECRET:-replace-with-a-random-mcp-secret}
-      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-yearclock-local}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-shadow-local}
       OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-replace-with-a-random-oidc-secret}
       SCW_SECRET_KEY: ${SCW_SECRET_KEY:-}
       SCW_DEFAULT_PROJECT_ID: ${SCW_DEFAULT_PROJECT_ID:-}
       SCW_TEM_REGION: ${SCW_TEM_REGION:-fr-par}
       SCW_TEM_API_BASE_URL: ${SCW_TEM_API_BASE_URL:-https://api.scaleway.com/transactional-email/v1alpha1/regions}
       SCW_TEM_DEFAULT_SENDER_EMAIL: ${SCW_TEM_DEFAULT_SENDER_EMAIL:-}
-      SCW_TEM_DEFAULT_SENDER_NAME: ${SCW_TEM_DEFAULT_SENDER_NAME:-Yearclock}
+      SCW_TEM_DEFAULT_SENDER_NAME: ${SCW_TEM_DEFAULT_SENDER_NAME:-Shadow}
     ports:
-      - "${YEARCLOCK_BIND_ADDRESS:-127.0.0.1}:${YEARCLOCK_BACKEND_PORT:-8100}:8000"
+      - "${SHADOW_BIND_ADDRESS:-127.0.0.1}:${SHADOW_BACKEND_PORT:-8100}:8000"
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -180,7 +180,7 @@ services:
       context: ./backend
     command: ["python", "-m", "app.worker"]
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://yearclock:yearclock@db:5432/yearclock}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://shadow:shadow@db:5432/shadow}
       RECURRENCE_BUFFER_DAYS: ${RECURRENCE_BUFFER_DAYS:-366}
       WORKER_SCHEDULE_INTERVAL_SECONDS: ${WORKER_SCHEDULE_INTERVAL_SECONDS:-3600}
       DELETED_CONTENT_RETENTION_DAYS: ${DELETED_CONTENT_RETENTION_DAYS:-30}
@@ -190,23 +190,23 @@ services:
       SCW_TEM_REGION: ${SCW_TEM_REGION:-fr-par}
       SCW_TEM_API_BASE_URL: ${SCW_TEM_API_BASE_URL:-https://api.scaleway.com/transactional-email/v1alpha1/regions}
       SCW_TEM_DEFAULT_SENDER_EMAIL: ${SCW_TEM_DEFAULT_SENDER_EMAIL:-}
-      SCW_TEM_DEFAULT_SENDER_NAME: ${SCW_TEM_DEFAULT_SENDER_NAME:-Yearclock}
+      SCW_TEM_DEFAULT_SENDER_NAME: ${SCW_TEM_DEFAULT_SENDER_NAME:-Shadow}
     depends_on:
       migrate:
         condition: service_completed_successfully
 
   # The edge proxy is opt-in locally: docker compose --profile edge up.
-  # Production sets YEARCLOCK_EDGE_BIND_ADDRESS=0.0.0.0, YEARCLOCK_HTTP_PORT=80,
-  # YEARCLOCK_HTTPS_PORT=443, and YEARCLOCK_SITE_ADDRESS to the real domain.
+  # Production sets SHADOW_EDGE_BIND_ADDRESS=0.0.0.0, SHADOW_HTTP_PORT=80,
+  # SHADOW_HTTPS_PORT=443, and SHADOW_SITE_ADDRESS to the real domain.
   caddy:
     image: caddy:2-alpine
     profiles: ["edge"]
     environment:
-      YEARCLOCK_SITE_ADDRESS: ${YEARCLOCK_SITE_ADDRESS:-http://localhost}
-      YEARCLOCK_IDENTITY_ADDRESS: ${YEARCLOCK_IDENTITY_ADDRESS:-http://identity.localhost}
+      SHADOW_SITE_ADDRESS: ${SHADOW_SITE_ADDRESS:-http://localhost}
+      SHADOW_IDENTITY_ADDRESS: ${SHADOW_IDENTITY_ADDRESS:-http://identity.localhost}
     ports:
-      - "${YEARCLOCK_EDGE_BIND_ADDRESS:-127.0.0.1}:${YEARCLOCK_HTTP_PORT:-8180}:80"
-      - "${YEARCLOCK_EDGE_BIND_ADDRESS:-127.0.0.1}:${YEARCLOCK_HTTPS_PORT:-8143}:443"
+      - "${SHADOW_EDGE_BIND_ADDRESS:-127.0.0.1}:${SHADOW_HTTP_PORT:-8180}:80"
+      - "${SHADOW_EDGE_BIND_ADDRESS:-127.0.0.1}:${SHADOW_HTTPS_PORT:-8143}:443"
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data

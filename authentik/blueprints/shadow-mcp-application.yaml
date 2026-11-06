@@ -1,19 +1,19 @@
 # yaml-language-server: $schema=https://goauthentik.io/blueprints/schema.json
 # The OIDC provider for MCP clients (ADR-0038): a dedicated, pre-registered, confidential client.
 # Authentik does not implement RFC 8707, so this provider's client id is the audience the MCP
-# server checks; tokens of the Yearclock web provider carry another audience and are refused.
+# server checks; tokens of the Shadow web provider carry another audience and are refused.
 # Clients are never registered dynamically. To allow another MCP client, add its redirect URL below.
 version: 1
 metadata:
-  name: Yearclock MCP application
+  name: Shadow MCP application
   labels:
     blueprints.goauthentik.io/instantiate: "true"
 entries:
-  - id: yearclock-mcp-provider
+  - id: shadow-mcp-provider
     model: authentik_providers_oauth2.oauth2provider
     state: present
     identifiers:
-      name: Yearclock MCP
+      name: Shadow MCP
     attrs:
       client_type: confidential
       client_id: !Env MCP_OIDC_CLIENT_ID
@@ -42,9 +42,9 @@ entries:
   - model: authentik_core.application
     state: present
     identifiers:
-      slug: yearclock-mcp
+      slug: shadow-mcp
     attrs:
-      name: Yearclock MCP
-      provider: !KeyOf yearclock-mcp-provider
+      name: Shadow MCP
+      provider: !KeyOf shadow-mcp-provider
       policy_engine_mode: any
       meta_launch_url: blank://blank

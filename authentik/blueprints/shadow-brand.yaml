@@ -1,9 +1,9 @@
 # yaml-language-server: $schema=https://goauthentik.io/blueprints/schema.json
 # The look of the sign-in pages (ADR-0039): the web application's stylesheet, the bridge in
-# yearclock-brand.css, light theme only, and no background image.
+# shadow-brand.css, light theme only, and no background image.
 version: 1
 metadata:
-  name: Yearclock sign-in pages
+  name: Shadow sign-in pages
   labels:
     blueprints.goauthentik.io/instantiate: "true"
 entries:
@@ -16,9 +16,9 @@ entries:
       # The stylesheet comes from the web application (AUTHENTIK_THEME_CSS_URL); layered so that
       # Authentik's own rules win. The bridge file follows it.
       branding_custom_css: !Format
-        - "@import url(\"%s\") layer(yearclock-app);\n%s"
+        - "@import url(\"%s\") layer(shadow-app);\n%s"
         - !Env AUTHENTIK_THEME_CSS_URL
-        - !File /blueprints/custom/yearclock-brand.css
+        - !File /blueprints/custom/shadow-brand.css
       # The page always asks for a background; a 68-byte image keeps it from fetching a 1 MB photograph.
       branding_default_flow_background: /static/dist/assets/images/user_default.png
       # The application has one light theme.

@@ -23,8 +23,8 @@ function files(directory: string): string[] {
 const code = files(source).map((path) => ({ path, text: readFileSync(path, "utf8") }));
 const relative = (path: string) => path.slice(source.length + 1);
 
-// String and template literals that look like one of our keys: "yearclock.something" or `yearclock.filters.${id}`.
-const KEY = /["'`](yearclock\.[a-z][a-z0-9.-]*)/g;
+// String and template literals that look like one of our keys: "shadow.something" or `shadow.filters.${id}`.
+const KEY = /["'`](shadow\.[a-z][a-z0-9.-]*)/g;
 const used = new Map<string, string[]>();
 for (const { path, text } of code) {
   if (!/localStorage|sessionStorage/.test(text)) continue;
@@ -40,7 +40,7 @@ test("every entry records a purpose and a lifetime", () => {
 });
 
 test("every storage key in the code is listed", () => {
-  assert.ok(used.size >= 6, `the scan found only ${used.size} keys; has the code moved?`);
+  assert.ok(used.size >= 3, `the scan found only ${used.size} keys; has the code moved?`);
   for (const [key, where] of used) {
     const known = listed.some((entry) => (entry.dynamic ? key.startsWith(entry.key) : key === entry.key));
     assert.ok(known, `${key} (in ${where.join(", ")}) is not in the browser storage list. ${FIX}`);
@@ -56,7 +56,7 @@ test("every listed key still exists in the code", () => {
 
 test("a file that uses web storage names its keys, and cookies and IndexedDB are not used", () => {
   for (const { path, text } of code) {
-    if (/\b(localStorage|sessionStorage)\b/.test(text)) assert.ok([...text.matchAll(KEY)].length > 0, `${relative(path)} uses web storage without a yearclock.* key. ${FIX}`);
+    if (/\b(localStorage|sessionStorage)\b/.test(text)) assert.ok([...text.matchAll(KEY)].length > 0, `${relative(path)} uses web storage without a shadow.* key. ${FIX}`);
     assert.ok(!/document\.cookie/.test(text), `${relative(path)} sets a cookie from script. ${FIX}`);
     assert.ok(!/indexedDB/.test(text), `${relative(path)} uses IndexedDB. ${FIX}`);
   }

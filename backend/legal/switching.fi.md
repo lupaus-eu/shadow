@@ -14,7 +14,7 @@ Voit viedä tietosi pois milloin tahansa ja siirtyä toiselle palveluntarjoajall
 | Mitä | Kuka | Muoto |
 | --- | --- | --- |
 | **Organisaation vienti**: organisaation koko sisältö sekä jäsenten nimet, sähköpostit ja roolit | Omistajat | JSON-tiedosto (sitä ei voi tuoda takaisin) |
-| **Kaikkien tietojesi vienti ja tuonti**: kaikkien ylläpitämiesi organisaatioiden vuosikellot, kaistat, luokat, tunnisteet, tapahtumat ja toistuvat sarjat | Omistajat ja ylläpitäjät | Yksi CSV-tiedosto (`yearclock-data/1`), jonka sama sivu voi tuoda uudelleen; ihmisiä, käyttöoikeuksia, poistettuja tapahtumia, historiaa ja laskutustietoja ei ole mukana |
+| **Kaikkien tietojesi vienti ja tuonti**: kaikkien ylläpitämiesi organisaatioiden vuosikellot, kaistat, luokat, tunnisteet, tapahtumat ja toistuvat sarjat | Omistajat ja ylläpitäjät | Yksi CSV-tiedosto (`shadow-data/1`), jonka sama sivu voi tuoda uudelleen; ihmisiä, käyttöoikeuksia, poistettuja tapahtumia, historiaa ja laskutustietoja ei ole mukana |
 | **Tapahtumat taulukkoon** | Kuka tahansa vuosikellon lukija | Excel tai CSV, yhdestä vuosikellosta |
 | Vuosikellon tulostus tai kuva | Kuka tahansa vuosikellon lukija | Tulostusasettelu tai kuvatiedosto |
 
