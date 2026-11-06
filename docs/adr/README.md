@@ -59,4 +59,6 @@ Number new ADRs from 0016 onward in the format above.
 | [0014](0014-prophet-and-model-selection.md) | Prophet and model selection |
 | [0015](0015-ai-via-mcp.md) | AI via MCP |
 | [0016](0016-introduce-tenants-memberships-and-rls.md) | Tenants, memberships and row-level security |
+| [0017](0017-use-self-hosted-authentik-for-identity.md) | Self-hosted Authentik for identity; Microsoft Entra removed |
 | [0019](0019-platform-services-worker-audit-email.md) | Platform services: audit log, worker and outbox, email, notifications (proposed) |
+| [0023](0023-authorize-mcp-clients-with-a-dedicated-authentik-provider.md) | MCP clients authorized by a dedicated Authentik provider |
