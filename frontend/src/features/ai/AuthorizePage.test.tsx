@@ -36,7 +36,7 @@ const vendorConsent: ConsentRequestDto = {
   clientNameSelfDeclared: true,
   redirectIsLoopback: false,
   redirectHost: "claude.ai",
-  scope: "schatten.read",
+  scope: "shadow.read",
   resource: "https://app.localhost/api/mcp",
   expiresTime: "2026-10-28T10:10:00Z"
 };
@@ -46,7 +46,7 @@ const loopbackConsent: ConsentRequestDto = {
   clientName: "Claude Code (CLI)",
   redirectIsLoopback: true,
   redirectHost: "127.0.0.1",
-  scope: "schatten.read schatten.write"
+  scope: "shadow.read shadow.write"
 };
 
 function deferred<T>() {
@@ -123,7 +123,7 @@ describe("AuthorizePage", () => {
     expect(screen.getByRole("heading", { name: "Read access" })).toBeVisible();
     expect(screen.getByText(/It cannot change anything\./)).toBeVisible();
     expect(
-      screen.getByText(/Data that the AI client reads from Schatten is sent to your AI vendor\./)
+      screen.getByText(/Data that the AI client reads from Shadow is sent to your AI vendor\./)
     ).toBeVisible();
     expect(
       screen.getByText(/The connection lasts for a limited time \(30 days by default\)/)
@@ -157,11 +157,11 @@ describe("AuthorizePage", () => {
     expect(screen.getByText(/The AI client can read the organisations, scenarios/)).toBeVisible();
     expect(screen.getByText(/It can also propose changes as change sets\./)).toBeVisible();
     expect(
-      screen.getByText(/nothing in Schatten changes until a person reviews and applies/)
+      screen.getByText(/nothing in Shadow changes until a person reviews and applies/)
     ).toBeVisible();
     expect(screen.queryByText(/It cannot change anything/)).not.toBeInTheDocument();
     expect(
-      screen.getByText(/Data that the AI client reads from Schatten is sent to your AI vendor\./)
+      screen.getByText(/Data that the AI client reads from Shadow is sent to your AI vendor\./)
     ).toBeVisible();
     expect(screen.queryByRole("heading", { name: "Read access" })).not.toBeInTheDocument();
   });
@@ -169,7 +169,7 @@ describe("AuthorizePage", () => {
   it("explains read and write access in either scope order", async () => {
     fetchConsentRequestMock.mockResolvedValue({
       ...loopbackConsent,
-      scope: "schatten.write schatten.read"
+      scope: "shadow.write shadow.read"
     });
 
     renderPage();
@@ -200,12 +200,12 @@ describe("AuthorizePage", () => {
   });
 
   it("describes write access without read access as unknown", async () => {
-    fetchConsentRequestMock.mockResolvedValue({ ...loopbackConsent, scope: "schatten.write" });
+    fetchConsentRequestMock.mockResolvedValue({ ...loopbackConsent, scope: "shadow.write" });
 
     renderPage();
 
     expect(await screen.findByRole("heading", { name: "Unknown access" })).toBeVisible();
-    expect(screen.getByText("schatten.write")).toBeVisible();
+    expect(screen.getByText("shadow.write")).toBeVisible();
     expect(screen.getByText(/Deny the request if you are unsure\./)).toBeVisible();
     expect(screen.queryByRole("heading", { name: /propose/ })).not.toBeInTheDocument();
   });
@@ -219,13 +219,13 @@ describe("AuthorizePage", () => {
 
     expect(await screen.findByRole("heading", { name: "No access" })).toBeVisible();
     expect(
-      screen.getByText(/Your Schatten role \(Admin\) does not allow AI clients to connect/)
+      screen.getByText(/Your Shadow role \(Admin\) does not allow AI clients to connect/)
     ).toBeVisible();
     expect(screen.getByRole("button", { name: "Deny" })).toBeEnabled();
     expect(screen.queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Unknown access" })).not.toBeInTheDocument();
     expect(
-      screen.queryByText(/Data that the AI client reads from Schatten is sent to your AI vendor/)
+      screen.queryByText(/Data that the AI client reads from Shadow is sent to your AI vendor/)
     ).not.toBeInTheDocument();
   });
 

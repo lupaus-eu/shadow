@@ -22,7 +22,7 @@ BASELINE_VERSION_PATTERN = re.compile(r"^\d{3}$")
 LOCK_SQL = """
 SELECT pg_advisory_lock(
     hashtextextended(
-        'schatten-schema-migrations:' || current_database() || ':' || current_schema(),
+        'shadow-schema-migrations:' || current_database() || ':' || current_schema(),
         0
     )
 )
@@ -30,7 +30,7 @@ SELECT pg_advisory_lock(
 UNLOCK_SQL = """
 SELECT pg_advisory_unlock(
     hashtextextended(
-        'schatten-schema-migrations:' || current_database() || ':' || current_schema(),
+        'shadow-schema-migrations:' || current_database() || ':' || current_schema(),
         0
     )
 )

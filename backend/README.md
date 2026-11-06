@@ -1,6 +1,6 @@
-# Schatten Backend
+# Shadow Backend
 
-FastAPI backend scaffold for Schatten.
+FastAPI backend scaffold for Shadow.
 
 ## Development
 
@@ -34,7 +34,7 @@ The durable prediction supervisor is a standalone backend module and is never
 started by FastAPI:
 
 ```bash
-DATABASE_URL=postgresql://user:password@database:5432/schatten \
+DATABASE_URL=postgresql://user:password@database:5432/shadow \
   uv run python -m app.api.v1.predictions.worker
 ```
 
@@ -48,7 +48,7 @@ The process health-check command returns zero only while another live database
 session owns the worker lock:
 
 ```bash
-DATABASE_URL=postgresql://user:password@database:5432/schatten \
+DATABASE_URL=postgresql://user:password@database:5432/shadow \
   uv run python -m app.api.v1.predictions.worker health-check
 ```
 
@@ -63,7 +63,7 @@ Build the provider-neutral production image from the repository root so it can
 include both backend code and repository migrations:
 
 ```bash
-docker build --target production -t schatten-backend:local -f backend/Dockerfile .
+docker build --target production -t shadow-backend:local -f backend/Dockerfile .
 ```
 
 The default command runs the production API. The same image provides the
@@ -72,18 +72,18 @@ first-administrator bootstrap. All run as numeric user/group `10001:10001`:
 
 ```bash
 docker run --rm \
-  -e DATABASE_URL=postgresql://user:password@database:5432/schatten \
-  schatten-backend:local python migrate.py up
+  -e DATABASE_URL=postgresql://user:password@database:5432/shadow \
+  shadow-backend:local python migrate.py up
 
 docker run --rm \
-  -e DATABASE_URL=postgresql://user:password@database:5432/schatten \
+  -e DATABASE_URL=postgresql://user:password@database:5432/shadow \
   --workdir /tmp \
-  schatten-backend:local python -m app.seed_reference_data
+  shadow-backend:local python -m app.seed_reference_data
 
 docker run --rm --interactive --tty \
   --env DATABASE_URL \
   --workdir /tmp \
-  schatten-backend:local python -m app.bootstrap_admin
+  shadow-backend:local python -m app.bootstrap_admin
 ```
 
 Run the seed only after migrations. It needs only `DATABASE_URL`, inserts the
@@ -103,7 +103,7 @@ the administrator's first direct-Entra login uses normal guarded identity
 linking. Manage every later User through the authenticated Users UI/API.
 
 Deployment policy and secret-safe operator commands are documented in
-`docs/DEPLOYMENT.md`.
+`docs/architecture/deployment.md`.
 
 ## Verification
 

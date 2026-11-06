@@ -4,8 +4,8 @@
 
 set -Eeuo pipefail
 
-SCHATTEN_ENV_FILE="${SCHATTEN_ENV_FILE:-/opt/apps/schatten-config/production.env}"
-SCHATTEN_PROJECT=schatten
+SHADOW_ENV_FILE="${SHADOW_ENV_FILE:-/opt/apps/shadow-config/production.env}"
+SHADOW_PROJECT=shadow
 
 log() {
   printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >&2
@@ -19,7 +19,7 @@ die() {
 # Read one KEY=value from the protected env file without sourcing it.
 config_value() {
   local key="$1" default="${2-}" line
-  line="$(grep -E "^${key}=" "${SCHATTEN_ENV_FILE}" | tail -n 1 || true)"
+  line="$(grep -E "^${key}=" "${SHADOW_ENV_FILE}" | tail -n 1 || true)"
   if [[ -n "${line}" ]]; then
     line="${line#*=}"
     line="${line%\"}"
@@ -31,34 +31,34 @@ config_value() {
 }
 
 load_config() {
-  [[ -f "${SCHATTEN_ENV_FILE}" ]] || die "Missing protected env file ${SCHATTEN_ENV_FILE}"
+  [[ -f "${SHADOW_ENV_FILE}" ]] || die "Missing protected env file ${SHADOW_ENV_FILE}"
   local mode owner
-  mode="$(stat -c %a "${SCHATTEN_ENV_FILE}")"
-  owner="$(stat -c %u "${SCHATTEN_ENV_FILE}")"
-  [[ "${mode}" =~ ^[0-7]?[0-7]00$ ]] || die "${SCHATTEN_ENV_FILE} must not be group/other accessible (mode ${mode})"
-  [[ "${owner}" == "$(id -u)" ]] || die "${SCHATTEN_ENV_FILE} must be owned by the operator running this command"
-  if grep -qE '^(BACKEND_IMAGE|FRONTEND_IMAGE)=' "${SCHATTEN_ENV_FILE}"; then
-    die "Image references come from release records, not ${SCHATTEN_ENV_FILE}"
+  mode="$(stat -c %a "${SHADOW_ENV_FILE}")"
+  owner="$(stat -c %u "${SHADOW_ENV_FILE}")"
+  [[ "${mode}" =~ ^[0-7]?[0-7]00$ ]] || die "${SHADOW_ENV_FILE} must not be group/other accessible (mode ${mode})"
+  [[ "${owner}" == "$(id -u)" ]] || die "${SHADOW_ENV_FILE} must be owned by the operator running this command"
+  if grep -qE '^(BACKEND_IMAGE|FRONTEND_IMAGE)=' "${SHADOW_ENV_FILE}"; then
+    die "Image references come from release records, not ${SHADOW_ENV_FILE}"
   fi
   # Used by the sourcing deploy/bin commands.
   # shellcheck disable=SC2034
   {
-    SCHATTEN_STATE_DIR="$(config_value SCHATTEN_STATE_DIR /opt/apps/schatten-state)"
-    SCHATTEN_RELEASES_DIR="$(config_value SCHATTEN_RELEASES_DIR /opt/apps/schatten-releases)"
-    # Must match schatten-receive's SCHATTEN_SOURCES_DIR (same default).
-    SCHATTEN_SOURCES_DIR="$(config_value SCHATTEN_SOURCES_DIR /opt/apps/schatten-sources)"
-    SCHATTEN_BACKUP_DIR="$(config_value SCHATTEN_BACKUP_DIR /opt/postgres-backups)"
-    SCHATTEN_BACKUP_UID="$(config_value SCHATTEN_BACKUP_UID 10002)"
-    SCHATTEN_BACKUP_GID="$(config_value SCHATTEN_BACKUP_GID 10002)"
-    SCHATTEN_DOCKER_SOCKET="$(config_value SCHATTEN_DOCKER_SOCKET /var/run/docker.sock)"
+    SHADOW_STATE_DIR="$(config_value SHADOW_STATE_DIR /opt/apps/shadow-state)"
+    SHADOW_RELEASES_DIR="$(config_value SHADOW_RELEASES_DIR /opt/apps/shadow-releases)"
+    # Must match shadow-receive's SHADOW_SOURCES_DIR (same default).
+    SHADOW_SOURCES_DIR="$(config_value SHADOW_SOURCES_DIR /opt/apps/shadow-sources)"
+    SHADOW_BACKUP_DIR="$(config_value SHADOW_BACKUP_DIR /opt/postgres-backups)"
+    SHADOW_BACKUP_UID="$(config_value SHADOW_BACKUP_UID 10002)"
+    SHADOW_BACKUP_GID="$(config_value SHADOW_BACKUP_GID 10002)"
+    SHADOW_DOCKER_SOCKET="$(config_value SHADOW_DOCKER_SOCKET /var/run/docker.sock)"
   }
-  SCHATTEN_LOCK_DIR="${SCHATTEN_STATE_DIR}/locks"
+  SHADOW_LOCK_DIR="${SHADOW_STATE_DIR}/locks"
 }
 
 release_dir() {
   local release_id="$1"
   [[ "${release_id}" =~ ^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{12}$ ]] || die "Invalid release ID: ${release_id}"
-  printf '%s/%s' "${SCHATTEN_RELEASES_DIR}" "${release_id}"
+  printf '%s/%s' "${SHADOW_RELEASES_DIR}" "${release_id}"
 }
 
 release_value() {
@@ -69,7 +69,7 @@ release_value() {
 }
 
 pointer_value() {
-  local pointer="${SCHATTEN_RELEASES_DIR}/$1"
+  local pointer="${SHADOW_RELEASES_DIR}/$1"
   if [[ -f "${pointer}" ]]; then
     cat "${pointer}"
   fi
@@ -82,7 +82,7 @@ mcp_config_problem() {
   # Compose also reads export-prefixed, indented and KEY: value lines, which
   # config_value does not see, so only plain KEY=value lines are allowed.
   for key in MCP_ENABLED MCP_CHANGE_SET_REVIEW_ENABLED MCP_OAUTH_MAX_CLIENTS; do
-    lines="$(grep -E "^[[:space:]]*(export[[:space:]]+)?${key}[[:space:]]*[:=]" "${SCHATTEN_ENV_FILE}" || true)"
+    lines="$(grep -E "^[[:space:]]*(export[[:space:]]+)?${key}[[:space:]]*[:=]" "${SHADOW_ENV_FILE}" || true)"
     if [[ -n "${lines}" ]] && grep -qvE "^${key}=" <<<"${lines}"; then
       printf '%s must be a plain %s=<value> line' "${key}" "${key}"
       return
@@ -132,7 +132,7 @@ last_deployment_record() {
       printf '%s' "${file}"
       return
     fi
-  done < <(find "${SCHATTEN_STATE_DIR}/deployments" -maxdepth 1 -type f -name '*.env' 2>/dev/null | sort -r)
+  done < <(find "${SHADOW_STATE_DIR}/deployments" -maxdepth 1 -type f -name '*.env' 2>/dev/null | sort -r)
 }
 
 record_value() {
@@ -149,9 +149,9 @@ compose_release() {
   local directory="$1"
   shift
   local files=(--file "${directory}/source/docker-compose.production.yml")
-  if [[ -n "${SCHATTEN_COMPOSE_OVERRIDE_FILE:-}" ]]; then
+  if [[ -n "${SHADOW_COMPOSE_OVERRIDE_FILE:-}" ]]; then
     # Disposable QA only (for example internal TLS); recorded in deployments.
-    files+=(--file "${SCHATTEN_COMPOSE_OVERRIDE_FILE}")
+    files+=(--file "${SHADOW_COMPOSE_OVERRIDE_FILE}")
   fi
   env -i \
     PATH="${PATH}" \
@@ -160,9 +160,9 @@ compose_release() {
     BACKEND_IMAGE="$(release_value "${directory}" BACKEND_IMAGE_ID)" \
     FRONTEND_IMAGE="$(release_value "${directory}" FRONTEND_IMAGE_ID)" \
     docker compose \
-      --project-name "${SCHATTEN_PROJECT}" \
+      --project-name "${SHADOW_PROJECT}" \
       --project-directory "${directory}/source" \
-      --env-file "${SCHATTEN_ENV_FILE}" \
+      --env-file "${SHADOW_ENV_FILE}" \
       "${files[@]}" \
       "$@"
 }
@@ -182,14 +182,14 @@ verify_release_images() {
 # Shared maintenance lock: many releases/backups/restores may hold it; the
 # weekly Docker cleanup needs it exclusively and skips while it is held.
 hold_maintenance_lock() {
-  [[ -r "${SCHATTEN_LOCK_DIR}/maintenance.lock" ]] || die "Missing ${SCHATTEN_LOCK_DIR}/maintenance.lock; run deploy/bin/init-state"
-  exec 8<"${SCHATTEN_LOCK_DIR}/maintenance.lock"
+  [[ -r "${SHADOW_LOCK_DIR}/maintenance.lock" ]] || die "Missing ${SHADOW_LOCK_DIR}/maintenance.lock; run deploy/bin/init-state"
+  exec 8<"${SHADOW_LOCK_DIR}/maintenance.lock"
   flock --shared --wait 600 8 || die "Docker cleanup holds the maintenance lock"
 }
 
 hold_release_lock() {
-  [[ -r "${SCHATTEN_LOCK_DIR}/release.lock" ]] || die "Missing ${SCHATTEN_LOCK_DIR}/release.lock; run deploy/bin/init-state"
-  exec 7<"${SCHATTEN_LOCK_DIR}/release.lock"
+  [[ -r "${SHADOW_LOCK_DIR}/release.lock" ]] || die "Missing ${SHADOW_LOCK_DIR}/release.lock; run deploy/bin/init-state"
+  exec 7<"${SHADOW_LOCK_DIR}/release.lock"
   flock --exclusive --nonblock 7 || die "Another build, release or rollback is running"
 }
 

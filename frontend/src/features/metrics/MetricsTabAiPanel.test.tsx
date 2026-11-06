@@ -67,7 +67,7 @@ const connection: AiConnectionDto = {
   grantKey: "grant-1",
   clientId: "client-abc",
   clientName: "Claude",
-  scope: "schatten.read schatten.write",
+  scope: "shadow.read shadow.write",
   resource: "https://app.localhost/api/mcp",
   createdTime: "2026-10-01T08:00:00Z",
   lastUsedTime: null,

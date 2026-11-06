@@ -1,6 +1,6 @@
 """Build the MCP endpoint that `create_app()` registers (ADR-015).
 
-The one Schatten FastMCP server is built per app, stateless with JSON
+The one Shadow FastMCP server is built per app, stateless with JSON
 responses, so no MCP session, server-sent event stream or per-session state is
 kept. It is served at the exact route `/api/mcp` wrapped in `McpBearerAuth`:
 `app.mount` would redirect `/api/mcp` to a trailing slash. The stateless server

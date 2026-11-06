@@ -12,13 +12,13 @@ export function formatAiTimestamp(value: string): string {
 
 export type AiAccess = "none" | "read" | "readWrite";
 
-const READ_SCOPE = "schatten.read";
-const WRITE_SCOPE = "schatten.write";
+const READ_SCOPE = "shadow.read";
+const WRITE_SCOPE = "shadow.write";
 
 // The consent and connections APIs report a space-separated scope set:
-// `schatten.read`, or `schatten.read` and `schatten.write` in any order. An
+// `shadow.read`, or `shadow.read` and `shadow.write` in any order. An
 // empty set means the User's role allows no AI access (`ROLE_SCOPES` maps it to
-// no scope). Any other set, including write without read, is not a Schatten
+// no scope). Any other set, including write without read, is not a Shadow
 // access level.
 export function aiAccessFromScope(scope: string): AiAccess | null {
   const scopes = new Set(scope.split(" ").filter((item) => item !== ""));

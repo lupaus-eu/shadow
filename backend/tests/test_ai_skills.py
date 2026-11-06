@@ -53,7 +53,7 @@ DEFAULT_METAMODEL_PATH = (
 EXAMPLE_USER_ID = 1
 SKILL_NAMES = tuple(SKILL_PROMPT_NAMES)
 # TASK-074: one MCP server, connected and authorized once.
-PRODUCTION_MCP_URLS = {"schatten": "https://schatten.lupaus.eu/api/mcp"}
+PRODUCTION_MCP_URLS = {"shadow": "https://shadow.lupaus.eu/api/mcp"}
 PLUGIN_VERSION = "0.3.0"
 # Wording of the two servers that TASK-074 replaced with one.
 TWO_SERVER_WORDING = (
@@ -65,8 +65,8 @@ TWO_SERVER_WORDING = (
     "read and write servers",
     "/api/mcp/read",
     "/api/mcp/write",
-    "schatten-read",
-    "schatten-write",
+    "shadow-read",
+    "shadow-write",
 )
 READ_ONLY_SENTENCE = (
     "If `create_change_set` is not listed, this connection can only read, because "
@@ -239,7 +239,7 @@ def test_plugin_and_marketplace_manifests_are_valid() -> None:
     mcp = _read_json(PLUGIN_DIRECTORY / ".mcp.json")
     marketplace = _read_json(REPOSITORY_ROOT / ".claude-plugin" / "marketplace.json")
 
-    assert plugin["name"] == "schatten"
+    assert plugin["name"] == "shadow"
     assert plugin["version"] == PLUGIN_VERSION
     assert plugin["description"]
     assert {
@@ -258,13 +258,13 @@ def test_skills_name_one_mcp_server_and_no_read_or_write_server(name: str) -> No
     text = _skill_text(name)
     frontmatter, _ = parse_frontmatter(text)
 
-    assert frontmatter["description"].count("through the Schatten MCP server.") == 1
+    assert frontmatter["description"].count("through the Shadow MCP server.") == 1
     for wording in TWO_SERVER_WORDING:
         assert wording not in text.lower()
 
 
 def test_model_building_skill_tells_a_read_only_connection_to_say_so() -> None:
-    _, body = parse_frontmatter(_skill_text("schatten-model-building"))
+    _, body = parse_frontmatter(_skill_text("shadow-model-building"))
     opening = body.split("\n## ", 1)[0]
 
     assert READ_ONLY_SENTENCE in " ".join(opening.split())
@@ -294,7 +294,7 @@ def test_model_building_example_runs_against_the_default_metamodel(
         organisation_key = organisations_service.create_organisation(
             session, OrganisationCreateRequest(name="Acme Corp"), EXAMPLE_USER_ID
         ).id
-    [example] = _json_blocks("schatten-model-building")
+    [example] = _json_blocks("shadow-model-building")
     staged = [
         engine.StagedOperation(position, OPERATION_ADAPTER.validate_python(item))
         for position, item in enumerate(example)
@@ -364,8 +364,8 @@ def test_skill_zip_is_the_same_bytes_every_time(
     session_factory: sessionmaker[Session],
 ) -> None:
     with _client(session_factory, _mcp_enabled()) as client:
-        first = client.get("/api/v1/ai/skills/schatten-model-building.zip")
-        second = client.get("/api/v1/ai/skills/schatten-model-building.zip")
+        first = client.get("/api/v1/ai/skills/shadow-model-building.zip")
+        second = client.get("/api/v1/ai/skills/shadow-model-building.zip")
 
     assert first.content == second.content
 
@@ -385,7 +385,7 @@ def test_skill_zip_is_not_registered_with_mcp_disabled(
     session_factory: sessionmaker[Session],
 ) -> None:
     with _client(session_factory, Settings()) as client:
-        response = client.get("/api/v1/ai/skills/schatten-model-building.zip")
+        response = client.get("/api/v1/ai/skills/shadow-model-building.zip")
 
     assert response.status_code == 404
     assert response.json() == {"detail": "Not Found"}

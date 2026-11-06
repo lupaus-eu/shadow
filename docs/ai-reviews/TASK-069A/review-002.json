@@ -222,7 +222,7 @@
         "recommendation": "Add the admin per-user revocation to the component description and re-export.",
         "locations": [
           {
-            "path": "docs/diagrams/likec4/schatten-ai-mcp/model.c4",
+            "path": "docs/diagrams/likec4/shadow-ai-mcp/model.c4",
             "line": 117
           }
         ]
@@ -262,11 +262,11 @@
             "line": 123
           },
           {
-            "path": "docs/diagrams/likec4/schatten-ai-mcp/views.c4",
+            "path": "docs/diagrams/likec4/shadow-ai-mcp/views.c4",
             "line": 86
           },
           {
-            "path": "docs/diagrams/likec4/schatten-ai-mcp/model.c4",
+            "path": "docs/diagrams/likec4/shadow-ai-mcp/model.c4",
             "line": 107
           }
         ]
@@ -529,7 +529,7 @@
         "record_id": "TASK-069A/review-001",
         "finding_id": "F-024",
         "disposition": "fixed",
-        "rationale": "The Schatten system, Caddy and backend descriptions in the LikeC4 model now separate existing behaviour from parts marked New (ADR-015), and the exports were regenerated.",
+        "rationale": "The Shadow system, Caddy and backend descriptions in the LikeC4 model now separate existing behaviour from parts marked New (ADR-015), and the exports were regenerated.",
         "validated_by": {
           "review_id": "TASK-069A/review-002",
           "commit": "61b7d71c96ff874d88d23b36c54057f387915d16"

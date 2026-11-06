@@ -1,1 +1,1 @@
-"""AI Domain Schatten MCP server (ADR-015)."""
+"""AI Domain Shadow MCP server (ADR-015)."""

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Export one exact commit and write its source manifest (TASK-059H1, ADR-013).
 # Runs only where Git exists: the GitHub runner and local QA. The server never
-# runs Git; schatten-receive verifies the delivered files against this manifest.
+# runs Git; shadow-receive verifies the delivered files against this manifest.
 #
 # Usage: create-source-manifest.sh --commit <40-char SHA> --ref <ref> --run-id <digits> --output <new or empty folder>
 #   Run from inside the repository. Writes the tracked files of the commit plus
@@ -50,7 +50,7 @@ while IFS= read -r -d '' record; do
     160000) die "submodule ${path} is not allowed in delivered source" ;;
     *) die "unsupported tree entry ${record%%$'\t'*} for ${path}" ;;
   esac
-  # Same rule as schatten-receive: no spaces, quotes, backslashes or control characters.
+  # Same rule as shadow-receive: no spaces, quotes, backslashes or control characters.
   [[ "${path}" =~ ^[A-Za-z0-9._@#%+=,~-]+(/[A-Za-z0-9._@#%+=,~-]+)*$ ]] \
     || die "tracked path ${path@Q} has characters the manifest does not allow"
   [[ "${path}" != SOURCE_MANIFEST ]] || die "a tracked SOURCE_MANIFEST would collide with the manifest"

@@ -52,7 +52,7 @@ def _crashed_calculation(_: str, sender: object, temporary_directory: str) -> No
 
 
 def _child_temporary_directories() -> set[Path]:
-    return set(Path("/tmp").glob("schatten-prediction-*"))
+    return set(Path("/tmp").glob("shadow-prediction-*"))
 
 
 @pytest.fixture

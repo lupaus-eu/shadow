@@ -33,7 +33,7 @@ query() {
 }
 
 requested_id="${RESTORE_BACKUP_ID:-}"
-[[ "${requested_id}" =~ ^schatten-[0-9]{8}T[0-9]{6}Z-[a-z-]+-[0-9a-f]{6}$ ]] || fail "invalid backup ID"
+[[ "${requested_id}" =~ ^shadow-[0-9]{8}T[0-9]{6}Z-[a-z-]+-[0-9a-f]{6}$ ]] || fail "invalid backup ID"
 DUMP="${BACKUP_DIR}/${requested_id}.dump.gpg"
 MANIFEST="${BACKUP_DIR}/${requested_id}.manifest"
 [[ -r "${MANIFEST}" ]] || fail "backup has no readable completion manifest"

@@ -253,7 +253,7 @@ def test_secure_cookie_uses_host_prefix() -> None:
         }
     )
 
-    assert settings.session_cookie_name == "__Host-schatten-session"
+    assert settings.session_cookie_name == "__Host-shadow-session"
 
 
 def test_mcp_is_disabled_by_default_with_the_adr_015_allowlist() -> None:

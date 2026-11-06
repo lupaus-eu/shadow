@@ -3,9 +3,9 @@ import { aiAccessFromScope, aiScopeLabel } from "./aiPresentation";
 
 describe("aiAccessFromScope", () => {
   it("parses the scope as a set, in any order", () => {
-    expect(aiAccessFromScope("schatten.read")).toBe("read");
-    expect(aiAccessFromScope("schatten.read schatten.write")).toBe("readWrite");
-    expect(aiAccessFromScope("schatten.write schatten.read")).toBe("readWrite");
+    expect(aiAccessFromScope("shadow.read")).toBe("read");
+    expect(aiAccessFromScope("shadow.read shadow.write")).toBe("readWrite");
+    expect(aiAccessFromScope("shadow.write shadow.read")).toBe("readWrite");
   });
 
   it("reports no access for an empty scope, which a role without AI access gets", () => {
@@ -13,21 +13,21 @@ describe("aiAccessFromScope", () => {
   });
 
   it("rejects write without read and unknown scopes", () => {
-    expect(aiAccessFromScope("schatten.write")).toBeNull();
-    expect(aiAccessFromScope("schatten.read schatten.admin")).toBeNull();
+    expect(aiAccessFromScope("shadow.write")).toBeNull();
+    expect(aiAccessFromScope("shadow.read shadow.admin")).toBeNull();
   });
 });
 
 describe("aiScopeLabel", () => {
   it("labels read-only access, also with MCP change-set review on", () => {
-    expect(aiScopeLabel("schatten.read")).toBe("Read access");
-    expect(aiScopeLabel("schatten.read", true)).toBe("Read access");
+    expect(aiScopeLabel("shadow.read")).toBe("Read access");
+    expect(aiScopeLabel("shadow.read", true)).toBe("Read access");
   });
 
   it("labels read and write access in either order by the review flag", () => {
-    expect(aiScopeLabel("schatten.read schatten.write")).toBe("Read and propose changes");
-    expect(aiScopeLabel("schatten.write schatten.read")).toBe("Read and propose changes");
-    expect(aiScopeLabel("schatten.write schatten.read", true)).toBe(
+    expect(aiScopeLabel("shadow.read shadow.write")).toBe("Read and propose changes");
+    expect(aiScopeLabel("shadow.write shadow.read")).toBe("Read and propose changes");
+    expect(aiScopeLabel("shadow.write shadow.read", true)).toBe(
       "Read, propose, apply and reject changes"
     );
   });
@@ -38,7 +38,7 @@ describe("aiScopeLabel", () => {
   });
 
   it("shows any other scope verbatim", () => {
-    expect(aiScopeLabel("schatten.write")).toBe("schatten.write");
+    expect(aiScopeLabel("shadow.write")).toBe("shadow.write");
     expect(aiScopeLabel("other.scope")).toBe("other.scope");
   });
 });

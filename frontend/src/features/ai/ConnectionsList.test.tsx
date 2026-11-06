@@ -20,7 +20,7 @@ const readConnection: AiConnectionDto = {
   grantKey: "grant-read",
   clientId: "client-id-read",
   clientName: "Claude",
-  scope: "schatten.read",
+  scope: "shadow.read",
   resource: "https://app.localhost/api/mcp",
   createdTime: "2026-10-01T08:00:00Z",
   lastUsedTime: "2026-10-27T09:30:00Z",
@@ -31,7 +31,7 @@ const readWriteConnection: AiConnectionDto = {
   grantKey: "grant-read-write",
   clientId: "client-id-read-write",
   clientName: "my-client_2",
-  scope: "schatten.read schatten.write",
+  scope: "shadow.read shadow.write",
   resource: "https://app.localhost/api/mcp",
   createdTime: "2026-10-02T08:00:00Z",
   lastUsedTime: null,
@@ -72,7 +72,7 @@ describe("ConnectionsList", () => {
     expect(screen.getByText("Loading connections...")).toBeVisible();
     const readRow = await screen.findByRole("listitem", { name: /^Claude/ });
     expect(within(readRow).getByText("client-id-read")).toBeVisible();
-    expect(within(readRow).getByText("schatten.read")).toBeVisible();
+    expect(within(readRow).getByText("shadow.read")).toBeVisible();
     expect(within(readRow).getByText("Read access")).toBeVisible();
     expect(within(readRow).getByText(formatAiTimestamp(readConnection.createdTime))).toBeVisible();
     expect(
@@ -82,20 +82,20 @@ describe("ConnectionsList", () => {
 
     const writeRow = await screen.findByRole("listitem", { name: /^my-client_2/ });
     expect(within(writeRow).getByText("client-id-read-write")).toBeVisible();
-    expect(within(writeRow).getByText("schatten.read schatten.write")).toBeVisible();
+    expect(within(writeRow).getByText("shadow.read shadow.write")).toBeVisible();
     expect(within(writeRow).getByText("Read and propose changes")).toBeVisible();
     expect(within(writeRow).getByText("Never")).toBeVisible();
   });
 
   it("labels read and write access in either scope order", async () => {
     fetchAiConnectionsMock.mockResolvedValue([
-      { ...readWriteConnection, scope: "schatten.write schatten.read" }
+      { ...readWriteConnection, scope: "shadow.write shadow.read" }
     ]);
 
     render(<ConnectionsList />);
 
     const writeRow = await screen.findByRole("listitem", { name: /^my-client_2/ });
-    expect(within(writeRow).getByText("schatten.write schatten.read")).toBeVisible();
+    expect(within(writeRow).getByText("shadow.write shadow.read")).toBeVisible();
     expect(within(writeRow).getByText("Read and propose changes")).toBeVisible();
   });
 

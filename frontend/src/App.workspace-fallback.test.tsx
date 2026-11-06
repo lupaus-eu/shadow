@@ -67,7 +67,7 @@ describe("workspace route session bar fallback", () => {
     workspace.mode = "loading";
     mockSessionApi();
 
-    renderAt("/schatten/acme/org-states");
+    renderAt("/shadow/acme/org-states");
 
     expect(await screen.findByRole("status")).toHaveTextContent("Loading workspace...");
     const bar = screen.getByRole("complementary", { name: "Current user session" });
@@ -80,7 +80,7 @@ describe("workspace route session bar fallback", () => {
     workspace.mode = "failed";
     const fetchMock = mockSessionApi();
 
-    renderAt("/schatten/acme/org-states");
+    renderAt("/shadow/acme/org-states");
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Unable to load workspace");
     const bar = screen.getByRole("complementary", { name: "Current user session" });

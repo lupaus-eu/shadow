@@ -37,7 +37,7 @@ export default function Workspace() {
   const location = useLocation();
 
   const stateOrgName = (location.state as WorkspaceNavState | null)?.organisationName || undefined;
-  const storageKey = useMemo(() => (orgId ? `schatten:organisationName:${orgId}` : ""), [orgId]);
+  const storageKey = useMemo(() => (orgId ? `shadow:organisationName:${orgId}` : ""), [orgId]);
 
   useLayoutEffect(() => {
     if (!orgId || !stateOrgName) return;
@@ -82,7 +82,7 @@ function WorkspaceShell(props: { orgId: string; initialOrganisationName: string 
             <span className="app-mark" aria-hidden="true">
               S
             </span>
-            <span className="app-name">Schatten</span>
+            <span className="app-name">Shadow</span>
           </div>
           <div className="workspace-header__actions">
             <WorkspaceIndicators
@@ -121,7 +121,7 @@ function WorkspaceShell(props: { orgId: string; initialOrganisationName: string 
               {user?.role !== "admin" ? (
                 <Route
                   path="users"
-                  element={<Navigate to={`/schatten/${props.orgId}/org-states`} replace />}
+                  element={<Navigate to={`/shadow/${props.orgId}/org-states`} replace />}
                 />
               ) : null}
               <Route
@@ -165,7 +165,7 @@ function WorkspaceTabs(props: {
   const hasScenarioAndOrgState = Boolean(selectedScenario && selectedOrgState);
 
   return (
-    <nav className="tab-bar" aria-label="Schatten workspace tabs">
+    <nav className="tab-bar" aria-label="Shadow workspace tabs">
       {WORKSPACE_TABS.filter((tab) => tab.signature !== "users" || props.isAdmin).map((tab) => {
         const isDisabled = tab.requiresScenarioAndOrgState && !hasScenarioAndOrgState;
 
@@ -186,7 +186,7 @@ function WorkspaceTabs(props: {
           <NavLink
             key={tab.signature}
             className={({ isActive }) => `tab-link${isActive ? " tab-link--active" : ""}`}
-            to={`/schatten/${props.orgId}/${tab.signature}`}
+            to={`/shadow/${props.orgId}/${tab.signature}`}
             state={props.forwardedState}
             end
           >
@@ -247,7 +247,7 @@ function WorkspaceTabContent(props: { tab: WorkspaceTab; orgId: string }) {
 }
 
 // The Metrics tab AI panel follows the `changeSet` query parameter, which the
-// review URL `/schatten/<org>/metrics?changeSet=<key>` sets (ADR-015).
+// review URL `/shadow/<org>/metrics?changeSet=<key>` sets (ADR-015).
 function MetricsWorkspaceTab(props: { orgId: string }) {
   const { features } = useAuth();
   const location = useLocation();

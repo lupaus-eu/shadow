@@ -22,7 +22,7 @@ REFERENCE_SQL_PATH = REFERENCE_DATA_DIRECTORY / "001_seed_reference_data.sql"
 REFERENCE_JSON_PATH = (
     REFERENCE_DATA_DIRECTORY / "metamodel_state_##default##.json"
 )
-REFERENCE_JSON_SETTING = "schatten.seed_reference_data.metamodel_json"
+REFERENCE_JSON_SETTING = "shadow.seed_reference_data.metamodel_json"
 
 class ReferenceDataSeedError(RuntimeError):
     """Raised when the command cannot safely start a reference-data seed."""

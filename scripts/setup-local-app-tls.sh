@@ -65,7 +65,7 @@ if [[ ! -e "${CA_CERTIFICATE}" && ! -e "${CA_KEY}" ]]; then
     printf 'Legacy CA material is incomplete in %s. Restore it or remove the incomplete legacy CA deliberately; this script will not overwrite it.\n' "${CA_DIRECTORY}" >&2
     exit 1
   fi
-  openssl req -x509 -newkey rsa:3072 -sha256 -days 3650 -nodes -subj '/CN=Schatten Local Development CA' -addext 'basicConstraints=critical,CA:TRUE' -addext 'keyUsage=critical,keyCertSign,cRLSign' -keyout "${CA_KEY}" -out "${CA_CERTIFICATE}" >/dev/null 2>&1
+  openssl req -x509 -newkey rsa:3072 -sha256 -days 3650 -nodes -subj '/CN=Shadow Local Development CA' -addext 'basicConstraints=critical,CA:TRUE' -addext 'keyUsage=critical,keyCertSign,cRLSign' -keyout "${CA_KEY}" -out "${CA_CERTIFICATE}" >/dev/null 2>&1
   chmod 600 "${CA_KEY}"
   chmod 644 "${CA_CERTIFICATE}"
 elif [[ ! -r "${CA_CERTIFICATE}" || ! -r "${CA_KEY}" ]]; then

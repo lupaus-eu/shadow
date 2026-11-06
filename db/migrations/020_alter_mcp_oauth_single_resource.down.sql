@@ -20,11 +20,11 @@ ALTER TABLE mcp_oauth_authorization_requests
 
 ALTER TABLE mcp_oauth_authorization_requests
     ADD CONSTRAINT ck_mcp_oauth_authorization_requests_scope
-        CHECK (scopes IN ('schatten.read', 'schatten.write')),
+        CHECK (scopes IN ('shadow.read', 'shadow.write')),
     ADD CONSTRAINT ck_mcp_oauth_authorization_requests_scope_resource
         CHECK (
-            (scopes = 'schatten.read' AND resource LIKE '%/api/mcp/read')
-            OR (scopes = 'schatten.write' AND resource LIKE '%/api/mcp/write')
+            (scopes = 'shadow.read' AND resource LIKE '%/api/mcp/read')
+            OR (scopes = 'shadow.write' AND resource LIKE '%/api/mcp/write')
         );
 
 ALTER TABLE mcp_oauth_grants
@@ -33,9 +33,9 @@ ALTER TABLE mcp_oauth_grants
 
 ALTER TABLE mcp_oauth_grants
     ADD CONSTRAINT ck_mcp_oauth_grants_scope
-        CHECK (scopes IN ('schatten.read', 'schatten.write')),
+        CHECK (scopes IN ('shadow.read', 'shadow.write')),
     ADD CONSTRAINT ck_mcp_oauth_grants_scope_resource
         CHECK (
-            (scopes = 'schatten.read' AND resource LIKE '%/api/mcp/read')
-            OR (scopes = 'schatten.write' AND resource LIKE '%/api/mcp/write')
+            (scopes = 'shadow.read' AND resource LIKE '%/api/mcp/read')
+            OR (scopes = 'shadow.write' AND resource LIKE '%/api/mcp/write')
         );

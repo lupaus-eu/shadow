@@ -3,7 +3,7 @@ import { Component, type ReactNode } from "react";
 export function RouteLoadingFallback(props: { message: string }) {
   return (
     <section className="route-loading-state" role="status" aria-live="polite" aria-busy="true">
-      <p className="eyebrow">Schatten</p>
+      <p className="eyebrow">Shadow</p>
       <p className="route-loading-state__message">{props.message}</p>
     </section>
   );

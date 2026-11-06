@@ -48,7 +48,7 @@ export default function AuthorizePage() {
   if (!features.mcp) {
     return (
       <AuthorizeMessage title="AI connections are not available">
-        Connecting AI clients is turned off in this Schatten environment. Close this page and
+        Connecting AI clients is turned off in this Shadow environment. Close this page and
         contact your administrator if you expected it to work.
       </AuthorizeMessage>
     );
@@ -177,7 +177,7 @@ function ConsentRequest(props: { requestId: string }) {
   return (
     <main className="center-page">
       <section className="home-panel ai-authorize" aria-labelledby="ai-authorize-title">
-        <p className="eyebrow">Schatten</p>
+        <p className="eyebrow">Shadow</p>
         <h1 id="ai-authorize-title" className="display-title">
           Connect an AI client
         </h1>
@@ -189,7 +189,7 @@ function ConsentRequest(props: { requestId: string }) {
               (<strong>{user.name}</strong>)
             </>
           ) : null}{" "}
-          with your Schatten role.
+          with your Shadow role.
         </p>
 
         <dl className="detail-meta">
@@ -236,7 +236,7 @@ function ConsentRequest(props: { requestId: string }) {
           />
           {canApprove ? (
             <p>
-              Data that the AI client reads from Schatten is sent to your AI vendor. The connection
+              Data that the AI client reads from Shadow is sent to your AI vendor. The connection
               lasts for a limited time (30 days by default) unless it is revoked.
             </p>
           ) : null}
@@ -289,7 +289,7 @@ function ScopeExplanation(props: { scope: string; changeSetReview: boolean; role
       <div className="ai-authorize__scope">
         <h3 className="secondary-title">{aiScopeLabel(props.scope)}</h3>
         <p>
-          Your Schatten role
+          Your Shadow role
           {props.role ? <> ({props.role === "admin" ? "Admin" : "Consultant"})</> : null} does not
           allow AI clients to connect, so this request cannot be approved. Deny it to return to the
           AI client, and ask your administrator if you need AI access.
@@ -312,7 +312,7 @@ function ScopeExplanation(props: { scope: string; changeSetReview: boolean; role
 
   const readText =
     "The AI client can read the organisations, scenarios, model structure, timeseries, events " +
-    "and AI change sets that you can see in Schatten.";
+    "and AI change sets that you can see in Shadow.";
 
   return (
     <div className="ai-authorize__scope">
@@ -326,13 +326,13 @@ function ScopeExplanation(props: { scope: string; changeSetReview: boolean; role
             <p>
               It can also propose changes as change sets and, when you tell it to, apply or reject
               change sets awaiting review on your behalf, including change sets that other people
-              proposed. Applying a change set changes Schatten data, and you are recorded as its
+              proposed. Applying a change set changes Shadow data, and you are recorded as its
               reviewer. Your AI client should ask you to approve each apply or reject.
             </p>
           ) : (
             <p>
               It can also propose changes as change sets. Changes are proposed only: nothing in
-              Schatten changes until a person reviews and applies the change set in Schatten.
+              Shadow changes until a person reviews and applies the change set in Shadow.
             </p>
           )}
         </>
@@ -360,7 +360,7 @@ function AuthorizeMessage(props: {
   return (
     <main className="center-page" aria-busy={props.busy ? "true" : undefined}>
       <section className="home-panel ai-authorize" aria-labelledby="ai-authorize-title">
-        <p className="eyebrow">Schatten</p>
+        <p className="eyebrow">Shadow</p>
         <h1 id="ai-authorize-title" className="display-title">
           {props.title}
         </h1>

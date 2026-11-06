@@ -226,7 +226,7 @@ function ConnectionRow(props: {
         <div className="delete-confirmation" role="alertdialog" aria-labelledby={confirmationId}>
           <p id={confirmationId}>
             Revoke this connection? The AI client loses access immediately and must be connected
-            again to use Schatten.
+            again to use Shadow.
           </p>
           <div className="form-actions">
             <button

@@ -35,7 +35,7 @@ RUN cp /usr/bin/caddy /tmp/caddy \
     && chmod 0700 /data /config
 
 COPY Caddyfile /etc/caddy/Caddyfile
-COPY --chmod=755 caddy-entrypoint.sh /usr/local/bin/schatten-caddy-entrypoint
+COPY --chmod=755 caddy-entrypoint.sh /usr/local/bin/shadow-caddy-entrypoint
 COPY --from=build /app/dist /srv
 
 ENV XDG_CONFIG_HOME=/config
@@ -49,7 +49,7 @@ HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=5 \
 
 USER 10001:10001
 
-ENTRYPOINT ["/usr/local/bin/schatten-caddy-entrypoint"]
+ENTRYPOINT ["/usr/local/bin/shadow-caddy-entrypoint"]
 CMD ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
 
 FROM base AS preview

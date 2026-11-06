@@ -1,10 +1,10 @@
 -- Shared default-metamodel seed used by development and production callers.
 -- The caller must start a transaction and populate this transaction-local setting:
---   schatten.seed_reference_data.metamodel_json
+--   shadow.seed_reference_data.metamodel_json
 
 SELECT pg_advisory_xact_lock(
     hashtextextended(
-        'schatten-reference-data-seed:' || current_database() || ':' || current_schema(),
+        'shadow-reference-data-seed:' || current_database() || ':' || current_schema(),
         0
     )
 );
@@ -16,7 +16,7 @@ CREATE TEMP TABLE _seed_default_metamodel (
 
 WITH source AS (
     SELECT current_setting(
-        'schatten.seed_reference_data.metamodel_json'
+        'shadow.seed_reference_data.metamodel_json'
     )::JSONB AS source_json
 ),
 inserted_metamodel AS (

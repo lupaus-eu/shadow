@@ -35,7 +35,7 @@ describe("AI API", () => {
       clientNameSelfDeclared: true,
       redirectIsLoopback: false,
       redirectHost: "claude.ai",
-      scope: "schatten.read",
+      scope: "shadow.read",
       resource: "https://app.localhost/api/mcp",
       expiresTime: "2026-10-28T10:10:00Z"
     };
@@ -121,7 +121,7 @@ describe("AI API", () => {
         grantKey: "grant/1",
         clientId: "client-1",
         clientName: "Claude",
-        scope: "schatten.read schatten.write",
+        scope: "shadow.read shadow.write",
         resource: "https://app.localhost/api/mcp",
         createdTime: "2026-10-01T10:00:00Z",
         lastUsedTime: null,

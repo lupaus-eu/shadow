@@ -1,11 +1,11 @@
 {
-  "name": "schatten",
+  "name": "shadow",
   "version": "0.3.0",
-  "description": "Build Schatten organisation models and realistic timeseries with AI. Connects the Schatten MCP server, authorized once for reading and proposing changes, and adds the model-building and timeseries-generation skills. Changes are only proposed: a person reviews and applies them, in Schatten or in the chat when the server allows it.",
+  "description": "Build Shadow organisation models and realistic timeseries with AI. Connects the Shadow MCP server, authorized once for reading and proposing changes, and adds the model-building and timeseries-generation skills. Changes are only proposed: a person reviews and applies them, in Shadow or in the chat when the server allows it.",
   "author": {
     "name": "Reflector"
   },
-  "homepage": "https://schatten.lupaus.eu",
-  "repository": "https://github.com/reflector-oy/schatten",
-  "keywords": ["schatten", "mcp", "organisation-model", "timeseries"]
+  "homepage": "https://shadow.lupaus.eu",
+  "repository": "https://github.com/lupaus-eu/shadow",
+  "keywords": ["shadow", "mcp", "organisation-model", "timeseries"]
 }

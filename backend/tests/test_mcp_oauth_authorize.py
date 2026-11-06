@@ -35,7 +35,7 @@ from app.main import create_app
 
 ORIGIN = "http://testserver"
 RESOURCE = f"{ORIGIN}/api/mcp"
-BOTH_SCOPES = "schatten.read schatten.write"
+BOTH_SCOPES = "shadow.read shadow.write"
 # The resources that TASK-074 replaced with `/api/mcp`.
 LEGACY_RESOURCES = (f"{ORIGIN}/api/mcp/read", f"{ORIGIN}/api/mcp/write")
 CLAUDE_CALLBACK = "https://claude.ai/api/mcp/auth_callback"
@@ -291,7 +291,7 @@ def test_authorization_server_metadata_advertises_the_contract(
         "token_endpoint": f"{ORIGIN}/api/oauth/token",
         "registration_endpoint": f"{ORIGIN}/api/oauth/register",
         "revocation_endpoint": f"{ORIGIN}/api/oauth/revoke",
-        "scopes_supported": ["schatten.read", "schatten.write"],
+        "scopes_supported": ["shadow.read", "shadow.write"],
         "response_types_supported": ["code"],
         "response_modes_supported": ["query"],
         "grant_types_supported": ["authorization_code", "refresh_token"],
@@ -312,7 +312,7 @@ def test_protected_resource_metadata_uses_the_one_canonical_resource(
     assert response.json() == {
         "resource": RESOURCE,
         "authorization_servers": [ORIGIN],
-        "scopes_supported": ["schatten.read", "schatten.write"],
+        "scopes_supported": ["shadow.read", "shadow.write"],
         "bearer_methods_supported": ["header"],
     }
     assert not response.json()["resource"].endswith("/")
@@ -664,7 +664,7 @@ def test_valid_authorize_updates_last_used_time_so_cleanup_keeps_the_client(
     "overrides",
     [
         {"redirect_uri": "http://127.0.0.1:33418/other"},
-        {"scope": "schatten.write"},
+        {"scope": "shadow.write"},
         {"resource": RESOURCE + "/"},
         {"code_challenge": None},
     ],
@@ -839,18 +839,18 @@ def test_authorize_accepts_a_loopback_port_change_only(
         ),
         pytest.param({"scope": "openid"}, "invalid_scope", id="unknown-scope"),
         pytest.param(
-            {"scope": "schatten.read openid"}, "invalid_scope", id="unknown-in-set"
+            {"scope": "shadow.read openid"}, "invalid_scope", id="unknown-in-set"
         ),
-        pytest.param({"scope": "schatten.write"}, "invalid_scope", id="write-only"),
+        pytest.param({"scope": "shadow.write"}, "invalid_scope", id="write-only"),
         pytest.param(
-            {"scope": "schatten.read schatten.read"}, "invalid_scope", id="duplicate"
+            {"scope": "shadow.read shadow.read"}, "invalid_scope", id="duplicate"
         ),
         pytest.param(
-            {"scope": "schatten.read  schatten.write"},
+            {"scope": "shadow.read  shadow.write"},
             "invalid_scope",
             id="double-space",
         ),
-        pytest.param({"scope": "SCHATTEN.READ"}, "invalid_scope", id="scope-case"),
+        pytest.param({"scope": "SHADOW.READ"}, "invalid_scope", id="scope-case"),
         pytest.param({"scope": ""}, "invalid_scope", id="empty-scope"),
         pytest.param({"resource": None}, "invalid_target", id="resource-missing"),
         pytest.param(
@@ -907,7 +907,7 @@ def test_authorize_rejects_two_resources_and_duplicate_parameters(
         "/api/oauth/authorize", params=(*base_params, ("resource", RESOURCE))
     )
     two_scopes = client.get(
-        "/api/oauth/authorize", params=(*base_params, ("scope", "schatten.read"))
+        "/api/oauth/authorize", params=(*base_params, ("scope", "shadow.read"))
     )
     duplicate_state = client.get(
         "/api/oauth/authorize", params=(*base_params, ("state", "other"))
@@ -958,9 +958,9 @@ def test_authorize_redirects_a_nul_state_as_invalid_request_without_echoing_it(
     ("scope", "stored"),
     [
         pytest.param(None, BOTH_SCOPES, id="omitted"),
-        pytest.param("schatten.read", "schatten.read", id="read"),
+        pytest.param("shadow.read", "shadow.read", id="read"),
         pytest.param(BOTH_SCOPES, BOTH_SCOPES, id="both"),
-        pytest.param("schatten.write schatten.read", BOTH_SCOPES, id="reversed"),
+        pytest.param("shadow.write shadow.read", BOTH_SCOPES, id="reversed"),
     ],
 )
 def test_authorize_normalises_the_requested_scopes(
@@ -1114,7 +1114,7 @@ def test_consent_shows_and_approval_grants_only_the_role_scopes(
     session_factory: sessionmaker[Session],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _stub_role_scopes(monkeypatch, "consultant", frozenset({"schatten.read"}))
+    _stub_role_scopes(monkeypatch, "consultant", frozenset({"shadow.read"}))
     request_id = _start_consent(client, CLAUDE_CALLBACK, scope=BOTH_SCOPES)
 
     consent = client.get("/api/v1/ai/oauth/consent", params={"request": request_id})
@@ -1122,7 +1122,7 @@ def test_consent_shows_and_approval_grants_only_the_role_scopes(
         "/api/v1/ai/oauth/consent/approve", json={"request": request_id}
     )
 
-    assert consent.json()["scope"] == "schatten.read"
+    assert consent.json()["scope"] == "shadow.read"
     assert [name for name, _ in _query(approve.json()["redirectUrl"])[1]] == [
         "code",
         "state",
@@ -1131,12 +1131,12 @@ def test_consent_shows_and_approval_grants_only_the_role_scopes(
     with session_factory() as session:
         pending = session.scalar(select(McpOauthAuthorizationRequest))
         assert pending is not None
-        assert pending.scopes == "schatten.read"
+        assert pending.scopes == "shadow.read"
 
 
 @pytest.mark.parametrize(
     ("role_scopes", "consent_scope"),
-    [(frozenset({"schatten.write"}), "schatten.write"), (frozenset[str](), "")],
+    [(frozenset({"shadow.write"}), "shadow.write"), (frozenset[str](), "")],
     ids=["write-only-role", "role-without-ai-access"],
 )
 def test_approval_without_the_read_scope_returns_access_denied(
@@ -1146,7 +1146,7 @@ def test_approval_without_the_read_scope_returns_access_denied(
     role_scopes: frozenset[str],
     consent_scope: str,
 ) -> None:
-    # Neither role can hold `schatten.read`. A role without AI access gets an
+    # Neither role can hold `shadow.read`. A role without AI access gets an
     # empty consent scope, which the consent page shows as "No access" with
     # only Deny.
     _stub_role_scopes(monkeypatch, "consultant", role_scopes)

@@ -1,53 +1,40 @@
-# schatten
+# shadow
 
 Varjo:n inkarnaatio
 
-Schatten on AI-first ohjelmistoprojekti.
+Shadow on AI-first ohjelmistoprojekti.
 
 ## Aloita tästä
 
-Päivittäisessä työssä riittää yleensä:
-
-1. `AGENTS.md`
-2. `CONTRIBUTING.md`
-3. relevantti `tasks/TASK-*.md`
-
-Käytännön lukupolku:
-
-- `README.md`: miten aloitan
-- `CONTRIBUTING.md`: miten teen työn
-- `docs/AI-DEVELOPMENT-WORKFLOW.md`: tarkempi prosessi tarvittaessa
-- `tasks/TASK-*.md`: mitä oikeasti tehdään
-- `AI-FIRST-ENGINEERING-HANDBOOK.md`: taustalla oleva käsikirja, jota ei tarvitse lukea joka kerta kokonaan
-
-Lue lisäksi tarpeen mukaan:
-
-- `ARCHITECTURE.md`, kun muutos koskee rakennetta tai järjestelmän osia
-- `docs/domains/DOMAIN.md`, kun muutos koskee domainia tai datan omistajuutta
-- `docs/concepts/CONCEPTS.md`, kun muutos koskee liiketoimintakäsitettä
-- `docs/data/DATA-MODEL.md`, kun muutos koskee dataa tai tietokantaa
-- `docs/TESTING.md`, kun muutos koskee sovelluskoodia tai testejä
-- `docs/DEPLOYMENT.md`, kun muutos koskee imageä, migraatiojobia tai deploymentia
-- `docs/AI-DEVELOPMENT-WORKFLOW.md`, kun haluat tarkemman workflow-ohjeen
-- `AI-FIRST-ENGINEERING-HANDBOOK.md`, kun tarvitset koko projektin kehityskäsikirjan
+- [`AGENTS.md`](AGENTS.md): agenttien ohjeet ja säännöt
+- [`CONTEXT.md`](CONTEXT.md): käsitteet ja sanasto
+- [`FEATURE_WORKFLOW.md`](FEATURE_WORKFLOW.md): miten featuret speksataan
+  (`.scratch/`: PRD → domain model → technical design → ticketit) ja toteutetaan
+- [`docs/architecture/`](docs/architecture/README.md): järjestelmän dokumentaatio
+  (yleiskuvaus, teknologiapino, deployment, domainit, käsitteet, datamalli, kaaviot)
+- [`docs/adr/`](docs/adr/README.md): arkkitehtuuripäätökset
+- [`docs/operations/`](docs/operations/README.md) ja [`docs/runbooks/`](docs/runbooks/README.md):
+  paikallinen kehitys, testaus, QA ja tuotannon ajo
+- [`docs/agents/`](docs/agents/): agenttityön ohjeet (definition of done, testaus, reititys)
+- [`docs/archive/`](docs/archive/README.md): vanhat `tasks/`-taskit ja prosessidokumentit
 
 ## DEV ympäristön setup
 
 ```bash
-git clone git@github.com:reflector-oy/schatten.git
-cd schatten
+git clone git@github.com:lupaus-eu/shadow.git
+cd shadow
 cp .env.example .env
 ```
 
 Jos repository on jo alustettu paikallisesti:
 
 ```bash
-git remote add origin git@github.com:reflector-oy/schatten.git
+git remote add origin git@github.com:lupaus-eu/shadow.git
 git pull origin main
 cp .env.example .env
 ```
 
-Teknologiapino on päätetty tiedostossa `docs/decisions/ADR-001-tech-stack.md`.
+Teknologiapino on päätetty tiedostossa `docs/adr/0001-tech-stack.md`.
 
 Päätetty rakenne:
 
@@ -62,19 +49,19 @@ Päätetty rakenne:
   TLS and private PostgreSQL 18 in Docker; daily encrypted on-server backups
   in `/opt/postgres-backups` with 7-day retention required for initial release
 
-[ADR-013](docs/decisions/ADR-013-shared-entra-local-https-deployment.md) records
+[ADR-013](docs/adr/0013-shared-entra-local-https-deployment.md) records
 the accepted amendment. TASK-059B implements the local HTTPS/direct-Entra
 runtime, TASK-059C implements the non-user reference seed and TASK-059D
 implements the empty-users-table administrator bootstrap. TASK-059G implements
 the production runtime (`docker-compose.production.yml`) and the operator
 build/release, backup, restore and scheduler tooling in `deploy/`. TASK-059E
 provides the integrated operator runbook
-([docs/PRODUCTION-RUNBOOK.md](docs/PRODUCTION-RUNBOOK.md)) and disposable QA.
+([docs/runbooks/production.md](docs/runbooks/production.md)) and disposable QA.
 TASK-059H1-H3 replace the host Git checkout with a manual "Deploy to
 production" GitHub Action, a manifest-verified receive and server `make`
 commands in `deploy/Makefile`; there is no Git on the server. TASK-059F
 performed the authorized setup and first production rollout (`v0.1.0`; see
-[docs/qa/FIRST-PRODUCTION-ROLLOUT.md](docs/qa/FIRST-PRODUCTION-ROLLOUT.md)).
+[docs/operations/qa/FIRST-PRODUCTION-ROLLOUT.md](docs/operations/qa/FIRST-PRODUCTION-ROLLOUT.md)).
 Volumes are not backups; release requires completed backup identifiers and
 successful restore-rehearsal evidence. F activated the production backups on
 2026-10-02.
@@ -122,7 +109,7 @@ docker compose --env-file .env --env-file .env.entra.local up backend local-cadd
 Ensimmäinen setup luo myös gitignored local CA:n sovelluksen HTTPS-osoitteelle
 `https://app.localhost`. CA pitää luottaa hostilla ennen browser-testausta;
 tarkat trust-, direct-Entra- ja local-admin-ohjeet ovat
-`docs/LOCAL-DEVELOPMENT.md`:ssä.
+`docs/operations/local-development.md`:ssä.
 
 FastAPIlla ei ole host-published porttia; Caddy reitittää API:n osoitteessa
 `https://app.localhost/api`.
@@ -131,8 +118,8 @@ Prediction worker käynnistyy full-stack-komennon mukana erillisenä
 `prediction-worker`-palveluna. Sillä ei ole julkaistua porttia eikä OIDC-
 asetuksia. Sen tila näkyy komennolla
 `docker compose --env-file .env --env-file .env.entra.local ps prediction-worker`; tarkemmat käyttö- ja QA-ohjeet ovat
-`docs/LOCAL-DEVELOPMENT.md`:ssä ja
-`docs/qa/PREDICTION-WORKER-RUNTIME-QA.md`:ssä.
+`docs/operations/local-development.md`:ssä ja
+`docs/operations/qa/PREDICTION-WORKER-RUNTIME-QA.md`:ssä.
 
 Health endpoint:
 
@@ -150,13 +137,13 @@ uv run --env-file .env --project backend python backend/migrate.py up
 
 Migraatiokäytännöt, rollback-komennot ja olemassa olevan tietokannan baseline
 on kuvattu tiedostoissa `db/migrations/README.md` ja
-`docs/LOCAL-DEVELOPMENT.md`.
+`docs/operations/local-development.md`.
 
 Production frontend/backend images, the same-backend-image prediction worker,
 automatic release migration, required
 direct-Entra/UpCloud configuration, manual approval gates, limited production smoke
-and rollback workflow are documented in `docs/DEPLOYMENT.md`. Local and
-production evidence uses `docs/qa/AUTHENTICATION-QA-CHECKLIST.md`. Deployment
+and rollback workflow are documented in `docs/architecture/deployment.md`. Local and
+production evidence uses `docs/operations/qa/AUTHENTICATION-QA-CHECKLIST.md`. Deployment
 runs migrations as a separate job; normal backend startup does not mutate the
 schema. These instructions do not authorize a production deployment, Entra
 resource change, tag operation, backup or restore.
@@ -180,34 +167,34 @@ uv run pyright
 
 ## Connect an AI client
 
-Schatten itself never calls an LLM: you chat in your own MCP client on your
+Shadow itself never calls an LLM: you chat in your own MCP client on your
 own AI subscription, and the client proposes changes as change sets that a
 person applies or rejects in the Metrics tab or, with
 `MCP_CHANGE_SET_REVIEW_ENABLED`, in the chat by approving the client's apply
-or reject call ([ADR-015](docs/decisions/ADR-015-ai-via-mcp.md)). The feature
+or reject call ([ADR-015](docs/adr/0015-ai-via-mcp.md)). The feature
 is behind `MCP_ENABLED` (off by default); when it is on, the Metrics tab's AI panel
-Connect section shows these steps for the current Schatten. Production has
+Connect section shows these steps for the current Shadow. Production has
 had it on, with the change-set review, since 2026-11-03 (`v0.2.0`;
-[runbook section 14](docs/PRODUCTION-RUNBOOK.md#14-ai-via-mcp-enable-disable-offboarding-and-incidents));
-local and production evidence is in [the QA checklist](docs/qa/AI-MCP-QA-CHECKLIST.md).
+[runbook section 14](docs/runbooks/production.md#14-ai-via-mcp-enable-disable-offboarding-and-incidents));
+local and production evidence is in [the QA checklist](docs/operations/qa/AI-MCP-QA-CHECKLIST.md).
 
-Schatten has one MCP server, `https://schatten.lupaus.eu/api/mcp`, which you
+Shadow has one MCP server, `https://shadow.lupaus.eu/api/mcp`, which you
 connect and authorize once; the tools it lists depend on your role.
 
-- Claude Code: install the Schatten plugin, which adds the Schatten MCP server
-  `https://schatten.lupaus.eu/api/mcp` and the Schatten skills (needs read
+- Claude Code: install the Shadow plugin, which adds the Shadow MCP server
+  `https://shadow.lupaus.eu/api/mcp` and the Shadow skills (needs read
   access to this repository):
 
   ```text
-  /plugin marketplace add reflector-oy/schatten
-  /plugin install schatten@schatten
+  /plugin marketplace add lupaus-eu/shadow
+  /plugin install shadow@shadow
   ```
 
-  Then run `/mcp`, select the Schatten server, authenticate and approve the
-  access in Schatten. Keep `apply_change_set` and `reject_change_set` on
+  Then run `/mcp`, select the Shadow server, authenticate and approve the
+  access in Shadow. Keep `apply_change_set` and `reject_change_set` on
   "ask": in auto mode, or once these tools are allowed without asking, Claude
   Code applies and rejects without asking you.
-  Reconnect with `/mcp` after a Schatten release that changes tool results.
+  Reconnect with `/mcp` after a Shadow release that changes tool results.
 - claude.ai and Claude Desktop: add the URL as one custom connector
   (Settings, Connectors), and upload the two skill zips from the Connect
   section under Customize, Skills (code execution must be on).
@@ -217,7 +204,7 @@ connect and authorize once; the tools it lists depend on your role.
   (`MCP_OAUTH_REDIRECT_URIS`); by default only the claude.ai and claude.com
   callbacks and `http://localhost:{port}/callback` are allowed.
 
-Before TASK-074 (ADR-015 amendment of 2026-11-03) Schatten had separate read
+Before TASK-074 (ADR-015 amendment of 2026-11-03) Shadow had separate read
 and write servers. After the release that brings TASK-074 to production,
 remove the two old connectors (or the old plugin servers) and add the one
 above, download the skill zips again and replace the uploaded skills, and
@@ -225,15 +212,13 @@ update the Claude Code plugin to version 0.3.0.
 
 The skills live in `backend/app/mcp/plugin/skills/`. Local use against
 `https://app.localhost` is described in
-[docs/LOCAL-DEVELOPMENT.md](docs/LOCAL-DEVELOPMENT.md).
+[docs/operations/local-development.md](docs/operations/local-development.md).
 
 ## Kehitysworkflow
 
 ```text
-Idea -> AI Implementation Plan -> Developer Approval -> Task(s) -> Branch -> AI Implementation -> Review -> Pull Request -> Developer Merge
+Idea -> PRD (.scratch) -> grillaus ja hyväksyntä -> domain model -> technical design -> ticketit
+     -> AI-toteutus ticket kerrallaan -> AI review -> human review -> merge -> hyväksytty julkaisu
 ```
 
-Katso tarkempi ohje:
-
-- `CONTRIBUTING.md`
-- `docs/AI-DEVELOPMENT-WORKFLOW.md`
+Katso [`FEATURE_WORKFLOW.md`](FEATURE_WORKFLOW.md) ja [`CONTRIBUTING.md`](CONTRIBUTING.md).

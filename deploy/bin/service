@@ -42,7 +42,7 @@ release_id="$(pointer_value current)"
 [[ -n "${release_id}" ]] || die "No current release; deploy one first"
 directory="$(release_dir "${release_id}")"
 [[ -f "${directory}/release.env" ]] || die "Release record ${directory} is missing"
-marker="${SCHATTEN_STATE_DIR}/stopped-services"
+marker="${SHADOW_STATE_DIR}/stopped-services"
 compose() { compose_release "${directory}" --profile scheduler --profile ops "$@"; }
 container_of() { compose ps --all --quiet "$1"; }
 
@@ -60,7 +60,7 @@ case "${command_name}" in
     hold_release_lock
     hold_maintenance_lock
     # A backup in progress would lose its database connection.
-    exec 6<"${SCHATTEN_LOCK_DIR}/backup.lock"
+    exec 6<"${SHADOW_LOCK_DIR}/backup.lock"
     flock --exclusive --nonblock 6 || die "A backup is running; retry when it has finished"
     running="$(compose ps --status running --services)"
     if [[ -f "${marker}" ]]; then

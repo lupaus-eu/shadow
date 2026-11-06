@@ -122,7 +122,7 @@ class ChangeSetSubmission(StrictBaseModel):
     )
     review_url: str | None = Field(
         description="Where a human reviews and applies or rejects the submitted "
-        "change set in Schatten; null when it stayed a draft."
+        "change set in Shadow; null when it stayed a draft."
     )
 
 

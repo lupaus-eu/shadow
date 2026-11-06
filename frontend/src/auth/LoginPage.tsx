@@ -10,7 +10,7 @@ export default function LoginPage(props: { returnTo: string; authenticationFaile
   return (
     <main className="center-page">
       <section className="home-panel" aria-labelledby="login-title">
-        <p className="eyebrow">Schatten</p>
+        <p className="eyebrow">Shadow</p>
         <h1 id="login-title" className="display-title">
           Sign in
         </h1>

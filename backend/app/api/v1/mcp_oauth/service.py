@@ -26,10 +26,10 @@ from app.core.config import MCP_LOOPBACK_REDIRECT_ENTRY, Settings
 
 logger = logging.getLogger(__name__)
 
-READ_SCOPE = "schatten.read"
-WRITE_SCOPE = "schatten.write"
+READ_SCOPE = "shadow.read"
+WRITE_SCOPE = "shadow.write"
 # ADR-015 amendment (TASK-074): one MCP resource carries both scopes. Every
-# grant holds `schatten.read`; `schatten.write` is optional.
+# grant holds `shadow.read`; `shadow.write` is optional.
 MCP_SCOPES = (READ_SCOPE, WRITE_SCOPE)
 MCP_PATH = "/api/mcp"
 PROTECTED_RESOURCE_METADATA_PATH = f"/.well-known/oauth-protected-resource{MCP_PATH}"
@@ -48,12 +48,12 @@ _CLIENT_NAME_CHARACTERS = re.compile(r"[A-Za-z0-9 .\-_():/+]+")
 _CLIENT_NAME_LETTER_OR_DIGIT = re.compile(r"[A-Za-z0-9]")
 _OPAQUE_256_BIT_VALUE = re.compile(r"[A-Za-z0-9_-]{43}")
 _REGISTRATION_LOCK_KEY = int.from_bytes(
-    hashlib.sha256(b"schatten.mcp_oauth.client_registration").digest()[:8],
+    hashlib.sha256(b"shadow.mcp_oauth.client_registration").digest()[:8],
     byteorder="big",
     signed=True,
 )
 _PENDING_REQUESTS_LOCK_KEY = int.from_bytes(
-    hashlib.sha256(b"schatten.mcp_oauth.pending_requests").digest()[:8],
+    hashlib.sha256(b"shadow.mcp_oauth.pending_requests").digest()[:8],
     byteorder="big",
     signed=True,
 )
@@ -411,7 +411,7 @@ def approve_consent(
     """Record the User, store a hashed one-time code and return the redirect.
 
     The request keeps only the scopes the User's role allows. A role without
-    `schatten.read` cannot connect, so its approval returns `access_denied`.
+    `shadow.read` cannot connect, so its approval returns `access_denied`.
     """
     current = now or datetime.now(UTC)
     pending, _, target = _load_undecided_request(
@@ -526,7 +526,7 @@ def _requested_scopes(values: Sequence[str] | None) -> str:
     """Normalise the optional `scope` parameter; omitted means both scopes.
 
     It may appear once, as a space-separated set of known scopes without
-    duplicates that includes `schatten.read`, in any order.
+    duplicates that includes `shadow.read`, in any order.
     """
     if values is None:
         return format_scopes(MCP_SCOPES)

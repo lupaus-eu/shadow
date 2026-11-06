@@ -21,7 +21,7 @@ class Handler(BaseHTTPRequestHandler):
                 "forwardedHost": self.headers.get("X-Forwarded-Host"),
                 "forwardedProto": self.headers.get("X-Forwarded-Proto"),
                 "forwardedFor": self.headers.get("X-Forwarded-For"),
-                "clientIp": self.headers.get("X-Schatten-Client-IP"),
+                "clientIp": self.headers.get("X-Shadow-Client-IP"),
             }
         ).encode()
         self.send_response(200)

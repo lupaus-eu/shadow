@@ -1,11 +1,11 @@
-"""MCP read tools and skill prompts, scope `schatten.read` (ADR-015).
+"""MCP read tools and skill prompts, scope `shadow.read` (ADR-015).
 
-`register_read_tools` adds them to the Schatten MCP server (`app.mcp.server`),
+`register_read_tools` adds them to the Shadow MCP server (`app.mcp.server`),
 each behind `requires_scope(READ_SCOPE)`. Read tools never change data. They
 call the existing domain service functions and return the existing response
 schemas, so data and errors match REST. The tool docstrings are the contract
 the AI client reads. Tools that can return many timeserie values bound them and
-report truncation. The prompts serve the Schatten skills' `SKILL.md` bodies to
+report truncation. The prompts serve the Shadow skills' `SKILL.md` bodies to
 clients without skills support.
 """
 
@@ -109,7 +109,7 @@ def register_read_tools(
     server: FastMCP, runtime: McpToolRuntime, settings: Settings
 ) -> None:
     async def whoami() -> UserResponse:
-        """Return the Schatten User this connection acts for.
+        """Return the Shadow User this connection acts for.
 
         The result has the User's `id`, `name`, `email` and `role` (`admin` or
         `consultant`). Every tool acts as this User; both roles may read every
@@ -380,7 +380,7 @@ def register_read_tools(
         null when the change set creates or copies a scenario or touches
         several), `operation_count`, the creator `created_by`, the staging
         client and the review fields: the reviewer, time and note, and
-        `reviewed_via`, `web` for a review in Schatten or `mcp` with the
+        `reviewed_via`, `web` for a review in Shadow or `mcp` with the
         reviewing client for one approved in an MCP client.
 
         At most `max_items` (100) are returned; `truncated` says whether older

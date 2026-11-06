@@ -54,7 +54,7 @@ hold_release_lock
 hold_maintenance_lock
 # service stop writes this record under the release lock. Deploying over it
 # would leave the stopped scheduler off and the record naming a stale release.
-stopped_record="${SCHATTEN_STATE_DIR}/stopped-services"
+stopped_record="${SHADOW_STATE_DIR}/stopped-services"
 [[ ! -e "${stopped_record}" ]] \
   || die "Services are stopped by service stop (${stopped_record}); run service start (make start) first"
 directory="$(release_dir "${release_id}")"
@@ -65,7 +65,7 @@ previous_current="$(pointer_value current)"
 # Turning either on needs its own recorded approval; turning them off needs
 # only the release approval, so an incident disable is never blocked.
 mcp_problem="$(mcp_config_problem)"
-[[ -z "${mcp_problem}" ]] || die "${mcp_problem} in ${SCHATTEN_ENV_FILE}"
+[[ -z "${mcp_problem}" ]] || die "${mcp_problem} in ${SHADOW_ENV_FILE}"
 mcp_state="$(release_mcp_state "${directory}")" || die "Could not read the MCP settings of ${release_id}"
 mcp_enabled="$(sed -n 's/^MCP_ENABLED=//p' <<<"${mcp_state}")"
 mcp_review="$(sed -n 's/^MCP_CHANGE_SET_REVIEW_ENABLED=//p' <<<"${mcp_state}")"
@@ -76,7 +76,7 @@ mcp_max_clients="$(sed -n 's/^MCP_OAUTH_MAX_CLIENTS=//p' <<<"${mcp_state}")"
   && "${mcp_max_clients}" =~ ^[1-9][0-9]{0,8}$ ]] \
   || die "${release_id} would give the backend MCP_ENABLED=${mcp_enabled}, MCP_CHANGE_SET_REVIEW_ENABLED=${mcp_review} and MCP_OAUTH_MAX_CLIENTS=${mcp_max_clients}; only true or false and a positive whole number are allowed"
 if [[ "$(env_mcp_state)" != "${mcp_state}" ]]; then
-  log "WARNING: ${release_id} ignores the MCP settings of ${SCHATTEN_ENV_FILE} (it predates TASK-069P) and deploys with $(tr '\n' ' ' <<<"${mcp_state}")"
+  log "WARNING: ${release_id} ignores the MCP settings of ${SHADOW_ENV_FILE} (it predates TASK-069P) and deploys with $(tr '\n' ' ' <<<"${mcp_state}")"
 fi
 # Records written before TASK-069P lack these keys; production MCP was off.
 previous_record="$(last_deployment_record)"
@@ -88,9 +88,9 @@ if [[ "${mcp_enabled}" == true ]] && { [[ "${previous_mcp_enabled}" != true ]] \
   mcp_turned_on=true
 fi
 [[ "${mcp_turned_on}" == false || -n "${mcp_approval}" ]] \
-  || die "This deployment turns on MCP or its change-set review (MCP_ENABLED=${mcp_enabled}, MCP_CHANGE_SET_REVIEW_ENABLED=${mcp_review}); it needs --mcp-approval <reference> (docs/PRODUCTION-RUNBOOK.md section 14)"
+  || die "This deployment turns on MCP or its change-set review (MCP_ENABLED=${mcp_enabled}, MCP_CHANGE_SET_REVIEW_ENABLED=${mcp_review}); it needs --mcp-approval <reference> (docs/runbooks/production.md section 14)"
 
-record_file="${SCHATTEN_STATE_DIR}/deployments/$(date -u +%Y%m%dT%H%M%SZ)-${release_id}.env"
+record_file="${SHADOW_STATE_DIR}/deployments/$(date -u +%Y%m%dT%H%M%SZ)-${release_id}.env"
 record() { printf '%s=%s\n' "$1" "$2" >>"${record_file}"; }
 mode=release
 [[ "${first_install}" == true ]] && mode=first-install
@@ -107,7 +107,7 @@ record MCP_ENABLED "${mcp_enabled}"
 record MCP_CHANGE_SET_REVIEW_ENABLED "${mcp_review}"
 record MCP_OAUTH_MAX_CLIENTS "${mcp_max_clients}"
 [[ -n "${mcp_approval}" ]] && record MCP_APPROVAL "${mcp_approval}"
-[[ -n "${SCHATTEN_COMPOSE_OVERRIDE_FILE:-}" ]] && record QA_COMPOSE_OVERRIDE "${SCHATTEN_COMPOSE_OVERRIDE_FILE}"
+[[ -n "${SHADOW_COMPOSE_OVERRIDE_FILE:-}" ]] && record QA_COMPOSE_OVERRIDE "${SHADOW_COMPOSE_OVERRIDE_FILE}"
 
 # Set once new-release application containers may have replaced the old ones.
 services_replaced=false
@@ -124,7 +124,7 @@ fail_release() {
 
 if [[ "${first_install}" == false ]]; then
   if [[ -z "${restore_evidence}" ]]; then
-    restore_evidence="$(ls -1t "${SCHATTEN_STATE_DIR}"/restore-evidence/*.txt 2>/dev/null | head -n 1 || true)"
+    restore_evidence="$(ls -1t "${SHADOW_STATE_DIR}"/restore-evidence/*.txt 2>/dev/null | head -n 1 || true)"
   fi
   [[ -n "${restore_evidence}" && -r "${restore_evidence}" ]] \
     || fail_release "Missing restore-rehearsal evidence blocks release"
@@ -218,8 +218,8 @@ else
 fi
 
 if [[ "${previous_current}" != "${release_id}" ]]; then
-  [[ -n "${previous_current}" ]] && printf '%s\n' "${previous_current}" >"${SCHATTEN_RELEASES_DIR}/previous"
-  printf '%s\n' "${release_id}" >"${SCHATTEN_RELEASES_DIR}/current"
+  [[ -n "${previous_current}" ]] && printf '%s\n' "${previous_current}" >"${SHADOW_RELEASES_DIR}/previous"
+  printf '%s\n' "${release_id}" >"${SHADOW_RELEASES_DIR}/current"
 fi
 record STATUS succeeded
 record FINISHED_AT "$(date -u +%Y-%m-%dT%H:%M:%SZ)"

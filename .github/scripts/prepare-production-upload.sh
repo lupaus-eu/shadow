@@ -40,10 +40,10 @@ cat >>"${GITHUB_STEP_SUMMARY}" <<EOF
 | Commit | \`${commit}\` |
 | Ref | \`${GITHUB_REF}\` |
 | Run ID | \`${GITHUB_RUN_ID}\` |
-| Upload folder | \`/opt/apps/schatten-upload/${commit}\` |
+| Upload folder | \`/opt/apps/shadow-upload/${commit}\` |
 | Manifest SHA-256 | \`${digest}\` |
 
 Accept on the host only after this run has succeeded, as \`deploy\`:
-\`schatten-receive ${digest}\`
+\`shadow-receive ${digest}\`
 EOF
 printf 'SOURCE_COMMIT=%s\nSOURCE_MANIFEST_SHA256=%s\n' "${commit}" "${digest}"

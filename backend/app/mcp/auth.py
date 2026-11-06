@@ -3,7 +3,7 @@
 `McpBearerAuth` wraps the MCP server's Streamable HTTP app. It accepts only an
 `Authorization: Bearer` token, never the browser session cookie, and on every
 request verifies the token for the canonical resource and the minimum scope
-`schatten.read`, applies the per-grant `mcp_rate_limiter` and exposes the
+`shadow.read`, applies the per-grant `mcp_rate_limiter` and exposes the
 verified principal to tools through `current_principal`. `requires_scope` then
 admits each tool and prompt only for a principal with its scope (TASK-074).
 Tokens are never logged.
@@ -47,7 +47,7 @@ def requires_scope(scope: str) -> AuthCheck:
     The principal's scopes are the effective set that `verify_access_token`
     computed for this request: the grant's scopes that the User's role allows.
     fastmcp leaves a component whose check fails out of its lists and answers
-    a call to it as an unknown tool, so a role without `schatten.write` sees
+    a call to it as an unknown tool, so a role without `shadow.write` sees
     only the read tools and prompts.
     """
 

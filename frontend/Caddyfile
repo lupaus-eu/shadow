@@ -86,13 +86,13 @@ http:// {
 		@api path /api /api/* /.well-known/oauth-authorization-server* /.well-known/oauth-protected-resource*
 		request_header @api -Forwarded
 		request_header @api -X-Forwarded-*
-		request_header @api -X-Schatten-Client-IP
+		request_header @api -X-Shadow-Client-IP
 		reverse_proxy @api backend:8000 {
 			header_up Host {$PUBLIC_HOST}
 			header_up X-Forwarded-For {remote_host}
 			header_up X-Forwarded-Host {$PUBLIC_HOST}
 			header_up X-Forwarded-Proto https
-			header_up X-Schatten-Client-IP {remote_host}
+			header_up X-Shadow-Client-IP {remote_host}
 		}
 
 		root * /srv

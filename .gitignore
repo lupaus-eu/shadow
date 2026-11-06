@@ -154,5 +154,11 @@ vite.config.ts.timestamp-*
 # WIP — speksauksen apuhakemisto agenttikäyttöä varten
 WIP/
 
+# Feature specs (PRDs, domain models, technical designs, tickets) stay on the
+# local machine; only the README and the templates are versioned.
+.scratch/*
+!.scratch/README.md
+!.scratch/_template/
+
 # Local Codex project configuration
 .codex/

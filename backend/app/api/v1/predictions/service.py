@@ -506,7 +506,7 @@ def _lock_prediction_names(session: Session, organisation_id: int) -> None:
     if session.get_bind().dialect.name == "postgresql":
         session.execute(
             text("SELECT pg_advisory_xact_lock(hashtextextended(:name, 0))"),
-            {"name": f"schatten.prediction-name:{organisation_id}"},
+            {"name": f"shadow.prediction-name:{organisation_id}"},
         )
 
 

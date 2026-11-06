@@ -110,7 +110,7 @@ def _start(client: TestClient, return_to: str = "/workspace") -> tuple[str, str]
     response = client.get("/api/v1/auth/login", params={"return_to": return_to})
     assert response.status_code == 302
     state = parse_qs(urlsplit(response.headers["location"]).query)["state"][0]
-    browser_binding = client.cookies.get("schatten-preauth")
+    browser_binding = client.cookies.get("shadow-preauth")
     assert browser_binding is not None
     return state, browser_binding
 
@@ -122,7 +122,7 @@ def _login(client: TestClient) -> str:
     )
     assert response.status_code == 303
     assert response.headers["location"] == "http://testserver/workspace"
-    raw_session = client.cookies.get("schatten-session")
+    raw_session = client.cookies.get("shadow-session")
     assert raw_session is not None
     return raw_session
 
@@ -135,7 +135,7 @@ def test_login_persists_only_hashed_state_and_browser_binding(
     response = client.get("/api/v1/auth/login", params={"return_to": "/workspace"})
     assert response.status_code == 302
     state = parse_qs(urlsplit(response.headers["location"]).query)["state"][0]
-    browser_binding = client.cookies.get("schatten-preauth")
+    browser_binding = client.cookies.get("shadow-preauth")
     assert browser_binding is not None
 
     assert provider.authorization_requests[0][0] == state
@@ -224,7 +224,7 @@ def test_callback_sets_strict_host_only_application_cookie(
 
     cookie_headers = response.headers.get_list("set-cookie")
     session_cookie = next(
-        header for header in cookie_headers if header.startswith("schatten-session=")
+        header for header in cookie_headers if header.startswith("shadow-session=")
     )
     assert "HttpOnly" in session_cookie
     assert "SameSite=strict" in session_cookie
@@ -261,7 +261,7 @@ def test_swapped_browser_binding_does_not_consume_transaction(
     # Replace the server-set cookie instead of adding a second one with the
     # same name: the Cookie header order of such duplicates is client-specific.
     client.cookies.set(
-        "schatten-preauth", swapped_binding, domain=TEST_SERVER_COOKIE_DOMAIN
+        "shadow-preauth", swapped_binding, domain=TEST_SERVER_COOKIE_DOMAIN
     )
 
     response = client.get(
@@ -275,7 +275,7 @@ def test_swapped_browser_binding_does_not_consume_transaction(
             session.scalar(select(func.count()).select_from(OidcLoginTransaction)) == 1
         )
     client.cookies.set(
-        "schatten-preauth", valid_binding, domain=TEST_SERVER_COOKIE_DOMAIN
+        "shadow-preauth", valid_binding, domain=TEST_SERVER_COOKIE_DOMAIN
     )
 
 
@@ -391,7 +391,7 @@ def test_expired_sessions_are_deleted(
 
     response = client.get("/api/v1/auth/session")
     assert response.status_code == 401
-    assert "schatten-session=" in response.headers["set-cookie"]
+    assert "shadow-session=" in response.headers["set-cookie"]
     assert "Max-Age=0" in response.headers["set-cookie"]
     with session_factory() as session:
         assert session.scalar(select(func.count()).select_from(AuthSession)) == 0
@@ -458,7 +458,7 @@ def test_host_and_untrusted_forwarded_client_headers_fail_closed(
 ) -> None:
     invalid_host = client.get("/api/v1/auth/session", headers={"Host": "evil.test"})
     untrusted_forward = client.get(
-        "/api/v1/auth/session", headers={"X-Schatten-Client-IP": "192.0.2.1"}
+        "/api/v1/auth/session", headers={"X-Shadow-Client-IP": "192.0.2.1"}
     )
 
     assert invalid_host.status_code == 400
@@ -476,7 +476,7 @@ def test_forwarded_client_header_is_accepted_only_from_configured_caddy_peer(
 
     with TestClient(app, client=("127.0.0.1", 50000)) as trusted_client:
         response = trusted_client.get(
-            "/health", headers={"X-Schatten-Client-IP": "192.0.2.10"}
+            "/health", headers={"X-Shadow-Client-IP": "192.0.2.10"}
         )
 
     assert response.status_code == 200

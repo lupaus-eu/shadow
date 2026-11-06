@@ -31,7 +31,7 @@
         "category": "documentation",
         "severity": "low",
         "summary": "The staging tools' texts are reworded once for both switch states instead of describing the in-chat review when on and keeping the previous wording when off.",
-        "rationale": "The task requires that the server instructions and the staging tools' texts describe the in-chat review when MCP_CHANGE_SET_REVIEW_ENABLED is on and keep today's wording when it is off. The instructions do switch. The docstrings of create_change_set, add_operations, validate_change_set, submit_change_set and discard_change_set were instead changed to neutral wording in both states (a human approves it, without in Schatten) and never mention the in-chat review. The neutral wording is accurate in both states, submit_change_set still names the review page in Schatten, and ADR-015 only fixes the instructions' wording for the switch-off state, so the behaviour and ADR agree; only the task's literal requirement differs.",
+        "rationale": "The task requires that the server instructions and the staging tools' texts describe the in-chat review when MCP_CHANGE_SET_REVIEW_ENABLED is on and keep today's wording when it is off. The instructions do switch. The docstrings of create_change_set, add_operations, validate_change_set, submit_change_set and discard_change_set were instead changed to neutral wording in both states (a human approves it, without in Shadow) and never mention the in-chat review. The neutral wording is accurate in both states, submit_change_set still names the review page in Shadow, and ADR-015 only fixes the instructions' wording for the switch-off state, so the behaviour and ADR agree; only the task's literal requirement differs.",
         "recommendation": "Decide whether the single neutral wording is acceptable, and record it as an accepted risk in the next round, or make the staging tool descriptions depend on the switch as the task states.",
         "locations": [
           {
@@ -71,7 +71,7 @@
         "recommendation": "Reword the skill to say whether the user or another User staged it (comparing created_by with whoami), or plan a creator name in the review result; TASK-069P's client QA can confirm what clients show.",
         "locations": [
           {
-            "path": "backend/app/mcp/plugin/skills/schatten-model-building/SKILL.md",
+            "path": "backend/app/mcp/plugin/skills/shadow-model-building/SKILL.md",
             "line": 128
           },
           {

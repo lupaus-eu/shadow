@@ -9,18 +9,18 @@ WORKDIR /app
 COPY backend/pyproject.toml backend/uv.lock ./
 RUN uv sync --frozen
 
-COPY --chmod=755 backend/docker-entrypoint-dev.sh /usr/local/bin/schatten-backend-dev
+COPY --chmod=755 backend/docker-entrypoint-dev.sh /usr/local/bin/shadow-backend-dev
 COPY backend/ .
 
 EXPOSE 8000
-CMD ["/usr/local/bin/schatten-backend-dev"]
+CMD ["/usr/local/bin/shadow-backend-dev"]
 
 FROM base AS production
 
 WORKDIR /workspace/backend
 
-RUN groupadd --gid 10001 schatten \
-    && useradd --uid 10001 --gid 10001 --create-home --shell /usr/sbin/nologin schatten
+RUN groupadd --gid 10001 shadow \
+    && useradd --uid 10001 --gid 10001 --create-home --shell /usr/sbin/nologin shadow
 
 COPY backend/pyproject.toml backend/uv.lock ./
 RUN uv sync --frozen --no-dev

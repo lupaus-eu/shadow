@@ -1,7 +1,7 @@
 [project]
-name = "schatten-backend"
+name = "shadow-backend"
 version = "0.1.0"
-description = "Schatten FastAPI backend"
+description = "Shadow FastAPI backend"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

@@ -10,7 +10,7 @@ from pydantic import Field, SecretStr, field_validator, model_validator
 from app.core.schemas import StrictBaseModel
 
 DEFAULT_DATABASE_URL = (
-    "postgresql://schatten:schatten_dev_password@localhost:5432/schatten"
+    "postgresql://shadow:shadow_dev_password@localhost:5432/shadow"
 )
 AppEnvironment = Literal["test", "development", "production"]
 ORIGIN_HOST_LABEL = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$")
@@ -364,9 +364,9 @@ class Settings(StrictBaseModel):
     @property
     def session_cookie_name(self) -> str:
         return (
-            "__Host-schatten-session"
+            "__Host-shadow-session"
             if self.session_cookie_secure
-            else "schatten-session"
+            else "shadow-session"
         )
 
 

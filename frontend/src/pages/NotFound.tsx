@@ -6,7 +6,7 @@ export default function NotFound() {
       <section className="home-panel">
         <p className="eyebrow">Not found</p>
         <h1 className="page-title">Page not found</h1>
-        <p className="muted">The requested Schatten page does not exist.</p>
+        <p className="muted">The requested Shadow page does not exist.</p>
         <Link className="btn btn--primary" to="/">
           Go home
         </Link>

@@ -21,7 +21,7 @@
   },
   "review": {
     "outcome": "findings",
-    "summary": "The fix commit resolves all three round-1 findings. The runbook now makes /opt/apps deploy-owned without changing its contents, consistent with the existing check-host writability requirement. audit-host flags a non-deploy owner and distinguishes existing Schatten paths that need review. The reboot step holds the maintenance lock across the reboot command, and the ADR-005 wording and diagram title were corrected with a regenerated SVG. The changes were exercised in a disposable Ubuntu 26.04 container and shellcheck passed. One minor QA-record omission remains.",
+    "summary": "The fix commit resolves all three round-1 findings. The runbook now makes /opt/apps deploy-owned without changing its contents, consistent with the existing check-host writability requirement. audit-host flags a non-deploy owner and distinguishes existing Shadow paths that need review. The reboot step holds the maintenance lock across the reboot command, and the ADR-005 wording and diagram title were corrected with a regenerated SVG. The changes were exercised in a disposable Ubuntu 26.04 container and shellcheck passed. One minor QA-record omission remains.",
     "findings": [
       {
         "id": "F-001",
@@ -43,7 +43,7 @@
         "record_id": "TASK-059E/review-001",
         "finding_id": "F-001",
         "disposition": "fixed",
-        "rationale": "Runbook section 2.2 adds a non-recursive ownership step for /opt/apps and a stop-and-review rule for existing Schatten paths, the expected-attention table and deployment storage table include it, and audit-host now reports attention for a non-deploy owner. A disposable Ubuntu 26.04 test confirmed that unrelated contents were unchanged and that the Schatten paths could be created afterwards.",
+        "rationale": "Runbook section 2.2 adds a non-recursive ownership step for /opt/apps and a stop-and-review rule for existing Shadow paths, the expected-attention table and deployment storage table include it, and audit-host now reports attention for a non-deploy owner. A disposable Ubuntu 26.04 test confirmed that unrelated contents were unchanged and that the Shadow paths could be created afterwards.",
         "validated_by": {
           "review_id": "TASK-059E/review-002",
           "commit": "25aa415511eb2fd8ac997f8c10b3276f029f3fda"

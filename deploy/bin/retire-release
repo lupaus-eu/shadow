@@ -14,5 +14,5 @@ directory="$(release_dir "${release_id}")"
 for pointer in current previous; do
   [[ "$(pointer_value "${pointer}")" != "${release_id}" ]] || die "Refusing to retire the ${pointer} release"
 done
-mv "${directory}" "${SCHATTEN_RELEASES_DIR}/retired/${release_id}"
+mv "${directory}" "${SHADOW_RELEASES_DIR}/retired/${release_id}"
 log "Retired ${release_id}; its images become eligible for weekly cleanup after retention."

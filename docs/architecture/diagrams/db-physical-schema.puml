@@ -1,0 +1,448 @@
+@startuml
+title Shadow - Core Physical Database Schema
+
+hide circle
+skinparam linetype ortho
+skinparam classAttributeIconSize 0
+
+entity "schema_migrations" as schema_migrations {
+  * version : INTEGER
+  --
+  filename : TEXT
+  checksum : TEXT
+  applied_at : TIMESTAMPTZ
+}
+
+entity "users" as users {
+  * user_id : BIGINT
+  --
+  name : TEXT
+  email : TEXT
+  role : TEXT
+  deleted_time : TIMESTAMPTZ
+}
+
+entity "user_identities" as user_identities {
+  * user_identity_id : BIGINT
+  --
+  user_id : BIGINT
+  issuer : TEXT
+  subject : TEXT
+  created_time : TIMESTAMPTZ
+  last_login_time : TIMESTAMPTZ
+}
+
+entity "oidc_login_transactions" as oidc_login_transactions {
+  * state_hash : BYTEA
+  --
+  browser_binding_hash : BYTEA
+  nonce : TEXT
+  pkce_verifier : TEXT
+  return_to : TEXT
+  created_time : TIMESTAMPTZ
+  expires_time : TIMESTAMPTZ
+}
+
+entity "auth_sessions" as auth_sessions {
+  * session_id_hash : BYTEA
+  --
+  user_id : BIGINT
+  csrf_token : TEXT
+  created_time : TIMESTAMPTZ
+  last_activity_time : TIMESTAMPTZ
+  absolute_expires_time : TIMESTAMPTZ
+}
+
+entity "customers" as customers {
+  * customer_id : BIGINT
+  --
+  name : TEXT
+  email : TEXT
+  status : TEXT
+  deleted_time : TIMESTAMPTZ
+}
+
+entity "contacts" as contacts {
+  * contact_id : BIGINT
+  --
+  customer_id : BIGINT
+  name : TEXT
+  email : TEXT
+  phone : TEXT
+  job_title : TEXT
+  deleted_time : TIMESTAMPTZ
+}
+
+entity "customer_addresses" as customer_addresses {
+  * customer_address_id : BIGINT
+  --
+  customer_id : BIGINT
+  label : TEXT
+  address_line_1 : TEXT
+  address_line_2 : TEXT
+  postal_code : TEXT
+  city : TEXT
+  region : TEXT
+  country_code : TEXT
+  deleted_time : TIMESTAMPTZ
+}
+
+entity "organisations" as organisations {
+  * organisation_id : BIGINT
+  --
+  organisation_key : TEXT
+  name : TEXT
+}
+
+entity "scenarios" as scenarios {
+  * scenario_id : BIGINT
+  --
+  organisation_id : BIGINT
+  scenario_key : TEXT
+  name : TEXT
+  protected : BOOLEAN
+  source_scenario_id : BIGINT
+  initial_state_id : BIGINT
+  version : INT
+}
+
+entity "org_states" as org_states {
+  * org_state_id : BIGINT
+  --
+  scenario_id : BIGINT
+  org_state_key : TEXT
+  name : TEXT
+  version : INT
+  target_date : DATE NOT NULL
+}
+
+entity "events" as events {
+  * event_id : BIGINT
+  --
+  scenario_id : BIGINT
+  event_key : TEXT
+  name : TEXT
+  target_date : DATE NOT NULL
+  version : INT
+}
+
+entity "metamodels" as metamodels {
+  * metamodel_id : BIGINT
+  --
+  organisation_id : BIGINT
+  version : INT
+}
+
+entity "node_types" as node_types {
+  * node_type_id : BIGINT
+  --
+  metamodel_id : BIGINT
+  node_type_key : TEXT
+  name : TEXT
+  display_name : TEXT
+}
+
+entity "edge_types" as edge_types {
+  * edge_type_id : BIGINT
+  --
+  metamodel_id : BIGINT
+  edge_type_key : TEXT
+  name : TEXT
+  display_name : TEXT
+}
+
+entity "type_attributes" as type_attributes {
+  * type_attribute_id : BIGINT
+  --
+  metamodel_id : BIGINT
+  owner_kind : TEXT
+  owner_node_type_id : BIGINT
+  owner_edge_type_id : BIGINT
+  attribute_key : TEXT
+  display_name : TEXT
+}
+
+entity "allowed_connections" as allowed_connections {
+  * allowed_connection_id : BIGINT
+  --
+  metamodel_id : BIGINT
+  edge_type_id : BIGINT
+  source_node_type_id : BIGINT
+  target_node_type_id : BIGINT
+}
+
+entity "graph_nodes" as graph_nodes {
+  * graph_node_id : BIGINT
+  --
+  scenario_id : BIGINT
+  node_key : TEXT
+  name : TEXT
+  node_type_id : BIGINT
+  create_date : DATE NOT NULL
+  delete_date : DATE
+  attributes : JSONB
+  timeserie_id : BIGINT
+  timeserie_secondary_id : BIGINT
+}
+
+entity "graph_edges" as graph_edges {
+  * graph_edge_id : BIGINT
+  --
+  scenario_id : BIGINT
+  edge_key : TEXT
+  name : TEXT
+  edge_type_id : BIGINT
+  source_graph_node_id : BIGINT
+  target_graph_node_id : BIGINT
+  create_date : DATE NOT NULL
+  delete_date : DATE
+  attributes : JSONB
+}
+
+entity "timeseries" as timeseries {
+  * timeserie_id : BIGINT
+  --
+  scenario_id : BIGINT
+  timeserie_key : TEXT
+  name : TEXT
+  short_name : TEXT
+  time_unit : TEXT
+  value_unit : TEXT
+}
+
+entity "timeserie_values" as timeserie_values {
+  * timeserie_value_id : BIGINT
+  --
+  timeserie_id : BIGINT
+  date : DATE
+  value : JSONB
+  is_derived : BOOLEAN
+}
+
+entity "derived_metrics_equations" as derived_metrics_equations {
+  * derived_metric_equation_id : BIGINT
+  --
+  scenario_id : BIGINT
+  derived_timeserie_id : BIGINT
+  formula : TEXT
+  referenced_timeserie_ids : JSONB
+}
+
+entity "prediction_versions" as prediction_versions {
+  * prediction_version_id : BIGINT
+  --
+  organisation_id : BIGINT
+  prediction_key : TEXT
+  name : TEXT
+  cutoff_mode : TEXT
+  confidence_level : INT
+  start_date : DATE
+  end_date : DATE
+  model_configuration : JSONB
+  created_by : BIGINT
+  created_time : TIMESTAMPTZ
+}
+
+entity "prediction_requests" as prediction_requests {
+  * prediction_request_id : BIGINT
+  --
+  prediction_request_key : TEXT
+  organisation_id : BIGINT
+  name : TEXT
+  input_snapshot : JSONB
+  state : TEXT
+  submitted_time : TIMESTAMPTZ
+  start_time : TIMESTAMPTZ
+  finish_time : TIMESTAMPTZ
+  submitted_by : BIGINT
+  cancelled_by : BIGINT
+  cancellation_time : TIMESTAMPTZ
+  worker_id : TEXT
+  failure_code : TEXT
+  failure_reason : TEXT
+  completed_prediction_version_id : BIGINT
+}
+
+entity "prediction_targets" as prediction_targets {
+  * prediction_target_id : BIGINT
+  --
+  prediction_version_id : BIGINT
+  target_scenario_key : TEXT
+  metric_key : TEXT
+  time_unit : TEXT
+  eligibility_status : TEXT
+  seasonal_period : INT
+  source_snapshot : JSONB
+  input_snapshot : JSONB
+}
+
+entity "prediction_model_results" as prediction_model_results {
+  * prediction_model_result_id : BIGINT
+  --
+  prediction_target_id : BIGINT
+  result_kind : TEXT
+  status : TEXT
+  prediction_interval_status : TEXT
+  prediction_interval_reason : TEXT
+  cross_validation_status : TEXT
+  cross_validation_mae : DOUBLE
+  configuration : JSONB
+  created_by : BIGINT
+}
+
+entity "prediction_points" as prediction_points {
+  * prediction_point_id : BIGINT
+  --
+  prediction_model_result_id : BIGINT
+  date : DATE
+  value : DOUBLE
+  lower_bound : DOUBLE
+  upper_bound : DOUBLE
+  created_by : BIGINT
+}
+
+entity "mcp_oauth_clients" as mcp_oauth_clients {
+  * mcp_oauth_client_id : BIGINT
+  --
+  client_id : TEXT
+  client_name : TEXT
+  redirect_uris : JSONB
+  created_time : TIMESTAMPTZ
+  created_ip : TEXT
+  last_used_time : TIMESTAMPTZ
+  deleted_time : TIMESTAMPTZ
+}
+
+entity "mcp_oauth_authorization_requests" as mcp_oauth_authorization_requests {
+  * request_id_hash : BYTEA
+  --
+  mcp_oauth_client_id : BIGINT
+  redirect_uri : TEXT
+  state : TEXT
+  code_challenge : TEXT
+  scopes : TEXT
+  resource : TEXT
+  created_time : TIMESTAMPTZ
+  expires_time : TIMESTAMPTZ
+  user_id : BIGINT
+  code_hash : BYTEA
+  code_expires_time : TIMESTAMPTZ
+  consumed_time : TIMESTAMPTZ
+  grant_id : BIGINT
+}
+
+entity "mcp_oauth_grants" as mcp_oauth_grants {
+  * grant_id : BIGINT
+  --
+  grant_key : TEXT
+  mcp_oauth_client_id : BIGINT
+  user_id : BIGINT
+  scopes : TEXT
+  resource : TEXT
+  created_time : TIMESTAMPTZ
+  expires_time : TIMESTAMPTZ
+  last_used_time : TIMESTAMPTZ
+  revoked_time : TIMESTAMPTZ
+  revoked_by : BIGINT
+}
+
+entity "mcp_oauth_tokens" as mcp_oauth_tokens {
+  * token_hash : BYTEA
+  --
+  grant_id : BIGINT
+  kind : TEXT
+  created_time : TIMESTAMPTZ
+  expires_time : TIMESTAMPTZ
+  replaced_by_hash : BYTEA
+  revoked_time : TIMESTAMPTZ
+}
+
+entity "ai_change_sets" as ai_change_sets {
+  * change_set_id : BIGINT
+  --
+  change_set_key : TEXT
+  organisation_id : BIGINT
+  scenario_id : BIGINT
+  title : TEXT
+  rationale : TEXT
+  status : TEXT
+  grant_id : BIGINT
+  client_id : TEXT
+  client_name : TEXT
+  validation_result : JSONB
+  applied_result : JSONB
+  reviewed_by : BIGINT
+  reviewed_time : TIMESTAMPTZ
+  review_note : TEXT
+  reviewed_via : TEXT
+  review_client_id : TEXT
+  review_client_name : TEXT
+  created_by : BIGINT
+  created_time : TIMESTAMPTZ
+  modified_by : BIGINT
+  modified_time : TIMESTAMPTZ
+}
+
+entity "ai_change_set_operations" as ai_change_set_operations {
+  * change_set_operation_id : BIGINT
+  --
+  change_set_id : BIGINT
+  position : INTEGER
+  ref : TEXT
+  op_type : TEXT
+  payload : JSONB
+  frozen_values : JSONB
+  error : JSONB
+}
+
+organisations ||--o{ scenarios
+users ||--o{ user_identities
+users ||--o{ auth_sessions
+organisations ||--o{ metamodels
+customers ||--o{ contacts
+customers ||--o{ customer_addresses
+scenarios ||--o{ org_states
+scenarios ||--o{ events
+scenarios ||--o{ timeseries
+scenarios ||--o{ scenarios : source
+scenarios }o--o| org_states : initial
+metamodels ||--o{ node_types
+metamodels ||--o{ edge_types
+metamodels ||--o{ type_attributes
+metamodels ||--o{ allowed_connections
+node_types ||--o{ type_attributes
+edge_types ||--o{ type_attributes
+edge_types ||--o{ allowed_connections
+node_types ||--o{ allowed_connections : source
+node_types ||--o{ allowed_connections : target
+scenarios ||--o{ graph_nodes
+scenarios ||--o{ graph_edges
+node_types ||--o{ graph_nodes
+edge_types ||--o{ graph_edges
+graph_nodes ||--o{ graph_edges : source
+graph_nodes ||--o{ graph_edges : target
+timeseries ||--o{ timeserie_values
+scenarios ||--o{ derived_metrics_equations
+timeseries ||--o| derived_metrics_equations : derived
+organisations ||--o{ prediction_versions
+organisations ||--o{ prediction_requests
+users ||--o{ prediction_requests : submits / cancels
+prediction_versions |o--o| prediction_requests : completed output
+prediction_versions ||--o{ prediction_targets
+prediction_targets ||--o{ prediction_model_results
+prediction_model_results ||--o{ prediction_points
+timeseries ||--o{ graph_nodes : primary
+timeseries ||--o{ graph_nodes : secondary
+mcp_oauth_clients ||--o{ mcp_oauth_authorization_requests : restrict
+mcp_oauth_clients ||--o{ mcp_oauth_grants : restrict
+users ||--o{ mcp_oauth_grants : owns / revokes
+users |o--o{ mcp_oauth_authorization_requests : decides
+mcp_oauth_grants ||--o{ mcp_oauth_tokens : cascade
+mcp_oauth_grants |o--o{ mcp_oauth_authorization_requests : redeemed (set null)
+organisations ||--o{ ai_change_sets
+scenarios |o--o{ ai_change_sets : derived reference
+mcp_oauth_grants |o--o{ ai_change_sets : staged by (set null)
+users ||--o{ ai_change_sets : creates / reviews
+ai_change_sets ||--o{ ai_change_set_operations : cascade
+
+@enduml

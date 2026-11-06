@@ -2,15 +2,16 @@
 
 Kuvaa lyhyesti mitä tehtiin.
 
-## Task
+## Ticket
 
-Task: `tasks/TASK-XXX-short-name.md`
+Feature/ticket: `<feature-slug>` ticket `NN` — <ticketin tavoite>
+
+(Ticket on paikallinen `.scratch/`-tiedosto, joten kirjaa tavoite tähän.)
 
 ## Acceptance Criteria
 
 - [ ] Kriteeri 1
 - [ ] Kriteeri 2
-- [ ] Kriteeri 3
 
 ## Testing
 
@@ -19,7 +20,7 @@ Task: `tasks/TASK-XXX-short-name.md`
 - [ ] Tests
 - [ ] Typecheck
 - [ ] Build
-- [ ] Manual verification
+- [ ] Manual or browser verification
 - [ ] Not applicable, reason:
 
 Commands run:
@@ -30,14 +31,7 @@ Commands run:
 
 ## AI Review
 
-- [ ] AI review completed
-- [ ] Review record validated with `python3 scripts/ai_review_records.py validate`
-
-Review record(s):
-
-```text
-docs/ai-reviews/TASK-XXX/review-NNN.json
-```
+- [ ] AI review run on the diff; findings and their resolution recorded in the ticket
 
 Open findings or accepted risks for human review:
 
@@ -47,7 +41,7 @@ Open findings or accepted risks for human review:
 
 ## Documentation
 
-- [ ] Documentation updated
+- [ ] Documentation effects completed (see the ticket)
 - [ ] ADR added or updated
 - [ ] Not needed
 

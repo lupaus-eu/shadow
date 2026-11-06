@@ -1,15 +1,15 @@
 # Server operator commands (TASK-059H3, ADR-013). Thin wrappers over
 # deploy/bin; every gate stays in those commands. Run from the verified,
-# read-only source copy accepted by schatten-receive, never from the upload
+# read-only source copy accepted by shadow-receive, never from the upload
 # folder:
 #
-#   make -C /opt/apps/schatten-sources/<commit>/deploy <target>
+#   make -C /opt/apps/shadow-sources/<commit>/deploy <target>
 #
-# Receiving is not a target: run the installed /usr/local/bin/schatten-receive
+# Receiving is not a target: run the installed /usr/local/bin/shadow-receive
 # directly, because this copy does not exist before it. No target runs
 # `down -v`, prunes, deletes volumes, runs down migrations, restores
 # production, seeds or bootstraps; rollback, initialization and scheduler
-# activation stay direct deploy/bin commands (docs/PRODUCTION-RUNBOOK.md).
+# activation stay direct deploy/bin commands (docs/runbooks/production.md).
 
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
@@ -32,17 +32,17 @@ absolute = if [[ -n "$${$(1)}" && "$${$(1)}" != /* ]]; then printf 'make: %s mus
 # commit, so another commit's (or an unverified) copy is refused.
 same_commit = commit="$$(basename '$(SOURCE_DIR)')"; \
 	if [[ ! "$${commit}" =~ ^[0-9a-f]{40}$$ || "$${RELEASE}" != *-"$${commit:0:12}" ]]; then \
-	  printf 'make: release %s was not built from this source copy (%s); run make from /opt/apps/schatten-sources/<its commit>/deploy\n' "$${RELEASE}" '$(SOURCE_DIR)' >&2; exit 2; \
+	  printf 'make: release %s was not built from this source copy (%s); run make from /opt/apps/shadow-sources/<its commit>/deploy\n' "$${RELEASE}" '$(SOURCE_DIR)' >&2; exit 2; \
 	fi
 
 .PHONY: help check audit build deploy first-install status ps logs stop start backup restore cleanup-dry-run
 
 help:
 	@printf '%s\n' \
-		'Usage: make -C /opt/apps/schatten-sources/<commit>/deploy <target>' \
+		'Usage: make -C /opt/apps/shadow-sources/<commit>/deploy <target>' \
 		'' \
 		'Receive first with the installed receiver (not a make target):' \
-		'  /usr/local/bin/schatten-receive <manifest-sha256>' \
+		'  /usr/local/bin/shadow-receive <manifest-sha256>' \
 		'' \
 		'Host:' \
 		'  check                               Read-only prerequisites (check-host)' \

@@ -4,9 +4,9 @@ services:
     ports:
       - "127.0.0.1:${DATABASE_PORT:-5432}:5432"
     environment:
-      POSTGRES_DB: ${DATABASE_NAME:-schatten}
-      POSTGRES_USER: ${DATABASE_USER:-schatten}
-      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-schatten_dev_password}
+      POSTGRES_DB: ${DATABASE_NAME:-shadow}
+      POSTGRES_USER: ${DATABASE_USER:-shadow}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-shadow_dev_password}
     working_dir: /workspace
     volumes:
       - database_data:/var/lib/postgresql
@@ -24,7 +24,7 @@ services:
     # the retired Authentik startup checks after a branch update.
     command: ["/app/docker-entrypoint-dev.sh"]
     environment:
-      DATABASE_URL: postgresql://${DATABASE_USER:-schatten}:${DATABASE_PASSWORD:-schatten_dev_password}@database:5432/${DATABASE_NAME:-schatten}
+      DATABASE_URL: postgresql://${DATABASE_USER:-shadow}:${DATABASE_PASSWORD:-shadow_dev_password}@database:5432/${DATABASE_NAME:-shadow}
       APP_ENV: development
       OIDC_DISCOVERY_URL: ${OIDC_DISCOVERY_URL:?Run scripts/setup-local-entra.sh and load .env.entra.local}
       OIDC_ISSUER: ${OIDC_ISSUER:?Run scripts/setup-local-entra.sh and load .env.entra.local}
@@ -79,7 +79,7 @@ services:
       target: dev
     command: ["uv", "run", "python", "-m", "app.api.v1.predictions.worker"]
     environment:
-      DATABASE_URL: postgresql://${DATABASE_USER:-schatten}:${DATABASE_PASSWORD:-schatten_dev_password}@database:5432/${DATABASE_NAME:-schatten}
+      DATABASE_URL: postgresql://${DATABASE_USER:-shadow}:${DATABASE_PASSWORD:-shadow_dev_password}@database:5432/${DATABASE_NAME:-shadow}
     depends_on:
       database:
         condition: service_started
@@ -147,9 +147,9 @@ services:
   diagram-renderer:
     profiles: [docs]
     build:
-      context: ./docs/diagrams
+      context: ./docs/architecture/diagrams
     user: "${UID:-1000}:${GID:-1000}"
-    working_dir: /workspace/docs/diagrams
+    working_dir: /workspace/docs/architecture/diagrams
     volumes:
       - .:/workspace
     command: ["-tsvg", "-o", "generated", "db-physical-schema.puml"]

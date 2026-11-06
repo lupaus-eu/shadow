@@ -79,7 +79,7 @@ describe("AiPanel", () => {
     renderPanel();
     fireEvent.click(screen.getByRole("button", { name: "Connect" }));
     expect(
-      screen.getByText(/It reads Schatten and proposes changes through one connection/)
+      screen.getByText(/It reads Shadow and proposes changes through one connection/)
     ).toBeVisible();
     expect(
       screen.getByText(/nothing changes until a person applies the change set here/)
@@ -90,7 +90,7 @@ describe("AiPanel", () => {
     renderPanel({ mcpChangeSetReview: true });
     fireEvent.click(screen.getByRole("button", { name: "Connect" }));
     expect(
-      screen.getByText(/It reads Schatten and proposes changes through one connection/)
+      screen.getByText(/It reads Shadow and proposes changes through one connection/)
     ).toBeVisible();
     expect(
       screen.getByText(/the client can apply or reject a change set awaiting review/)
@@ -110,7 +110,7 @@ describe("AiPanel", () => {
     expect(screen.getByText("MCP server URL")).toBeVisible();
     expect(screen.queryByText(/api\/mcp\/(read|write)/)).not.toBeInTheDocument();
     expect(screen.getByText(/claude mcp add --transport http/)).toHaveTextContent(
-      `claude mcp add --transport http schatten ${url}`
+      `claude mcp add --transport http shadow ${url}`
     );
     expect(screen.getByText(/custom connector/)).toBeVisible();
     expect(screen.getByText("Paste the URL and connect.")).toBeVisible();
@@ -139,24 +139,24 @@ describe("AiPanel", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Connect" }));
 
-    expect(screen.getByText("/plugin marketplace add reflector-oy/schatten")).toBeVisible();
-    expect(screen.getByText("/plugin install schatten@schatten")).toBeVisible();
+    expect(screen.getByText("/plugin marketplace add lupaus-eu/shadow")).toBeVisible();
+    expect(screen.getByText("/plugin install shadow@shadow")).toBeVisible();
     expect(
-      screen.getByText(/The Schatten plugin adds the Schatten server and skills\./)
+      screen.getByText(/The Shadow plugin adds the Shadow server and skills\./)
     ).toBeVisible();
     // The plugin's server is the production one; this origin is not.
     expect(
-      screen.getByText(/The plugin connects to https:\/\/schatten\.lupaus\.eu/)
+      screen.getByText(/The plugin connects to https:\/\/shadow\.lupaus\.eu/)
     ).toHaveTextContent("also add the server below; the plugin's skills apply to it too.");
     expect(screen.getByText("Or add only the server:")).toBeVisible();
     expect(
       screen.getByText(/Whether you installed the plugin or added the server,/)
-    ).toHaveTextContent("select the Schatten server and authenticate");
+    ).toHaveTextContent("select the Shadow server and authenticate");
 
     fireEvent.click(screen.getByRole("button", { name: "Copy install command" }));
 
     await waitFor(() =>
-      expect(writeText).toHaveBeenCalledWith("/plugin install schatten@schatten")
+      expect(writeText).toHaveBeenCalledWith("/plugin install shadow@shadow")
     );
     expect(await screen.findByRole("button", { name: "Copy install command" })).toHaveTextContent(
       "Copied"
@@ -168,21 +168,21 @@ describe("AiPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Copy marketplace command" }));
 
     await waitFor(() =>
-      expect(writeText).toHaveBeenCalledWith("/plugin marketplace add reflector-oy/schatten")
+      expect(writeText).toHaveBeenCalledWith("/plugin marketplace add lupaus-eu/shadow")
     );
   });
 
   it("omits the plugin origin hint on the production origin", () => {
     vi.spyOn(window, "location", "get").mockReturnValue(
-      new URL("https://schatten.lupaus.eu/schatten/acme/metrics") as unknown as Location
+      new URL("https://shadow.lupaus.eu/shadow/acme/metrics") as unknown as Location
     );
     renderPanel();
 
     fireEvent.click(screen.getByRole("button", { name: "Connect" }));
 
-    expect(screen.getByText("/plugin install schatten@schatten")).toBeVisible();
+    expect(screen.getByText("/plugin install shadow@shadow")).toBeVisible();
     expect(
-      screen.getByText("https://schatten.lupaus.eu/api/mcp", { selector: "code" })
+      screen.getByText("https://shadow.lupaus.eu/api/mcp", { selector: "code" })
     ).toBeVisible();
     expect(screen.queryByText(/The plugin connects to/)).not.toBeInTheDocument();
   });
@@ -208,8 +208,8 @@ describe("AiPanel", () => {
       screen.getByRole("heading", { name: "Skills for claude.ai and Claude Desktop" })
     ).toBeVisible();
     for (const [label, name] of [
-      ["Model building", "schatten-model-building"],
-      ["Timeseries generation", "schatten-timeseries-generation"]
+      ["Model building", "shadow-model-building"],
+      ["Timeseries generation", "shadow-timeseries-generation"]
     ]) {
       const link = screen.getByRole("link", { name: `${label} (${name}.zip)` });
       expect(link).toHaveAttribute("href", `/api/v1/ai/skills/${name}.zip`);

@@ -21,14 +21,14 @@ export default function App() {
 
 function AuthenticatedApplication() {
   const location = useLocation();
-  const workspaceMatch = useMatch("/schatten/:orgId/*");
+  const workspaceMatch = useMatch("/shadow/:orgId/*");
   const { status } = useAuth();
 
   if (status === "loading") {
     return (
       <main className="center-page" aria-busy="true">
         <section className="home-panel">
-          <p className="eyebrow">Schatten</p>
+          <p className="eyebrow">Shadow</p>
           <h1 className="display-title">Loading session...</h1>
         </section>
       </main>
@@ -58,7 +58,7 @@ function AuthenticatedApplication() {
               with the same `request` query after sign-in. */}
           <Route path="/ai/authorize" element={<AuthorizePage />} />
           <Route
-            path="/schatten/:orgId/*"
+            path="/shadow/:orgId/*"
             element={
               <RouteErrorBoundary
                 title="Unable to load workspace"

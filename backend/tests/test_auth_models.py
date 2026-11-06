@@ -76,7 +76,7 @@ def test_login_transaction_stores_separate_hashes_and_timeout_fields(
         browser_binding_hash=b"b" * 32,
         nonce="nonce",
         pkce_verifier="verifier",
-        return_to="/schatten",
+        return_to="/shadow",
         created_time=now,
         expires_time=now + timedelta(minutes=10),
     )

@@ -21,7 +21,7 @@ from app.core.models import Base
 BigIntPrimaryKey = BigInteger().with_variant(Integer, "sqlite")
 
 # Migration 020 (TASK-074): one MCP resource with read, or read and write.
-_SCOPE_CHECK = "scopes IN ('schatten.read', 'schatten.read schatten.write')"
+_SCOPE_CHECK = "scopes IN ('shadow.read', 'shadow.read shadow.write')"
 _RESOURCE_CHECK = "resource LIKE '%/api/mcp'"
 
 

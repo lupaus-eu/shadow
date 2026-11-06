@@ -7,8 +7,8 @@ from pydantic import ConfigDict, Field, field_validator, model_validator
 
 from app.core.schemas import StrictBaseModel
 
-SNAPSHOT_FORMAT = "schatten.prediction-input.v1"
-CALCULATION_FORMAT = "schatten.prediction-calculation.v1"
+SNAPSHOT_FORMAT = "shadow.prediction-input.v1"
+CALCULATION_FORMAT = "shadow.prediction-calculation.v1"
 ResultKind = Literal[
     "naive", "seasonal_naive", "average", "mlforecast", "sarima", "prophet"
 ]
@@ -165,7 +165,7 @@ class PredictionTargetSnapshot(_FrozenModel):
 
 
 class PredictionInputSnapshot(_FrozenModel):
-    snapshot_format: Literal["schatten.prediction-input.v1"] = Field(
+    snapshot_format: Literal["shadow.prediction-input.v1"] = Field(
         default=SNAPSHOT_FORMAT, alias="snapshotFormat"
     )
     organisation_internal_id: int = Field(alias="organisationInternalId")
@@ -241,10 +241,10 @@ class CalculatedTarget(_FrozenModel):
 
 
 class PredictionCalculation(_FrozenModel):
-    calculation_format: Literal["schatten.prediction-calculation.v1"] = Field(
+    calculation_format: Literal["shadow.prediction-calculation.v1"] = Field(
         default=CALCULATION_FORMAT, alias="calculationFormat"
     )
-    snapshot_format: Literal["schatten.prediction-input.v1"] = Field(
+    snapshot_format: Literal["shadow.prediction-input.v1"] = Field(
         alias="snapshotFormat"
     )
     prediction_key: str = Field(alias="predictionKey")

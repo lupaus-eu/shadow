@@ -3,8 +3,8 @@
 # cleanup-runner container, which is the only runner with Docker socket access.
 #
 # Scope, all older than CLEANUP_RETENTION_DAYS (default 7):
-#   - exited/dead containers without the eu.lupaus.schatten.retain=true label
-#   - dangling images and schatten-backend/schatten-frontend release images,
+#   - exited/dead containers without the eu.lupaus.shadow.retain=true label
+#   - dangling images and shadow-backend/shadow-frontend release images,
 #     except images referenced by any release record or any container
 #   - BuildKit build cache
 # Never touches volumes, networks, running containers, other repositories'
@@ -30,7 +30,7 @@ case "${days}" in
   ''|*[!0-9]*|0) echo "CLEANUP_RETENTION_DAYS must be a positive integer" >&2; exit 64 ;;
 esac
 # Test-only override so fixtures can be aged without waiting a week.
-now="${SCHATTEN_CLEANUP_NOW_EPOCH:-$(date -u +%s)}"
+now="${SHADOW_CLEANUP_NOW_EPOCH:-$(date -u +%s)}"
 cutoff=$((now - days * 86400))
 failures=0
 removed_containers=0
@@ -70,7 +70,7 @@ stopped="$(docker ps --all --no-trunc --quiet --filter status=exited --filter st
 
 # Containers.
 for id in ${stopped}; do
-  if ! info="$(docker inspect --format '{{.Name}}|{{index .Config.Labels "eu.lupaus.schatten.retain"}}|{{.State.FinishedAt}}' "${id}")"; then
+  if ! info="$(docker inspect --format '{{.Name}}|{{index .Config.Labels "eu.lupaus.shadow.retain"}}|{{.State.FinishedAt}}' "${id}")"; then
     failures=$((failures + 1))
     continue
   fi
@@ -117,7 +117,7 @@ done
 images="$(docker images --no-trunc --format '{{.ID}} {{.Repository}}')" \
   || abort "could not list images"
 for id in $(printf '%s\n' "${images}" \
-  | awk '$2 == "<none>" || $2 == "schatten-backend" || $2 == "schatten-frontend" { print $1 }' \
+  | awk '$2 == "<none>" || $2 == "shadow-backend" || $2 == "shadow-frontend" { print $1 }' \
   | sort -u); do
   if grep -qx "${id}" "${protected}"; then
     log "keep image=${id} reason=release-or-container"
@@ -131,7 +131,7 @@ for id in $(printf '%s\n' "${images}" \
   fi
   [ "${created_epoch}" -lt "${cutoff}" ] || continue
   tags="$(docker image inspect --format '{{range .RepoTags}}{{.}} {{end}}' "${id}" \
-    | tr ' ' '\n' | grep -E '^schatten-(backend|frontend):' || true)"
+    | tr ' ' '\n' | grep -E '^shadow-(backend|frontend):' || true)"
   if [ -n "${tags}" ] && [ "${releases}" -eq 0 ]; then
     log "keep image=${id} reason=no-release-records"
     continue

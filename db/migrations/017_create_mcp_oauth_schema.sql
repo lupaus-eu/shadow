@@ -1,4 +1,4 @@
--- ADR-015: Schatten as the OAuth 2.1 authorization server for MCP clients.
+-- ADR-015: Shadow as the OAuth 2.1 authorization server for MCP clients.
 -- Request ids, codes and tokens are stored only as SHA-256 hashes.
 
 CREATE TABLE mcp_oauth_clients (
@@ -49,11 +49,11 @@ CREATE TABLE mcp_oauth_grants (
     CONSTRAINT ck_mcp_oauth_grants_key_non_blank
         CHECK (grant_key ~ '[^[:space:]]'),
     CONSTRAINT ck_mcp_oauth_grants_scope
-        CHECK (scopes IN ('schatten.read', 'schatten.write')),
+        CHECK (scopes IN ('shadow.read', 'shadow.write')),
     CONSTRAINT ck_mcp_oauth_grants_scope_resource
         CHECK (
-            (scopes = 'schatten.read' AND resource LIKE '%/api/mcp/read')
-            OR (scopes = 'schatten.write' AND resource LIKE '%/api/mcp/write')
+            (scopes = 'shadow.read' AND resource LIKE '%/api/mcp/read')
+            OR (scopes = 'shadow.write' AND resource LIKE '%/api/mcp/write')
         ),
     CONSTRAINT ck_mcp_oauth_grants_expiry
         CHECK (expires_time > created_time),
@@ -100,11 +100,11 @@ CREATE TABLE mcp_oauth_authorization_requests (
     CONSTRAINT ck_mcp_oauth_authorization_requests_code_challenge
         CHECK (code_challenge ~ '^[A-Za-z0-9_-]{43}$'),
     CONSTRAINT ck_mcp_oauth_authorization_requests_scope
-        CHECK (scopes IN ('schatten.read', 'schatten.write')),
+        CHECK (scopes IN ('shadow.read', 'shadow.write')),
     CONSTRAINT ck_mcp_oauth_authorization_requests_scope_resource
         CHECK (
-            (scopes = 'schatten.read' AND resource LIKE '%/api/mcp/read')
-            OR (scopes = 'schatten.write' AND resource LIKE '%/api/mcp/write')
+            (scopes = 'shadow.read' AND resource LIKE '%/api/mcp/read')
+            OR (scopes = 'shadow.write' AND resource LIKE '%/api/mcp/write')
         ),
     CONSTRAINT ck_mcp_oauth_authorization_requests_expiry
         CHECK (expires_time > created_time),

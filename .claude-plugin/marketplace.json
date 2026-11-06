@@ -1,16 +1,16 @@
 {
-  "name": "schatten",
+  "name": "shadow",
   "owner": {
     "name": "Reflector"
   },
   "metadata": {
-    "description": "Schatten's Claude Code plugin, installed from this repository."
+    "description": "Shadow's Claude Code plugin, installed from this repository."
   },
   "plugins": [
     {
-      "name": "schatten",
+      "name": "shadow",
       "source": "./backend/app/mcp/plugin",
-      "description": "The Schatten MCP server with the model-building and timeseries-generation skills."
+      "description": "The Shadow MCP server with the model-building and timeseries-generation skills."
     }
   ]
 }

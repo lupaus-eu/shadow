@@ -20,8 +20,8 @@ from app.core.models import Base
 
 # Migration 020 (TASK-074): one MCP resource carries read, or read and write.
 MCP_RESOURCE = "https://app.localhost/api/mcp"
-READ_SCOPES = "schatten.read"
-READ_WRITE_SCOPES = "schatten.read schatten.write"
+READ_SCOPES = "shadow.read"
+READ_WRITE_SCOPES = "shadow.read shadow.write"
 CODE_CHALLENGE = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
 NOW = datetime(2026, 10, 23, 12, 0, tzinfo=UTC)
 
@@ -265,13 +265,13 @@ def test_scoped_rows_accept_read_or_read_and_write_on_the_mcp_resource(
 @pytest.mark.parametrize(
     "scopes",
     [
-        "schatten.write",
-        "schatten.write schatten.read",
-        "schatten.admin",
-        "schatten.read schatten.admin",
-        "schatten.read schatten.write schatten.admin",
-        "schatten.read  schatten.write",
-        "schatten.read schatten.read",
+        "shadow.write",
+        "shadow.write shadow.read",
+        "shadow.admin",
+        "shadow.read shadow.admin",
+        "shadow.read shadow.write shadow.admin",
+        "shadow.read  shadow.write",
+        "shadow.read shadow.read",
         "",
     ],
 )
@@ -306,13 +306,13 @@ def test_scope_and_resource_checks_mirror_migration_020() -> None:
     expected = {
         McpOauthGrant: {
             "ck_mcp_oauth_grants_scope": (
-                "scopes IN ('schatten.read', 'schatten.read schatten.write')"
+                "scopes IN ('shadow.read', 'shadow.read shadow.write')"
             ),
             "ck_mcp_oauth_grants_resource": "resource LIKE '%/api/mcp'",
         },
         McpOauthAuthorizationRequest: {
             "ck_mcp_oauth_authorization_requests_scope": (
-                "scopes IN ('schatten.read', 'schatten.read schatten.write')"
+                "scopes IN ('shadow.read', 'shadow.read shadow.write')"
             ),
             "ck_mcp_oauth_authorization_requests_resource": (
                 "resource LIKE '%/api/mcp'"

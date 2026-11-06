@@ -21,14 +21,14 @@
   },
   "review": {
     "outcome": "clean",
-    "summary": "Since round 2, the only reviewed change is the QA record's F verification list, which now names the /opt/apps ownership change and deploy ownership of the Schatten paths on the real host. The runbook, audit-host, deployment storage table and QA record now agree on the operator-directory step. No new findings.",
+    "summary": "Since round 2, the only reviewed change is the QA record's F verification list, which now names the /opt/apps ownership change and deploy ownership of the Shadow paths on the real host. The runbook, audit-host, deployment storage table and QA record now agree on the operator-directory step. No new findings.",
     "findings": [],
     "prior_finding_dispositions": [
       {
         "record_id": "TASK-059E/review-002",
         "finding_id": "F-001",
         "disposition": "fixed",
-        "rationale": "The Not Verified Here (F) list in the QA record now includes the real-host /opt/apps ownership change and deploy ownership of the Schatten paths, so the F checklist covers the new runbook 2.2 step.",
+        "rationale": "The Not Verified Here (F) list in the QA record now includes the real-host /opt/apps ownership change and deploy ownership of the Shadow paths, so the F checklist covers the new runbook 2.2 step.",
         "validated_by": {
           "review_id": "TASK-059E/review-003",
           "commit": "3d0db67ebcba3cdff2c752b7e1dd8a376283b837"

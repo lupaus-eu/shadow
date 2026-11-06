@@ -1262,7 +1262,7 @@ def test_lazy_cleanup_nulls_the_grant_and_keeps_the_audit_record() -> None:
                     "redirect_uri": [redirect_uri],
                     "code_challenge": [challenge],
                     "code_challenge_method": ["S256"],
-                    "scope": ["schatten.read schatten.write"],
+                    "scope": ["shadow.read shadow.write"],
                     "resource": [resource],
                 },
             )
@@ -1295,7 +1295,7 @@ def test_lazy_cleanup_nulls_the_grant_and_keeps_the_audit_record() -> None:
         assert grant is not None
         assert (grant.resource, grant.scopes) == (
             resource,
-            "schatten.read schatten.write",
+            "shadow.read shadow.write",
         )
         grant_id, grant_key = grant.grant_id, grant.grant_key
     change_set_key = _create_change_set(

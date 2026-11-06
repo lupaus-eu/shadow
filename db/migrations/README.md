@@ -216,10 +216,10 @@ Migraatiot ovat silti source of truth skeemamuutoksille.
 
 Kun lisäät migraation, tarkista pitääkö päivittää:
 
-- `docs/data/DATABASE.md`
-- `docs/data/DATA-MODEL.md`
-- `docs/domains/<DOMAIN>.md`
-- `docs/concepts/<CONCEPT>.md`
-- `docs/diagrams/db-physical-schema.puml`
-- `docs/diagrams/generated/db-physical-schema.svg`
+- `docs/architecture/data/DATABASE.md`
+- `docs/architecture/data/DATA-MODEL.md`
+- `docs/architecture/domains/<DOMAIN>.md`
+- `docs/architecture/concepts/<CONCEPT>.md`
+- `docs/architecture/diagrams/db-physical-schema.puml`
+- `docs/architecture/diagrams/generated/db-physical-schema.svg`
 - relevantti ADR

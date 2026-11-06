@@ -4,7 +4,7 @@
 # and FRONTEND_IMAGE are immutable image IDs from the release record; this file
 # has no build sections, so deployment cannot rebuild. Rendered `config` output
 # contains secrets and must never be pasted into evidence.
-name: schatten
+name: shadow
 
 x-hardening: &hardening
   read_only: true
@@ -17,9 +17,9 @@ x-backend-image: &backend-image
   pull_policy: never
 
 x-retain: &retain
-  # Every Schatten container: the weekly Docker cleanup never removes them,
+  # Every Shadow container: the weekly Docker cleanup never removes them,
   # even while stopped.
-  eu.lupaus.schatten.retain: "true"
+  eu.lupaus.shadow.retain: "true"
 
 services:
   database:
@@ -81,7 +81,7 @@ services:
       PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?Set the exact public HTTPS origin}
       APP_ALLOWED_ORIGIN: ${PUBLIC_ORIGIN:?Set the exact public HTTPS origin}
       # Trust only the fixed Caddy address on the edge network.
-      TRUSTED_CADDY_PEER_CIDRS: ${SCHATTEN_CADDY_IPV4:-172.30.59.2}/32
+      TRUSTED_CADDY_PEER_CIDRS: ${SHADOW_CADDY_IPV4:-172.30.59.2}/32
       SESSION_COOKIE_SECURE: "true"
       AUTH_SESSION_IDLE_TIMEOUT_SECONDS: "1800"
       AUTH_SESSION_ABSOLUTE_LIFETIME_SECONDS: "28800"
@@ -90,7 +90,7 @@ services:
       # ADR-015 (TASK-069P): the protected env file switches MCP and its
       # change-set review; unset means off. Turning either on needs its own
       # approval, which deploy-release enforces (--mcp-approval); see
-      # docs/PRODUCTION-RUNBOOK.md section 14.
+      # docs/runbooks/production.md section 14.
       MCP_ENABLED: ${MCP_ENABLED:-false}
       MCP_CHANGE_SET_REVIEW_ENABLED: ${MCP_CHANGE_SET_REVIEW_ENABLED:-false}
       MCP_OAUTH_REDIRECT_URIS: https://claude.ai/api/mcp/auth_callback https://claude.com/api/mcp/auth_callback http://localhost:{port}/callback
@@ -178,7 +178,7 @@ services:
       - /tmp:uid=10001,gid=10001,mode=0700,size=16m
     networks:
       edge:
-        ipv4_address: ${SCHATTEN_CADDY_IPV4:-172.30.59.2}
+        ipv4_address: ${SHADOW_CADDY_IPV4:-172.30.59.2}
     depends_on:
       backend:
         condition: service_healthy
@@ -202,11 +202,11 @@ services:
     network_mode: none
     volumes:
       - type: bind
-        source: ${SCHATTEN_DOCKER_SOCKET:-/var/run/docker.sock}
+        source: ${SHADOW_DOCKER_SOCKET:-/var/run/docker.sock}
         target: /var/run/docker.sock
         bind: {create_host_path: false}
       - type: bind
-        source: ${SCHATTEN_OFELIA_CONFIG:-./deploy/ofelia/config.ini}
+        source: ${SHADOW_OFELIA_CONFIG:-./deploy/ofelia/config.ini}
         target: /etc/ofelia/config.ini
         read_only: true
         bind: {create_host_path: false}
@@ -220,35 +220,35 @@ services:
   backup-runner:
     <<: *hardening
     profiles: [ops]
-    container_name: schatten-backup-runner
+    container_name: shadow-backup-runner
     image: docker.io/library/postgres:18.6@sha256:4ef4dbc939d61acea57712655ddb4b4ab27419c913f94cca0cd57cb3ea3c2280
     pull_policy: missing
-    user: "${SCHATTEN_BACKUP_UID:-10002}:${SCHATTEN_BACKUP_GID:-10002}"
-    entrypoint: ["/opt/schatten-ops/backup.sh"]
+    user: "${SHADOW_BACKUP_UID:-10002}:${SHADOW_BACKUP_GID:-10002}"
+    entrypoint: ["/opt/shadow-ops/backup.sh"]
     command: ["scheduled"]
     environment:
       DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL for the private database}
       BACKUP_RETENTION_DAYS: "7"
-      BACKUP_LOCK_TIMEOUT_SECONDS: ${SCHATTEN_BACKUP_LOCK_TIMEOUT_SECONDS:-1800}
+      BACKUP_LOCK_TIMEOUT_SECONDS: ${SHADOW_BACKUP_LOCK_TIMEOUT_SECONDS:-1800}
       HOME: /tmp
     networks: [data]
     volumes:
       - type: bind
         source: ./deploy/ops
-        target: /opt/schatten-ops
+        target: /opt/shadow-ops
         read_only: true
         bind: {create_host_path: false}
       - type: bind
-        source: ${SCHATTEN_BACKUP_DIR:-/opt/postgres-backups}
+        source: ${SHADOW_BACKUP_DIR:-/opt/postgres-backups}
         target: /backups
         bind: {create_host_path: false}
       - type: bind
-        source: ${SCHATTEN_BACKUP_PUBLIC_KEY:?Set SCHATTEN_BACKUP_PUBLIC_KEY to the backup encryption public key}
-        target: /run/schatten/backup-public-key.asc
+        source: ${SHADOW_BACKUP_PUBLIC_KEY:?Set SHADOW_BACKUP_PUBLIC_KEY to the backup encryption public key}
+        target: /run/shadow/backup-public-key.asc
         read_only: true
         bind: {create_host_path: false}
       - type: bind
-        source: ${SCHATTEN_STATE_DIR:-/opt/apps/schatten-state}/locks
+        source: ${SHADOW_STATE_DIR:-/opt/apps/shadow-state}/locks
         target: /locks
         read_only: true
         bind: {create_host_path: false}
@@ -262,11 +262,11 @@ services:
   cleanup-runner:
     <<: *hardening
     profiles: [ops]
-    container_name: schatten-docker-cleanup
+    container_name: shadow-docker-cleanup
     image: docker.io/library/docker:28.5.2-cli@sha256:625d9431a9f54c5a2bc90f24f0e1c3d55b1349fd857dd85035f98c2c9acbdd4d
     pull_policy: missing
     user: "65534:${DOCKER_SOCKET_GID:?Set DOCKER_SOCKET_GID to the host docker socket group ID}"
-    entrypoint: ["/opt/schatten-ops/docker-cleanup.sh"]
+    entrypoint: ["/opt/shadow-ops/docker-cleanup.sh"]
     command: ["--apply"]
     environment:
       CLEANUP_RETENTION_DAYS: "7"
@@ -275,21 +275,21 @@ services:
     network_mode: none
     volumes:
       - type: bind
-        source: ${SCHATTEN_DOCKER_SOCKET:-/var/run/docker.sock}
+        source: ${SHADOW_DOCKER_SOCKET:-/var/run/docker.sock}
         target: /var/run/docker.sock
         bind: {create_host_path: false}
       - type: bind
         source: ./deploy/ops
-        target: /opt/schatten-ops
+        target: /opt/shadow-ops
         read_only: true
         bind: {create_host_path: false}
       - type: bind
-        source: ${SCHATTEN_RELEASES_DIR:-/opt/apps/schatten-releases}
+        source: ${SHADOW_RELEASES_DIR:-/opt/apps/shadow-releases}
         target: /releases
         read_only: true
         bind: {create_host_path: false}
       - type: bind
-        source: ${SCHATTEN_STATE_DIR:-/opt/apps/schatten-state}/locks
+        source: ${SHADOW_STATE_DIR:-/opt/apps/shadow-state}/locks
         target: /locks
         read_only: true
         bind: {create_host_path: false}
@@ -309,7 +309,7 @@ networks:
       config:
         # Dynamic addresses come only from ip_range, so the fixed Caddy
         # address (outside it) can never be taken by another container.
-        - subnet: ${SCHATTEN_EDGE_SUBNET:-172.30.59.0/24}
-          ip_range: ${SCHATTEN_EDGE_IP_RANGE:-172.30.59.128/25}
+        - subnet: ${SHADOW_EDGE_SUBNET:-172.30.59.0/24}
+          ip_range: ${SHADOW_EDGE_IP_RANGE:-172.30.59.128/25}
   data:
     internal: true

@@ -1,15 +1,15 @@
 #!/bin/bash
-# Forced command for the schatten-upload key (TASK-059H2, ADR-013).
+# Forced command for the shadow-upload key (TASK-059H2, ADR-013).
 # Installed root-owned as /usr/local/bin/upload-gate and bound to the upload
 # key in the root-owned authorized_keys file:
-#   restrict,command="/usr/local/bin/upload-gate" ssh-ed25519 AAAA... schatten-upload
+#   restrict,command="/usr/local/bin/upload-gate" ssh-ed25519 AAAA... shadow-upload
 #
 # Allows only the remote commands that appleboy/scp-action v1.0.0 (drone-scp
 # 1.8.0) issues with the "Deploy to production" inputs (tar_tmp_path
-# /opt/apps/schatten-upload/, strip_components 1, overwrite true), as captured
+# /opt/apps/shadow-upload/, strip_components 1, overwrite true), as captured
 # from SSH_ORIGINAL_COMMAND by .github/scripts/verify-upload-gate.sh:
-#   scp -tr /opt/apps/schatten-upload/<10 letters/digits>.tar.gz
-#   mkdir -p /opt/apps/schatten-upload/<40-hex commit>
+#   scp -tr /opt/apps/shadow-upload/<10 letters/digits>.tar.gz
+#   mkdir -p /opt/apps/shadow-upload/<40-hex commit>
 #   tar -zxf <archive> --strip-components 1 --overwrite -C <commit folder>
 #   rm -rf <archive>
 # Everything else, including drone-scp's `ver` probe (Windows detection), a
@@ -26,7 +26,7 @@ set -Eeuo pipefail
 umask 0027
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin LC_ALL=C
 
-readonly root=/opt/apps/schatten-upload
+readonly root=/opt/apps/shadow-upload
 readonly archive_re="^${root}/[A-Za-z0-9]{10}\\.tar\\.gz\$"
 readonly folder_re="^${root}/[0-9a-f]{40}\$"
 # Hard limit for one scp or tar, so no session can hold the lock for longer.

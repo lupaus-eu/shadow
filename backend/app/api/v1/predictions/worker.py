@@ -39,7 +39,7 @@ from app.core.config import get_settings, get_sqlalchemy_database_url
 # its model registry so PredictionRequest's string-based audit FKs resolve.
 _REGISTERED_USER_TABLE = User.__table__
 
-LOGGER = logging.getLogger("schatten.prediction_worker")
+LOGGER = logging.getLogger("shadow.prediction_worker")
 WORKER_ADVISORY_LOCK = 7_303_589_321_057
 POLL_SECONDS = 1.0
 TERMINATION_GRACE_SECONDS = 2.0
@@ -271,7 +271,7 @@ class PredictionWorker:
     ) -> tuple[BaseProcess, ProcessConnection]:
         """Start one calculation child with its own private temporary directory."""
         temporary_directory = tempfile.mkdtemp(
-            prefix="schatten-prediction-", dir=CHILD_TEMPORARY_ROOT
+            prefix="shadow-prediction-", dir=CHILD_TEMPORARY_ROOT
         )
         self._child_temporary_directory = temporary_directory
         context = multiprocessing.get_context("spawn")

@@ -800,7 +800,7 @@ def test_write_tools_stage_and_submit_through_a_real_connection_pool(
     assert submitted["ok"] is True
     assert submitted["status"] == "submitted"
     assert submitted["review_url"].endswith(
-        f"/schatten/{organisation_key}/metrics?changeSet={submitted['change_set_key']}"
+        f"/shadow/{organisation_key}/metrics?changeSet={submitted['change_set_key']}"
     )
     assert _status(factory, submitted["change_set_key"]) == "submitted"
     assert _count(factory, OrgState, OrgState.name == "Q2") == 0

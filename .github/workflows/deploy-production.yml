@@ -1,8 +1,8 @@
 # Manual source delivery to the production host (TASK-059H2, ADR-013).
 # Copies the exact main commit and its SOURCE_MANIFEST to
-# /opt/apps/schatten-upload/<commit>/ as the upload-only schatten-upload
+# /opt/apps/shadow-upload/<commit>/ as the upload-only shadow-upload
 # account. It does not build, deploy or run anything on the host: the operator
-# accepts the upload with `schatten-receive <manifest SHA-256 from the summary>`
+# accepts the upload with `shadow-receive <manifest SHA-256 from the summary>`
 # and builds there. The production environment must allow only main (F setup).
 name: Deploy to production
 
@@ -57,7 +57,7 @@ jobs:
           # Values are never printed. An empty fingerprint would make the SCP
           # action skip host-key verification.
           [[ -n "${SSH_HOST}" && -n "${SSH_KEY}" ]] || { echo "::error::SSH_HOST and SSH_KEY are required"; exit 1; }
-          [[ "${SSH_USER}" == schatten-upload ]] || { echo "::error::SSH_USER must be the upload-only account"; exit 1; }
+          [[ "${SSH_USER}" == shadow-upload ]] || { echo "::error::SSH_USER must be the upload-only account"; exit 1; }
           # shellcheck disable=SC2153 # SSH_PORT is set in env above
           [[ "${SSH_PORT}" =~ ^[0-9]{1,5}$ ]] || { echo "::error::SSH_PORT must be a port number"; exit 1; }
           [[ "${SSH_FINGERPRINT}" =~ ^SHA256:[A-Za-z0-9+/]{43}$ ]] \
@@ -96,10 +96,10 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           fingerprint: ${{ secrets.SSH_FINGERPRINT }}
           source: release-source
-          target: /opt/apps/schatten-upload/${{ github.sha }}
+          target: /opt/apps/shadow-upload/${{ github.sha }}
           overwrite: true
           strip_components: 1
-          tar_tmp_path: /opt/apps/schatten-upload/
+          tar_tmp_path: /opt/apps/shadow-upload/
           version: ${{ env.DRONE_SCP_VERSION }}
 
       - name: Verify the drone-scp binary the action used

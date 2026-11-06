@@ -212,19 +212,19 @@
         "recommendation": "Use New (ADR-015) consistently, optionally relabel the apply step to include the fingerprint check, and re-export.",
         "locations": [
           {
-            "path": "docs/diagrams/likec4/schatten-ai-mcp/model.c4",
+            "path": "docs/diagrams/likec4/shadow-ai-mcp/model.c4",
             "line": 8
           },
           {
-            "path": "docs/diagrams/likec4/schatten-ai-mcp/model.c4",
+            "path": "docs/diagrams/likec4/shadow-ai-mcp/model.c4",
             "line": 80
           },
           {
-            "path": "docs/diagrams/likec4/schatten-ai-mcp/model.c4",
+            "path": "docs/diagrams/likec4/shadow-ai-mcp/model.c4",
             "line": 192
           },
           {
-            "path": "docs/diagrams/likec4/schatten-ai-mcp/views.c4",
+            "path": "docs/diagrams/likec4/shadow-ai-mcp/views.c4",
             "line": 113
           }
         ]

@@ -133,11 +133,11 @@ function RoutedDropdown() {
   );
 }
 
-function renderDropdown(path = "/schatten/acme/summary") {
+function renderDropdown(path = "/shadow/acme/summary") {
   return render(
     <MemoryRouter initialEntries={[path]}>
       <Routes>
-        <Route path="/schatten/:orgId/:tab" element={<RoutedDropdown />} />
+        <Route path="/shadow/:orgId/:tab" element={<RoutedDropdown />} />
         <Route path="/" element={<span>Home page</span>} />
       </Routes>
     </MemoryRouter>
@@ -176,7 +176,7 @@ describe("OrganisationDropdown", () => {
     expect(options[0]).toHaveAttribute("aria-current", "true");
 
     fireEvent.click(within(dropdown).getByRole("button", { name: "Beta" }));
-    expect(screen.getByTestId("location")).toHaveTextContent("/schatten/beta/summary");
+    expect(screen.getByTestId("location")).toHaveTextContent("/shadow/beta/summary");
     expect(screen.getByTestId("scenario-name")).toHaveTextContent("None");
     expect(await screen.findByRole("button", { name: "Organisation: Beta" })).toBeInTheDocument();
   });
@@ -243,7 +243,7 @@ describe("OrganisationDropdown", () => {
         name: "Organisation: Acme Updated"
       })
     ).toBeInTheDocument();
-    expect(sessionStorage.getItem("schatten:organisationName:acme")).toBe("Acme Updated");
+    expect(sessionStorage.getItem("shadow:organisationName:acme")).toBe("Acme Updated");
     expect(
       fetchMock.mock.calls.some(
         ([inputValue, init]) =>
@@ -271,7 +271,7 @@ describe("OrganisationDropdown", () => {
 
   it("requires exact DELETE and selects the first remaining organisation", async () => {
     mockOrganisationApi();
-    sessionStorage.setItem("schatten:organisationName:acme", "Acme");
+    sessionStorage.setItem("shadow:organisationName:acme", "Acme");
     renderDropdown();
     const dropdown = await openDropdown();
     fireEvent.click(within(dropdown).getByRole("button", { name: "Delete organisation" }));
@@ -290,9 +290,9 @@ describe("OrganisationDropdown", () => {
     fireEvent.click(deleteButton);
 
     await waitFor(() => {
-      expect(screen.getByTestId("location")).toHaveTextContent("/schatten/beta/summary");
+      expect(screen.getByTestId("location")).toHaveTextContent("/shadow/beta/summary");
     });
-    expect(sessionStorage.getItem("schatten:organisationName:acme")).toBeNull();
+    expect(sessionStorage.getItem("shadow:organisationName:acme")).toBeNull();
   });
 
   it("keeps failed deletion available with an error", async () => {
@@ -332,7 +332,7 @@ describe("OrganisationDropdown", () => {
 
   it("creates, selects, and opens an organisation from the dropdown footer", async () => {
     const fetchMock = mockOrganisationApi();
-    renderDropdown("/schatten/acme/users");
+    renderDropdown("/shadow/acme/users");
     const dropdown = await openDropdown();
     fireEvent.click(within(dropdown).getByRole("button", { name: "Add organisation" }));
 
@@ -346,7 +346,7 @@ describe("OrganisationDropdown", () => {
     fireEvent.click(createButton);
 
     await waitFor(() => {
-      expect(screen.getByTestId("location")).toHaveTextContent("/schatten/new-org/users");
+      expect(screen.getByTestId("location")).toHaveTextContent("/shadow/new-org/users");
     });
     expect(
       fetchMock.mock.calls.some(
@@ -395,7 +395,7 @@ describe("OrganisationDropdown", () => {
 
     pending.resolve(jsonResponse({ id: "new-org", name: "Pending organisation" }, { status: 201 }));
     await waitFor(() => {
-      expect(screen.getByTestId("location")).toHaveTextContent("/schatten/new-org/summary");
+      expect(screen.getByTestId("location")).toHaveTextContent("/shadow/new-org/summary");
     });
   });
 });

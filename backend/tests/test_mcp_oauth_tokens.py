@@ -49,7 +49,7 @@ from app.main import create_app
 
 ORIGIN = "http://testserver"
 RESOURCE = f"{ORIGIN}/api/mcp"
-BOTH_SCOPES = "schatten.read schatten.write"
+BOTH_SCOPES = "shadow.read shadow.write"
 # The resources that TASK-074 replaced with `/api/mcp`.
 LEGACY_RESOURCES = (f"{ORIGIN}/api/mcp/read", f"{ORIGIN}/api/mcp/write")
 LOOPBACK_CALLBACK = "http://127.0.0.1:33418/callback"
@@ -112,7 +112,7 @@ def _client(
     with TestClient(app, follow_redirects=False) as client:
         if existing_session:
             # Reuse the test User's browser session from an earlier client.
-            client.cookies.set("schatten-session", TEST_RAW_SESSION_ID)
+            client.cookies.set("shadow-session", TEST_RAW_SESSION_ID)
             client.headers.update({"Origin": ORIGIN, "X-CSRF-Token": TEST_CSRF_TOKEN})
         elif role is not None:
             authenticate_test_client(client, session_factory, role=role)
@@ -255,7 +255,7 @@ def _verify(
     session_factory: sessionmaker[Session],
     access_token: str | None,
     resource: str = RESOURCE,
-    scope: str = "schatten.read",
+    scope: str = "shadow.read",
 ) -> McpPrincipal:
     with session_factory() as session:
         return verify_access_token(session, access_token, resource, scope)
@@ -265,7 +265,7 @@ def _verify_error(
     session_factory: sessionmaker[Session],
     access_token: str | None,
     resource: str = RESOURCE,
-    scope: str = "schatten.read",
+    scope: str = "shadow.read",
 ) -> str:
     with pytest.raises(TokenVerificationError) as raised:
         _verify(session_factory, access_token, resource, scope)
@@ -718,8 +718,8 @@ def test_one_grant_covers_reading_and_writing(
         grant = _only_grant(session)
         assert (grant.scopes, grant.resource) == (BOTH_SCOPES, RESOURCE)
     assert _verify(session_factory, issued["access_token"]).scopes == {
-        "schatten.read",
-        "schatten.write",
+        "shadow.read",
+        "shadow.write",
     }
 
 
@@ -727,12 +727,12 @@ def test_a_read_only_request_gets_a_read_only_grant(
     client: TestClient, session_factory: sessionmaker[Session]
 ) -> None:
     client_id = _register(client)
-    issued = _issued(client, client_id, "schatten.read")
+    issued = _issued(client, client_id, "shadow.read")
 
-    assert issued["scope"] == "schatten.read"
+    assert issued["scope"] == "shadow.read"
     with session_factory() as session:
-        assert _only_grant(session).scopes == "schatten.read"
-    assert _verify(session_factory, issued["access_token"]).scopes == {"schatten.read"}
+        assert _only_grant(session).scopes == "shadow.read"
+    assert _verify(session_factory, issued["access_token"]).scopes == {"shadow.read"}
 
 
 def test_token_responses_report_the_effective_scopes_of_the_role(
@@ -745,16 +745,16 @@ def test_token_responses_report_the_effective_scopes_of_the_role(
     # The role is limited after consent: the grant keeps both scopes, and the
     # responses name only those the role allows (RFC 6749 section 5.1).
     monkeypatch.setitem(
-        token_service.ROLE_SCOPES, "consultant", frozenset({"schatten.read"})
+        token_service.ROLE_SCOPES, "consultant", frozenset({"shadow.read"})
     )
 
     exchanged = _exchange(client, client_id, code).json()
     rotated = _rotated(client, client_id, exchanged["refresh_token"])
 
-    assert exchanged["scope"] == rotated["scope"] == "schatten.read"
+    assert exchanged["scope"] == rotated["scope"] == "shadow.read"
     with session_factory() as session:
         assert _only_grant(session).scopes == BOTH_SCOPES
-    assert _verify(session_factory, rotated["access_token"]).scopes == {"schatten.read"}
+    assert _verify(session_factory, rotated["access_token"]).scopes == {"shadow.read"}
 
 
 def test_reauthorization_takes_the_newest_consents_scopes(
@@ -765,13 +765,13 @@ def test_reauthorization_takes_the_newest_consents_scopes(
     with session_factory() as session:
         grant_key = _only_grant(session).grant_key
 
-    read_only = _issued(client, client_id, "schatten.read")
+    read_only = _issued(client, client_id, "shadow.read")
     with session_factory() as session:
         narrowed = _only_grant(session)
-        assert (narrowed.grant_key, narrowed.scopes) == (grant_key, "schatten.read")
+        assert (narrowed.grant_key, narrowed.scopes) == (grant_key, "shadow.read")
     both = _issued(client, client_id)
 
-    assert read_only["scope"] == "schatten.read"
+    assert read_only["scope"] == "shadow.read"
     assert both["scope"] == BOTH_SCOPES
     with session_factory() as session:
         widened = _only_grant(session)
@@ -816,10 +816,10 @@ def test_refresh_rotates_and_only_links_the_old_token(
         ),
         pytest.param({"scope": "openid"}, "invalid_scope", id="unknown-scope"),
         pytest.param(
-            {"scope": "schatten.read openid"}, "invalid_scope", id="unknown-in-set"
+            {"scope": "shadow.read openid"}, "invalid_scope", id="unknown-in-set"
         ),
         pytest.param(
-            {"scope": ["schatten.read", "schatten.read"]},
+            {"scope": ["shadow.read", "shadow.read"]},
             "invalid_request",
             id="repeated-scope",
         ),
@@ -849,7 +849,7 @@ def test_invalid_refresh_requests_have_no_effect(
 
 @pytest.mark.parametrize(
     "scope",
-    ["schatten.read", "schatten.write", BOTH_SCOPES, "schatten.write schatten.read"],
+    ["shadow.read", "shadow.write", BOTH_SCOPES, "shadow.write shadow.read"],
 )
 def test_a_refresh_scope_never_narrows_or_widens_the_token(
     client: TestClient, session_factory: sessionmaker[Session], scope: str
@@ -863,8 +863,8 @@ def test_a_refresh_scope_never_narrows_or_widens_the_token(
     assert response.json()["scope"] == BOTH_SCOPES
     rotated = response.json()["access_token"]
     assert _verify(session_factory, rotated).scopes == {
-        "schatten.read",
-        "schatten.write",
+        "shadow.read",
+        "shadow.write",
     }
 
 
@@ -1368,7 +1368,7 @@ def test_verify_access_token_returns_the_principal_and_throttles_last_used(
             grant_key=grant.grant_key,
             client_id=client_id,
             client_name="Claude",
-            scopes=frozenset({"schatten.read", "schatten.write"}),
+            scopes=frozenset({"shadow.read", "shadow.write"}),
         )
     assert principal == expected
 
@@ -1462,7 +1462,7 @@ def test_role_change_takes_effect_on_the_next_verification(
 ) -> None:
     # Both current roles have both scopes; limit one to show the role re-read.
     monkeypatch.setitem(
-        token_service.ROLE_SCOPES, "consultant", frozenset({"schatten.read"})
+        token_service.ROLE_SCOPES, "consultant", frozenset({"shadow.read"})
     )
     with _client(session_factory, role="admin") as client:
         client_id = _register(client)
@@ -1479,17 +1479,17 @@ def test_role_change_takes_effect_on_the_next_verification(
     set_role("consultant")
     consultant = _verify(session_factory, issued["access_token"])
     write_required = _verify_error(
-        session_factory, issued["access_token"], scope="schatten.write"
+        session_factory, issued["access_token"], scope="shadow.write"
     )
     set_role("admin")
 
     assert admin.role == "admin"
-    assert admin.scopes == {"schatten.read", "schatten.write"}
-    assert consultant.scopes == {"schatten.read"}
+    assert admin.scopes == {"shadow.read", "shadow.write"}
+    assert consultant.scopes == {"shadow.read"}
     assert write_required == "insufficient_scope"
     assert _verify(session_factory, issued["access_token"]).scopes == {
-        "schatten.read",
-        "schatten.write",
+        "shadow.read",
+        "shadow.write",
     }
 
 
@@ -1502,7 +1502,7 @@ def test_connections_list_only_the_current_users_active_grants(
     client_id = _register(client)
     other_client_id = _register(client, "Claude Code")
     used = _issued(client, client_id)
-    _issued(client, other_client_id, "schatten.read")
+    _issued(client, other_client_id, "shadow.read")
     _verify(session_factory, used["access_token"])
     with session_factory() as session:
         own = {
@@ -1560,13 +1560,13 @@ def test_connections_report_the_effective_scopes_of_the_role(
     client_id = _register(client)
     _issued(client, client_id)
     monkeypatch.setitem(
-        token_service.ROLE_SCOPES, "consultant", frozenset({"schatten.read"})
+        token_service.ROLE_SCOPES, "consultant", frozenset({"shadow.read"})
     )
 
     response = client.get("/api/v1/ai/connections")
 
     assert response.status_code == 200
-    assert [item["scope"] for item in response.json()] == ["schatten.read"]
+    assert [item["scope"] for item in response.json()] == ["shadow.read"]
 
 
 def test_users_revoke_their_own_connection_and_its_tokens(
@@ -1673,7 +1673,7 @@ def test_admin_revokes_every_active_connection_of_one_user(
             targets = [
                 _add_grant(session, client_id, key="grant-target-1"),
                 _add_grant(
-                    session, client_id, scopes="schatten.read", key="grant-target-2"
+                    session, client_id, scopes="shadow.read", key="grant-target-2"
                 ),
             ]
             _add_token(session, targets[0], "t" * 43)

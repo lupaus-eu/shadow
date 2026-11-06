@@ -80,7 +80,7 @@ Run migrations before seed scripts. For the current local database baseline:
 
 ```bash
 uv run --project backend python backend/migrate.py up
-PGPASSWORD=schatten_dev_password psql -h localhost -p 5432 -U schatten -d schatten -f db/init/002_seed_development_data.sql
+PGPASSWORD=shadow_dev_password psql -h localhost -p 5432 -U shadow -d shadow -f db/init/002_seed_development_data.sql
 ```
 
 Do not run the development seed before the migration runner reports that no
@@ -88,7 +88,7 @@ migrations are pending.
 
 `002_seed_development_data.sql` is idempotent for normal local use. It reads the
 JSON source, stores it in the transaction-local
-`schatten.seed_reference_data.metamodel_json` PostgreSQL setting and includes
+`shadow.seed_reference_data.metamodel_json` PostgreSQL setting and includes
 `001_seed_reference_data.sql` in the same transaction. The shared SQL obtains a
 transaction-scoped advisory lock before checking for an active default, so local
 and production callers cannot interleave reference inserts.
@@ -108,7 +108,7 @@ The production backend image packages only the shared SQL and JSON, not the
 development wrapper. After migrations, run its database-only command explicitly:
 
 ```bash
-DATABASE_URL=postgresql://user:password@database:5432/schatten \
+DATABASE_URL=postgresql://user:password@database:5432/shadow \
   python -m app.seed_reference_data
 ```
 

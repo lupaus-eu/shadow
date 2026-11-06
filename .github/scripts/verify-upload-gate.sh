@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Disposable sshd test of the upload gate (TASK-059H2, ADR-013).
 #
-# Starts a throwaway Ubuntu 26.04 container with sshd, the schatten-upload
+# Starts a throwaway Ubuntu 26.04 container with sshd, the shadow-upload
 # account set up as documented for F, and root-installed upload-gate and
-# schatten-receive from this working tree. Runs appleboy/scp-action's
+# shadow-receive from this working tree. Runs appleboy/scp-action's
 # entrypoint at the commit pinned in deploy-production.yml, with that step's
 # inputs, as the GitHub runner would. It first captures the remote commands
 # (SSH_ORIGINAL_COMMAND) through a recording forced command, then uploads
-# through upload-gate, accepts the upload with schatten-receive and the digest
+# through upload-gate, accepts the upload with shadow-receive and the digest
 # from the job summary, and checks that the key is refused for everything else.
 #
 # Usage: .github/scripts/verify-upload-gate.sh   (from inside the repository)
@@ -21,9 +21,9 @@ export LC_ALL=C
 repo="$(git rev-parse --show-toplevel)"
 workflow="${repo}/.github/workflows/deploy-production.yml"
 image="${QA_UBUNTU_IMAGE:-docker.io/library/ubuntu:26.04@sha256:da6fc2be547864451aa253836dd926da33623312df4a9a243e35dc877c378a78}"
-upload_root=/opt/apps/schatten-upload
+upload_root=/opt/apps/shadow-upload
 work="$(mktemp -d "${TMPDIR:-/tmp}/upload-gate-qa.XXXXXX")"
-container="schatten-upload-gate-qa-$$"
+container="shadow-upload-gate-qa-$$"
 passes=0
 
 cleanup() {
@@ -92,29 +92,29 @@ ssh-keygen -q -t ed25519 -N '' -C qa-upload -f "${work}/upload_key"
 docker run --detach --name "${container}" --publish 127.0.0.1::22 "${image}" sleep infinity >/dev/null
 in_ct bash -c 'apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends openssh-server procps python3 >/dev/null'
 docker cp "${repo}/deploy/bin/upload-gate" "${container}:/tmp/upload-gate"
-docker cp "${repo}/deploy/bin/schatten-receive" "${container}:/tmp/schatten-receive"
+docker cp "${repo}/deploy/bin/shadow-receive" "${container}:/tmp/shadow-receive"
 docker cp "${work}/upload_key.pub" "${container}:/tmp/upload_key.pub"
 in_ct bash -euo pipefail <<'EOF'
-# Upload account and folders, as documented for F in docs/DEPLOYMENT.md.
+# Upload account and folders, as documented for F in docs/architecture/deployment.md.
 useradd --user-group --create-home --shell /bin/bash deploy
 passwd --lock deploy >/dev/null
-useradd --user-group --no-create-home --home-dir /home/schatten-upload --shell /bin/sh schatten-upload
-passwd --lock schatten-upload >/dev/null
-usermod --append --groups schatten-upload deploy
-install -d -o root -g root -m 0755 /home/schatten-upload /home/schatten-upload/.ssh
+useradd --user-group --no-create-home --home-dir /home/shadow-upload --shell /bin/sh shadow-upload
+passwd --lock shadow-upload >/dev/null
+usermod --append --groups shadow-upload deploy
+install -d -o root -g root -m 0755 /home/shadow-upload /home/shadow-upload/.ssh
 install -d -o root -g root -m 0755 /opt/apps
-install -d -o schatten-upload -g schatten-upload -m 0750 /opt/apps/schatten-upload
-install -d -o deploy -g deploy -m 0750 /opt/apps/schatten-sources
+install -d -o shadow-upload -g shadow-upload -m 0750 /opt/apps/shadow-upload
+install -d -o deploy -g deploy -m 0750 /opt/apps/shadow-sources
 install -o root -g root -m 0755 /tmp/upload-gate /usr/local/bin/upload-gate
-install -o root -g root -m 0755 /tmp/schatten-receive /usr/local/bin/schatten-receive
+install -o root -g root -m 0755 /tmp/shadow-receive /usr/local/bin/shadow-receive
 # Recording forced command, used only to capture the action's remote commands.
 cat >/usr/local/bin/qa-record-command <<'REC'
 #!/bin/bash
-printf '%s\n' "${SSH_ORIGINAL_COMMAND-}" >>/opt/apps/schatten-upload/qa-captured-commands
+printf '%s\n' "${SSH_ORIGINAL_COMMAND-}" >>/opt/apps/shadow-upload/qa-captured-commands
 exec /bin/sh -c "${SSH_ORIGINAL_COMMAND-}"
 REC
 chmod 0755 /usr/local/bin/qa-record-command
-printf 'PasswordAuthentication no\nKbdInteractiveAuthentication no\nPermitRootLogin no\nAllowUsers schatten-upload\n' \
+printf 'PasswordAuthentication no\nKbdInteractiveAuthentication no\nPermitRootLogin no\nAllowUsers shadow-upload\n' \
   >/etc/ssh/sshd_config.d/10-qa.conf
 ssh-keygen -A >/dev/null
 install -d -m 0755 /run/sshd
@@ -122,8 +122,8 @@ install -d -m 0755 /run/sshd
 /usr/sbin/sshd -E /var/log/sshd-qa.log
 EOF
 set_forced_command() {
-  in_ct bash -c "printf 'restrict,command=\"%s\" %s\n' '$1' \"\$(cat /tmp/upload_key.pub)\" >/home/schatten-upload/.ssh/authorized_keys
-    chown root:root /home/schatten-upload/.ssh/authorized_keys; chmod 0644 /home/schatten-upload/.ssh/authorized_keys"
+  in_ct bash -c "printf 'restrict,command=\"%s\" %s\n' '$1' \"\$(cat /tmp/upload_key.pub)\" >/home/shadow-upload/.ssh/authorized_keys
+    chown root:root /home/shadow-upload/.ssh/authorized_keys; chmod 0644 /home/shadow-upload/.ssh/authorized_keys"
 }
 set_forced_command /usr/local/bin/qa-record-command
 port="$(docker port "${container}" 22/tcp | head -n 1)"
@@ -141,7 +141,7 @@ pass "sshd on 127.0.0.1:${port} (upload account locked, root-owned authorized_ke
 # Maps every INPUT_* of action.yml the way the runner does: the step's `with:`
 # value (github.sha, env and secrets substituted), else the action default.
 action_env() {
-  QA_SSH_HOST=127.0.0.1 QA_SSH_USER=schatten-upload QA_SSH_KEY="$(cat "${work}/upload_key")" \
+  QA_SSH_HOST=127.0.0.1 QA_SSH_USER=shadow-upload QA_SSH_KEY="$(cat "${work}/upload_key")" \
     QA_SSH_PORT="${port}" QA_SSH_FINGERPRINT="$1" \
     python3 - "${workflow}" "${work}/scp-action/action.yml" "${commit}" "${drone_version}" <<'PY'
 import os, re, sys
@@ -215,7 +215,7 @@ run_action "${fingerprint}" >"${work}/upload.log" 2>&1 || { cat "${work}/upload.
 in_ct test -f "${upload_root}/${commit}/SOURCE_MANIFEST" || fail "SOURCE_MANIFEST was not delivered"
 [[ -z "$(in_ct find "${upload_root}" -maxdepth 1 -name '*.tar.gz')" ]] || fail "the temporary archive was left behind"
 [[ -z "$(in_ct find "${upload_root}/${commit}" -perm /0007)" ]] || fail "delivered files are accessible to others"
-[[ -z "$(in_ct find "${upload_root}/${commit}" ! -user schatten-upload)" ]] || fail "delivered files not owned by schatten-upload"
+[[ -z "$(in_ct find "${upload_root}/${commit}" ! -user shadow-upload)" ]] || fail "delivered files not owned by shadow-upload"
 pass "upload through upload-gate delivered ${upload_root}/${commit} (no access for others, archive removed)"
 used_binary="${work}/scp-action/drone-scp-${drone_version}-linux-amd64"
 grep -qF "from file://${release_dir}/v${drone_version}" "${work}/upload.log" \
@@ -231,17 +231,17 @@ grep -q 'fingerprint mismatch' "${work}/wrong-fp.log" || { cat "${work}/wrong-fp
 pass "a wrong host-key fingerprint stops the action before any command"
 
 # --- Receive with the digest from the job summary ------------------------
-received="$(docker exec -u deploy "${container}" schatten-receive "${digest}")" || fail "schatten-receive refused the upload"
-grep -qx "SOURCE_DIR=/opt/apps/schatten-sources/${commit}" <<<"${received}" || fail "unexpected receive output: ${received}"
-docker exec -u deploy "${container}" schatten-receive --verify "/opt/apps/schatten-sources/${commit}" >/dev/null \
+received="$(docker exec -u deploy "${container}" shadow-receive "${digest}")" || fail "shadow-receive refused the upload"
+grep -qx "SOURCE_DIR=/opt/apps/shadow-sources/${commit}" <<<"${received}" || fail "unexpected receive output: ${received}"
+docker exec -u deploy "${container}" shadow-receive --verify "/opt/apps/shadow-sources/${commit}" >/dev/null \
   || fail "accepted source does not verify"
-pass "schatten-receive accepted the delivered upload with the summary digest; --verify passes"
+pass "shadow-receive accepted the delivered upload with the summary digest; --verify passes"
 
 # --- Everything else is refused -------------------------------------------
 ssh_upload() {
   ssh -F /dev/null -i "${work}/upload_key" -p "${port}" -o IdentitiesOnly=yes -o BatchMode=yes \
     -o StrictHostKeyChecking=yes -o UserKnownHostsFile="${work}/known_hosts" -o ConnectTimeout=10 \
-    schatten-upload@127.0.0.1 "$@"
+    shadow-upload@127.0.0.1 "$@"
 }
 
 expect_refused() {
@@ -284,11 +284,11 @@ in_ct test -f "${upload_root}/${commit}/SOURCE_MANIFEST" || fail "an upload file
 pass "refused: shell (with and without pty), other commands, reads, other paths, injection, extra spaces and deletions"
 
 expect_failure "sftp" sftp -F /dev/null -i "${work}/upload_key" -P "${port}" -o BatchMode=yes \
-  -o UserKnownHostsFile="${work}/known_hosts" -b - schatten-upload@127.0.0.1
+  -o UserKnownHostsFile="${work}/known_hosts" -b - shadow-upload@127.0.0.1
 expect_failure "scp (SFTP protocol)" scp -F /dev/null -i "${work}/upload_key" -P "${port}" -o BatchMode=yes \
-  -o UserKnownHostsFile="${work}/known_hosts" "${work}/upload_key.pub" "schatten-upload@127.0.0.1:${tmp_archive}"
+  -o UserKnownHostsFile="${work}/known_hosts" "${work}/upload_key.pub" "shadow-upload@127.0.0.1:${tmp_archive}"
 expect_failure "scp -O (legacy protocol)" scp -O -F /dev/null -i "${work}/upload_key" -P "${port}" -o BatchMode=yes \
-  -o UserKnownHostsFile="${work}/known_hosts" "${work}/upload_key.pub" "schatten-upload@127.0.0.1:${tmp_archive}"
+  -o UserKnownHostsFile="${work}/known_hosts" "${work}/upload_key.pub" "shadow-upload@127.0.0.1:${tmp_archive}"
 expect_failure "stdio forwarding" ssh_upload -W 127.0.0.1:22
 expect_failure "remote port forwarding" ssh_upload -N -o ExitOnForwardFailure=yes -R 127.0.0.1:2222:127.0.0.1:22
 pass "refused: sftp, scp in both protocols, local (-W) and remote (-R) port forwarding"
@@ -307,10 +307,10 @@ ssh_upload -T "scp -tr ${held_archive}" <"${work}/held.fifo" >/dev/null 2>&1 &
 held_pid=$!
 exec 8>"${work}/held.fifo"
 for _ in $(seq 50); do
-  in_ct pgrep -u schatten-upload -f "${held_scp}" >/dev/null && break
+  in_ct pgrep -u shadow-upload -f "${held_scp}" >/dev/null && break
   sleep 0.2
 done
-in_ct pgrep -u schatten-upload -f "${held_scp}" >/dev/null || fail "the held scp session did not start"
+in_ct pgrep -u shadow-upload -f "${held_scp}" >/dev/null || fail "the held scp session did not start"
 for command in "rm -rf ${tmp_archive}" "scp -tr ${tmp_archive}" "mkdir -p ${other}"; do
   if output="$(ssh_upload -T "${command}" </dev/null 2>&1)"; then
     fail "concurrent ${command}: accepted while another gate command ran"
@@ -318,7 +318,7 @@ for command in "rm -rf ${tmp_archive}" "scp -tr ${tmp_archive}" "mkdir -p ${othe
   grep -q 'upload-gate: refused: another upload-gate command is running' <<<"${output}" \
     || fail "concurrent ${command}: not refused as busy: ${output}"
 done
-held_timer="$(in_ct pgrep -u schatten-upload -f "${held_timeout}")" \
+held_timer="$(in_ct pgrep -u shadow-upload -f "${held_timeout}")" \
   || fail "the held scp does not run under the gate's timeout 10m"
 in_ct kill -ALRM "${held_timer}"
 held_status=0
@@ -326,7 +326,7 @@ wait "${held_pid}" || held_status=$?
 (( held_status == 124 )) || fail "the timed-out session ended with ${held_status}, not 124"
 exec 8>&-
 for _ in $(seq 50); do
-  in_ct pgrep -u schatten-upload -f "${held_scp}" >/dev/null || break
+  in_ct pgrep -u shadow-upload -f "${held_scp}" >/dev/null || break
   sleep 0.2
 done
 in_ct test ! -e "${held_archive}" || fail "the held session left ${held_archive}"
@@ -382,11 +382,11 @@ upload_raw "${work}/escape.tar.gz" || fail "raw upload failed"
 output="$(extract)" && fail "extraction into a folder with a symlink succeeded"
 grep -q 'upload-gate: refused' <<<"${output}" || fail "planted symlink not refused by upload-gate"
 ssh_upload -T "rm -rf ${tmp_archive}" </dev/null
-outside="$(in_ct find / -xdev \( -path /proc -o -path "${upload_root}" \) -prune -o -user schatten-upload -print)"
-[[ -z "${outside}" ]] || fail "files owned by schatten-upload outside the upload area: ${outside}"
+outside="$(in_ct find / -xdev \( -path /proc -o -path "${upload_root}" \) -prune -o -user shadow-upload -print)"
+[[ -z "${outside}" ]] || fail "files owned by shadow-upload outside the upload area: ${outside}"
 in_ct test ! -e /tmp/qa-escape-dotdot -a ! -e /tmp/qa-escape-abs -a ! -e /tmp/qa-escape-link \
   || fail "a crafted member escaped the upload folder"
 pass "crafted archives: .. and absolute members stay inside, symlink/hardlink members and a symlinked folder are refused, no file outside the upload area"
 
-in_ct grep -q 'Accepted publickey for schatten-upload' /var/log/sshd-qa.log || fail "sshd log has no accepted upload key"
+in_ct grep -q 'Accepted publickey for shadow-upload' /var/log/sshd-qa.log || fail "sshd log has no accepted upload key"
 printf 'Upload gate QA: %s checks passed\n' "${passes}"

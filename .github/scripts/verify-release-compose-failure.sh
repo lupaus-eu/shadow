@@ -8,10 +8,10 @@ BACKEND_IMAGE="$(docker image inspect --format '{{.Id}}' "${BACKEND_IMAGE}")"
 export BACKEND_IMAGE
 # The frontend is never started; any local image satisfies interpolation.
 export FRONTEND_IMAGE="${BACKEND_IMAGE}"
-export POSTGRES_DB="schatten_gate"
+export POSTGRES_DB="shadow_gate"
 export POSTGRES_USER="postgres"
 export POSTGRES_PASSWORD="postgres"
-export DATABASE_URL="postgresql://postgres:postgres@database:5432/schatten_gate"
+export DATABASE_URL="postgresql://postgres:postgres@database:5432/shadow_gate"
 export OIDC_DISCOVERY_URL="https://login.microsoftonline.com/tenant-id/v2.0/.well-known/openid-configuration"
 export OIDC_ISSUER="https://login.microsoftonline.com/tenant-id/v2.0"
 export OIDC_CLIENT_ID="test-client"
@@ -19,11 +19,11 @@ export OIDC_CLIENT_SECRET="test-secret"
 export PUBLIC_ORIGIN="https://app.example.test"
 # Interpolated for the profile-only operational services, which are not started.
 export DOCKER_SOCKET_GID="0"
-export SCHATTEN_BACKUP_PUBLIC_KEY="/nonexistent/backup-public-key.asc"
+export SHADOW_BACKUP_PUBLIC_KEY="/nonexistent/backup-public-key.asc"
 # Disposable project subnet so a concurrent development stack is unaffected.
-export SCHATTEN_EDGE_SUBNET="172.30.158.0/24"
-export SCHATTEN_EDGE_IP_RANGE="172.30.158.128/25"
-export SCHATTEN_CADDY_IPV4="172.30.158.2"
+export SHADOW_EDGE_SUBNET="172.30.158.0/24"
+export SHADOW_EDGE_IP_RANGE="172.30.158.128/25"
+export SHADOW_CADDY_IPV4="172.30.158.2"
 
 gate_project="task059g-gate-${GITHUB_RUN_ID:-$$}-${GITHUB_RUN_ATTEMPT:-1}"
 compose() {
@@ -40,7 +40,7 @@ trap cleanup EXIT
 compose up --detach --wait database >/dev/null
 compose run --rm --no-deps migration python migrate.py up
 compose exec -T database \
-  psql --username postgres --dbname schatten_gate \
+  psql --username postgres --dbname shadow_gate \
   --command "UPDATE schema_migrations SET checksum = repeat('0', 64) WHERE version = 1;" \
   >/dev/null
 

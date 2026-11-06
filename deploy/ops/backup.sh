@@ -2,7 +2,7 @@
 # Encrypted PostgreSQL backup job (ADR-013). Runs inside the hardened
 # backup-runner container: scheduled by Ofelia or on demand via
 # deploy/bin/backup-now. Writes only job-owned files matching
-# schatten-<UTC timestamp>-<reason>-<random>.{dump.gpg,manifest} under /backups.
+# shadow-<UTC timestamp>-<reason>-<random>.{dump.gpg,manifest} under /backups.
 #
 # The runner holds only the encryption *public* key; decryption material never
 # enters this container. The manifest is published last and marks completion.
@@ -12,9 +12,9 @@ umask 077
 
 readonly BACKUP_DIR=/backups
 readonly WORK_DIR="${BACKUP_DIR}/.incomplete"
-readonly PUBLIC_KEY=/run/schatten/backup-public-key.asc
+readonly PUBLIC_KEY=/run/shadow/backup-public-key.asc
 readonly LOCK_DIR=/locks
-readonly NAME_PATTERN='^schatten-[0-9]{8}T[0-9]{6}Z-[a-z-]+-[0-9a-f]{6}$'
+readonly NAME_PATTERN='^shadow-[0-9]{8}T[0-9]{6}Z-[a-z-]+-[0-9a-f]{6}$'
 
 reason="${1:-manual}"
 backup_id=""
@@ -71,7 +71,7 @@ configure_database() {
     done
   fi
   export PGUSER PGPASSWORD PGHOST PGPORT PGDATABASE
-  export PGCONNECT_TIMEOUT=10 PGAPPNAME=schatten-backup
+  export PGCONNECT_TIMEOUT=10 PGAPPNAME=shadow-backup
 }
 
 timestamp_epoch() {
@@ -116,11 +116,11 @@ fi
 table_count="$(psql -X -A -t -c "SELECT count(*) FROM pg_tables WHERE schemaname = current_schema()" 2>/dev/null)" \
   || fail "database metadata query failed"
 
-backup_id="schatten-$(date -u +%Y%m%dT%H%M%SZ)-${reason}-$(od -An -N3 -tx1 /dev/urandom | tr -d ' \n')"
+backup_id="shadow-$(date -u +%Y%m%dT%H%M%SZ)-${reason}-$(od -An -N3 -tx1 /dev/urandom | tr -d ' \n')"
 mkdir -p "${WORK_DIR}" || fail "cannot create temporary backup directory"
 chmod 0700 "${WORK_DIR}"
 # Stale temporary files from interrupted runs (job-owned names only).
-find "${WORK_DIR}" -maxdepth 1 -type f -name 'schatten-*' -mmin +1440 -delete 2>/dev/null || true
+find "${WORK_DIR}" -maxdepth 1 -type f -name 'shadow-*' -mmin +1440 -delete 2>/dev/null || true
 
 tmp_dump="${WORK_DIR}/${backup_id}.dump.gpg"
 tmp_manifest="${WORK_DIR}/${backup_id}.manifest"
@@ -174,7 +174,7 @@ cutoff=$(( now - retention_days * 86400 ))
 pruned=0
 retention_status=ok
 shopt -s nullglob
-for manifest in "${BACKUP_DIR}"/schatten-*.manifest; do
+for manifest in "${BACKUP_DIR}"/shadow-*.manifest; do
   base="$(basename "${manifest}" .manifest)"
   [[ "${base}" =~ ${NAME_PATTERN} && "${base}" != "${backup_id}" ]] || continue
   epoch="$(timestamp_epoch "${base}")" || continue
@@ -186,7 +186,7 @@ for manifest in "${BACKUP_DIR}"/schatten-*.manifest; do
     fi
   fi
 done
-for dump in "${BACKUP_DIR}"/schatten-*.dump.gpg; do
+for dump in "${BACKUP_DIR}"/shadow-*.dump.gpg; do
   base="$(basename "${dump}" .dump.gpg)"
   [[ "${base}" =~ ${NAME_PATTERN} && ! -e "${BACKUP_DIR}/${base}.manifest" ]] || continue
   epoch="$(timestamp_epoch "${base}")" || continue

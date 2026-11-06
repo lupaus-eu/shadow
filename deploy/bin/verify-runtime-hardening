@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Verify effective container settings of the deployed Schatten project.
+"""Verify effective container settings of the deployed Shadow project.
 
 Inspects the running/created containers (not just Compose YAML) against the
 ADR-013 scheduler and runner hardening plus the private-port topology. Any
 failure exits nonzero and blocks scheduler activation.
 
-Usage: deploy/bin/verify-runtime-hardening [--project schatten]
+Usage: deploy/bin/verify-runtime-hardening [--project shadow]
 """
 
 import configparser
@@ -13,10 +13,10 @@ import json
 import subprocess
 import sys
 
-PROJECT = sys.argv[2] if len(sys.argv) > 2 and sys.argv[1] == "--project" else "schatten"
+PROJECT = sys.argv[2] if len(sys.argv) > 2 and sys.argv[1] == "--project" else "shadow"
 SECRET_NAMES = {"DATABASE_URL", "POSTGRES_PASSWORD", "OIDC_CLIENT_SECRET"}
 SOCKET = "/var/run/docker.sock"
-RUNNER_CONTAINERS = {"schatten-backup-runner", "schatten-docker-cleanup"}
+RUNNER_CONTAINERS = {"shadow-backup-runner", "shadow-docker-cleanup"}
 REQUIRED = {
     "database",
     "migration",
@@ -94,7 +94,7 @@ for service, items in sorted(by_service.items()):
         check(not host.get("GroupAdd"), f"{name} has no supplementary groups")
         check(not host.get("Devices"), f"{name} has no host devices")
         check(
-            config["Labels"].get("eu.lupaus.schatten.retain") == "true",
+            config["Labels"].get("eu.lupaus.shadow.retain") == "true",
             f"{name} is protected from Docker cleanup",
         )
 

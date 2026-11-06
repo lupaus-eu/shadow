@@ -1,1 +1,1 @@
-"""Schatten backend application package."""
+"""Shadow backend application package."""

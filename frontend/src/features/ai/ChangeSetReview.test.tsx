@@ -336,7 +336,7 @@ describe("ChangeSetReview", () => {
     expect(within(channel).getByText("(self-declared by the client)")).toBeVisible();
   });
 
-  it("shows no review channel for a change set reviewed in Schatten", async () => {
+  it("shows no review channel for a change set reviewed in Shadow", async () => {
     fetchDetailMock.mockResolvedValue(
       detail({
         status: "rejected",

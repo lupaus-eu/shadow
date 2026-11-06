@@ -59,7 +59,7 @@ export default function HomePage() {
   function openSelectedOrganisation() {
     if (!selectedOrgId) return;
 
-    navigate(`/schatten/${selectedOrgId}/org-states`, {
+    navigate(`/shadow/${selectedOrgId}/org-states`, {
       state: { organisationName: selectedOrganisation?.name ?? "" }
     });
   }
@@ -91,7 +91,7 @@ export default function HomePage() {
   return (
     <main className="center-page">
       <section className="home-panel" aria-labelledby="home-title">
-        <p className="eyebrow">Schatten</p>
+        <p className="eyebrow">Shadow</p>
         <h1 id="home-title" className="display-title">
           Select organisation
         </h1>

@@ -20,7 +20,7 @@ while (( $# > 0 )); do
     *) die "Usage: restore-rehearsal <backup-id> --private-key <file> [--passphrase-file <file>]" ;;
   esac
 done
-[[ "${backup_id}" =~ ^schatten-[0-9]{8}T[0-9]{6}Z-[a-z-]+-[0-9a-f]{6}$ ]] || die "Invalid backup ID"
+[[ "${backup_id}" =~ ^shadow-[0-9]{8}T[0-9]{6}Z-[a-z-]+-[0-9a-f]{6}$ ]] || die "Invalid backup ID"
 [[ -n "${private_key}" && -r "${private_key}" ]] || die "--private-key must name a readable file"
 private_key="$(readlink -f "${private_key}")"
 if [[ -n "${passphrase_file}" ]]; then
@@ -31,16 +31,16 @@ fi
 load_config
 hold_maintenance_lock
 case "${private_key}" in
-  "$(readlink -f "${SCHATTEN_BACKUP_DIR}")"/*) die "The private key must not be stored in the backup directory" ;;
+  "$(readlink -f "${SHADOW_BACKUP_DIR}")"/*) die "The private key must not be stored in the backup directory" ;;
 esac
 
 postgres_image="$(grep -Eo 'docker.io/library/postgres:[^ ]+@sha256:[0-9a-f]{64}' \
   "$(dirname "$(readlink -f "$0")")/../../docker-compose.production.yml" | head -n 1)"
 suffix="$(date -u +%Y%m%dT%H%M%SZ)-$$"
-network="schatten-restore-${suffix}"
-target="schatten-restore-db-${suffix}"
+network="shadow-restore-${suffix}"
+target="shadow-restore-db-${suffix}"
 password="$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
-evidence="${SCHATTEN_STATE_DIR}/restore-evidence/${suffix}-${backup_id}.txt"
+evidence="${SHADOW_STATE_DIR}/restore-evidence/${suffix}-${backup_id}.txt"
 
 cleanup() {
   docker rm --force --volumes "${target}" >/dev/null 2>&1 || true
@@ -54,7 +54,7 @@ docker run --detach --name "${target}" --network "${network}" "${hardening[@]}" 
   --user 999:999 --tmpfs /var/run/postgresql:uid=999,gid=999,size=1m --tmpfs /tmp:size=64m \
   --mount type=volume,target=/var/lib/postgresql \
   --env POSTGRES_DB=restore_check --env POSTGRES_USER=restore_check --env POSTGRES_PASSWORD="${password}" \
-  --label eu.lupaus.schatten.disposable=restore \
+  --label eu.lupaus.shadow.disposable=restore \
   "${postgres_image}" >/dev/null
 
 key_material() {
@@ -70,12 +70,12 @@ key_material() {
 # read-only directory mount; the operator needs no direct read access.
 set +e
 output="$(key_material | docker run --rm --interactive --network "${network}" "${hardening[@]}" \
-  --user "${SCHATTEN_BACKUP_UID}:${SCHATTEN_BACKUP_GID}" --tmpfs /tmp:mode=1777,size=64m \
+  --user "${SHADOW_BACKUP_UID}:${SHADOW_BACKUP_GID}" --tmpfs /tmp:mode=1777,size=64m \
   --env HOME=/tmp --env RESTORE_BACKUP_ID="${backup_id}" --env PGHOST="${target}" \
   --env PGUSER=restore_check --env PGPASSWORD="${password}" --env PGDATABASE=restore_check \
-  --mount "type=bind,source=${SCHATTEN_BACKUP_DIR},target=/backups,readonly" \
-  --mount "type=bind,source=$(dirname "$(readlink -f "$0")")/../ops,target=/opt/schatten-ops,readonly" \
-  --entrypoint /opt/schatten-ops/restore-check.sh "${postgres_image}" 2>&1)"
+  --mount "type=bind,source=${SHADOW_BACKUP_DIR},target=/backups,readonly" \
+  --mount "type=bind,source=$(dirname "$(readlink -f "$0")")/../ops,target=/opt/shadow-ops,readonly" \
+  --entrypoint /opt/shadow-ops/restore-check.sh "${postgres_image}" 2>&1)"
 status=$?
 set -e
 printf '%s\n' "${output}" >&2

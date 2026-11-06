@@ -1,0 +1,117 @@
+// Shadow AI via MCP - deployment model (ADR-013 runtime + ADR-015)
+
+deployment {
+
+  environment production 'Production' {
+    description 'https://shadow.lupaus.eu. MCP and its change-set review on since 2026-11-03 (TASK-069P). MCP URL /api/mcp (TASK-074, with its own approved release).'
+
+    workstation = node 'User workstation' {
+      browser = device 'Web browser' {
+        instanceOf shadow.spa
+        instanceOf aiClient.webChat
+      }
+      apps = device 'AI client apps' {
+        instanceOf aiClient.desktopApp
+        instanceOf aiClient.localClient
+      }
+    }
+
+    vendor = zone 'AI vendor cloud' {
+      description 'Outside Shadow. Receives business data read through MCP.'
+      instanceOf aiVendor.llm
+      instanceOf aiVendor.broker
+    }
+
+    microsoft = zone 'Microsoft cloud' {
+      instanceOf entra
+    }
+
+    upcloud = node 'UpCloud host' {
+      description 'Ubuntu 26.04 LTS, Docker Engine and Compose. No new service, port or domain for MCP.'
+
+      frontend = dockerContainer 'frontend' {
+        description 'Caddy: public TLS on 80/443, serves the React build'
+        instanceOf shadow.caddy
+      }
+      backend = dockerContainer 'backend' {
+        description 'FastAPI REST API. Private. Since ADR-015: OAuth server and the MCP service in the same process.'
+        instanceOf shadow.backend
+      }
+      predictionWorker = dockerContainer 'prediction-worker' {
+        description 'Single ADR-012 worker. Unchanged.'
+        instanceOf shadow.worker
+      }
+      database = dockerContainer 'database' {
+        description 'Private PostgreSQL 18 with persistent volume'
+        instanceOf shadow.db
+      }
+    }
+  }
+
+  environment development 'Development' {
+    description 'https://app.localhost on loopback. Vendor-cloud connectors cannot reach localhost.'
+
+    devWorkstation = node 'Developer workstation' {
+      devBrowser = device 'Web browser' {
+        instanceOf shadow.spa
+      }
+      devApps = device 'Local AI client' {
+        description 'Claude Code with NODE_EXTRA_CA_CERTS trusting the local Caddy CA'
+        instanceOf aiClient.localClient
+      }
+
+      compose = node 'Docker Compose (loopback)' {
+        description 'https://app.localhost'
+
+        localCaddy = dockerContainer 'local-caddy' {
+          description 'Loopback HTTPS on 127.0.0.1:443'
+          localCaddyInstance = instanceOf shadow.caddy {
+            description 'Loopback-only (127.0.0.1:443). Routes /api to FastAPI and the rest to Vite. Since ADR-015: also /.well-known/oauth-* to FastAPI.'
+          }
+        }
+        devFrontend = dockerContainer 'frontend (Vite)' {
+          #existing
+          description 'Vite dev server for the SPA'
+        }
+        devBackend = dockerContainer 'backend' {
+          instanceOf shadow.backend
+        }
+        devWorker = dockerContainer 'prediction-worker' {
+          instanceOf shadow.worker
+        }
+        devDatabase = dockerContainer 'database' {
+          instanceOf shadow.db
+        }
+      }
+    }
+
+    devVendor = zone 'AI vendor cloud' {
+      description 'LLM still runs here. Its remote connector broker cannot reach https://app.localhost, so claude.ai and Claude Desktop connectors are tested only against production.'
+      instanceOf aiVendor.llm
+      broker = instanceOf aiVendor.broker {
+        title 'Remote connector broker: cannot reach localhost'
+        description 'claude.ai and Claude Desktop connectors are tested only against production. Use Claude Code locally.'
+      }
+    }
+
+    devMicrosoft = zone 'Microsoft cloud' {
+      instanceOf entra
+    }
+  }
+
+  development.devWorkstation.compose.localCaddy -> development.devWorkstation.compose.devFrontend 'Proxies SPA and HMR'
+
+  // Single labelled edges for deployment views (see views.c4)
+  production.upcloud.frontend.caddy -> production.upcloud.backend.backend 'Proxies /api and /.well-known/oauth-*' {
+    #edgeLabel
+  }
+  production.upcloud.backend.backend -> production.upcloud.database.db 'SQL: business, mcp_oauth_*, ai_change_sets*' {
+    #edgeLabel
+  }
+  development.devWorkstation.compose.localCaddy.localCaddyInstance -> development.devWorkstation.compose.devBackend.backend 'Proxies /api and /.well-known/oauth-*' {
+    #edgeLabel
+  }
+  development.devWorkstation.compose.devBackend.backend -> development.devWorkstation.compose.devDatabase.db 'SQL: business, mcp_oauth_*, ai_change_sets*' {
+    #edgeLabel
+  }
+}

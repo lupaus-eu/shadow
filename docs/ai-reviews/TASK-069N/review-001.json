@@ -35,7 +35,7 @@
         "recommendation": "Tell the client to remove every later operation that uses the failing operation's ref or key, latest first, then the failing one, and to add them again in dependency order, or to discard the draft and stage a new one when most of it depends on the failing operation.",
         "locations": [
           {
-            "path": "backend/app/mcp/plugin/skills/schatten-model-building/SKILL.md",
+            "path": "backend/app/mcp/plugin/skills/shadow-model-building/SKILL.md",
             "line": 83
           }
         ]
@@ -49,7 +49,7 @@
         "recommendation": "Say a later target date, say that timeseries are copied with their values up to the state's date, and add that an existing state's key is reused when the date is already taken.",
         "locations": [
           {
-            "path": "backend/app/mcp/plugin/skills/schatten-model-building/SKILL.md",
+            "path": "backend/app/mcp/plugin/skills/shadow-model-building/SKILL.md",
             "line": 44
           }
         ]
@@ -63,11 +63,11 @@
         "recommendation": "State that replacements cover only scenarios that already exist, and tell the client to tell the user itself when it replaces copied values or patches copied nodes.",
         "locations": [
           {
-            "path": "backend/app/mcp/plugin/skills/schatten-timeseries-generation/SKILL.md",
+            "path": "backend/app/mcp/plugin/skills/shadow-timeseries-generation/SKILL.md",
             "line": 156
           },
           {
-            "path": "backend/app/mcp/plugin/skills/schatten-model-building/SKILL.md",
+            "path": "backend/app/mcp/plugin/skills/shadow-model-building/SKILL.md",
             "line": 86
           }
         ]
@@ -81,7 +81,7 @@
         "recommendation": "Use the compounded values and give the conversion formula.",
         "locations": [
           {
-            "path": "backend/app/mcp/plugin/skills/schatten-timeseries-generation/SKILL.md",
+            "path": "backend/app/mcp/plugin/skills/shadow-timeseries-generation/SKILL.md",
             "line": 35
           }
         ]
@@ -134,7 +134,7 @@
         "severity": "low",
         "summary": "No test checks that the plugin origin hint is hidden on the production origin.",
         "rationale": "The tests cover the hint on a non-production origin only. Inverting the origin check would still pass them.",
-        "recommendation": "Add a test that renders the Connect section on https://schatten.lupaus.eu and asserts that the hint is absent.",
+        "recommendation": "Add a test that renders the Connect section on https://shadow.lupaus.eu and asserts that the hint is absent.",
         "locations": [
           {
             "path": "frontend/src/features/ai/ConnectInstructions.tsx",
@@ -155,7 +155,7 @@
         "recommendation": "Name the MCP prompt next to the skill.",
         "locations": [
           {
-            "path": "backend/app/mcp/plugin/skills/schatten-model-building/SKILL.md",
+            "path": "backend/app/mcp/plugin/skills/shadow-model-building/SKILL.md",
             "line": 132
           }
         ]

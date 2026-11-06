@@ -11,7 +11,7 @@ load_config
 printf 'current release:  %s\n' "$(pointer_value current)"
 printf 'previous release: %s\n' "$(pointer_value previous)"
 # Stopped services stay stopped across reboots until service start.
-stopped_record="${SCHATTEN_STATE_DIR}/stopped-services"
+stopped_record="${SHADOW_STATE_DIR}/stopped-services"
 if [[ -f "${stopped_record}" ]]; then
   printf '\nstopped by service stop (start again with: service start):\n'
   grep -E '^(RELEASE_ID|SERVICES)=' "${stopped_record}" | sed 's/^/  /'
@@ -22,13 +22,13 @@ printf '\ncompleted backups (newest first):\n'
 postgres_image="$(grep -Eo 'docker.io/library/postgres:[^ ]+@sha256:[0-9a-f]{64}' \
   "$(dirname "$(readlink -f "$0")")/../../docker-compose.production.yml" | head -n 1)"
 docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges:true \
-  --user "${SCHATTEN_BACKUP_UID}:${SCHATTEN_BACKUP_GID}" \
-  --mount "type=bind,source=${SCHATTEN_BACKUP_DIR},target=/backups,readonly" \
-  --entrypoint sh "${postgres_image}" -c 'cd /backups && ls -1r schatten-*.manifest 2>/dev/null | head -n 10 | sed "s/\.manifest$//"' \
+  --user "${SHADOW_BACKUP_UID}:${SHADOW_BACKUP_GID}" \
+  --mount "type=bind,source=${SHADOW_BACKUP_DIR},target=/backups,readonly" \
+  --entrypoint sh "${postgres_image}" -c 'cd /backups && ls -1r shadow-*.manifest 2>/dev/null | head -n 10 | sed "s/\.manifest$//"' \
   || printf '  unavailable\n'
 
 printf '\nlatest restore evidence:\n'
-latest="$(ls -1t "${SCHATTEN_STATE_DIR}"/restore-evidence/*.txt 2>/dev/null | head -n 1 || true)"
+latest="$(ls -1t "${SHADOW_STATE_DIR}"/restore-evidence/*.txt 2>/dev/null | head -n 1 || true)"
 if [[ -n "${latest}" ]]; then
   grep -E '^(RESTORE_REHEARSAL_AT|BACKUP_ID|STATUS)=' "${latest}"
 else
@@ -51,8 +51,8 @@ else
 fi
 
 printf '\nscheduler (last 48h):\n'
-if [[ -n "$(docker ps --quiet --filter label=com.docker.compose.project=schatten --filter label=com.docker.compose.service=ofelia)" ]]; then
-  docker logs --since 48h "$(docker ps --quiet --filter label=com.docker.compose.project=schatten --filter label=com.docker.compose.service=ofelia)" 2>&1 \
+if [[ -n "$(docker ps --quiet --filter label=com.docker.compose.project=shadow --filter label=com.docker.compose.service=ofelia)" ]]; then
+  docker logs --since 48h "$(docker ps --quiet --filter label=com.docker.compose.project=shadow --filter label=com.docker.compose.service=ofelia)" 2>&1 \
     | grep -E 'Finished in|failed' | tail -n 10 || true
 else
   printf '  Ofelia is not running (schedules not activated)\n'

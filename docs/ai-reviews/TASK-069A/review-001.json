@@ -112,8 +112,8 @@
         "category": "security",
         "severity": "medium",
         "summary": "The 30-day MCP grant lifetime relaxes ADR-004's session bounds without being recorded as a trade-off against ADR-004.",
-        "rationale": "ADR-004 accepts the lack of provider-side revocation because browser sessions have a 30-minute idle timeout and an eight-hour absolute lifetime. An MCP grant renews by rotation for 30 days with no idle timeout and no Entra re-check, so a user disabled in Entra but not soft-deleted in Schatten keeps MCP access. ADR-004's admin session revocation does not affect grants. The acceptance criterion requires referencing ADR-004 without weakening it.",
-        "recommendation": "Record this explicitly as an accepted trade-off, state that offboarding must soft-delete the Schatten User, and consider a refresh idle timeout and an admin-only revoke-all-grants-for-user operation.",
+        "rationale": "ADR-004 accepts the lack of provider-side revocation because browser sessions have a 30-minute idle timeout and an eight-hour absolute lifetime. An MCP grant renews by rotation for 30 days with no idle timeout and no Entra re-check, so a user disabled in Entra but not soft-deleted in Shadow keeps MCP access. ADR-004's admin session revocation does not affect grants. The acceptance criterion requires referencing ADR-004 without weakening it.",
+        "recommendation": "Record this explicitly as an accepted trade-off, state that offboarding must soft-delete the Shadow User, and consider a refresh idle timeout and an admin-only revoke-all-grants-for-user operation.",
         "locations": [
           {
             "path": "docs/decisions/ADR-015-ai-via-mcp.md",
@@ -362,7 +362,7 @@
         "recommendation": "Either rename the tables to the shared prefix in TASK-069D, or fix the view label and wording.",
         "locations": [
           {
-            "path": "docs/diagrams/likec4/schatten-ai-mcp/views.c4",
+            "path": "docs/diagrams/likec4/shadow-ai-mcp/views.c4",
             "line": 36
           },
           {
@@ -474,19 +474,19 @@
         "category": "documentation",
         "severity": "low",
         "summary": "Three LikeC4 elements tagged existing describe planned ADR-015 behaviour in the present tense.",
-        "rationale": "The Schatten system, Caddy and backend descriptions say they host OAuth and MCP and route the well-known OAuth paths, but the current Caddyfiles do not. Other existing elements mark their new parts explicitly, and the task requires distinguishing design from runtime behaviour.",
+        "rationale": "The Shadow system, Caddy and backend descriptions say they host OAuth and MCP and route the well-known OAuth paths, but the current Caddyfiles do not. Other existing elements mark their new parts explicitly, and the task requires distinguishing design from runtime behaviour.",
         "recommendation": "Prefix the planned parts with a New (ADR-015) marker, as the SPA description does, and re-export.",
         "locations": [
           {
-            "path": "docs/diagrams/likec4/schatten-ai-mcp/model.c4",
+            "path": "docs/diagrams/likec4/shadow-ai-mcp/model.c4",
             "line": 74
           },
           {
-            "path": "docs/diagrams/likec4/schatten-ai-mcp/model.c4",
+            "path": "docs/diagrams/likec4/shadow-ai-mcp/model.c4",
             "line": 86
           },
           {
-            "path": "docs/diagrams/likec4/schatten-ai-mcp/model.c4",
+            "path": "docs/diagrams/likec4/shadow-ai-mcp/model.c4",
             "line": 92
           }
         ]
@@ -504,11 +504,11 @@
             "line": 62
           },
           {
-            "path": "docs/diagrams/likec4/schatten-ai-mcp/views.c4",
+            "path": "docs/diagrams/likec4/shadow-ai-mcp/views.c4",
             "line": 47
           },
           {
-            "path": "docs/diagrams/likec4/schatten-ai-mcp/deployment.c4",
+            "path": "docs/diagrams/likec4/shadow-ai-mcp/deployment.c4",
             "line": 66
           }
         ]
@@ -522,11 +522,11 @@
         "recommendation": "Add a session relation to skills and a step that stores the submitted change set with frozen values.",
         "locations": [
           {
-            "path": "docs/diagrams/likec4/schatten-ai-mcp/model.c4",
+            "path": "docs/diagrams/likec4/shadow-ai-mcp/model.c4",
             "line": 173
           },
           {
-            "path": "docs/diagrams/likec4/schatten-ai-mcp/views.c4",
+            "path": "docs/diagrams/likec4/shadow-ai-mcp/views.c4",
             "line": 85
           }
         ]

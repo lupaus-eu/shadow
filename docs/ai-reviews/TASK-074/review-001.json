@@ -24,18 +24,18 @@
   },
   "review": {
     "outcome": "findings",
-    "summary": "Round 1 reviews the TASK-074 task and implementation: one Schatten MCP server at /api/mcp with per-tool scope checks, one OAuth resource and grant, role-narrowed consent, effective scopes in token responses and connections, migration 020, plugin 0.3.0, the frontend connect and consent wording and the documentation. The scope checks hold on the HTTP transport (fastmcp skips component checks only on stdio, where the runtime refuses a call without a principal), the legacy paths answer 404, migration 020 removes only the old resources' requests, grants and tokens and its down migration restores the 017 constraints, consent uses an equivalent business-session dependency, and every replaced test has a successor with the same coverage. No new dependency, no removed test without a successor and no out-of-scope change was found. Five low or info findings remain: the read-only explanation names only the role, a read-only grant's tool call is untested, some AI-facing docstrings are raggedly wrapped, an empty narrowed scope is shown as unknown access, and refresh accepts scopes beyond the grant as ADR-015 decided.",
+    "summary": "Round 1 reviews the TASK-074 task and implementation: one Shadow MCP server at /api/mcp with per-tool scope checks, one OAuth resource and grant, role-narrowed consent, effective scopes in token responses and connections, migration 020, plugin 0.3.0, the frontend connect and consent wording and the documentation. The scope checks hold on the HTTP transport (fastmcp skips component checks only on stdio, where the runtime refuses a call without a principal), the legacy paths answer 404, migration 020 removes only the old resources' requests, grants and tokens and its down migration restores the 017 constraints, consent uses an equivalent business-session dependency, and every replaced test has a successor with the same coverage. No new dependency, no removed test without a successor and no out-of-scope change was found. Five low or info findings remain: the read-only explanation names only the role, a read-only grant's tool call is untested, some AI-facing docstrings are raggedly wrapped, an empty narrowed scope is shown as unknown access, and refresh accepts scopes beyond the grant as ADR-015 decided.",
     "findings": [
       {
         "id": "F-001",
         "category": "documentation",
         "severity": "low",
-        "summary": "The model-building skill and the server instructions say that a missing create_change_set means the user's role can only read, but a client that asked only for schatten.read also holds a read-only grant.",
+        "summary": "The model-building skill and the server instructions say that a missing create_change_set means the user's role can only read, but a client that asked only for shadow.read also holds a read-only grant.",
         "rationale": "Effective scopes are the grant's scopes intersected with the role's, so a read-only grant hides the write tools exactly as a read-only role does. The AI would then tell a user with a read-and-write role that their role cannot propose changes, although connecting again with both scopes would allow it. The sentence is prescribed word for word by the task, so changing it is the developer's decision.",
         "recommendation": "Let the developer decide whether to say that this connection can only read, because of the user's role or the access the client asked for, in the skill and in both instruction variants.",
         "locations": [
           {
-            "path": "backend/app/mcp/plugin/skills/schatten-model-building/SKILL.md",
+            "path": "backend/app/mcp/plugin/skills/shadow-model-building/SKILL.md",
             "line": 14
           },
           {
@@ -54,7 +54,7 @@
         "severity": "low",
         "summary": "A read-only grant is tested only for its tool list; calling a write tool is tested only for a read-only role.",
         "rationale": "The role case and the grant case reach the same effective-scope check today, but a regression that narrowed by role and not by grant on tools/call would let a read-only grant stage change sets without a failing test.",
-        "recommendation": "Add a test that a grant holding only schatten.read gets an unknown tool error for every write and review tool and that no change set is created.",
+        "recommendation": "Add a test that a grant holding only shadow.read gets an unknown tool error for every write and review tool and that no change set is created.",
         "locations": [
           {
             "path": "backend/tests/test_mcp_auth.py",
@@ -93,7 +93,7 @@
         "category": "bug",
         "severity": "info",
         "summary": "When consent narrowing leaves no scope, the consent page shows unknown access with an empty scope instead of saying that the role cannot connect.",
-        "rationale": "A role without schatten.read narrows the consent scope to an empty string, which the page treats as an unknown access level; approval then redirects with access_denied. No current role reaches this, as ADR-015 notes.",
+        "rationale": "A role without shadow.read narrows the consent scope to an empty string, which the page treats as an unknown access level; approval then redirects with access_denied. No current role reaches this, as ADR-015 notes.",
         "recommendation": "Optionally show that the user's role cannot connect AI clients when the reported scope is empty, together with the role limitation that would make it reachable.",
         "locations": [
           {

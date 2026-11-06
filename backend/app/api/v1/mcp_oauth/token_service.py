@@ -56,7 +56,7 @@ LAST_USED_WRITE_INTERVAL = timedelta(minutes=5)
 MAX_GRANT_KEY_LENGTH = 128
 BIGINT_MAX = 2**63 - 1
 # ADR-015: both current roles may use both scopes. This mapping is the one
-# place that limits a role: a role without `schatten.write` sees only the read
+# place that limits a role: a role without `shadow.write` sees only the read
 # tools on the same endpoint, with no token format, URL or client change.
 ROLE_SCOPES: dict[str, frozenset[str]] = {
     "admin": frozenset({READ_SCOPE, WRITE_SCOPE}),
@@ -665,7 +665,7 @@ def _reusable_grant(
     creating a second active grant.
     """
     lock_name = (
-        f"schatten.mcp_oauth.grant:{client.mcp_oauth_client_id}:{user_id}:{resource}"
+        f"shadow.mcp_oauth.grant:{client.mcp_oauth_client_id}:{user_id}:{resource}"
     )
     advisory_transaction_lock(
         session,

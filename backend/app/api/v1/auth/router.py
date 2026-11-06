@@ -44,7 +44,7 @@ def login(
             session,
             settings,
             return_to=return_to,
-            existing_browser_binding=request.cookies.get("schatten-preauth"),
+            existing_browser_binding=request.cookies.get("shadow-preauth"),
             authorization_url_factory=provider.authorization_url,
         )
     except LoginRateLimited as exc:
@@ -60,7 +60,7 @@ def login(
     )
     if started.set_browser_cookie:
         response.set_cookie(
-            "schatten-preauth",
+            "shadow-preauth",
             started.browser_binding,
             max_age=settings.oidc_transaction_lifetime_seconds,
             secure=settings.session_cookie_secure,
@@ -84,7 +84,7 @@ def callback(
     consumed = consume_login(
         session,
         state=state,
-        browser_binding=request.cookies.get("schatten-preauth"),
+        browser_binding=request.cookies.get("shadow-preauth"),
     )
     if consumed is None:
         return RedirectResponse(
@@ -121,7 +121,7 @@ def callback(
         status_code=status.HTTP_303_SEE_OTHER,
     )
     response.delete_cookie(
-        "schatten-preauth",
+        "shadow-preauth",
         secure=settings.session_cookie_secure,
         httponly=True,
         samesite="lax",

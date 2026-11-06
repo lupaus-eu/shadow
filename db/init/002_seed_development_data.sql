@@ -21,7 +21,7 @@ WHERE NOT EXISTS (
 );
 
 SELECT set_config(
-    'schatten.seed_reference_data.metamodel_json',
+    'shadow.seed_reference_data.metamodel_json',
     :'metamodel_json',
     true
 );

@@ -49,8 +49,8 @@ help:
 		'Production, Entra, release, rollback, baseline, reset, and cleanup operations' \
 		'are intentionally not available through this Makefile. Production server' \
 		'commands are in deploy/Makefile, run on the host from the verified source copy:' \
-		'  make -C /opt/apps/schatten-sources/<commit>/deploy help' \
-		'See docs/PRODUCTION-RUNBOOK.md.'
+		'  make -C /opt/apps/shadow-sources/<commit>/deploy help' \
+		'See docs/runbooks/production.md.'
 
 backend-install:
 	cd backend && uv sync

@@ -21,15 +21,15 @@
   },
   "review": {
     "outcome": "findings",
-    "summary": "The manifest generator, receiver, host checks, harness and documentation match the task and ADR-013, and the receive ordering, symlink-safe copy and staged-copy verification are sound. One finding: build-release accepts any self-consistent read-only folder, not only one accepted by schatten-receive.",
+    "summary": "The manifest generator, receiver, host checks, harness and documentation match the task and ADR-013, and the receive ordering, symlink-safe copy and staged-copy verification are sound. One finding: build-release accepts any self-consistent read-only folder, not only one accepted by shadow-receive.",
     "findings": [
       {
         "id": "F-001",
         "category": "security",
         "severity": "medium",
         "summary": "build-release --source does not require the folder to be under the accepted sources directory, so it can build a folder that never passed the operator-digest check.",
-        "rationale": "The re-verification only checks the copy against the manifest inside that same folder; it never compares the manifest digest with an operator-approved value or checks where the folder is. A local test showed that a hand-made read-only folder named after a commit, with its own matching manifest, passes --verify. The upload account controls its upload folder and can make it read-only, so passing an upload path (by operator error or a later H3 wrapper) would build unapproved source. ADR-013 says build-release builds only from a verified folder under /opt/apps/schatten-sources.",
-        "recommendation": "In build-release, after load_config, require the resolved source folder's parent to equal the resolved SCHATTEN_SOURCES_DIR (and refuse otherwise), and add a harness case that an upload-style read-only folder outside the sources directory is refused before copying.",
+        "rationale": "The re-verification only checks the copy against the manifest inside that same folder; it never compares the manifest digest with an operator-approved value or checks where the folder is. A local test showed that a hand-made read-only folder named after a commit, with its own matching manifest, passes --verify. The upload account controls its upload folder and can make it read-only, so passing an upload path (by operator error or a later H3 wrapper) would build unapproved source. ADR-013 says build-release builds only from a verified folder under /opt/apps/shadow-sources.",
+        "recommendation": "In build-release, after load_config, require the resolved source folder's parent to equal the resolved SHADOW_SOURCES_DIR (and refuse otherwise), and add a harness case that an upload-style read-only folder outside the sources directory is refused before copying.",
         "locations": [
           {
             "path": "deploy/bin/build-release",

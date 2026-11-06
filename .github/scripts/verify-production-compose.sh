@@ -5,17 +5,17 @@ set -euo pipefail
 declare -A values=(
   [BACKEND_IMAGE]="sha256:1111111111111111111111111111111111111111111111111111111111111111"
   [FRONTEND_IMAGE]="sha256:2222222222222222222222222222222222222222222222222222222222222222"
-  [POSTGRES_DB]="schatten"
-  [POSTGRES_USER]="schatten"
+  [POSTGRES_DB]="shadow"
+  [POSTGRES_USER]="shadow"
   [POSTGRES_PASSWORD]="password"
-  [DATABASE_URL]="postgresql://schatten:password@database:5432/schatten"
+  [DATABASE_URL]="postgresql://shadow:password@database:5432/shadow"
   [OIDC_DISCOVERY_URL]="https://login.microsoftonline.com/tenant-id/v2.0/.well-known/openid-configuration"
   [OIDC_ISSUER]="https://login.microsoftonline.com/tenant-id/v2.0"
   [OIDC_CLIENT_ID]="test-client"
   [OIDC_CLIENT_SECRET]="test-secret"
   [PUBLIC_ORIGIN]="https://app.example.test"
   [DOCKER_SOCKET_GID]="988"
-  [SCHATTEN_BACKUP_PUBLIC_KEY]="/opt/apps/schatten-config/backup-public-key.asc"
+  [SHADOW_BACKUP_PUBLIC_KEY]="/opt/apps/shadow-config/backup-public-key.asc"
 )
 
 compose_env=()
@@ -56,7 +56,7 @@ for name, service in services.items():
     ]
     assert bool(socket_mounts) == (name in {"ofelia", "cleanup-runner"}), name
     assert all(volume["source"] != "/" for volume in service.get("volumes", [])), name
-    assert service.get("labels", {}).get("eu.lupaus.schatten.retain") == "true", name
+    assert service.get("labels", {}).get("eu.lupaus.shadow.retain") == "true", name
 
 ports = {(port["target"], port["published"], port["protocol"]) for port in services["frontend"]["ports"]}
 assert ports == {(80, "80", "tcp"), (443, "443", "tcp")}, ports
@@ -76,7 +76,7 @@ assert [v["target"] for v in database["volumes"]] == ["/var/lib/postgresql"]
 assert database["volumes"][0]["source"] == "postgres_data"
 assert model["networks"]["data"]["internal"] is True
 
-assert services["migration"]["environment"] == {"DATABASE_URL": "postgresql://schatten:password@database:5432/schatten"}
+assert services["migration"]["environment"] == {"DATABASE_URL": "postgresql://shadow:password@database:5432/shadow"}
 assert services["migration"]["depends_on"]["database"]["condition"] == "service_healthy"
 assert services["migration"]["networks"] == {"data": None}
 for name in ("backend", "prediction-worker"):
@@ -105,7 +105,7 @@ assert ipaddress.ip_address(caddy_ip) not in ipaddress.ip_network(edge["ip_range
 
 worker = services["prediction-worker"]
 assert worker["command"] == ["python", "-m", "app.api.v1.predictions.worker"]
-assert worker["environment"] == {"DATABASE_URL": "postgresql://schatten:password@database:5432/schatten"}
+assert worker["environment"] == {"DATABASE_URL": "postgresql://shadow:password@database:5432/shadow"}
 assert worker["networks"] == {"data": None}
 assert worker["healthcheck"]["test"] == ["CMD", "python", "-m", "app.api.v1.predictions.worker", "health-check"]
 assert {key: worker["healthcheck"][key] for key in ("interval", "timeout", "retries", "start_period")} == {
@@ -139,15 +139,15 @@ assert len(ofelia["volumes"]) == 2
 
 backup = services["backup-runner"]
 assert backup["profiles"] == ["ops"]
-assert backup["container_name"] == "schatten-backup-runner"
+assert backup["container_name"] == "shadow-backup-runner"
 assert backup["networks"] == {"data": None}
 assert set(backup["environment"]) & secrets == {"DATABASE_URL"}
 assert backup["environment"]["BACKUP_RETENTION_DAYS"] == "7"
 mounts = {v["target"]: v for v in backup["volumes"]}
-assert set(mounts) == {"/opt/schatten-ops", "/backups", "/run/schatten/backup-public-key.asc", "/locks"}
+assert set(mounts) == {"/opt/shadow-ops", "/backups", "/run/shadow/backup-public-key.asc", "/locks"}
 assert mounts["/backups"]["source"] == "/opt/postgres-backups"
 assert not mounts["/backups"].get("read_only")
-for target in ("/opt/schatten-ops", "/run/schatten/backup-public-key.asc", "/locks"):
+for target in ("/opt/shadow-ops", "/run/shadow/backup-public-key.asc", "/locks"):
     assert mounts[target]["read_only"] is True, target
 # Long-syntax binds default to create_host_path=false; some Compose versions
 # omit the false value from rendered JSON, so only an explicit true fails.
@@ -155,7 +155,7 @@ assert all(v.get("bind", {}).get("create_host_path", False) is False for v in ba
 
 cleanup = services["cleanup-runner"]
 assert cleanup["profiles"] == ["ops"]
-assert cleanup["container_name"] == "schatten-docker-cleanup"
+assert cleanup["container_name"] == "shadow-docker-cleanup"
 assert cleanup["network_mode"] == "none"
 assert cleanup["user"] == "65534:988"
 assert not set(cleanup["environment"]) & secrets

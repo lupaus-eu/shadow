@@ -31,7 +31,7 @@ function deferredResponse() {
   return { promise, resolve };
 }
 
-function mockSchattenApi(options?: {
+function mockShadowApi(options?: {
   duplicateCreate?: boolean;
   cleanStatus?: number;
   cleanResponse?: Promise<Response>;
@@ -108,7 +108,7 @@ function mockSchattenApi(options?: {
           clientNameSelfDeclared: true,
           redirectIsLoopback: false,
           redirectHost: "claude.ai",
-          scope: options?.consentScope ?? "schatten.read",
+          scope: options?.consentScope ?? "shadow.read",
           resource: "https://app.localhost/api/mcp",
           expiresTime: "2026-10-28T10:10:00Z"
         })
@@ -515,7 +515,7 @@ function todayDateValue(): string {
   return `${year}-${month}-${day}`;
 }
 
-describe("Schatten UI shell", () => {
+describe("Shadow UI shell", () => {
   beforeEach(() => {
     sessionStorage.clear();
     vi.mocked(navigateBrowser).mockReset();
@@ -526,7 +526,7 @@ describe("Schatten UI shell", () => {
   });
 
   it("renders organisation selection and creation controls on the home page", async () => {
-    mockSchattenApi();
+    mockShadowApi();
 
     renderAt("/");
 
@@ -569,13 +569,13 @@ describe("Schatten UI shell", () => {
   });
 
   it("shows login for an anonymous protected route and preserves that route", async () => {
-    mockSchattenApi({ sessionStatus: 401 });
+    mockShadowApi({ sessionStatus: 401 });
 
-    renderAt("/schatten/acme/users?view=selected");
+    renderAt("/shadow/acme/users?view=selected");
 
     fireEvent.click(await screen.findByRole("button", { name: "Sign in" }));
     expect(navigateBrowser).toHaveBeenCalledWith(
-      "/api/v1/auth/login?return_to=%2Fschatten%2Facme%2Fusers%3Fview%3Dselected"
+      "/api/v1/auth/login?return_to=%2Fshadow%2Facme%2Fusers%3Fview%3Dselected"
     );
   });
 
@@ -641,9 +641,9 @@ describe("Schatten UI shell", () => {
   });
 
   it("hides Users and redirects its route for consultants", async () => {
-    mockSchattenApi({ authRole: "consultant" });
+    mockShadowApi({ authRole: "consultant" });
 
-    renderAt("/schatten/acme/users");
+    renderAt("/shadow/acme/users");
 
     expect(await screen.findByRole("heading", { name: "Scenarios", level: 1 })).toBeVisible();
     expect(screen.queryByRole("link", { name: "Users" })).not.toBeInTheDocument();
@@ -652,9 +652,9 @@ describe("Schatten UI shell", () => {
   });
 
   it("revokes a User's AI connections from Users administration", async () => {
-    const fetchMock = mockSchattenApi();
+    const fetchMock = mockShadowApi();
 
-    renderAt("/schatten/acme/users");
+    renderAt("/shadow/acme/users");
     await screen.findByRole("button", { name: /Development Admin/ });
     fireEvent.click(await screen.findByRole("button", { name: "Revoke AI connections" }));
     fireEvent.click(screen.getByRole("button", { name: "Confirm revoke AI connections" }));
@@ -672,7 +672,7 @@ describe("Schatten UI shell", () => {
   });
 
   it("shows login for an anonymous consent request and returns to it after sign-in", async () => {
-    const fetchMock = mockSchattenApi({ sessionStatus: 401 });
+    const fetchMock = mockShadowApi({ sessionStatus: 401 });
 
     renderAt("/ai/authorize?request=pending-id");
 
@@ -686,7 +686,7 @@ describe("Schatten UI shell", () => {
   });
 
   it("approves a consent request with the session CSRF token", async () => {
-    const fetchMock = mockSchattenApi({ mcpEnabled: true });
+    const fetchMock = mockShadowApi({ mcpEnabled: true });
 
     renderAt("/ai/authorize?request=pending-id");
 
@@ -710,10 +710,10 @@ describe("Schatten UI shell", () => {
   });
 
   it("explains read and write access from the session's MCP change-set review flag", async () => {
-    mockSchattenApi({
+    mockShadowApi({
       mcpEnabled: true,
       mcpChangeSetReview: true,
-      consentScope: "schatten.read schatten.write"
+      consentScope: "shadow.read shadow.write"
     });
 
     renderAt("/ai/authorize?request=pending-id");
@@ -726,7 +726,7 @@ describe("Schatten UI shell", () => {
   });
 
   it("shows the consent page as not available when the session has no MCP feature", async () => {
-    const fetchMock = mockSchattenApi();
+    const fetchMock = mockShadowApi();
 
     renderAt("/ai/authorize?request=pending-id");
 
@@ -739,9 +739,9 @@ describe("Schatten UI shell", () => {
   });
 
   it("opens the Metrics AI panel on the change set of a review link", async () => {
-    const fetchMock = mockSchattenApi();
+    const fetchMock = mockShadowApi();
 
-    renderAt("/schatten/acme/metrics?changeSet=cs-1");
+    renderAt("/shadow/acme/metrics?changeSet=cs-1");
 
     const panel = await screen.findByRole("complementary", { name: "AI" });
     expect(await within(panel).findByRole("heading", { name: "Linked change set" })).toBeVisible();
@@ -759,9 +759,9 @@ describe("Schatten UI shell", () => {
   });
 
   it("returns an admin to login after revoking their own sessions", async () => {
-    mockSchattenApi();
+    mockShadowApi();
 
-    renderAt("/schatten/acme/users");
+    renderAt("/shadow/acme/users");
     await screen.findByRole("button", { name: /Development Admin/ });
     fireEvent.click(screen.getByRole("button", { name: "Revoke sessions" }));
     fireEvent.click(screen.getByRole("button", { name: "Confirm revoke sessions" }));
@@ -770,7 +770,7 @@ describe("Schatten UI shell", () => {
   });
 
   it("logs out with CSRF and navigates to the local login page", async () => {
-    const fetchMock = mockSchattenApi();
+    const fetchMock = mockShadowApi();
 
     renderAt("/");
     fireEvent.click(await screen.findByRole("button", { name: "Sign out" }));
@@ -789,9 +789,9 @@ describe("Schatten UI shell", () => {
   });
 
   it("shows the session controls in the workspace header instead of the session bar", async () => {
-    mockSchattenApi();
+    mockShadowApi();
 
-    renderAt("/schatten/acme/org-states");
+    renderAt("/shadow/acme/org-states");
 
     const banner = await screen.findByRole("banner");
     const session = within(banner).getByRole("group", { name: "Current user session" });
@@ -806,7 +806,7 @@ describe("Schatten UI shell", () => {
   });
 
   it.each(["/", "/404"])("shows the separate session bar on %s", async (path) => {
-    mockSchattenApi();
+    mockShadowApi();
 
     renderAt(path);
 
@@ -817,9 +817,9 @@ describe("Schatten UI shell", () => {
   });
 
   it("logs out with CSRF from the workspace header", async () => {
-    const fetchMock = mockSchattenApi();
+    const fetchMock = mockShadowApi();
 
-    renderAt("/schatten/acme/org-states");
+    renderAt("/shadow/acme/org-states");
     const banner = await screen.findByRole("banner");
     fireEvent.click(within(banner).getByRole("button", { name: "Sign out" }));
 
@@ -838,7 +838,7 @@ describe("Schatten UI shell", () => {
   });
 
   it("navigates to the trusted provider logout URL", async () => {
-    mockSchattenApi({ logoutUrl: "https://identity.example.test/logout" });
+    mockShadowApi({ logoutUrl: "https://identity.example.test/logout" });
 
     renderAt("/");
     fireEvent.click(await screen.findByRole("button", { name: "Sign out" }));
@@ -880,7 +880,7 @@ describe("Schatten UI shell", () => {
   });
 
   it("creates an organisation through the backend API and selects it", async () => {
-    const fetchMock = mockSchattenApi();
+    const fetchMock = mockShadowApi();
 
     renderAt("/");
 
@@ -902,7 +902,7 @@ describe("Schatten UI shell", () => {
   });
 
   it("shows duplicate organisation errors from the backend clearly", async () => {
-    mockSchattenApi({ duplicateCreate: true });
+    mockShadowApi({ duplicateCreate: true });
 
     renderAt("/");
 
@@ -919,18 +919,18 @@ describe("Schatten UI shell", () => {
   });
 
   it("redirects an organisation workspace URL to the default Scenarios tab", async () => {
-    mockSchattenApi();
+    mockShadowApi();
 
-    renderAt("/schatten/acme");
+    renderAt("/shadow/acme");
 
     expect(await screen.findByRole("heading", { name: "Scenarios", level: 1 })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Scenarios" })).toHaveClass("tab-link--active");
   });
 
   it("shows the scenario count and refresh control", async () => {
-    const fetchMock = mockSchattenApi();
+    const fetchMock = mockShadowApi();
 
-    renderAt("/schatten/acme/org-states");
+    renderAt("/shadow/acme/org-states");
 
     expect(await screen.findByText("2 scenario(s)")).toBeInTheDocument();
     await screen.findByRole("button", { name: /Today/ });
@@ -950,9 +950,9 @@ describe("Schatten UI shell", () => {
   });
 
   it("refreshes the selected scenario and states from read endpoints", async () => {
-    const fetchMock = mockSchattenApi();
+    const fetchMock = mockShadowApi();
 
-    renderAt("/schatten/acme/org-states");
+    renderAt("/shadow/acme/org-states");
 
     fireEvent.click(await screen.findByRole("button", { name: /Future plan/ }));
     await screen.findByRole("button", { name: /Draft state/ });
@@ -989,18 +989,18 @@ describe("Schatten UI shell", () => {
   });
 
   it("renders tab URLs and disables Structure and Events before selection", async () => {
-    mockSchattenApi();
+    mockShadowApi();
 
-    renderAt("/schatten/acme/org-states");
+    renderAt("/shadow/acme/org-states");
 
     const expectedLinks = [
-      ["Scenarios", "/schatten/acme/org-states"],
-      ["Metrics", "/schatten/acme/metrics"],
-      ["Summary", "/schatten/acme/summary"],
-      ["Analysis", "/schatten/acme/analysis"],
-      ["Predictions", "/schatten/acme/predictions"],
-      ["Customers", "/schatten/acme/customers"],
-      ["Users", "/schatten/acme/users"]
+      ["Scenarios", "/shadow/acme/org-states"],
+      ["Metrics", "/shadow/acme/metrics"],
+      ["Summary", "/shadow/acme/summary"],
+      ["Analysis", "/shadow/acme/analysis"],
+      ["Predictions", "/shadow/acme/predictions"],
+      ["Customers", "/shadow/acme/customers"],
+      ["Users", "/shadow/acme/users"]
     ] as const;
 
     await screen.findByRole("link", { name: "Scenarios" });
@@ -1014,17 +1014,17 @@ describe("Schatten UI shell", () => {
   });
 
   it("marks the active tab from the current URL", async () => {
-    mockSchattenApi();
-    renderAt("/schatten/acme/metrics");
+    mockShadowApi();
+    renderAt("/shadow/acme/metrics");
 
     expect(await screen.findByRole("link", { name: "Metrics" })).toHaveClass("tab-link--active");
     expect(screen.getByRole("link", { name: "Scenarios" })).not.toHaveClass("tab-link--active");
   });
 
   it("renders the application-wide Users route without workspace selections", async () => {
-    const fetchMock = mockSchattenApi();
+    const fetchMock = mockShadowApi();
 
-    renderAt("/schatten/acme/users");
+    renderAt("/shadow/acme/users");
 
     expect(await screen.findByRole("link", { name: "Users" })).toHaveClass("tab-link--active");
     expect(await screen.findByRole("heading", { name: "Users" })).toBeInTheDocument();
@@ -1037,9 +1037,9 @@ describe("Schatten UI shell", () => {
   });
 
   it("renders the application-wide Customers route without workspace context in its API", async () => {
-    const fetchMock = mockSchattenApi();
+    const fetchMock = mockShadowApi();
 
-    renderAt("/schatten/acme/customers");
+    renderAt("/shadow/acme/customers");
 
     expect(await screen.findByRole("link", { name: "Customers" })).toHaveClass("tab-link--active");
     expect(await screen.findByRole("heading", { name: "Customers" })).toBeInTheDocument();
@@ -1063,9 +1063,9 @@ describe("Schatten UI shell", () => {
   });
 
   it("renders the Summary route without requiring an organisation state", async () => {
-    mockSchattenApi();
+    mockShadowApi();
 
-    renderAt("/schatten/acme/summary");
+    renderAt("/shadow/acme/summary");
 
     expect(await screen.findByRole("link", { name: "Summary" })).toHaveClass("tab-link--active");
     expect(await screen.findByRole("heading", { name: "Summary" })).toBeInTheDocument();
@@ -1073,9 +1073,9 @@ describe("Schatten UI shell", () => {
   });
 
   it("renders Predictions without a selected scenario or organisation state", async () => {
-    mockSchattenApi();
+    mockShadowApi();
 
-    renderAt("/schatten/acme/predictions");
+    renderAt("/shadow/acme/predictions");
 
     expect(await screen.findByText(/selected scenario's own data/i)).toBeVisible();
     expect(screen.getByRole("link", { name: "Predictions" })).toHaveClass("tab-link--active");
@@ -1084,9 +1084,9 @@ describe("Schatten UI shell", () => {
   });
 
   it("shows the organisation, scenario, and org state indicators", async () => {
-    mockSchattenApi();
+    mockShadowApi();
     renderAt({
-      pathname: "/schatten/acme/analysis",
+      pathname: "/shadow/acme/analysis",
       state: { organisationName: "Acme" }
     });
 
@@ -1098,9 +1098,9 @@ describe("Schatten UI shell", () => {
   });
 
   it("shows protected scenarios, allows Reality editing, and blocks deletion", async () => {
-    const fetchMock = mockSchattenApi();
+    const fetchMock = mockShadowApi();
 
-    renderAt("/schatten/acme/org-states");
+    renderAt("/shadow/acme/org-states");
 
     fireEvent.click(await screen.findByRole("button", { name: /Reality/ }));
 
@@ -1145,9 +1145,9 @@ describe("Schatten UI shell", () => {
   });
 
   it("disables clean states until an editable scenario is selected", async () => {
-    mockSchattenApi();
+    mockShadowApi();
 
-    renderAt("/schatten/acme/org-states");
+    renderAt("/shadow/acme/org-states");
 
     expect(await screen.findByText("2 scenario(s)")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Clean states" })).toBeDisabled();
@@ -1161,9 +1161,9 @@ describe("Schatten UI shell", () => {
   });
 
   it("confirms before cleaning states and refreshes the selected scenario states", async () => {
-    const fetchMock = mockSchattenApi();
+    const fetchMock = mockShadowApi();
 
-    renderAt("/schatten/acme/org-states");
+    renderAt("/shadow/acme/org-states");
 
     fireEvent.click(await screen.findByRole("button", { name: /Future plan/ }));
     await screen.findByRole("button", { name: /Draft state/ });
@@ -1205,9 +1205,9 @@ describe("Schatten UI shell", () => {
 
   it("shows a busy clean states state while cleanup is in progress", async () => {
     const cleanDeferred = deferredResponse();
-    mockSchattenApi({ cleanResponse: cleanDeferred.promise });
+    mockShadowApi({ cleanResponse: cleanDeferred.promise });
 
-    renderAt("/schatten/acme/org-states");
+    renderAt("/shadow/acme/org-states");
 
     fireEvent.click(await screen.findByRole("button", { name: /Future plan/ }));
     await screen.findByRole("button", { name: /Draft state/ });
@@ -1229,9 +1229,9 @@ describe("Schatten UI shell", () => {
     [409, "Protected scenarios cannot be cleaned."],
     [500, "The server could not clean states right now. Try again later."]
   ])("shows a friendly clean states error for %i responses", async (status, message) => {
-    mockSchattenApi({ cleanStatus: status });
+    mockShadowApi({ cleanStatus: status });
 
-    renderAt("/schatten/acme/org-states");
+    renderAt("/shadow/acme/org-states");
 
     fireEvent.click(await screen.findByRole("button", { name: /Future plan/ }));
     await screen.findByRole("button", { name: /Draft state/ });
@@ -1242,9 +1242,9 @@ describe("Schatten UI shell", () => {
   });
 
   it("disables scenario save until editable fields change", async () => {
-    const fetchMock = mockSchattenApi();
+    const fetchMock = mockShadowApi();
 
-    renderAt("/schatten/acme/org-states");
+    renderAt("/shadow/acme/org-states");
 
     fireEvent.click(await screen.findByRole("button", { name: /Future plan/ }));
 
@@ -1287,9 +1287,9 @@ describe("Schatten UI shell", () => {
   });
 
   it("auto-selects the first scenario and first state on initial load", async () => {
-    mockSchattenApi();
+    mockShadowApi();
 
-    renderAt("/schatten/acme/org-states");
+    renderAt("/shadow/acme/org-states");
 
     await screen.findByRole("button", { name: /Reality/ });
     await screen.findByRole("button", { name: /Today/ });
@@ -1298,18 +1298,18 @@ describe("Schatten UI shell", () => {
     expect(screen.getByTitle("Org state: Today (2026-06-23)")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Structure" })).toHaveAttribute(
       "href",
-      "/schatten/acme/graph"
+      "/shadow/acme/graph"
     );
     expect(screen.getByRole("link", { name: "Events" })).toHaveAttribute(
       "href",
-      "/schatten/acme/events"
+      "/shadow/acme/events"
     );
   });
 
   it("switches header context in place and refetches the active Events tab", async () => {
-    const fetchMock = mockSchattenApi();
+    const fetchMock = mockShadowApi();
 
-    renderAt("/schatten/acme/org-states");
+    renderAt("/shadow/acme/org-states");
     await screen.findByTitle("Org state: Today (2026-06-23)");
     fireEvent.click(screen.getByRole("link", { name: "Events" }));
 
@@ -1386,9 +1386,9 @@ describe("Schatten UI shell", () => {
   });
 
   it("reconciles Scenarios forms when header context changes in place", async () => {
-    mockSchattenApi();
+    mockShadowApi();
 
-    renderAt("/schatten/acme/org-states");
+    renderAt("/shadow/acme/org-states");
     await screen.findByTitle("Org state: Today (2026-06-23)");
 
     fireEvent.click(screen.getByRole("button", { name: "Change scenario" }));
@@ -1429,9 +1429,9 @@ describe("Schatten UI shell", () => {
   });
 
   it("renders the selected scenario group without sidebar descriptions", async () => {
-    mockSchattenApi();
+    mockShadowApi();
 
-    renderAt("/schatten/acme/org-states");
+    renderAt("/shadow/acme/org-states");
 
     fireEvent.click(await screen.findByRole("button", { name: /Future plan/ }));
     await screen.findByRole("button", { name: /Draft state/ });
@@ -1453,9 +1453,9 @@ describe("Schatten UI shell", () => {
   });
 
   it("chooses a fork source state without changing the active org-state view", async () => {
-    const fetchMock = mockSchattenApi();
+    const fetchMock = mockShadowApi();
 
-    renderAt("/schatten/acme/org-states");
+    renderAt("/shadow/acme/org-states");
 
     fireEvent.click(await screen.findByRole("button", { name: /Future plan/ }));
     await screen.findByRole("button", { name: /Draft state/ });
@@ -1496,9 +1496,9 @@ describe("Schatten UI shell", () => {
   });
 
   it("chooses a fork source scenario without changing the active workspace scenario", async () => {
-    const fetchMock = mockSchattenApi();
+    const fetchMock = mockShadowApi();
 
-    renderAt("/schatten/acme/org-states");
+    renderAt("/shadow/acme/org-states");
 
     await screen.findByRole("button", { name: /Today/ });
     const forkForm = screen.getByRole("form", { name: "Fork from existing" });
@@ -1538,9 +1538,9 @@ describe("Schatten UI shell", () => {
   });
 
   it("shows states under the selected scenario and auto-selects the first state", async () => {
-    mockSchattenApi();
+    mockShadowApi();
 
-    renderAt("/schatten/acme/org-states");
+    renderAt("/shadow/acme/org-states");
 
     fireEvent.click(await screen.findByRole("button", { name: /Future plan/ }));
     await screen.findByRole("button", { name: /Draft state/ });
@@ -1553,11 +1553,11 @@ describe("Schatten UI shell", () => {
     expect(screen.getByTitle("Org state: Draft state (2026-06-01)")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Structure" })).toHaveAttribute(
       "href",
-      "/schatten/acme/graph"
+      "/shadow/acme/graph"
     );
     expect(screen.getByRole("link", { name: "Events" })).toHaveAttribute(
       "href",
-      "/schatten/acme/events"
+      "/shadow/acme/events"
     );
 
     fireEvent.click(screen.getByRole("button", { name: /Reality/ }));
@@ -1568,9 +1568,9 @@ describe("Schatten UI shell", () => {
   });
 
   it("preserves the selected org state when returning to Scenarios", async () => {
-    mockSchattenApi();
+    mockShadowApi();
 
-    renderAt("/schatten/acme/org-states");
+    renderAt("/shadow/acme/org-states");
 
     fireEvent.click(await screen.findByRole("button", { name: /Future plan/ }));
     await screen.findByRole("button", { name: /Draft state/ });
@@ -1609,9 +1609,9 @@ describe("Schatten UI shell", () => {
   });
 
   it("falls back when the selected scenario is missing on return", async () => {
-    mockSchattenApi({ omitFutureAfterFirstScenarioLoad: true });
+    mockShadowApi({ omitFutureAfterFirstScenarioLoad: true });
 
-    renderAt("/schatten/acme/org-states");
+    renderAt("/shadow/acme/org-states");
 
     fireEvent.click(await screen.findByRole("button", { name: /Future plan/ }));
     await screen.findByRole("button", { name: /Draft state/ });
@@ -1637,9 +1637,9 @@ describe("Schatten UI shell", () => {
   });
 
   it("edits the selected org state immediately and saves only after changes", async () => {
-    const fetchMock = mockSchattenApi();
+    const fetchMock = mockShadowApi();
 
-    renderAt("/schatten/acme/org-states");
+    renderAt("/shadow/acme/org-states");
 
     fireEvent.click(await screen.findByRole("button", { name: /Future plan/ }));
     await screen.findByRole("button", { name: /Draft state/ });
@@ -1685,9 +1685,9 @@ describe("Schatten UI shell", () => {
   });
 
   it("requires exact DELETE before org-state deletion can be submitted", async () => {
-    const fetchMock = mockSchattenApi();
+    const fetchMock = mockShadowApi();
 
-    renderAt("/schatten/acme/org-states");
+    renderAt("/shadow/acme/org-states");
 
     fireEvent.click(await screen.findByRole("button", { name: /Future plan/ }));
     await screen.findByRole("button", { name: /Draft state/ });
@@ -1724,9 +1724,9 @@ describe("Schatten UI shell", () => {
   });
 
   it("blocks duplicate org-state target dates before submitting", async () => {
-    const fetchMock = mockSchattenApi();
+    const fetchMock = mockShadowApi();
 
-    renderAt("/schatten/acme/org-states");
+    renderAt("/shadow/acme/org-states");
 
     fireEvent.click(await screen.findByRole("button", { name: /Future plan/ }));
     await screen.findByRole("button", { name: /Planned launch/ });
@@ -1758,9 +1758,9 @@ describe("Schatten UI shell", () => {
   });
 
   it("requires DELETE before scenario deletion can be submitted", async () => {
-    const fetchMock = mockSchattenApi();
+    const fetchMock = mockShadowApi();
 
-    renderAt("/schatten/acme/org-states");
+    renderAt("/shadow/acme/org-states");
 
     fireEvent.click(await screen.findByRole("button", { name: /Future plan/ }));
     fireEvent.click(screen.getByRole("button", { name: "Delete scenario" }));
@@ -1790,9 +1790,9 @@ describe("Schatten UI shell", () => {
   });
 
   it("keeps Events gated on direct route until scenario and state are selected", async () => {
-    mockSchattenApi();
+    mockShadowApi();
 
-    renderAt("/schatten/acme/events");
+    renderAt("/shadow/acme/events");
 
     expect(
       await screen.findByText("Select a scenario and org state in Scenarios to activate this tab.")
@@ -1800,9 +1800,9 @@ describe("Schatten UI shell", () => {
   });
 
   it("loads events for the selected scenario and auto-selects the first event", async () => {
-    const fetchMock = mockSchattenApi();
+    const fetchMock = mockShadowApi();
 
-    renderAt("/schatten/acme/org-states");
+    renderAt("/shadow/acme/org-states");
 
     fireEvent.click(await screen.findByRole("button", { name: /Future plan/ }));
     await screen.findByRole("button", { name: /Draft state/ });
@@ -1828,9 +1828,9 @@ describe("Schatten UI shell", () => {
   });
 
   it("shows an empty Events state for a selected scenario without events", async () => {
-    mockSchattenApi();
+    mockShadowApi();
 
-    renderAt("/schatten/acme/org-states");
+    renderAt("/shadow/acme/org-states");
 
     await screen.findByRole("button", { name: /Today/ });
     fireEvent.click(screen.getByRole("link", { name: "Events" }));
@@ -1840,9 +1840,9 @@ describe("Schatten UI shell", () => {
   });
 
   it("creates an event and refreshes the event list selection", async () => {
-    const fetchMock = mockSchattenApi();
+    const fetchMock = mockShadowApi();
 
-    renderAt("/schatten/acme/org-states");
+    renderAt("/shadow/acme/org-states");
 
     fireEvent.click(await screen.findByRole("button", { name: /Future plan/ }));
     await screen.findByRole("button", { name: /Draft state/ });
@@ -1888,9 +1888,9 @@ describe("Schatten UI shell", () => {
   });
 
   it("edits the selected event and refreshes the selected detail", async () => {
-    const fetchMock = mockSchattenApi();
+    const fetchMock = mockShadowApi();
 
-    renderAt("/schatten/acme/org-states");
+    renderAt("/shadow/acme/org-states");
 
     fireEvent.click(await screen.findByRole("button", { name: /Future plan/ }));
     await screen.findByRole("button", { name: /Draft state/ });
@@ -1931,9 +1931,9 @@ describe("Schatten UI shell", () => {
   });
 
   it("confirms event deletion with yes and no buttons", async () => {
-    const fetchMock = mockSchattenApi();
+    const fetchMock = mockShadowApi();
 
-    renderAt("/schatten/acme/org-states");
+    renderAt("/shadow/acme/org-states");
 
     fireEvent.click(await screen.findByRole("button", { name: /Future plan/ }));
     await screen.findByRole("button", { name: /Draft state/ });
@@ -1994,9 +1994,9 @@ describe("Schatten UI shell", () => {
   });
 
   it("shows event load and mutation errors", async () => {
-    mockSchattenApi({ eventsStatus: 500 });
+    mockShadowApi({ eventsStatus: 500 });
 
-    renderAt("/schatten/acme/org-states");
+    renderAt("/shadow/acme/org-states");
 
     fireEvent.click(await screen.findByRole("button", { name: /Future plan/ }));
     await screen.findByRole("button", { name: /Draft state/ });
@@ -2009,9 +2009,9 @@ describe("Schatten UI shell", () => {
   });
 
   it("shows event mutation errors", async () => {
-    mockSchattenApi({ eventMutationStatus: 500 });
+    mockShadowApi({ eventMutationStatus: 500 });
 
-    renderAt("/schatten/acme/org-states");
+    renderAt("/shadow/acme/org-states");
 
     fireEvent.click(await screen.findByRole("button", { name: /Future plan/ }));
     await screen.findByRole("button", { name: /Draft state/ });

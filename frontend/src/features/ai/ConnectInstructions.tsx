@@ -6,14 +6,14 @@ type CopyHandler = (text: string) => Promise<void>;
 
 // The Claude Code plugin is installed from the repository marketplace; its
 // `.mcp.json` points at the production origin.
-const PLUGIN_MARKETPLACE_COMMAND = "/plugin marketplace add reflector-oy/schatten";
-const PLUGIN_INSTALL_COMMAND = "/plugin install schatten@schatten";
-const PLUGIN_ORIGIN = "https://schatten.lupaus.eu";
+const PLUGIN_MARKETPLACE_COMMAND = "/plugin marketplace add lupaus-eu/shadow";
+const PLUGIN_INSTALL_COMMAND = "/plugin install shadow@shadow";
+const PLUGIN_ORIGIN = "https://shadow.lupaus.eu";
 
 // The same `SKILL.md` folders the plugin ships, zipped by the backend.
 const SKILLS = [
-  { name: "schatten-model-building", label: "Model building" },
-  { name: "schatten-timeseries-generation", label: "Timeseries generation" }
+  { name: "shadow-model-building", label: "Model building" },
+  { name: "shadow-timeseries-generation", label: "Timeseries generation" }
 ];
 
 // The MCP resource URL is `<PUBLIC_ORIGIN>/api/mcp`; the SPA is served from the
@@ -45,14 +45,14 @@ export default function ConnectInstructions(props: { changeSetReview: boolean })
       </h3>
       {props.changeSetReview ? (
         <p className="muted">
-          Chat in your own AI client. It reads Schatten and proposes changes through one connection.
+          Chat in your own AI client. It reads Shadow and proposes changes through one connection.
           Nothing changes until a person applies the change set, here or in the chat: when you tell
           it to, the client can apply or reject a change set awaiting review, and it should ask you
           to approve each call. Data the client reads is sent to your AI vendor.
         </p>
       ) : (
         <p className="muted">
-          Chat in your own AI client. It reads Schatten and proposes changes through one connection;
+          Chat in your own AI client. It reads Shadow and proposes changes through one connection;
           nothing changes until a person applies the change set here. Data the client reads is sent
           to your AI vendor.
         </p>
@@ -66,13 +66,13 @@ export default function ConnectInstructions(props: { changeSetReview: boolean })
       <ol className="ai-panel-connect__steps">
         <li>Open Settings, then Connectors, and add a custom connector.</li>
         <li>Paste the URL and connect.</li>
-        <li>Sign in to Schatten when asked and approve the access.</li>
+        <li>Sign in to Shadow when asked and approve the access.</li>
       </ol>
 
       <h4 className="ai-panel__section-title">Claude Code</h4>
       <p className="muted">
-        The Schatten plugin adds the Schatten server and skills. It needs read access to the
-        reflector-oy/schatten GitHub repository.
+        The Shadow plugin adds the Shadow server and skills. It needs read access to the
+        lupaus-eu/shadow GitHub repository.
       </p>
       <ol className="ai-panel-connect__steps">
         <li>Add the repository marketplace:</li>
@@ -94,25 +94,25 @@ export default function ConnectInstructions(props: { changeSetReview: boolean })
       />
       {origin !== PLUGIN_ORIGIN ? (
         <p className="ai-panel__hint">
-          The plugin connects to {PLUGIN_ORIGIN}. For this Schatten, also add the server below; the
+          The plugin connects to {PLUGIN_ORIGIN}. For this Shadow, also add the server below; the
           plugin&apos;s skills apply to it too.
         </p>
       ) : null}
       <p className="muted">Or add only the server:</p>
       <pre className="ai-panel-connect__command">
-        <code>{`claude mcp add --transport http schatten ${url}`}</code>
+        <code>{`claude mcp add --transport http shadow ${url}`}</code>
       </pre>
       <ol className="ai-panel-connect__steps" start={3}>
         <li>
           Whether you installed the plugin or added the server, run{" "}
-          <code className="metadata-code">/mcp</code> in Claude Code, select the Schatten server and
-          authenticate. Approve the access in Schatten.
+          <code className="metadata-code">/mcp</code> in Claude Code, select the Shadow server and
+          authenticate. Approve the access in Shadow.
         </li>
       </ol>
 
       <h4 className="ai-panel__section-title">Skills for claude.ai and Claude Desktop</h4>
       <p className="muted">
-        Skills teach your AI client how to build Schatten models and generate timeseries.
+        Skills teach your AI client how to build Shadow models and generate timeseries.
       </p>
       <ul className="ai-panel-connect__downloads">
         {SKILLS.map((skill) => (

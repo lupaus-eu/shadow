@@ -1,6 +1,6 @@
 """Skill zip download, registered only with `MCP_ENABLED=true` (ADR-015).
 
-A business session downloads a Schatten skill's folder zipped, for upload to
+A business session downloads a Shadow skill's folder zipped, for upload to
 claude.ai or Claude Desktop. The zip is built from the same `SKILL.md` files
 that the Claude Code plugin ships and the MCP server's prompts serve.
 """

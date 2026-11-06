@@ -2,7 +2,7 @@
 # Disposable end-to-end QA for the UpCloud production runtime (TASK-059G), the
 # integrated first-installation runbook sequence (TASK-059E), the Git-free
 # source path (TASK-059H1): source manifest -> upload-style folder ->
-# schatten-receive -> build-release --source, and the server Makefile and
+# shadow-receive -> build-release --source, and the server Makefile and
 # service command (TASK-059H3): build, first-install, deploy, backup, restore,
 # status, ps, logs, stop and start run through deploy/Makefile from the
 # verified source copy.
@@ -30,10 +30,10 @@ postgres_image="docker.io/library/postgres:18.6@sha256:4ef4dbc939d61acea57712655
 ofelia_image="docker.io/mcuadros/ofelia:0.3.22@sha256:efcbe2c5cf658a25de6443c1462d653f9cc03791d642e01fc6c638a00f97e492"
 host_socket_gid="$(stat -c %g /var/run/docker.sock)"
 
-qa_root="$(mktemp -d "${RUNNER_TEMP:-/tmp}/schatten-runtime-qa.XXXXXX")"
+qa_root="$(mktemp -d "${RUNNER_TEMP:-/tmp}/shadow-runtime-qa.XXXXXX")"
 # Unix socket paths are limited to 108 bytes, so the socket gets a short directory.
 socket_dir="$(mktemp -d /tmp/sqa.XXXXXX)"
-dind="schatten-runtime-qa-$$"
+dind="shadow-runtime-qa-$$"
 # Set QA_LOG_FILE to keep the detailed, secret-free log as evidence.
 log_file="${QA_LOG_FILE:-${qa_root}/qa.log}"
 bin="${repo}/deploy/bin"
@@ -113,8 +113,8 @@ pass "isolated daemon ${dind} with socket group ${host_socket_gid}"
 
 step "Prepare synthetic host layout, key pair and configuration"
 opt="${qa_root}/opt"
-config_dir="${opt}/apps/schatten-config"
-mkdir -p "${config_dir}" "${opt}/apps/schatten-state" "${opt}/apps/schatten-releases" "${qa_root}/keys" "${opt}/caddy"
+config_dir="${opt}/apps/shadow-config"
+mkdir -p "${config_dir}" "${opt}/apps/shadow-state" "${opt}/apps/shadow-releases" "${qa_root}/keys" "${opt}/caddy"
 as_root() { docker run --rm --volume "${qa_root}:${qa_root}" --entrypoint sh "${cli_image}" -c "$1"; }
 as_root "mkdir -p '${opt}/postgres-backups' && chown 10002:10002 '${opt}/postgres-backups' && chmod 0700 '${opt}/postgres-backups'"
 # The runbook recommends a passphrase-protected private key held offline.
@@ -124,7 +124,7 @@ docker run --rm --user "$(id -u):$(id -g)" --env HOME=/tmp --volume "${qa_root}:
   --entrypoint bash "${postgres_image}" -c "
     export GNUPGHOME=\$(mktemp -d)
     gpg --batch --quiet --pinentry-mode loopback --passphrase-file '${qa_root}/keys/backup-key-passphrase' \
-      --quick-generate-key 'Schatten QA backup <qa@example.test>' default default never
+      --quick-generate-key 'Shadow QA backup <qa@example.test>' default default never
     gpg --batch --armor --export > '${config_dir}/backup-public-key.asc'
     gpg --batch --pinentry-mode loopback --passphrase-file '${qa_root}/keys/backup-key-passphrase' \
       --armor --export-secret-keys > '${qa_root}/keys/backup-private-key.asc'"
@@ -133,26 +133,26 @@ db_password="qa-db-$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
 client_secret="qa-oidc-$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
 env_file="${config_dir}/production.env"
 cat >"${env_file}" <<EOF
-POSTGRES_DB=schatten
-POSTGRES_USER=schatten
+POSTGRES_DB=shadow
+POSTGRES_USER=shadow
 POSTGRES_PASSWORD=${db_password}
-DATABASE_URL=postgresql://schatten:${db_password}@database:5432/schatten
+DATABASE_URL=postgresql://shadow:${db_password}@database:5432/shadow
 OIDC_DISCOVERY_URL=https://login.microsoftonline.com/qa-tenant/v2.0/.well-known/openid-configuration
 OIDC_ISSUER=https://login.microsoftonline.com/qa-tenant/v2.0
 OIDC_CLIENT_ID=qa-client
 OIDC_CLIENT_SECRET=${client_secret}
 PUBLIC_ORIGIN=https://app.example.test
 DOCKER_SOCKET_GID=${host_socket_gid}
-SCHATTEN_BACKUP_PUBLIC_KEY=${config_dir}/backup-public-key.asc
-SCHATTEN_BACKUP_DIR=${opt}/postgres-backups
-SCHATTEN_STATE_DIR=${opt}/apps/schatten-state
-SCHATTEN_RELEASES_DIR=${opt}/apps/schatten-releases
-SCHATTEN_SOURCES_DIR=${opt}/apps/schatten-sources
-SCHATTEN_BACKUP_LOCK_TIMEOUT_SECONDS=3
+SHADOW_BACKUP_PUBLIC_KEY=${config_dir}/backup-public-key.asc
+SHADOW_BACKUP_DIR=${opt}/postgres-backups
+SHADOW_STATE_DIR=${opt}/apps/shadow-state
+SHADOW_RELEASES_DIR=${opt}/apps/shadow-releases
+SHADOW_SOURCES_DIR=${opt}/apps/shadow-sources
+SHADOW_BACKUP_LOCK_TIMEOUT_SECONDS=3
 EOF
 chmod 0600 "${env_file}"
-upload_root="${opt}/apps/schatten-upload"
-export SCHATTEN_ENV_FILE="${env_file}" SCHATTEN_SOURCES_DIR="${opt}/apps/schatten-sources" SCHATTEN_UPLOAD_DIR="${upload_root}"
+upload_root="${opt}/apps/shadow-upload"
+export SHADOW_ENV_FILE="${env_file}" SHADOW_SOURCES_DIR="${opt}/apps/shadow-sources" SHADOW_UPLOAD_DIR="${upload_root}"
 # QA-only override: internal TLS issuer and a simulated Entra discovery endpoint
 # on a separate network, trusted through a throwaway CA. Production is unchanged.
 override="${qa_root}/qa-override.yml"
@@ -171,14 +171,14 @@ services:
 networks:
   qa-oidc:
     external: true
-    name: schatten-qa-oidc
+    name: shadow-qa-oidc
 OVERRIDE
-export SCHATTEN_COMPOSE_OVERRIDE_FILE="${override}"
+export SHADOW_COMPOSE_OVERRIDE_FILE="${override}"
 mkdir -p "${qa_root}/oidc"
 cp "${repo}/.github/scripts/mock-oidc-discovery.py" "${qa_root}/oidc/"
 docker run --rm --user "$(id -u):$(id -g)" --volume "${qa_root}:${qa_root}" --workdir "${qa_root}/oidc" \
   --entrypoint bash "${postgres_image}" -c "
-    openssl req -x509 -newkey rsa:2048 -nodes -keyout ca.key -out ca.pem -days 2 -subj '/CN=Schatten QA OIDC CA' 2>/dev/null
+    openssl req -x509 -newkey rsa:2048 -nodes -keyout ca.key -out ca.pem -days 2 -subj '/CN=Shadow QA OIDC CA' 2>/dev/null
     openssl req -newkey rsa:2048 -nodes -keyout server.key -out server.csr -subj '/CN=login.microsoftonline.com' 2>/dev/null
     printf 'subjectAltName=DNS:login.microsoftonline.com\nbasicConstraints=CA:FALSE\n' > server.ext
     openssl x509 -req -in server.csr -CA ca.pem -CAkey ca.key -CAcreateserial -out server.pem -days 2 -extfile server.ext 2>/dev/null
@@ -188,7 +188,7 @@ source "${repo}/deploy/lib/common.sh"
 set +e
 load_config
 set -e
-locks="${opt}/apps/schatten-state/locks"
+locks="${opt}/apps/shadow-state/locks"
 pass "synthetic configuration, throwaway key pair and QA-only internal TLS override"
 
 step "Source manifest of ${commit} (runner side; the only Git use)"
@@ -273,7 +273,7 @@ chmod 0600 "${env_file}"
 pass "check-host accepts the prepared baseline"
 
 step "Verified receive: rejections, acceptance, stale files and manifest modes"
-sources="${opt}/apps/schatten-sources"
+sources="${opt}/apps/shadow-sources"
 rejects="${qa_root}/rejects"
 reject_copy() {
   mkdir -p "${rejects}/$1"
@@ -286,7 +286,7 @@ craft() {
   sed "$2" "${upload}/SOURCE_MANIFEST" >"${rejects}/$1/${commit}/SOURCE_MANIFEST"
   printf '%s %s' "$(sha256sum <"${rejects}/$1/${commit}/SOURCE_MANIFEST" | cut -d ' ' -f 1)" "${rejects}/$1/${commit}"
 }
-receive() { "${bin}/schatten-receive" "$@"; }
+receive() { "${bin}/shadow-receive" "$@"; }
 expect_failure "receive rejects a wrong digest" 'does not equal the operator-supplied digest' \
   receive "$(printf '0%.0s' {1..64})" --upload "${upload}"
 expect_failure "receive finds no upload for an unknown digest" 'no upload under' receive "$(printf 'a%.0s' {1..64})"
@@ -340,7 +340,7 @@ expect_failure "build-release no longer takes a commit" 'Usage: build-release --
 # the location check stops a folder that never passed the operator digest.
 mkdir -p "${rejects}/outside"
 cp -a "${source_dir}" "${rejects}/outside/${commit}"
-run "${bin}/schatten-receive" --verify "${rejects}/outside/${commit}" >/dev/null || fail "outside copy should verify on its own"
+run "${bin}/shadow-receive" --verify "${rejects}/outside/${commit}" >/dev/null || fail "outside copy should verify on its own"
 expect_failure "build-release refuses a folder outside the sources directory" 'is not an accepted source under' \
   "${bin}/build-release" --source "${rejects}/outside/${commit}"
 unverified="${sources}/$(printf 'e%.0s' {1..40})"
@@ -348,7 +348,7 @@ cp -a "${rejects}/changed/${commit}" "${unverified}"
 expect_failure "build-release refuses a folder that fails verification" 'failed manifest verification' \
   "${bin}/build-release" --source "${unverified}"
 rm -rf "${unverified}"
-[[ -z "$(find "${opt}/apps/schatten-releases" -maxdepth 1 -name '*.incomplete' -print -quit)" ]] || fail "failed build left a work directory"
+[[ -z "$(find "${opt}/apps/shadow-releases" -maxdepth 1 -name '*.incomplete' -print -quit)" ]] || fail "failed build left a work directory"
 pass "all rejection cases leave nothing behind; the accepted read-only copy ignores stale files, takes manifest modes and is unaffected by later upload changes; build-release accepts only verified folders under the sources directory"
 
 step "Server Makefile: thin wrappers without destructive operations"
@@ -364,7 +364,7 @@ for command in ${wrapped}; do
   [[ -x "${make_dir}/bin/${command}" ]] || fail "Makefile wraps a missing command ${command}"
 done
 [[ "$(wc -w <<<"${wrapped}")" == 9 ]] || fail "Makefile wraps: ${wrapped}"
-if grep -F '$(BIN)/' "${makefile}" | grep -Eq -- '(down|prune|volume|rm |--apply|--rollback|initialize|seed|bootstrap|schatten-receive)'; then
+if grep -F '$(BIN)/' "${makefile}" | grep -Eq -- '(down|prune|volume|rm |--apply|--rollback|initialize|seed|bootstrap|shadow-receive)'; then
   fail "a Makefile recipe runs a destructive or initialization command"
 fi
 for target in deploy first-install; do
@@ -374,10 +374,10 @@ for target in deploy first-install; do
     op "${target}" RELEASE=20260101T000000Z-000000000000 APPROVAL=qa
 done
 expect_failure "make restore requires BACKUP" 'BACKUP is required' op restore KEY=/dev/null
-expect_failure "make restore requires KEY" 'KEY is required' op restore BACKUP=schatten-x
-expect_failure "make restore refuses a relative KEY" 'KEY must be an absolute path' op restore BACKUP=schatten-x KEY=key.asc
+expect_failure "make restore requires KEY" 'KEY is required' op restore BACKUP=shadow-x
+expect_failure "make restore refuses a relative KEY" 'KEY must be an absolute path' op restore BACKUP=shadow-x KEY=key.asc
 expect_failure "make restore refuses a relative PASSPHRASE" 'PASSPHRASE must be an absolute path' \
-  op restore BACKUP=schatten-x KEY=/dev/null PASSPHRASE=passphrase
+  op restore BACKUP=shadow-x KEY=/dev/null PASSPHRASE=passphrase
 expect_failure "make logs refuses an unknown service" 'Unknown service' op logs SERVICE=bogus
 expect_failure "make logs refuses shell syntax in SERVICE" 'Unknown service' op logs 'SERVICE=backend; touch /tmp/pwned'
 expect_failure "make ps needs a current release" 'No current release' op ps
@@ -400,7 +400,7 @@ for pair in "SOURCE_COMMIT=${commit}" "SOURCE_MANIFEST_SHA256=${digest}" SOURCE_
   grep -qx "${pair}" "${dir_one}/release.env" || fail "release.env lacks ${pair}"
 done
 grep -q '^GIT_VERSION=' "${dir_one}/release.env" && fail "release.env still records GIT_VERSION"
-run "${bin}/schatten-receive" --verify "${dir_one}/source" >/dev/null || fail "frozen release source does not match its manifest"
+run "${bin}/shadow-receive" --verify "${dir_one}/source" >/dev/null || fail "frozen release source does not match its manifest"
 for kind in BACKEND FRONTEND; do
   tag="$(release_value "${dir_one}" "${kind}_IMAGE")"
   [[ "$(docker image inspect --format '{{.Id}}' "${tag}")" == "$(release_value "${dir_one}" "${kind}_IMAGE_ID")" ]] || fail "${kind} image ID"
@@ -411,8 +411,8 @@ bin="${dir_one}/source/deploy/bin"
 pass "release ${release_one} records commit, manifest digest, ref, run ID, tools and matching immutable image IDs"
 
 step "Simulated Entra discovery endpoint"
-docker network create schatten-qa-oidc >/dev/null
-docker run --detach --name qa-oidc --network schatten-qa-oidc --network-alias login.microsoftonline.com \
+docker network create shadow-qa-oidc >/dev/null
+docker run --detach --name qa-oidc --network shadow-qa-oidc --network-alias login.microsoftonline.com \
   --restart unless-stopped --user 10001:10001 --read-only --cap-drop ALL --security-opt no-new-privileges:true \
   --sysctl net.ipv4.ip_unprivileged_port_start=443 \
   --volume "${qa_root}/oidc:/qa:ro" --env QA_TLS_CERT=/qa/server.pem --env QA_TLS_KEY=/qa/server.key \
@@ -422,8 +422,8 @@ pass "simulated login.microsoftonline.com discovery on an isolated QA network"
 step "First-install deployment (no previous release)"
 expect_failure "deployment requires an approval reference" 'approval' "${bin}/deploy-release" "${release_one}" --first-install
 run op first-install RELEASE="${release_one}" APPROVAL=qa-first-install
-[[ "$(cat "${opt}/apps/schatten-releases/current")" == "${release_one}" ]] || fail "current pointer"
-[[ ! -e "${opt}/apps/schatten-releases/previous" ]] || fail "first release must have no previous target"
+[[ "$(cat "${opt}/apps/shadow-releases/current")" == "${release_one}" ]] || fail "current pointer"
+[[ ! -e "${opt}/apps/shadow-releases/previous" ]] || fail "first release must have no previous target"
 expect_failure "second first-install is refused on an initialized database" 'already has migration history' \
   "${bin}/deploy-release" "${release_one}" --approval qa --first-install
 pass "migration-gated first install with pre-migration baseline backup"
@@ -444,22 +444,22 @@ https https://app.example.test/workspace/deep-link | grep -q '<div id="root"></d
 issuer="$(echo | openssl s_client -connect "${dind_ip}:443" -servername app.example.test 2>/dev/null | openssl x509 -noout -issuer)"
 grep -q 'Caddy Local Authority' <<<"${issuer}" || fail "internal QA certificate issuer: ${issuer}"
 status="$(https --output /dev/null --write-out '%{http_code}' \
-  --header 'X-Schatten-Client-IP: 203.0.113.40' --header 'X-Forwarded-For: 203.0.113.30' \
+  --header 'X-Shadow-Client-IP: 203.0.113.40' --header 'X-Forwarded-For: 203.0.113.30' \
   --header 'Forwarded: for=203.0.113.30' https://app.example.test/api/v1/auth/session)"
 [[ "${status}" == 401 ]] || fail "API through Caddy with spoofed headers returned ${status} (expected 401, 400 means untrusted peer)"
-direct="$(docker run --rm --network schatten_edge "${cli_image}" sh -c \
-  "wget -S -O /dev/null --header 'Host: app.example.test' --header 'X-Schatten-Client-IP: 203.0.113.40' http://backend:8000/api/v1/auth/session 2>&1 | grep -Eo 'HTTP/1\.[01] [0-9]{3}' | head -n 1 | cut -d' ' -f2")"
+direct="$(docker run --rm --network shadow_edge "${cli_image}" sh -c \
+  "wget -S -O /dev/null --header 'Host: app.example.test' --header 'X-Shadow-Client-IP: 203.0.113.40' http://backend:8000/api/v1/auth/session 2>&1 | grep -Eo 'HTTP/1\.[01] [0-9]{3}' | head -n 1 | cut -d' ' -f2")"
 [[ "${direct}" == 400 ]] || fail "backend trusted a non-Caddy peer (status ${direct})"
 pass "only Caddy 80/443 published; TLS, HSTS/CSP, redirect, SPA, sanitized forwarding and exact Caddy-peer trust"
 
 step "Service commands through make: ps, logs, stop and start keep containers and volumes"
-project_containers() { docker ps --all --quiet --no-trunc --filter label=com.docker.compose.project=schatten | sort; }
+project_containers() { docker ps --all --quiet --no-trunc --filter label=com.docker.compose.project=shadow | sort; }
 running_services() { compose_release "${dir_one}" ps --status running --services | sort | paste -sd' ' -; }
 ps_output="$(op ps 2>&1)" || { printf '%s\n' "${ps_output}" >&2; fail "make ps"; }
 printf '%s\n' "${ps_output}" >>"${log_file}"
 grep -q "^release ${release_one}\$" <<<"${ps_output}" || fail "make ps does not name the current release"
 for service in database migration backend prediction-worker frontend; do
-  grep -Eq "^${service} +schatten-${service}-1 " <<<"${ps_output}" || fail "make ps lacks ${service}"
+  grep -Eq "^${service} +shadow-${service}-1 " <<<"${ps_output}" || fail "make ps lacks ${service}"
 done
 logs_output="$(op logs 2>&1)" || fail "make logs"
 backend_logs="$(op logs SERVICE=backend 2>&1)" || fail "make logs SERVICE=backend"
@@ -475,16 +475,16 @@ run op stop
 [[ -z "$(running_services)" ]] || fail "make stop left $(running_services) running"
 [[ "$(project_containers)" == "${containers_before}" && "$(docker volume ls --quiet | sort)" == "${volumes_before}" ]] \
   || fail "make stop removed or created containers or volumes"
-grep -qx 'SERVICES=database backend prediction-worker frontend' "${opt}/apps/schatten-state/stopped-services" || fail "stop record"
+grep -qx 'SERVICES=database backend prediction-worker frontend' "${opt}/apps/shadow-state/stopped-services" || fail "stop record"
 expect_failure "a second stop before start is refused" 'still stopped by an earlier service stop' op stop
-deployments_before="$(find "${opt}/apps/schatten-state/deployments" -type f | wc -l)"
+deployments_before="$(find "${opt}/apps/shadow-state/deployments" -type f | wc -l)"
 expect_failure "deploy is refused while services are stopped" 'stopped by service stop' \
   op deploy RELEASE="${release_one}" APPROVAL=qa-stopped
 expect_failure "rollback is refused while services are stopped" 'stopped by service stop' \
   "${bin}/deploy-release" "${release_one}" --approval qa-stopped --rollback --confirm-schema-compatible
-[[ -z "$(running_services)" && "$(cat "${opt}/apps/schatten-releases/current")" == "${release_one}" ]] \
+[[ -z "$(running_services)" && "$(cat "${opt}/apps/shadow-releases/current")" == "${release_one}" ]] \
   || fail "a refused deploy started services or moved the current pointer"
-[[ "$(find "${opt}/apps/schatten-state/deployments" -type f | wc -l)" == "${deployments_before}" ]] \
+[[ "$(find "${opt}/apps/shadow-state/deployments" -type f | wc -l)" == "${deployments_before}" ]] \
   || fail "a refused deploy wrote a deployment record"
 status_output="$(op status 2>&1)" || { printf '%s\n' "${status_output}" >&2; fail "make status while stopped"; }
 printf '%s\n' "${status_output}" >>"${log_file}"
@@ -501,7 +501,7 @@ done
   || fail "make start replaced containers or volumes"
 [[ "$(docker inspect --format '{{.State.StartedAt}}' "$(compose_release "${dir_one}" ps --all --quiet migration)")" == "${migration_started}" ]] \
   || fail "make start re-ran the migration job"
-[[ ! -e "${opt}/apps/schatten-state/stopped-services" ]] || fail "stop record left after start"
+[[ ! -e "${opt}/apps/shadow-state/stopped-services" ]] || fail "stop record left after start"
 expect_failure "start without a recorded stop is refused" 'No services were recorded' op start
 [[ "$(https https://app.example.test/health)" == OK ]] || fail "HTTPS after make start"
 pass "make ps/logs show the current release without environment; stop/start keep the same containers and volumes and never rerun the migration; deploy and rollback are refused and make status lists the stopped services while stopped"
@@ -603,7 +603,7 @@ for pair in users=1 metamodels=1 user_identities=0 auth_sessions=0 organisations
   grep -q "rows table=${pair%=*} count=${pair#*=}\$" "${evidence}" || fail "restored initialized data: expected ${pair}"
 done
 grep -Eq 'rows table=node_types count=[1-9]' "${evidence}" || fail "restored reference data"
-[[ -z "$(docker ps --all --quiet --filter label=eu.lupaus.schatten.disposable=restore)" ]] || fail "restore target not removed"
+[[ -z "$(docker ps --all --quiet --filter label=eu.lupaus.shadow.disposable=restore)" ]] || fail "restore target not removed"
 status_output="$(op status 2>&1)" || fail "make status"
 printf '%s\n' "${status_output}" >>"${log_file}"
 grep -qx "${backup_id}" <<<"${status_output}" && grep -q 'STATUS=success' <<<"${status_output}" || fail "ops-status summary"
@@ -620,23 +620,23 @@ variant() {
 count_manifests() { as_root "ls '$1' | grep -c '\\.manifest\$' || true"; }
 before="$(count_manifests "${opt}/postgres-backups")"
 expect_failure "missing public key fails" 'no such file|not exist|missing' \
-  env SCHATTEN_ENV_FILE="$(variant SCHATTEN_BACKUP_PUBLIC_KEY "${config_dir}/absent.asc")" "${bin}/backup-now"
+  env SHADOW_ENV_FILE="$(variant SHADOW_BACKUP_PUBLIC_KEY "${config_dir}/absent.asc")" "${bin}/backup-now"
 cp "${qa_root}/keys/backup-private-key.asc" "${config_dir}/secret-key.asc"
 chmod 0644 "${config_dir}/secret-key.asc"
 expect_failure "secret key material is refused in the runner" 'refusing secret key material' \
-  env SCHATTEN_ENV_FILE="$(variant SCHATTEN_BACKUP_PUBLIC_KEY "${config_dir}/secret-key.asc")" "${bin}/backup-now"
+  env SHADOW_ENV_FILE="$(variant SHADOW_BACKUP_PUBLIC_KEY "${config_dir}/secret-key.asc")" "${bin}/backup-now"
 rm -f "${config_dir}/secret-key.asc"
 expect_failure "missing database credential fails" 'DATABASE_URL' \
-  env SCHATTEN_ENV_FILE="$(variant DATABASE_URL)" "${bin}/backup-now"
+  env SHADOW_ENV_FILE="$(variant DATABASE_URL)" "${bin}/backup-now"
 expect_failure "wrong database credential fails" 'database connection failed' \
-  env SCHATTEN_ENV_FILE="$(variant DATABASE_URL "postgresql://schatten:wrong@database:5432/schatten")" "${bin}/backup-now"
+  env SHADOW_ENV_FILE="$(variant DATABASE_URL "postgresql://shadow:wrong@database:5432/shadow")" "${bin}/backup-now"
 as_root "mkdir -p '${opt}/backups-denied' && chmod 0755 '${opt}/backups-denied'"
 expect_failure "permission denied fails" 'not writable' \
-  env SCHATTEN_ENV_FILE="$(variant SCHATTEN_BACKUP_DIR "${opt}/backups-denied")" "${bin}/backup-now"
+  env SHADOW_ENV_FILE="$(variant SHADOW_BACKUP_DIR "${opt}/backups-denied")" "${bin}/backup-now"
 mkdir -p "${opt}/backups-full"
 env -u DOCKER_HOST docker exec "${dind}" mount -t tmpfs -o size=4k,uid=10002,gid=10002,mode=0700 tmpfs "${opt}/backups-full"
 expect_failure "disk full fails without publishing" 'file write failed' \
-  env SCHATTEN_ENV_FILE="$(variant SCHATTEN_BACKUP_DIR "${opt}/backups-full")" "${bin}/backup-now"
+  env SHADOW_ENV_FILE="$(variant SHADOW_BACKUP_DIR "${opt}/backups-full")" "${bin}/backup-now"
 [[ "$(as_root "find '${opt}/backups-full' -type f | wc -l")" == 0 ]] || fail "disk-full run left files"
 # exec keeps the lock on the killable process itself (no child keeps it).
 (exec 9<"${locks}/backup.lock"; flock --exclusive 9; exec sleep 15) &
@@ -647,16 +647,16 @@ kill "${lock_holder}" 2>/dev/null || true
 wait "${lock_holder}" 2>/dev/null || true
 [[ "$(count_manifests "${opt}/postgres-backups")" == "${before}" ]] || fail "a failed run published a backup"
 stamp() { date -u -d "$1" +%Y%m%dT%H%M%SZ; }
-old="schatten-$(stamp '10 days ago')-scheduled-aaaaaa"
-recent="schatten-$(stamp '6 days ago')-scheduled-bbbbbb"
-orphan="schatten-$(stamp '3 days ago')-scheduled-cccccc"
-as_root "cd '${opt}/postgres-backups' && for f in ${old}.dump.gpg ${old}.manifest ${recent}.dump.gpg ${recent}.manifest ${orphan}.dump.gpg notes.txt other-tool-backup.sql.gz schatten-foreign.manifest; do echo fixture > \$f; touch -t $(date -u -d '30 days ago' +%Y%m%d%H%M) \$f; chown 10002:10002 \$f; done"
+old="shadow-$(stamp '10 days ago')-scheduled-aaaaaa"
+recent="shadow-$(stamp '6 days ago')-scheduled-bbbbbb"
+orphan="shadow-$(stamp '3 days ago')-scheduled-cccccc"
+as_root "cd '${opt}/postgres-backups' && for f in ${old}.dump.gpg ${old}.manifest ${recent}.dump.gpg ${recent}.manifest ${orphan}.dump.gpg notes.txt other-tool-backup.sql.gz shadow-foreign.manifest; do echo fixture > \$f; touch -t $(date -u -d '30 days ago' +%Y%m%d%H%M) \$f; chown 10002:10002 \$f; done"
 retention_id="$(capture BACKUP_ID "${bin}/backup-now")"
 listing="$(as_root "ls -1 '${opt}/postgres-backups'")"
 for gone in "${old}.dump.gpg" "${old}.manifest" "${orphan}.dump.gpg"; do
   grep -qx "${gone}" <<<"${listing}" && fail "retention kept ${gone}"
 done
-for kept in "${recent}.manifest" "${recent}.dump.gpg" notes.txt other-tool-backup.sql.gz schatten-foreign.manifest "${retention_id}.manifest" "${backup_id}.manifest"; do
+for kept in "${recent}.manifest" "${recent}.dump.gpg" notes.txt other-tool-backup.sql.gz shadow-foreign.manifest "${retention_id}.manifest" "${backup_id}.manifest"; do
   grep -qx "${kept}" <<<"${listing}" || fail "retention removed ${kept}"
 done
 pass "key/credential/permission/disk-full/overlap failures publish nothing; 7-day retention prunes only job-owned files"
@@ -687,7 +687,7 @@ for service in database backend prediction-worker frontend; do
   wait_for_healthy "${dir_one}" "${service}" 90 || fail "${service} did not recover after restart"
 done
 [[ "$(docker inspect --format '{{.State.StartedAt}}' "$(compose_release "${dir_one}" ps --all --quiet migration)")" == "${migration_started}" ]] || fail "migration re-ran on reboot"
-[[ "$(docker inspect --format '{{.State.Running}}' schatten-backup-runner schatten-docker-cleanup | sort -u)" == false ]] || fail "runners started on reboot"
+[[ "$(docker inspect --format '{{.State.Running}}' shadow-backup-runner shadow-docker-cleanup | sort -u)" == false ]] || fail "runners started on reboot"
 [[ "$(https https://app.example.test/health)" == OK ]] || fail "HTTPS after restart"
 pass "long-running services restart without re-running migration or runners"
 
@@ -695,15 +695,15 @@ step "Ofelia scheduling, hardening and label isolation"
 cat >"${qa_root}/qa-ofelia.ini" <<'EOF'
 [job-run "postgres-backup"]
 schedule = @every 20s
-container = schatten-backup-runner
+container = shadow-backup-runner
 no-overlap = true
 
 [job-run "docker-cleanup"]
 schedule = @every 20s
-container = schatten-docker-cleanup
+container = shadow-docker-cleanup
 no-overlap = true
 EOF
-printf 'SCHATTEN_OFELIA_CONFIG=%s\n' "${qa_root}/qa-ofelia.ini" >>"${env_file}"
+printf 'SHADOW_OFELIA_CONFIG=%s\n' "${qa_root}/qa-ofelia.ini" >>"${env_file}"
 docker run --detach --name qa-label-decoy --label ofelia.enabled=true \
   --label 'ofelia.job-exec.decoy.schedule=@every 5s' --label 'ofelia.job-exec.decoy.command=touch /tmp/decoy' \
   "${cli_image}" sleep 600 >/dev/null
@@ -725,7 +725,7 @@ for attempt in $(seq 1 10); do
   sleep 3
 done
 printf '%s\n' "${output}" >>"${log_file}"
-grep -qx 'SERVICES=database backend prediction-worker frontend ofelia' "${opt}/apps/schatten-state/stopped-services" || fail "stop record with ofelia"
+grep -qx 'SERVICES=database backend prediction-worker frontend ofelia' "${opt}/apps/shadow-state/stopped-services" || fail "stop record with ofelia"
 [[ -z "$(compose_release "${dir_one}" --profile scheduler ps --status running --quiet)" ]] || fail "make stop left the scheduler running"
 run op start
 [[ -n "$(compose_release "${dir_one}" --profile scheduler ps --status running --quiet ofelia)" ]] || fail "make start did not restart the scheduler"
@@ -748,21 +748,21 @@ pass "hardened Ofelia runs fixed jobs only, ignores labels and fails visibly wit
 
 step "Release-aware Docker cleanup with fixture resources"
 docker run --name qa-exited "${cli_image}" true >/dev/null
-docker run --name qa-exited-retained --label eu.lupaus.schatten.retain=true "${cli_image}" true >/dev/null
+docker run --name qa-exited-retained --label eu.lupaus.shadow.retain=true "${cli_image}" true >/dev/null
 docker run --detach --name qa-running "${cli_image}" sleep 600 >/dev/null
 docker volume create qa-fixture-volume >/dev/null
 fixture_image() { printf 'FROM %s\nLABEL qa.fixture=%s\n' "${cli_image}" "$1" | docker build --quiet --tag "$2" - ; }
-unprotected_id="$(fixture_image unprotected schatten-backend:qa-unprotected)"
-protected_id="$(fixture_image previous schatten-backend:qa-previous-release)"
-fixture_image dangling schatten-frontend:qa-dangling >/dev/null
-fixture_image dangling-replaced schatten-frontend:qa-dangling >/dev/null
-fake_previous="${opt}/apps/schatten-releases/20000101T000000Z-000000000000"
+unprotected_id="$(fixture_image unprotected shadow-backend:qa-unprotected)"
+protected_id="$(fixture_image previous shadow-backend:qa-previous-release)"
+fixture_image dangling shadow-frontend:qa-dangling >/dev/null
+fixture_image dangling-replaced shadow-frontend:qa-dangling >/dev/null
+fake_previous="${opt}/apps/shadow-releases/20000101T000000Z-000000000000"
 mkdir -p "${fake_previous}"
 printf 'BACKEND_IMAGE_ID=%s\nFRONTEND_IMAGE_ID=%s\n' "${protected_id}" "${protected_id}" >"${fake_previous}/release.env"
 volumes_before="$(docker volume ls --quiet | sort)"
 backups_before="$(as_root "ls -1 '${opt}/postgres-backups' | sort")"
 future=$(( $(date -u +%s) + 8 * 86400 ))
-cleanup_run() { compose_release "${dir_one}" --profile ops run --rm --no-deps -T --env "SCHATTEN_CLEANUP_NOW_EPOCH=${future}" "$@"; }
+cleanup_run() { compose_release "${dir_one}" --profile ops run --rm --no-deps -T --env "SHADOW_CLEANUP_NOW_EPOCH=${future}" "$@"; }
 run op cleanup-dry-run >/dev/null || fail "make cleanup-dry-run"
 dry="$(cleanup_run cleanup-runner --dry-run 2>&1)"
 printf '%s\n' "${dry}" >>"${log_file}"
@@ -795,10 +795,10 @@ chmod 0755 "${qa_root}/docker-shim/docker"
 for failing in ps images builder; do
   expect_failure "cleanup reports a failed docker ${failing} call" 'status=failed' \
     docker run --rm --network none --read-only --tmpfs /tmp:size=1m --user 65534:65534 \
-      --volume "${dir_one}/source/deploy/ops:/opt/schatten-ops:ro" --volume "${locks}:/locks:ro" \
+      --volume "${dir_one}/source/deploy/ops:/opt/shadow-ops:ro" --volume "${locks}:/locks:ro" \
       --volume "${qa_root}/docker-shim:/qa-shim:ro" --env QA_FAIL="${failing}" \
       --env PATH=/qa-shim:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
-      --entrypoint /opt/schatten-ops/docker-cleanup.sh "${cli_image}" --apply
+      --entrypoint /opt/shadow-ops/docker-cleanup.sh "${cli_image}" --apply
 done
 applied="$(cleanup_run cleanup-runner --apply 2>&1)"
 printf '%s\n' "${applied}" >>"${log_file}"
@@ -806,7 +806,7 @@ grep -q 'status=completed mode=--apply' <<<"${applied}" || fail "cleanup apply"
 docker inspect qa-exited >/dev/null 2>&1 && fail "old exited container kept"
 docker image inspect "${unprotected_id}" >/dev/null 2>&1 && fail "unprotected release image kept"
 [[ -z "$(docker images --quiet --filter dangling=true --filter label=qa.fixture=dangling)" ]] || fail "dangling fixture kept"
-docker inspect qa-exited-retained qa-running schatten-backup-runner schatten-docker-cleanup >/dev/null || fail "retained/running container removed"
+docker inspect qa-exited-retained qa-running shadow-backup-runner shadow-docker-cleanup >/dev/null || fail "retained/running container removed"
 docker image inspect "${protected_id}" "$(release_value "${dir_one}" BACKEND_IMAGE_ID)" "$(release_value "${dir_one}" FRONTEND_IMAGE_ID)" >/dev/null || fail "protected image removed"
 [[ "$(docker volume ls --quiet | sort)" == "${volumes_before}" ]] || fail "cleanup changed volumes"
 [[ "$(as_root "ls -1 '${opt}/postgres-backups' | sort")" == "${backups_before}" ]] || fail "cleanup changed backup files"
@@ -820,14 +820,14 @@ sleep 1
 release_two="$(capture RELEASE_ID "${bin}/build-release" --source "${source_dir}")"
 [[ "${release_two}" != "${release_one}" ]] || fail "second build-release reused the release ID"
 dir_two="$(release_dir "${release_two}")"
-mv "${opt}/apps/schatten-state/restore-evidence" "${opt}/apps/schatten-state/restore-evidence.hidden"
-mkdir -m 0700 "${opt}/apps/schatten-state/restore-evidence"
+mv "${opt}/apps/shadow-state/restore-evidence" "${opt}/apps/shadow-state/restore-evidence.hidden"
+mkdir -m 0700 "${opt}/apps/shadow-state/restore-evidence"
 expect_failure "missing restore evidence blocks release" 'Missing restore-rehearsal evidence' \
   "${bin}/deploy-release" "${release_two}" --approval qa-release-two
-rmdir "${opt}/apps/schatten-state/restore-evidence"
-mv "${opt}/apps/schatten-state/restore-evidence.hidden" "${opt}/apps/schatten-state/restore-evidence"
+rmdir "${opt}/apps/shadow-state/restore-evidence"
+mv "${opt}/apps/shadow-state/restore-evidence.hidden" "${opt}/apps/shadow-state/restore-evidence"
 run op deploy RELEASE="${release_two}" APPROVAL=qa-release-two
-[[ "$(cat "${opt}/apps/schatten-releases/current")" == "${release_two}" && "$(cat "${opt}/apps/schatten-releases/previous")" == "${release_one}" ]] || fail "release pointers"
+[[ "$(cat "${opt}/apps/shadow-releases/current")" == "${release_two}" && "$(cat "${opt}/apps/shadow-releases/previous")" == "${release_one}" ]] || fail "release pointers"
 expect_failure "current release cannot be retired" 'Refusing to retire' "${bin}/retire-release" "${release_two}"
 
 psql_db() { compose_release "${dir_two}" exec -T database sh -c "psql -X -A -t -v ON_ERROR_STOP=1 -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -c \"$1\""; }
@@ -839,8 +839,8 @@ expect_failure "failed migration blocks the release" 'Migration failed' \
   "${bin}/deploy-release" "${release_two}" --approval qa-migration-failure
 [[ "$(docker inspect --format '{{.Id}} {{.State.StartedAt}}' "$(compose_release "${dir_two}" ps --quiet backend)")" == "${backend_before}" ]] || fail "backend replaced after failed migration"
 [[ "$(docker inspect --format '{{.Id}} {{.State.StartedAt}}' "$(compose_release "${dir_two}" ps --quiet prediction-worker)")" == "${worker_before}" ]] || fail "worker replaced after failed migration"
-grep -l 'STATUS=failed' "${opt}/apps/schatten-state/deployments/"*"${release_two}.env" >/dev/null || fail "failed deployment record"
-grep -l 'SERVICES_REPLACED=false' "${opt}/apps/schatten-state/deployments/"*"${release_two}.env" >/dev/null || fail "failed migration record claims replaced services"
+grep -l 'STATUS=failed' "${opt}/apps/shadow-state/deployments/"*"${release_two}.env" >/dev/null || fail "failed deployment record"
+grep -l 'SERVICES_REPLACED=false' "${opt}/apps/shadow-state/deployments/"*"${release_two}.env" >/dev/null || fail "failed migration record claims replaced services"
 expect_failure "rollback requires schema confirmation" 'confirm-schema-compatible' \
   "${bin}/deploy-release" "${release_one}" --approval qa-rollback --rollback
 expect_failure "rollback refuses divergent migration history" 'incompatible with the applied migration history' \
@@ -848,7 +848,7 @@ expect_failure "rollback refuses divergent migration history" 'incompatible with
 psql_db "UPDATE schema_migrations SET checksum = '${original_checksum}' WHERE version = 1" >/dev/null
 migration_started="$(docker inspect --format '{{.State.StartedAt}}' "$(compose_release "${dir_two}" ps --all --quiet migration)")"
 run "${bin}/deploy-release" "${release_one}" --approval qa-rollback --rollback --confirm-schema-compatible
-[[ "$(cat "${opt}/apps/schatten-releases/current")" == "${release_one}" && "$(cat "${opt}/apps/schatten-releases/previous")" == "${release_two}" ]] || fail "rollback pointers"
+[[ "$(cat "${opt}/apps/shadow-releases/current")" == "${release_one}" && "$(cat "${opt}/apps/shadow-releases/previous")" == "${release_two}" ]] || fail "rollback pointers"
 [[ "$(docker inspect --format '{{.State.StartedAt}}' "$(compose_release "${dir_one}" ps --all --quiet migration)")" == "${migration_started}" ]] || fail "rollback ran migrations"
 [[ "$(psql_db "SELECT count(*) FROM schema_migrations")" == "${migrations_before}" ]] || fail "rollback changed schema history"
 # A gate failing after migration leaves new-release containers running; the
@@ -857,11 +857,11 @@ unhealthy_override="${qa_root}/qa-override-unhealthy.yml"
 awk '{ print } /^  frontend:$/ { print "    healthcheck:"; print "      test: [\"CMD\", \"false\"]"; print "      interval: 1s"; print "      retries: 1"; print "      start_period: 0s" }' \
   "${override}" >"${unhealthy_override}"
 expect_failure "post-migration gate failure reports partly running release" 'may be partly running' \
-  env SCHATTEN_COMPOSE_OVERRIDE_FILE="${unhealthy_override}" "${bin}/deploy-release" "${release_two}" --approval qa-post-migration-failure
-[[ "$(cat "${opt}/apps/schatten-releases/current")" == "${release_one}" ]] || fail "pointers changed after post-migration failure"
-grep -l 'SERVICES_REPLACED=true' "${opt}/apps/schatten-state/deployments/"*"${release_two}.env" >/dev/null || fail "post-migration failure record lacks SERVICES_REPLACED=true"
+  env SHADOW_COMPOSE_OVERRIDE_FILE="${unhealthy_override}" "${bin}/deploy-release" "${release_two}" --approval qa-post-migration-failure
+[[ "$(cat "${opt}/apps/shadow-releases/current")" == "${release_one}" ]] || fail "pointers changed after post-migration failure"
+grep -l 'SERVICES_REPLACED=true' "${opt}/apps/shadow-state/deployments/"*"${release_two}.env" >/dev/null || fail "post-migration failure record lacks SERVICES_REPLACED=true"
 run "${bin}/deploy-release" "${release_two}" --approval qa-fix-forward
-[[ "$(cat "${opt}/apps/schatten-releases/current")" == "${release_two}" ]] || fail "fix-forward pointers"
+[[ "$(cat "${opt}/apps/shadow-releases/current")" == "${release_two}" ]] || fail "fix-forward pointers"
 pass "evidence gate, failed-migration isolation, post-migration failure reporting, fix-forward and schema-compatible coordinated rollback without down migrations"
 
 step "AI via MCP switches from the env file (TASK-069P)"
@@ -870,7 +870,7 @@ set_mcp_env() {
   local pair
   for pair in "$@"; do printf '%s\n' "${pair}" >>"${env_file}"; done
 }
-latest_record() { find "${opt}/apps/schatten-state/deployments" -name "*-${release_two}.env" | sort | tail -n 1; }
+latest_record() { find "${opt}/apps/shadow-state/deployments" -name "*-${release_two}.env" | sort | tail -n 1; }
 # The backend environment holds secrets: match exact lines, never print it.
 backend_env_has() {
   docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' \
@@ -901,7 +901,7 @@ set_release_mcp() {
 }
 set_release_mcp 'MCP_ENABLED: "yes"'
 expect_failure "a rendered MCP switch other than true or false blocks deployment" 'only true or false and a positive whole number are allowed' \
-  env SCHATTEN_COMPOSE_OVERRIDE_FILE="${mcp_override}" "${bin}/deploy-release" "${release_two}" --approval qa-mcp-rendered
+  env SHADOW_COMPOSE_OVERRIDE_FILE="${mcp_override}" "${bin}/deploy-release" "${release_two}" --approval qa-mcp-rendered
 set_mcp_env MCP_ENABLED=true MCP_OAUTH_MAX_CLIENTS=20000
 expect_failure "turning MCP on needs its own approval" 'needs --mcp-approval' \
   "${bin}/deploy-release" "${release_two}" --approval qa-mcp-on
@@ -929,7 +929,7 @@ grep -q 'deployed: MCP_ENABLED=false' <<<"${status_output}" || fail "ops-status 
 # deploying it keeps MCP off, needs no MCP approval and warns.
 set_release_mcp 'MCP_ENABLED: "false"'
 set_mcp_env MCP_ENABLED=true
-pinned_output="$(env SCHATTEN_COMPOSE_OVERRIDE_FILE="${mcp_override}" "${bin}/deploy-release" "${release_two}" --approval qa-mcp-pinned 2>&1)" \
+pinned_output="$(env SHADOW_COMPOSE_OVERRIDE_FILE="${mcp_override}" "${bin}/deploy-release" "${release_two}" --approval qa-mcp-pinned 2>&1)" \
   || { printf '%s\n' "${pinned_output}" | tee -a "${log_file}" | tail -n 20 >&2; fail "deploying a release that pins MCP off"; }
 printf '%s\n' "${pinned_output}" >>"${log_file}"
 grep -q 'ignores the MCP settings' <<<"${pinned_output}" || fail "no warning for a release that ignores the env file"

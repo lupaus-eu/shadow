@@ -43,7 +43,7 @@ for tool in python3 curl gpg openssl flock ss make; do
   if have "${tool}"; then ok "tool ${tool}"; else attn "tool ${tool} is not installed"; fi
 done
 # Git is not used on the server (ADR-013); its presence is only recorded.
-if have git; then fact "git $(git --version 2>/dev/null | awk '{ print $3 }') present (not used by Schatten)"; else fact "git absent (not needed)"; fi
+if have git; then fact "git $(git --version 2>/dev/null | awk '{ print $3 }') present (not used by Shadow)"; else fact "git absent (not needed)"; fi
 
 section cloud-init
 if have cloud-init && have python3; then
@@ -142,11 +142,11 @@ if sshd_config="$(priv sshd -T 2>/dev/null)"; then
   else
     ssh_pubkey_only=false
   fi
-  # ADR-013 (TASK-059J): AllowUsers deploy root schatten-upload; @<cidr>
+  # ADR-013 (TASK-059J): AllowUsers deploy root shadow-upload; @<cidr>
   # patterns for deploy or root are an allowed, stricter choice.
   read -r -a allowed <<<"$(awk '$1 == "allowusers" { $1 = ""; print }' <<<"${sshd_config}" | tr '\n' ' ')"
   if (( ${#allowed[@]} == 0 )); then
-    attn "AllowUsers is not set: every account with a key may log in (set AllowUsers deploy root schatten-upload, runbook 2.1)"
+    attn "AllowUsers is not set: every account with a key may log in (set AllowUsers deploy root shadow-upload, runbook 2.1)"
   else
     declare -A any_address=() restricted=()
     for pattern in "${allowed[@]}"; do
@@ -154,8 +154,8 @@ if sshd_config="$(priv sshd -T 2>/dev/null)"; then
         deploy | root | deploy@\* | root@\* | deploy@0.0.0.0/0 | root@0.0.0.0/0 | deploy@::/0 | root@::/0)
           any_address[${pattern%%@*}]=1 ;;
         deploy@* | root@*) restricted[${pattern%%@*}]=$(( ${restricted[${pattern%%@*}]:-0} + 1 )) ;;
-        schatten-upload) ;;
-        *) attn "AllowUsers also admits ${pattern}; only deploy, root and schatten-upload are expected (record or remove under F)" ;;
+        shadow-upload) ;;
+        *) attn "AllowUsers also admits ${pattern}; only deploy, root and shadow-upload are expected (record or remove under F)" ;;
       esac
     done
     for account in deploy root; do
@@ -169,8 +169,8 @@ if sshd_config="$(priv sshd -T 2>/dev/null)"; then
         fact "AllowUsers does not admit root: root SSH is shut out"
       fi
     done
-    [[ " ${allowed[*]} " == *" schatten-upload "* ]] && ok "AllowUsers admits schatten-upload" \
-      || attn "AllowUsers does not admit schatten-upload; the Deploy to production Action cannot upload"
+    [[ " ${allowed[*]} " == *" shadow-upload "* ]] && ok "AllowUsers admits shadow-upload" \
+      || attn "AllowUsers does not admit shadow-upload; the Deploy to production Action cannot upload"
   fi
   match_files="$(priv grep -rlis '^[[:space:]]*Match[[:space:]]' /etc/ssh/sshd_config /etc/ssh/sshd_config.d 2>/dev/null | count_lines)" || true
   [[ "${match_files}" == 0 ]] || attn "sshd has Match blocks in ${match_files} file(s); evaluate them with sshd -T -C user=...,host=...,addr=..."
@@ -301,8 +301,8 @@ held="$(apt-mark showhold 2>/dev/null | paste -sd, - || true)"
 fact "held packages ${held:-none}"
 
 section storage
-for path in /opt/apps /opt/caddy /opt/postgres-backups /opt/apps/schatten /opt/apps/schatten-config \
-  /opt/apps/schatten-state /opt/apps/schatten-releases /opt/apps/schatten-sources /opt/apps/schatten-upload; do
+for path in /opt/apps /opt/caddy /opt/postgres-backups /opt/apps/shadow /opt/apps/shadow-config \
+  /opt/apps/shadow-state /opt/apps/shadow-releases /opt/apps/shadow-sources /opt/apps/shadow-upload; do
   if [[ ! -e "${path}" ]]; then
     fact "path ${path} absent"
     continue
@@ -314,9 +314,9 @@ for path in /opt/apps /opt/caddy /opt/postgres-backups /opt/apps/schatten /opt/a
   fi
   fact "path ${path} $(stat -c 'owner=%u:%g(%U:%G) mode=%a' "${path}") entries=${entries} filesystem=$(df -P "${path}" 2>/dev/null | awk 'NR == 2 { print $1 }')"
 done
-# check-host and the setup steps write the Schatten paths as deploy; containers never write here.
-for path in /opt/apps /opt/apps/schatten /opt/apps/schatten-config /opt/apps/schatten-state /opt/apps/schatten-releases \
-  /opt/apps/schatten-sources; do
+# check-host and the setup steps write the Shadow paths as deploy; containers never write here.
+for path in /opt/apps /opt/apps/shadow /opt/apps/shadow-config /opt/apps/shadow-state /opt/apps/shadow-releases \
+  /opt/apps/shadow-sources; do
   [[ -e "${path}" ]] || continue
   owner="$(stat -c %U "${path}")"
   if [[ "${owner}" == deploy ]]; then
@@ -332,13 +332,13 @@ if [[ -d /opt/postgres-backups ]]; then
   backup_mode="$(stat -c %a /opt/postgres-backups)"
   [[ "${backup_owner}" == 10002:10002 && "${backup_mode}" =~ ^7[05]0$ ]] && ok "/opt/postgres-backups owner ${backup_owner} mode ${backup_mode}" \
     || attn "/opt/postgres-backups owner ${backup_owner} mode ${backup_mode}; the backup runner needs 10002:10002 and 0700/0750 (F sets it, preserving contents)"
-  if listing="$(priv find /opt/postgres-backups -maxdepth 1 -name 'schatten-*.manifest' 2>/dev/null)"; then
-    fact "/opt/postgres-backups completed Schatten manifests=$(count_lines <<<"${listing}"); a directory alone is not backup evidence"
+  if listing="$(priv find /opt/postgres-backups -maxdepth 1 -name 'shadow-*.manifest' 2>/dev/null)"; then
+    fact "/opt/postgres-backups completed Shadow manifests=$(count_lines <<<"${listing}"); a directory alone is not backup evidence"
   else
     miss "/opt/postgres-backups contents (needs sudo -n find)"
   fi
 fi
-[[ -e /opt/apps/schatten ]] && fact "/opt/apps/schatten is the superseded Git checkout path; builds use /opt/apps/schatten-sources"
+[[ -e /opt/apps/shadow ]] && fact "/opt/apps/shadow is the superseded Git checkout path; builds use /opt/apps/shadow-sources"
 
 section upload
 # root-owned and not group/other writable; $2 names the file in messages.
@@ -350,7 +350,7 @@ root_owned() {
   attn "$1 (owner=${owner} mode=${mode}) must be root-owned and not group/other writable"
   return 1
 }
-upload_user=schatten-upload
+upload_user=shadow-upload
 if upload_entry="$(getent passwd "${upload_user}")"; then
   IFS=: read -r _ _ upload_uid _ _ upload_home upload_shell <<<"${upload_entry}"
   fact "account ${upload_user} uid=${upload_uid} home=${upload_home} shell=${upload_shell}"
@@ -396,7 +396,7 @@ if upload_entry="$(getent passwd "${upload_user}")"; then
 else
   fact "account ${upload_user} absent (F creates it, runbook 2.2)"
 fi
-upload_dir=/opt/apps/schatten-upload
+upload_dir=/opt/apps/shadow-upload
 if [[ -L "${upload_dir}" ]]; then
   attn "${upload_dir} is a symlink"
 elif [[ -d "${upload_dir}" ]]; then
@@ -408,7 +408,7 @@ else
 fi
 
 section source
-for tool in /usr/local/bin/upload-gate /usr/local/bin/schatten-receive; do
+for tool in /usr/local/bin/upload-gate /usr/local/bin/shadow-receive; do
   if [[ -L "${tool}" ]]; then
     attn "${tool} is a symlink; install the file itself root-owned"
   elif [[ -f "${tool}" ]]; then
@@ -418,9 +418,9 @@ for tool in /usr/local/bin/upload-gate /usr/local/bin/schatten-receive; do
     fact "${tool} absent (F installs it root-owned before the first upload, runbook 2.2)"
   fi
 done
-if [[ -d /opt/apps/schatten-sources ]]; then
+if [[ -d /opt/apps/shadow-sources ]]; then
   shopt -s nullglob
-  received=(/opt/apps/schatten-sources/*)
+  received=(/opt/apps/shadow-sources/*)
   shopt -u nullglob
   fact "received sources entries=${#received[@]} (newest 5 shown)"
   if (( ${#received[@]} > 0 )); then
@@ -435,7 +435,7 @@ if [[ -d /opt/apps/schatten-sources ]]; then
       elif [[ "${name}" == *.incomplete ]]; then
         attn "staging ${name} was left by an interrupted receive; remove it once no receive runs"
       else
-        attn "unexpected entry ${name} in /opt/apps/schatten-sources"
+        attn "unexpected entry ${name} in /opt/apps/shadow-sources"
       fi
     done < <(stat -c '%Y %n' "${received[@]}" | sort -rn | head -n 5)
   fi

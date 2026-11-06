@@ -24,7 +24,7 @@
   },
   "review": {
     "outcome": "findings",
-    "summary": "Round 5 reviews PR 129 at cfdbe77, focusing on the round 4 fixes in the QA checklist, runbook section 14 and the task criterion. The rollback command, its section 6 citation, the prefix check and the absence of migrations in rollback match v0.1.0's own deploy-release and release layout; v0.2.0 snapshots always carry modelKinds, which v0.1.0's snapshot model forbids, so its worker exits, restarts and marks such requests interrupted; Schatten's logout code is unchanged since v0.1.0. Every link and anchor resolves, git diff --check is clean, the LikeC4 sources are unchanged since round 4 and the added lines hold no forbidden data. Round 3 F-006 and round 4 F-001 to F-004 are fixed. One new low finding: the v0.2.0 tag object is dated before smoke item 2 and its logout re-checks, and the record does not say so.",
+    "summary": "Round 5 reviews PR 129 at cfdbe77, focusing on the round 4 fixes in the QA checklist, runbook section 14 and the task criterion. The rollback command, its section 6 citation, the prefix check and the absence of migrations in rollback match v0.1.0's own deploy-release and release layout; v0.2.0 snapshots always carry modelKinds, which v0.1.0's snapshot model forbids, so its worker exits, restarts and marks such requests interrupted; Shadow's logout code is unchanged since v0.1.0. Every link and anchor resolves, git diff --check is clean, the LikeC4 sources are unchanged since round 4 and the added lines hold no forbidden data. Round 3 F-006 and round 4 F-001 to F-004 are fixed. One new low finding: the v0.2.0 tag object is dated before smoke item 2 and its logout re-checks, and the record does not say so.",
     "findings": [
       {
         "id": "F-001",

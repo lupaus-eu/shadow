@@ -343,7 +343,7 @@ export default function ChangeSetReview(props: {
                   aria-describedby={applyTextId}
                 >
                   <p id={applyTextId}>
-                    Apply all {detail.operations.length} operation(s) to Schatten?
+                    Apply all {detail.operations.length} operation(s) to Shadow?
                     {replacingCount > 0
                       ? ` ${replacingCount} of them replace existing data.`
                       : ""}{" "}

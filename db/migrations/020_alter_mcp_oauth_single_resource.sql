@@ -1,5 +1,5 @@
 -- ADR-015 amendment (TASK-074): one MCP resource, <origin>/api/mcp, carries
--- both scopes. Every grant holds schatten.read; schatten.write is optional.
+-- both scopes. Every grant holds shadow.read; shadow.write is optional.
 -- Grants of the removed /api/mcp/read and /api/mcp/write resources are deleted
 -- as lazy cleanup deletes them: their tokens go first, and a change set keeps
 -- its copied client_id and client_name as the audit record while its grant_id
@@ -25,7 +25,7 @@ ALTER TABLE mcp_oauth_grants
 
 ALTER TABLE mcp_oauth_grants
     ADD CONSTRAINT ck_mcp_oauth_grants_scope
-        CHECK (scopes IN ('schatten.read', 'schatten.read schatten.write')),
+        CHECK (scopes IN ('shadow.read', 'shadow.read shadow.write')),
     ADD CONSTRAINT ck_mcp_oauth_grants_resource
         CHECK (resource LIKE '%/api/mcp');
 
@@ -35,6 +35,6 @@ ALTER TABLE mcp_oauth_authorization_requests
 
 ALTER TABLE mcp_oauth_authorization_requests
     ADD CONSTRAINT ck_mcp_oauth_authorization_requests_scope
-        CHECK (scopes IN ('schatten.read', 'schatten.read schatten.write')),
+        CHECK (scopes IN ('shadow.read', 'shadow.read shadow.write')),
     ADD CONSTRAINT ck_mcp_oauth_authorization_requests_resource
         CHECK (resource LIKE '%/api/mcp');

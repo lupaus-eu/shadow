@@ -48,7 +48,7 @@ def authenticate_test_client(
         )
         session.commit()
 
-    client.cookies.set("schatten-session", raw_session_id)
+    client.cookies.set("shadow-session", raw_session_id)
     client.headers.update(
         {
             "Origin": TEST_ORIGIN,

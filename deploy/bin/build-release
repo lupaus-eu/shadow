@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Build matching frontend/backend images from one manifest-verified source
-# folder accepted by schatten-receive and freeze them in a release record. The
+# folder accepted by shadow-receive and freeze them in a release record. The
 # folder is copied into the release and that copy is re-verified against its
 # manifest before building, so only listed, unchanged files enter the images.
 # Uses no secrets and no Git.
 #
 # Usage: deploy/bin/build-release --source <verified source folder>
-#   for example /opt/apps/schatten-sources/<commit>
+#   for example /opt/apps/shadow-sources/<commit>
 
 source "$(dirname "$(readlink -f "$0")")/../lib/common.sh"
 bin_dir="$(dirname "$(readlink -f "$0")")"
@@ -15,15 +15,15 @@ bin_dir="$(dirname "$(readlink -f "$0")")"
 [[ -d "$2" && ! -L "$2" ]] || die "Source folder $2 is missing or a symlink"
 source_dir="$(cd "$2" && pwd -P)"
 commit="$(basename "${source_dir}")"
-[[ "${commit}" =~ ^[0-9a-f]{40}$ ]] || die "Source folder name must be the 40-character commit accepted by schatten-receive"
+[[ "${commit}" =~ ^[0-9a-f]{40}$ ]] || die "Source folder name must be the 40-character commit accepted by shadow-receive"
 
 load_config
-# Only folders accepted by schatten-receive: --verify checks a folder against
+# Only folders accepted by shadow-receive: --verify checks a folder against
 # its own manifest, not against the operator-supplied digest.
-sources_dir="$(cd "${SCHATTEN_SOURCES_DIR}" 2>/dev/null && pwd -P)" \
-  || die "Sources directory ${SCHATTEN_SOURCES_DIR} is missing; run deploy/bin/init-state"
+sources_dir="$(cd "${SHADOW_SOURCES_DIR}" 2>/dev/null && pwd -P)" \
+  || die "Sources directory ${SHADOW_SOURCES_DIR} is missing; run deploy/bin/init-state"
 [[ "$(dirname "${source_dir}")" == "${sources_dir}" ]] \
-  || die "${source_dir} is not an accepted source under ${sources_dir}; receive it with schatten-receive first"
+  || die "${source_dir} is not an accepted source under ${sources_dir}; receive it with shadow-receive first"
 hold_release_lock
 hold_maintenance_lock
 
@@ -36,7 +36,7 @@ mkdir -p "${work_dir}/source"
 trap 'chmod -R u+w "${work_dir}" 2>/dev/null || true; rm -rf "${work_dir}"' EXIT
 
 tar -C "${source_dir}" -cf - . | tar -C "${work_dir}/source" -xf -
-verified="$("${bin_dir}/schatten-receive" --verify "${work_dir}/source")" \
+verified="$("${bin_dir}/shadow-receive" --verify "${work_dir}/source")" \
   || die "The release copy of ${source_dir} failed manifest verification"
 manifest_value() {
   local value
@@ -51,8 +51,8 @@ source_run_id="$(manifest_value SOURCE_RUN_ID)"
 manifest_sha256="$(manifest_value SOURCE_MANIFEST_SHA256)"
 # Build from 0644/0755 files as before the manifest path; frozen read-only below.
 chmod -R u+w "${work_dir}/source"
-backend_image="schatten-backend:${release_id}"
-frontend_image="schatten-frontend:${release_id}"
+backend_image="shadow-backend:${release_id}"
+frontend_image="shadow-frontend:${release_id}"
 
 started="$(date +%s)"
 memory_before="$(awk '/^MemAvailable:/ { print $2 * 1024 }' /proc/meminfo)"

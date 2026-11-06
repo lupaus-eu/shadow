@@ -221,7 +221,7 @@ export default function UsersTab(props: {
       setConfirmingRevoke(false);
       setActionSuccess({
         title: "Sessions revoked",
-        text: `${selectedUser.name}'s Schatten application sessions were revoked.`
+        text: `${selectedUser.name}'s Shadow application sessions were revoked.`
       });
     } catch (error) {
       setActionError(messageFromError(error));
@@ -389,7 +389,7 @@ export default function UsersTab(props: {
                         aria-labelledby="revoke-session-confirmation"
                       >
                         <p id="revoke-session-confirmation">
-                          Sign {selectedUser.name} out of every Schatten session? This does not sign
+                          Sign {selectedUser.name} out of every Shadow session? This does not sign
                           them out of the identity provider.
                         </p>
                         <div className="form-actions">
@@ -443,7 +443,7 @@ export default function UsersTab(props: {
                       >
                         <p id="revoke-ai-connections-confirmation">
                           Revoke every AI client connection of {selectedUser.name}? Their AI clients
-                          lose access to Schatten immediately and must be connected again.
+                          lose access to Shadow immediately and must be connected again.
                         </p>
                         <div className="form-actions">
                           <button
@@ -527,7 +527,7 @@ export default function UsersTab(props: {
                   Create user
                 </h2>
               </div>
-              <p className="muted">Create an application-wide Schatten user.</p>
+              <p className="muted">Create an application-wide Shadow user.</p>
               <UserFields
                 idPrefix="user-create"
                 name={createName}

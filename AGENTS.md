@@ -1,401 +1,150 @@
-# AGENTS.md
+# Agent Instructions
+
+Shadow models organisations as digital twins: a graph of the organisation
+over time, metrics as timeseries, events, scenarios, and forecasts, with AI
+clients connected through MCP. It runs in production at
+`https://shadow.lupaus.eu` and is being turned into a multi-tenant SaaS
+service on the same platform model as Yearclock (`../yearclock`); that plan is
+in `.scratch/saas-platform/PLAN.md` on the developer's machine.
+
+Before editing implementation code, read these files in order:
+
+1. `docs/architecture/stack.md`
+2. `docs/architecture/project-layout.md`
+3. `docs/architecture/overview.md` (the parts that concern the change)
+4. `CONTEXT.md`
+5. The relevant feature material under `.scratch/`
+
+Keep changes scoped to the requested ticket. Update documentation when a
+change affects service boundaries, the data model, environment variables,
+deployment behavior, permissions, or an external integration. Keep the
+diagrams in `docs/architecture/diagrams/` (PlantUML by default, LikeC4 for the
+MCP model) and their generated SVGs current in the same change.
+
+## Local commands
+
+- Overview of shortcuts: `make help`
+- Install dependencies: `make install`
+- Start the local stack (Caddy HTTPS at `https://app.localhost`, API, worker,
+  Vite, database, migrations, and the development seed): `make dev-up`;
+  stop it with `make dev-down`
+- All checks: `make check`
+- Backend checks: `make backend-check` (`cd backend && uv run ruff check . && uv run pytest && uv run pyright`)
+- Frontend checks: `make frontend-check` (Prettier check, ESLint, Vitest, and build with pnpm)
+- Migrations: `uv run --env-file .env --project backend python backend/migrate.py up`
+  (see `db/migrations/README.md`)
+- Diagrams: `make diagrams`
+- Ticket portfolio: `python3 scripts/scratch-status.py > .scratch/_PORTFOLIO.md`
+
+Local setup details are in `docs/operations/local-development.md` and test
+harnesses in `docs/operations/testing.md`.
+
+## Conventions
+
+- Keep frontend code under `frontend/src` and backend API code under
+  `backend/app`.
+- Add durable decisions to `docs/adr/` (new ADRs from 0016, format in
+  `docs/adr/README.md`). Create an ADR before choosing a new technology or
+  changing the architecture, the database strategy, the deployment model, or a
+  significant external integration.
+- Feature PRDs, technical designs, domain models, and implementation tickets
+  belong in `.scratch/`; copy `.scratch/_template/` to start a new feature.
+  `.scratch/` stays local and is never pushed to GitHub.
+- System documentation belongs in `docs/architecture/` (overview, stack,
+  deployment, domains, concepts, data model, diagrams). UI and UX guidance
+  belongs in `docs/design`; user, administrator, operations, runbook, privacy,
+  and legal guidance belongs in the correspondingly named `docs/` directories.
+- `docs/archive/` is read-only history (the former `tasks/` and process
+  documents); do not add to it.
+- Keep secrets out of git. Add new required variables to `.env.example` and,
+  when production needs them, to the production configuration contract in
+  `docs/architecture/deployment.md`.
+
+## Rules
+
+Always:
+
+- Implement only the ticket's scope; prefer small changes and existing
+  abstractions.
+- Add or update tests with application code changes, or justify in the ticket
+  why none are needed.
+- Validate input, check authentication, and enforce authorization in the
+  backend; use parameterized SQL or the ORM's safe queries.
+- Change the schema only with a migration pair in `db/migrations/`
+  (`NNN_name.sql` and `NNN_name.down.sql`), run with `backend/migrate.py`
+  (ADR-002).
+
+Never, without explicit human approval:
+
+- add a dependency, delete a test, or change the architecture without an ADR;
+- merge to `main`;
+- release to production, change the production database by hand, or run any
+  production, backup, restore, or identity-provider operation.
+
+Never at all:
+
+- commit secrets or API keys, or hardcode them;
+- use test or development data in production;
+- log sensitive data.
+
+Humans own the product direction, architecture, security, production
+releases, and final approvals. AI writes code, tests, and documentation, does
+scoped refactoring, and proposes architecture decisions.
+
+## Agent workflow
+
+Write a PRD in `.scratch/<feature>/PRD.md` before substantial user-facing
+feature work, and settle its open decisions with the user (for example with
+`/grilling`). Use a domain model when business terminology, lifecycle,
+authorization, or an integration boundary needs settling before technical
+design. Split the accepted design into small, verifiable tickets. The full
+process is in `FEATURE_WORKFLOW.md`.
 
-Tämä tiedosto antaa AI-agenteille välttämättömän kontekstin ennen muutosten tekemistä.
+For architecture or tooling work that is not a user-facing feature, use
+`.scratch/tech-<slug>/technical-design.md` and tickets instead. Implement one
+ticket at a time. A ticket is complete only when its documentation impact,
+executed checks, and AI review are recorded; see
+`docs/agents/definition-of-done.md`.
 
-Lue tämä ennen koodin kirjoittamista.
-
-Laajempi prosessi on dokumentoitu tiedostossa `AI-FIRST-ENGINEERING-HANDBOOK.md`.
-
----
-
-# Project
-
-Projektin nimi: Schatten
-
-Status: MVP / project bootstrap
-
-Schatten on AI-first ohjelmistoprojekti. Tuotteen tarkka tavoite, kohderyhmä ja ongelma täsmennetään projektin ensimmäisissä task- ja ADR-dokumenteissa.
-
----
-
-# Product Goal
-
-TBD.
-
-Kun tuotteen suunta päätetään, päivitä tähän:
-
-- mitä rakennetaan
-- kenelle rakennetaan
-- mikä ongelma ratkaistaan
-- mikä on ensimmäisen MVP:n rajaus
-
----
-
-# Current Status
-
-Projektissa ollaan aloitusvaiheessa.
-
-Ensimmäiset tavoitteet:
-
-1. AI-first kehitysmallin dokumentointi
-2. paikallisen kehitysympäristön kuvaus
-3. CI-baselinen käyttöönotto
-4. ensimmäisten feature-taskien määrittely
-
----
-
-# Tech Stack
-
-Status: decided in `docs/decisions/ADR-001-tech-stack.md`
-
-Päätetty teknologiapino:
-
-- frontend: React, TypeScript, Vite, pnpm, Vitest, ESLint, Prettier hakemistossa `frontend/`
-- backend: Python, FastAPI, Pydantic, uv, pytest, pyright, Ruff hakemistossa `backend/`
-- MCP: `fastmcp` 4 (ADR-015) for the MCP endpoint `/api/mcp` in the backend
-- database: PostgreSQL
-- ORM: SQLAlchemy
-- migrations: repository-owned Python/Psycopg runner and paired SQL migrations
-- authentication: provider-neutral backend OIDC, with direct Microsoft Entra ID
-  in both development and production under amended ADR-013; local Caddy HTTPS
-  and direct Entra are implemented by TASK-059B
-- local target: loopback Caddy HTTPS at `https://app.localhost`, routing Vite and
-  FastAPI, plus a separate prediction worker and application database
-- production target: Docker Engine/Compose on an UpCloud Ubuntu 26.04 LTS host;
-  Caddy directly terminates TLS at `https://schatten.lupaus.eu`, serves React and
-  proxies FastAPI; initially private PostgreSQL 18 in Docker with persistent storage
-- release contracts: immutable matching frontend/backend artifacts, one-shot
-  migration-success gates, backend health gating frontend, and one prediction worker
-
-ADR-013 supersedes Coolify/Traefik and local Authentik/federation choices.
-Both environments share the existing single-tenant confidential Entra registration
-with separate secrets and independent databases. Use exact tenant issuer,
-`openid profile email`, no Graph calls and no `email_verified` requirement.
-Guarded pre-provisioned User linking, permanent identity ownership, sessions,
-CSRF and database roles remain unchanged. Builds initially run on UpCloud.
-Source delivery is amended by TASK-059H: a manual, `main`-only "Deploy to
-production" GitHub Action copies the exact commit and a source manifest to a
-dedicated upload-only account; builds run on UpCloud from the manifest-verified
-source. Git is not used on the server and there is no GitHub deploy key; H1-H3
-implement this and F performed the GitHub/host setup.
-GitHub Actions/GHCR is a possible later build location with the same image contract.
-
-Initial release requires daily encrypted on-server PostgreSQL backups in
-`/opt/postgres-backups` with 7-day retention, recorded backup identifiers and
-successful restore-rehearsal evidence. Persistent volumes survive container
-replacement but are not backups.
-Ofelia schedules backups and weekly Docker maintenance under ADR-013's mandatory
-hardening; G implements it, E/F verify and activate it. Docker socket access grants host-level
-authority even when mounted `:ro`; verify scheduler and runner restrictions before
-activation. Ofelia never replaces the single application prediction worker.
-G delivers backup tooling, E the runbook/QA, and F authorized activation and
-verification. Missing backup or restore evidence blocks release. A later move
-to UpCloud Managed PostgreSQL must preserve or explicitly revise this policy;
-application rollback never automatically restores the database. These initial
-same-host backups do not protect against loss of the host or its disk; that
-limitation is accepted until a separately planned off-server/managed solution.
-
-TASK-059A changes documentation only. The shared reference-data seed CLI is
-implemented by TASK-059C, and the empty-users-table administrator bootstrap is
-implemented by TASK-059D. TASK-059G implements the production runtime,
-build/release, backup and scheduler tooling (`docker-compose.production.yml`,
-`deploy/`) and removes the Coolify adapter. TASK-059E adds the integrated
-operator runbook `docs/PRODUCTION-RUNBOOK.md` and disposable QA. TASK-059H
-records the Git-free source delivery in ADR-013; TASK-059H1-H3 implement the
-manifest/receiver/build, the upload gate and workflow, and the server
-`deploy/Makefile`, `deploy/bin/service` and runbook update (all implemented).
-TASK-059J amends ADR-013 to admit `deploy` and key-only root over SSH from any
-address (`AllowUsers deploy root schatten-upload`, `PermitRootLogin
-prohibit-password`) with UpCloud disk-move recovery, and updates `audit-host`.
-TASK-059F performed the authorized setup and the first production rollout:
-release `20261002T085353Z-0db661289165`, accepted and tagged `v0.1.0` on
-2026-11-02, with its evidence, accepted deviations and follow-ups in
-`docs/qa/FIRST-PRODUCTION-ROLLOUT.md`.
-The non-user metamodel seed is approved production reference data; development
-Users and example business data remain forbidden in production. First setup is
-migrations -> reference seed -> empty-users-table administrator bootstrap.
-
-AI via MCP is an accepted design in `docs/decisions/ADR-015-ai-via-mcp.md`
-(TASK-069A). TASK-069B's flush-only domain service transaction cores,
-TASK-069C's deterministic timeseries generator, TASK-069D's MCP OAuth schema
-(migration 017, `mcp_oauth_*`), TASK-069E's OAuth discovery, registration,
-authorization request and consent API, TASK-069F's token, refresh and revoke
-endpoints, token verification and connections API and TASK-069G's `fastmcp`
-read and write endpoints with `McpBearerAuth`, resource protection and the
-first read tools (`backend/app/mcp/`), TASK-069H's remaining read tools and
-generator preview, TASK-069I's change-set schema (migration 018,
-`ai_change_sets`, `ai_change_set_operations`) and engine
-(`backend/app/api/v1/ai_change_sets/`) and TASK-069J's change-set staging
-write tools and change-set read tools, TASK-069K's always-registered
-cookie-session change-set review API (list, detail, apply, reject) and
-TASK-069L's SPA consent page `/ai/authorize`, reusable `ConnectionsList` and
-admin "Revoke AI connections" action (`frontend/src/features/ai/`) and
-TASK-069M's Metrics tab AI panel (connect instructions, connections and
-change-set review with apply and reject, `frontend/src/features/ai/AiPanel.tsx`)
-and TASK-069N's Schatten skills, Claude Code plugin and repository marketplace
-(`backend/app/mcp/plugin/`, `.claude-plugin/marketplace.json`), MCP
-prompts and skill zip download and TASK-069O's MCP change-set review
-(ADR-015 amendment of 2026-10-29: the read tool `get_change_set_review`, the
-write tools `apply_change_set` and `reject_change_set` behind
-`MCP_CHANGE_SET_REVIEW_ENABLED`, off by default, and the review channel of
-migration 019) are implemented; the MCP and public OAuth endpoints and the
-skill zip download are registered only with `MCP_ENABLED=true`, off by
-default. TASK-069P's local end-to-end QA (`docs/qa/AI-MCP-QA-CHECKLIST.md`),
-trimmed redirect URI allowlist, runbook (`docs/PRODUCTION-RUNBOOK.md`
-section 14) and env-file MCP switches (production reads `MCP_ENABLED`,
-`MCP_CHANGE_SET_REVIEW_ENABLED` and `MCP_OAUTH_MAX_CLIENTS` from
-`production.env`; `deploy-release --mcp-approval` is required to turn MCP on)
-complete the implementation. TASK-069P's separately approved production
-enablement deployed release `20261103T090415Z-df98a2e7c05a` with both switches
-on, accepted and tagged `v0.2.0` on 2026-11-03; its record, covering Claude Code and the claude.ai and Claude
-Desktop read connectors, is in `docs/qa/AI-MCP-QA-CHECKLIST.md`. TASK-074
-implements ADR-015's amendment of 2026-11-03: one MCP endpoint `/api/mcp`
-(FastMCP server "Schatten", one OAuth resource, one grant with `schatten.read`
-and `schatten.write`) replaces `/api/mcp/read` and `/api/mcp/write`, which
-answer 404; every tool and prompt checks its own scope (`requires_scope`), so
-`ROLE_SCOPES` alone can later limit a role to read-only; migration 020
-(`020_alter_mcp_oauth_single_resource`) deletes the old grants; the plugin is
-0.3.0 with one server `schatten`. Its production deployment needs a separate
-approval (`deploy-release --mcp-approval`). Users chat in their own MCP client on
-their own AI subscription; Schatten never calls an LLM or stores LLM keys.
-FastAPI hosts `/api/mcp` (read tools and prompts need `schatten.read`, write
-tools `schatten.write`) and acts as OAuth 2.1 authorization server over the existing
-Entra login, without changing the Entra registration. The write tools stage
-AI change sets. **A human decides every apply and reject**: in the Metrics tab,
-or, with `MCP_CHANGE_SET_REVIEW_ENABLED=true`, by approving the MCP client's
-`apply_change_set` or `reject_change_set` call; no other MCP tool may apply
-changes, and every review records its channel (`web` or `mcp`). No worker,
-scheduler or container is added. ADR-015 approved the `fastmcp` backend dependency, which TASK-069G added
-(`fastmcp>=4.1.4,<5`). The feature's C4 model uses LikeC4
-(`docs/diagrams/likec4/`); PlantUML remains the default elsewhere.
-
----
-
-# Source Of Truth
-
-Yleinen lähdejärjestys:
-
-1. `AGENTS.md`
-2. `ARCHITECTURE.md`
-3. `docs/decisions/*.md`
-4. `docs/domains/DOMAIN.md`
-5. relevantit `docs/domains/<DOMAIN>.md` -tiedostot
-6. `docs/concepts/CONCEPTS.md`
-7. relevantit `docs/concepts/<CONCEPT>.md` -tiedostot
-8. `docs/data/DATA-MODEL.md` ja `docs/data/DATABASE.md`, jos muutos koskee dataa tai skeemaa
-9. `tasks/*.md`
-10. `README.md`
-
-Jos dokumentit ovat ristiriidassa:
-
-- ADR voittaa vanhemman toteutuksen.
-- `ARCHITECTURE.md` voittaa `README.md`:n.
-- Domain-dokumentit määrittävät datan, APIen ja liiketoimintasääntöjen omistajuuden.
-- Concept-dokumentit määrittävät käsitteiden merkityksen, invariantit ja lifecyclet.
-- Data-dokumentit määrittävät loogisen ja fyysisen datamallin.
-- Taskin scope määrittää toteutettavan työn.
-- Jos vastausta ei löydy, kysy ihmisen päätös.
-
----
-
-# Per Task Reading Order
-
-Kun toteutat yksittäistä taskia, käytä tätä kevyempää käytännön järjestystä:
-
-1. Lue `AGENTS.md`.
-2. Lue `tasks/TASK-*.md`.
-3. Lue `ARCHITECTURE.md`.
-4. Lue relevantit ADR:t, jos muutos koskee teknologiaa, arkkitehtuuria, tietokantaa, autentikointia, integraatioita tai deploymentia.
-5. Lue relevantit domain-dokumentit vain, jos muutos koskee domainin dataa, APIeja tai sääntöjä.
-6. Lue relevantit concept-dokumentit vain, jos muutos koskee käsitteen kenttiä, suhteita, invariantteja tai lifecycleä.
-7. Lue `docs/data/` ja `db/`-ohjeet vain, jos muutos koskee tietomallia, skeemaa, migraatioita tai init-skriptejä.
-8. Lue `docs/TESTING.md`, jos muutos koskee sovelluskoodia tai testejä.
-9. Toteuta muutos.
-10. Aja relevantit tarkistukset.
-11. Kerro lopuksi mitä muutettiin ja miten työ tarkistettiin.
-
-Älä lue kaikkia dokumentteja jokaista pientä muutosta varten. Käytä lisädokumentteja silloin, kun taskin scope sitä koskee.
-
----
-
-# Development Workflow
-
-Kaikki merkittävä työ tehdään tämän putken kautta:
-
-```text
-Idea -> AI Implementation Plan -> Developer Approval -> Task(s) -> AI Implementation -> AI Review -> Human Review -> Pull Request -> Developer Merge -> Deploy
-```
-
-GitHubin työnhallintaa ei käytetä työn lähteenä. Hyväksytystä AI-suunnitelmasta luodut taskit määrittävät toteutuksen scopin.
-
----
-
-# Agent Rules
-
-## Always
-
-- Toteuta vain taskissa määritelty scope.
-- Lue arkkitehtuuri ja relevantit ADR:t ennen toteutusta.
-- Lue relevantit domain-dokumentit ennen domainin dataan, APIeihin tai sääntöihin koskevia muutoksia.
-- Lue relevantit concept-dokumentit ennen käsitteen kenttiin, suhteisiin, invariantteihin tai lifecycleen koskevia muutoksia.
-- Lue `docs/data/` ja `db/`-ohjeet ennen tietomalli- tai skeemamuutoksia.
-- Lue `docs/TESTING.md` ennen sovelluskoodin tai testien muuttamista.
-- Päivitä `docs/diagrams/` PlantUML-lähteet ja generoidut SVG:t, jos muutos vaikuttaa arkkitehtuurikuviin, domain-kuviin tai workflow-kuviin.
-- Lisää tai päivitä testit, kun muutos koskee sovelluskoodia.
-- Jos et lisää testejä sovelluskoodin muutokselle, perustele miksi.
-- Päivitä dokumentaatio tarvittaessa.
-- Tallenna jokainen Step 13 AI-review-kierros validina, redaktoituna JSON-
-  recordina `docs/ai-reviews/`-hakemistoon ja noudata
-  `docs/AI-REVIEW-RECORDS.md`:n schemaa sekä analyysin advisory-rajausta.
-- Käytä olemassa olevia abstrahointeja.
-- Suosi pieniä muutoksia.
-- Kerro lopuksi mitä muutit ja miten tarkistit työn.
-
-## Never
-
-- Älä commitoi salaisuuksia.
-- Älä lisää uusia riippuvuuksia ilman hyväksyntää.
-- Älä poista testejä ilman hyväksyntää.
-- Älä muuta tuotantotietokantaa käsin.
-- Älä muuta arkkitehtuuria ilman ADR:ää.
-- Älä mergaa main-haaraan.
-- Älä tee tuotantojulkaisua ilman ihmisen hyväksyntää.
-
----
-
-# Branch And PR Rules
-
-Branch-nimi:
-
-```text
-feature/TASK-001-short-name
-fix/TASK-002-short-name
-docs/TASK-003-short-name
-chore/TASK-004-short-name
-refactor/TASK-005-short-name
-```
-
-Jokaisen PR:n tulee:
-
-- liittyä yhteen taskiin
-- sisältää testit tai perustella miksi testejä ei tarvita
-- läpäistä CI, kun CI on käytössä
-- olla reviewattavissa kohtuullisessa ajassa
-
-Suositus:
-
-- alle 500 riviä reviewattavaa muutosta
-
----
-
-# Database Rules
-
-Kaikki skeemamuutokset:
-
-- migraatioina
-- versionhallinnassa
-- taskissa ja tarvittaessa ADR:ssä kuvattuina
-- pareina: `NNN_name.sql` ja `NNN_name.down.sql`
-
-Jokaisen uuden up-migraation mukana pitää lisätä saman muutoksen peruuttava down-migraatio.
-Migraatiot ajetaan `backend/migrate.py`-työkalulla ADR-002:n mukaisesti.
-
-Kielletty:
-
-```sql
-ALTER TABLE production ...
-```
-
-manuaalisesti tuotantoympäristössä.
-
----
-
-# Security Rules
-
-Pakollista:
-
-- input validation
-- authentication checks
-- authorization checks backendissä
-- parameterized SQL tai ORM:n turvalliset kyselyt
-- salaisuudet ympäristömuuttujissa tai secret managerissa
-
-Kielletty:
-
-- hardcoded secrets
-- API-avaimet repositoryssa
-- testidatan käyttö tuotannossa
-- sensitiivisen datan lokittaminen
-
----
-
-# Documentation Rules
-
-Päivitä dokumentaatio jos:
-
-- arkkitehtuuri muuttuu
-- tietomalli muuttuu
-- domain boundary tai domain ownership muuttuu
-- conceptin merkitys, invariantit tai lifecycle muuttuu
-- arkkitehtuurikuva, domain-kuva tai workflow-kuva muuttuu
-- integraatio muuttuu
-- deployment muuttuu
-- uusi toimintamalli lisätään
-
-Luo uusi ADR kun:
-
-- valitaan uusi teknologia
-- muutetaan arkkitehtuuria
-- vaihdetaan tietokantastrategiaa
-- muutetaan deployment-mallia
-- lisätään merkittävä uusi ulkoinen integraatio
-
----
-
-# Human Ownership
-
-AI voi:
-
-- kirjoittaa koodia
-- kirjoittaa testejä
-- tehdä rajattuja refaktorointeja
-- päivittää dokumentaatiota
-- ehdottaa arkkitehtuuripäätöksiä
-
-Ihmiset omistavat:
-
-- tuotteen suunnan
-- arkkitehtuurin
-- tietoturvan
-- tuotantojulkaisut
-- lopulliset hyväksynnät
-
----
-
-# Definition Of Done
-
-Työ on valmis kun:
-
-- hyväksymiskriteerit täyttyvät
-- testit läpäisevät, kun testit ovat relevantteja
-- CI on vihreä, kun CI on käytössä
-- review tehty
-- dokumentaatio päivitetty tarvittaessa
-- PR mergeattu
-
----
-
-# Final Rule
-
-Jos olet epävarma:
-
-Älä arvaa.
-
-Tarkista:
-
-1. Task
-2. Architecture
-3. ADR:t
-4. Handbook
-
-Jos vastausta ei löydy, pyydä ihmisen päätös.
+When the ticket's checks pass, **start the AI review yourself without being
+asked**: run the `code-review` skill on the diff, or start a fresh-context
+subagent given only the ticket and the diff, at the effort the definition of
+done sets by risk. Fix, recheck, and repeat for at most three rounds, then
+record the result in the ticket and summarize it in one line of the commit
+message.
+
+## Branches and releases
+
+`main` is the only branch pushed to GitHub (`lupaus-eu/shadow`). Work happens
+on local branches named after the ticket
+(`feature/<feature-slug>-NN-short-name`, `fix/…`, `docs/…`, `chore/…`,
+`refactor/…`); they are never pushed. A human reviews the branch locally,
+merges it into `main`, and pushes `main`; agents do not merge to `main` or
+push. Pushing `main` runs CI. Production releases need separate human
+approval.
+
+If you are unsure, do not guess: check the ticket, the architecture, the
+ADRs, and `CONTEXT.md`, and ask the human when they do not answer it.
+
+## Agent skills
+
+### Issue tracker
+
+Work is tracked locally as PRDs, technical designs, and tickets under
+`.scratch/`; GitHub Issues and pull requests are not a triage request surface.
+See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The local status vocabulary and ticket lifecycle are defined in
+`docs/agents/triage-labels.md`.
+
+### Domain docs
+
+This repository uses a single-context domain-doc layout with per-domain and
+per-concept documents. See `docs/agents/domain.md`.
+
+### Architecture and design routing
+
+Select the feature-specific source documents with
+`docs/agents/architecture-routing.md` before planning a change.

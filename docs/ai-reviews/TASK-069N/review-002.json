@@ -35,7 +35,7 @@
         "recommendation": "Include the operations that depend on the removed dependents in turn, and count a formula's shortName as a use.",
         "locations": [
           {
-            "path": "backend/app/mcp/plugin/skills/schatten-model-building/SKILL.md",
+            "path": "backend/app/mcp/plugin/skills/shadow-model-building/SKILL.md",
             "line": 86
           }
         ]

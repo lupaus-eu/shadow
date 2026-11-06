@@ -247,7 +247,7 @@ describe("UsersTab", () => {
 
     await waitFor(() => expect(revokeUserSessionsMock).toHaveBeenCalledWith(ada.id));
     expect(await screen.findByRole("status")).toHaveTextContent(
-      "ada's Schatten application sessions were revoked."
+      "ada's Shadow application sessions were revoked."
     );
   });
 

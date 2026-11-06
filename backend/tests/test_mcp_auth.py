@@ -320,7 +320,7 @@ def test_one_server_lists_read_and_write_tools_and_prompts(
     tools = _tool_names(client, token)
 
     assert initialize.status_code == 200, initialize.text
-    assert initialize.json()["result"]["serverInfo"]["name"] == "Schatten"
+    assert initialize.json()["result"]["serverInfo"]["name"] == "Shadow"
     assert len(READ_TOOL_NAMES) == 13
     assert len(WRITE_TOOL_NAMES) == 6
     assert tools == {*READ_TOOL_NAMES, *WRITE_TOOL_NAMES}
@@ -404,7 +404,7 @@ def test_read_only_role_sees_only_read_tools_and_prompts(
 def test_read_only_grant_sees_only_read_tools(
     client: TestClient, session_factory: sessionmaker[Session]
 ) -> None:
-    # A client that asked for `scope=schatten.read` holds a read-only grant.
+    # A client that asked for `scope=shadow.read` holds a read-only grant.
     token, _ = _issue_token(session_factory, scopes=READ_SCOPE)
 
     assert _tool_names(client, token) == set(READ_TOOL_NAMES)
@@ -542,7 +542,7 @@ def test_missing_read_scope_gets_403_insufficient_scope(
 
     assert response.status_code == 403
     assert response.headers["www-authenticate"] == (
-        'Bearer error="insufficient_scope", scope="schatten.read", '
+        'Bearer error="insufficient_scope", scope="shadow.read", '
         f'resource_metadata="{RESOURCE_METADATA}"'
     )
     assert response.json()["error"] == "insufficient_scope"

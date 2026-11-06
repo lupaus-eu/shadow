@@ -1260,7 +1260,7 @@ MCP_CODE_CHALLENGE = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
 LEGACY_MCP_READ_RESOURCE = "https://app.localhost/api/mcp/read"
 LEGACY_MCP_WRITE_RESOURCE = "https://app.localhost/api/mcp/write"
 MCP_RESOURCE = "https://app.localhost/api/mcp"
-MCP_READ_WRITE_SCOPES = "schatten.read schatten.write"
+MCP_READ_WRITE_SCOPES = "shadow.read shadow.write"
 
 
 def _migrate_through(database_url: str, tmp_path: Path, version: int) -> None:
@@ -1349,7 +1349,7 @@ def test_mcp_oauth_migration_down_fully_reverses_up(
 def _insert_mcp_oauth_fixture(
     connection: psycopg.Connection[tuple[object, ...]],
     *,
-    scopes: str = "schatten.write",
+    scopes: str = "shadow.write",
     resource: str = LEGACY_MCP_WRITE_RESOURCE,
 ) -> tuple[object, object, object]:
     user = connection.execute(
@@ -1409,7 +1409,7 @@ def test_mcp_oauth_grant_deletion_cascades_and_clients_are_restricted(
             "code_challenge, scopes, resource, expires_time, user_id, code_hash, "
             "code_expires_time, consumed_time, grant_id"
             ") VALUES (%s, %s, 'https://claude.ai/api/mcp/auth_callback', "
-            "'state', %s, 'schatten.write', 'https://app.localhost/api/mcp/write', "
+            "'state', %s, 'shadow.write', 'https://app.localhost/api/mcp/write', "
             "now() + interval '10 minutes', %s, %s, "
             "now() + interval '60 seconds', now(), %s)",
             (b"q" * 32, client_id, MCP_CODE_CHALLENGE, user_id, b"c" * 32, grant_id),
@@ -1487,7 +1487,7 @@ def test_mcp_oauth_schema_constraints(
                 "grant-2",
                 client_id,
                 user_id,
-                "schatten.read schatten.write",
+                "shadow.read shadow.write",
                 read_resource,
                 expires,
             ),
@@ -1495,7 +1495,7 @@ def test_mcp_oauth_schema_constraints(
         (
             psycopg.errors.CheckViolation,
             grant_insert,
-            ("grant-2", client_id, user_id, "schatten.admin", read_resource, expires),
+            ("grant-2", client_id, user_id, "shadow.admin", read_resource, expires),
         ),
         (
             psycopg.errors.CheckViolation,
@@ -1504,7 +1504,7 @@ def test_mcp_oauth_schema_constraints(
                 "grant-2",
                 client_id,
                 user_id,
-                "schatten.write",
+                "shadow.write",
                 read_resource,
                 expires,
             ),
@@ -1512,12 +1512,12 @@ def test_mcp_oauth_schema_constraints(
         (
             psycopg.errors.NotNullViolation,
             grant_insert,
-            ("grant-2", client_id, user_id, "schatten.read", read_resource, None),
+            ("grant-2", client_id, user_id, "shadow.read", read_resource, None),
         ),
         (
             psycopg.errors.UniqueViolation,
             grant_insert,
-            ("grant-1", client_id, user_id, "schatten.read", read_resource, expires),
+            ("grant-1", client_id, user_id, "shadow.read", read_resource, expires),
         ),
         (
             psycopg.errors.CheckViolation,
@@ -1533,7 +1533,7 @@ def test_mcp_oauth_schema_constraints(
         (
             psycopg.errors.CheckViolation,
             grant_insert,
-            (" ", client_id, user_id, "schatten.read", read_resource, expires),
+            (" ", client_id, user_id, "shadow.read", read_resource, expires),
         ),
         (
             psycopg.errors.CheckViolation,
@@ -1660,7 +1660,7 @@ def test_ai_change_set_review_channel_migration_backfills_and_reverses(
 def _insert_ai_change_set_fixture(
     connection: psycopg.Connection[tuple[object, ...]],
     *,
-    scopes: str = "schatten.write",
+    scopes: str = "shadow.write",
     resource: str = LEGACY_MCP_WRITE_RESOURCE,
 ) -> tuple[object, object, object]:
     user_id, _, grant_id = _insert_mcp_oauth_fixture(
@@ -2056,7 +2056,7 @@ def test_mcp_single_resource_migration_deletes_legacy_grants_and_keeps_audit(
         assert client is not None
         read_grant = connection.execute(
             MCP_GRANT_INSERT,
-            ("grant-2", client[0], user_id, "schatten.read", LEGACY_MCP_READ_RESOURCE),
+            ("grant-2", client[0], user_id, "shadow.read", LEGACY_MCP_READ_RESOURCE),
         ).fetchone()
         assert read_grant is not None
         connection.execute(
@@ -2072,7 +2072,7 @@ def test_mcp_single_resource_migration_deletes_legacy_grants_and_keeps_audit(
                 b"p" * 32,
                 client[0],
                 MCP_CODE_CHALLENGE,
-                "schatten.read",
+                "shadow.read",
                 LEGACY_MCP_READ_RESOURCE,
             ),
         )
@@ -2131,9 +2131,9 @@ def test_mcp_single_resource_migration_replaces_the_scope_checks(
     tables = ("grants", "authorization_requests")
     for table in tables:
         for scopes, resource in (
-            ("schatten.read", MCP_RESOURCE),
+            ("shadow.read", MCP_RESOURCE),
             (MCP_READ_WRITE_SCOPES, MCP_RESOURCE),
-            (MCP_READ_WRITE_SCOPES, "https://schatten.lupaus.eu/api/mcp"),
+            (MCP_READ_WRITE_SCOPES, "https://shadow.lupaus.eu/api/mcp"),
         ):
             insert(table, scopes, resource)
 
@@ -2141,18 +2141,18 @@ def test_mcp_single_resource_migration_replaces_the_scope_checks(
         *(
             (scopes, MCP_RESOURCE, {"scope"})
             for scopes in (
-                "schatten.write",
-                "schatten.write schatten.read",
-                "schatten.admin",
-                "schatten.read schatten.admin",
+                "shadow.write",
+                "shadow.write shadow.read",
+                "shadow.admin",
+                "shadow.read shadow.admin",
                 "",
             )
         ),
-        ("schatten.read", LEGACY_MCP_READ_RESOURCE, {"resource"}),
+        ("shadow.read", LEGACY_MCP_READ_RESOURCE, {"resource"}),
         (MCP_READ_WRITE_SCOPES, LEGACY_MCP_WRITE_RESOURCE, {"resource"}),
         (MCP_READ_WRITE_SCOPES, "https://app.localhost/api/mcp/", {"resource"}),
         # Migration 017's write grant fails both checks.
-        ("schatten.write", LEGACY_MCP_WRITE_RESOURCE, {"scope", "resource"}),
+        ("shadow.write", LEGACY_MCP_WRITE_RESOURCE, {"scope", "resource"}),
     ]
     for table in tables:
         for scopes, resource, checks in rejected:
@@ -2192,7 +2192,7 @@ def test_mcp_single_resource_migration_down_restores_the_017_checks(
         _insert_mcp_token_pair(connection, grant_id, b"a" * 32, b"r" * 32)
         connection.execute(
             MCP_PENDING_REQUEST_INSERT,
-            (b"p" * 32, client[0], MCP_CODE_CHALLENGE, "schatten.read", MCP_RESOURCE),
+            (b"p" * 32, client[0], MCP_CODE_CHALLENGE, "shadow.read", MCP_RESOURCE),
         )
         connection.execute(
             MCP_REDEEMED_REQUEST_INSERT,
@@ -2221,7 +2221,7 @@ def test_mcp_single_resource_migration_down_restores_the_017_checks(
                 "grant-read",
                 client[0],
                 user_id,
-                "schatten.read",
+                "shadow.read",
                 LEGACY_MCP_READ_RESOURCE,
             ),
         )

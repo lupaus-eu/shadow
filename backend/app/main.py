@@ -74,7 +74,7 @@ def create_app(
 
     # A slash redirect would build Location from the request's scheme and Host,
     # and FastAPI sees http behind Caddy. Trailing-slash paths answer 404.
-    app = FastAPI(title="Schatten API", lifespan=lifespan, redirect_slashes=False)
+    app = FastAPI(title="Shadow API", lifespan=lifespan, redirect_slashes=False)
     app.state.settings = resolved_settings
     app.state.oidc_provider = resolved_provider
     app.state.auth_rate_limiter = FixedWindowRateLimiter()
@@ -119,7 +119,7 @@ def create_app(
                 content={"error": {"code": "INVALID_HOST", "message": "Invalid host"}},
             )
         else:
-            forwarded_values = request.headers.getlist("x-schatten-client-ip")
+            forwarded_values = request.headers.getlist("x-shadow-client-ip")
             peer = request.client.host if request.client is not None else ""
             trusted_peer = _is_trusted_peer(
                 peer, resolved_settings.trusted_caddy_peer_cidrs

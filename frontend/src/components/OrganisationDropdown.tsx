@@ -33,7 +33,7 @@ function messageFromError(error: unknown): string {
 }
 
 function organisationStorageKey(orgId: string): string {
-  return `schatten:organisationName:${orgId}`;
+  return `shadow:organisationName:${orgId}`;
 }
 
 function storeOrganisationName(orgId: string, name: string): void {
@@ -190,7 +190,7 @@ export default function OrganisationDropdown(props: OrganisationDropdownProps) {
   function navigateToOrganisation(organisation: OrganisationDto): void {
     storeOrganisationName(organisation.id, organisation.name);
     onOrganisationNameChange(organisation.name);
-    navigate(`/schatten/${encodeURIComponent(organisation.id)}/${currentTabSignature()}`, {
+    navigate(`/shadow/${encodeURIComponent(organisation.id)}/${currentTabSignature()}`, {
       state: { organisationName: organisation.name }
     });
   }
