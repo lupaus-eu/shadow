@@ -623,3 +623,32 @@ class MetricValue(Base):
     organization_id: Mapped[UUID] = mapped_column(Uuid, index=True)
     version_id: Mapped[UUID] = mapped_column(Uuid, index=True)
     value: Mapped[float] = mapped_column(Float)
+
+
+class Simulation(Base):
+    """A forecast run of a Model version: method, horizon, what-if adjustments, and results."""
+
+    __tablename__ = "simulations"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    organization_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    model_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    version_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    method: Mapped[str] = mapped_column(String(20))
+    horizon_months: Mapped[int] = mapped_column(Integer)
+    adjustments: Mapped[list[Any]] = mapped_column(JSONB, server_default="[]")
+    skipped: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default="{}")
+    history_end: Mapped[date | None] = mapped_column(Date)
+    created_by_user_account_id: Mapped[UUID | None] = mapped_column(Uuid)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class SimulationPoint(Base):
+    __tablename__ = "simulation_points"
+    simulation_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    metric_key: Mapped[str] = mapped_column(String(40), primary_key=True)
+    period: Mapped[date] = mapped_column(Date, primary_key=True)
+    organization_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    value: Mapped[float] = mapped_column(Float)
+    lower: Mapped[float | None] = mapped_column(Float)
+    upper: Mapped[float | None] = mapped_column(Float)

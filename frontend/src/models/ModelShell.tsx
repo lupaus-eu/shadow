@@ -75,6 +75,7 @@ export function ModelShell() {
       <nav aria-label={model.name} className="flex flex-wrap gap-1 border-b border-line pb-2">
         {tab("", text.tabs.structure, true)}
         {tab("/metrics", text.tabs.metrics)}
+        {tab("/simulations", text.tabs.simulations)}
       </nav>
       {notice ? <Alert tone="danger" role="alert">{notice}</Alert> : null}
       <Outlet context={{ organizationId, modelId, model, version, versions, writable, reloadVersions } satisfies ModelOutlet} />

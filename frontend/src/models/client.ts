@@ -120,3 +120,28 @@ export async function loadSeries(organizationId: string, modelId: string, versio
 export async function saveValues(organizationId: string, modelId: string, versionId: string, metricId: string, values: SeriesPoint[]): Promise<Series> {
   return (await call(`${metricsUrl(organizationId, modelId, versionId)}/${metricId}/values`, { method: "PUT", ...json({ values }) })).json();
 }
+
+export type SimulationMethod = "linear" | "seasonal" | "holt";
+export type Adjustment = { metric_key: string; change_pct: number };
+export type Simulation = { id: string; version_id: string; name: string; method: SimulationMethod; horizon_months: number; adjustments: Adjustment[]; skipped: Record<string, string>; history_end: string | null; created_at: string };
+export type ForecastPoint = { period: string; value: number; lower: number | null; upper: number | null };
+export type MetricResult = { key: string; name: string; unit: string | null; derived: boolean; history: { period: string; value: number }[]; forecast: ForecastPoint[] };
+export type SimulationResult = { simulation: Simulation; metrics: MetricResult[] };
+
+const simulationsUrl = (organizationId: string, modelId: string, versionId: string) => `${modelsUrl(organizationId)}/${modelId}/versions/${versionId}/simulations`;
+
+export async function loadSimulations(organizationId: string, modelId: string, versionId: string): Promise<Simulation[]> {
+  return (await call(simulationsUrl(organizationId, modelId, versionId))).json();
+}
+
+export async function runSimulation(organizationId: string, modelId: string, versionId: string, input: { name: string; method: SimulationMethod; horizon_months: number; adjustments: Adjustment[] }): Promise<SimulationResult> {
+  return (await call(simulationsUrl(organizationId, modelId, versionId), { method: "POST", ...json(input) })).json();
+}
+
+export async function loadSimulation(organizationId: string, modelId: string, versionId: string, simulationId: string): Promise<SimulationResult> {
+  return (await call(`${simulationsUrl(organizationId, modelId, versionId)}/${simulationId}`)).json();
+}
+
+export async function deleteSimulation(organizationId: string, modelId: string, versionId: string, simulationId: string): Promise<void> {
+  await call(`${simulationsUrl(organizationId, modelId, versionId)}/${simulationId}`, { method: "DELETE" });
+}

@@ -10,6 +10,7 @@ import { SignedOutLayout } from "../shell/SignedOutLayout";
 import { MetricsPage } from "../models/MetricsPage";
 import { ModelCanvas } from "../models/ModelCanvas";
 import { ModelShell } from "../models/ModelShell";
+import { SimulationsPage } from "../models/SimulationsPage";
 import { ModelsPage } from "../models/ModelsPage";
 import { OrganizationActivation } from "./OrganizationActivation";
 import {
@@ -42,6 +43,7 @@ export function AuthenticatedShell({
           <Route path="models/:modelId" element={<ModelShell />}>
             <Route index element={<ModelCanvas />} />
             <Route path="metrics" element={<MetricsPage />} />
+            <Route path="simulations" element={<SimulationsPage />} />
           </Route>
           <Route path="notifications" element={<NotificationsPage />} />
           <Route path="notification-settings" element={<NotificationSettingsPage />} />
