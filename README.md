@@ -1,10 +1,16 @@
-# Yearclock
+# Shadow
 
-A multi-Organization SaaS for visually planning recurring and predictable
-organizational work across a calendar year. Each Organization owns circular
-Yearclocks in which Lanes form concentric rings and Events mark dated planning
-entries. See `CONTEXT.md` for the domain vocabulary and
-`.scratch/_PORTFOLIO.md` for feature and ticket status.
+Shadow models organisations as digital twins: a graph of the organisation over time,
+metrics as timeseries, events, scenarios, and forecasts, with AI clients connected
+through MCP. It is built on the Yearclock platform base: Organizations, memberships and
+roles, invitations, Authentik sign-in, row-level security, audit, queues and the worker,
+notifications, billing, legal documents, the platform console and the MCP interface.
+
+**Status:** the platform base runs (`docker compose up`); the Shadow features are being
+ported one at a time from the previous implementation in `legacy/` (tag
+`pre-yearclock-base` holds the last state before the switch). Some documents under
+`docs/` and `CONTEXT.md` still describe the Yearclock product and are being replaced
+feature by feature.
 
 ## Quick Start
 
