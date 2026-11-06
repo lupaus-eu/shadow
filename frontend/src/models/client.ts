@@ -85,3 +85,38 @@ export async function createConnection(organizationId: string, modelId: string, 
 export async function deleteConnection(organizationId: string, modelId: string, connection: GraphConnection): Promise<void> {
   await call(`${modelsUrl(organizationId)}/${modelId}/connections/${connection.id}?expected_version=${connection.version}`, { method: "DELETE" });
 }
+
+export async function loadVersions(organizationId: string, modelId: string): Promise<ModelVersion[]> {
+  return (await call(`${modelsUrl(organizationId)}/${modelId}/versions`)).json();
+}
+
+export type Metric = { id: string; key: string; name: string; unit: string | null; node_id: string | null; formula: string | null; derived: boolean; version: number; values: number };
+export type MetricInput = { key: string; name: string; unit: string | null; node_id: string | null; formula: string | null };
+export type SeriesPoint = { period: string; value: number | null };
+export type Series = { metric: Metric; points: SeriesPoint[] };
+
+const metricsUrl = (organizationId: string, modelId: string, versionId: string) => `${modelsUrl(organizationId)}/${modelId}/versions/${versionId}/metrics`;
+
+export async function loadMetrics(organizationId: string, modelId: string, versionId: string): Promise<Metric[]> {
+  return (await call(metricsUrl(organizationId, modelId, versionId))).json();
+}
+
+export async function createMetric(organizationId: string, modelId: string, versionId: string, input: MetricInput): Promise<Metric> {
+  return (await call(metricsUrl(organizationId, modelId, versionId), { method: "POST", ...json(input) })).json();
+}
+
+export async function updateMetric(organizationId: string, modelId: string, versionId: string, metric: Metric, input: MetricInput): Promise<Metric> {
+  return (await call(`${metricsUrl(organizationId, modelId, versionId)}/${metric.id}`, { method: "PATCH", ...json({ ...input, expected_version: metric.version }) })).json();
+}
+
+export async function deleteMetric(organizationId: string, modelId: string, versionId: string, metric: Metric): Promise<void> {
+  await call(`${metricsUrl(organizationId, modelId, versionId)}/${metric.id}?expected_version=${metric.version}`, { method: "DELETE" });
+}
+
+export async function loadSeries(organizationId: string, modelId: string, versionId: string, metricId: string): Promise<Series> {
+  return (await call(`${metricsUrl(organizationId, modelId, versionId)}/${metricId}/series`)).json();
+}
+
+export async function saveValues(organizationId: string, modelId: string, versionId: string, metricId: string, values: SeriesPoint[]): Promise<Series> {
+  return (await call(`${metricsUrl(organizationId, modelId, versionId)}/${metricId}/values`, { method: "PUT", ...json({ values }) })).json();
+}

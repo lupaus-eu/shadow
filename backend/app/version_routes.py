@@ -27,6 +27,7 @@ from app.model_routes import (
     baseline_of,
     version_of,
 )
+from app.metric_routes import copy_metrics
 from app.models import Connection, ModelVersion, Node
 
 
@@ -86,6 +87,7 @@ def fork_version(session: Session, base: ModelVersion, name: str, description: s
     for connection in session.scalars(select(Connection).where(Connection.version_id == base.id)).all():
         session.add(Connection(id=uuid4(), organization_id=connection.organization_id, model_id=connection.model_id, version_id=fork.id, connection_type_id=connection.connection_type_id, source_node_id=mapping[connection.source_node_id], target_node_id=mapping[connection.target_node_id], version=1))
     session.flush()
+    copy_metrics(session, base.id, fork.id, mapping)
     return fork
 
 

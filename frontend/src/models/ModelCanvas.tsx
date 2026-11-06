@@ -1,12 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useParams, useSearchParams } from "react-router";
 
-import { usePageTitle } from "../shell/AppShell";
-import { modelsHref } from "../shell/nav";
 import { useOrganization } from "../shell/organization-outlet";
-import { Alert, Button, Field, Select, TextArea, TextInput, useConfirm } from "../ui";
+import { useModel } from "./ModelShell";
+import { Alert, Button, Field, Select, TextArea, TextInput } from "../ui";
 import {
-  createConnection, createNode, createVersion, deleteConnection, deleteNode, deleteVersion, loadGraph, loadVersionChanges, RuleError, StaleVersionError, updateNode,
+  createConnection, createNode, deleteConnection, deleteNode, loadGraph, loadVersionChanges, RuleError, StaleVersionError, updateNode,
   type Graph, type GraphConnection, type GraphNode, type VersionChanges,
 } from "./client";
 import { modelMessages } from "./messages";
@@ -30,15 +28,11 @@ function edgePoint(node: GraphNode, to: { x: number; y: number }) {
 
 /** `/organizations/:organizationId/models/:modelId`: the model's nodes and connections on a canvas. */
 export function ModelCanvas() {
-  const { workspace, locale } = useOrganization();
-  const { modelId = "" } = useParams();
-  const [search, setSearch] = useSearchParams();
-  const versionId = search.get("version");
-  const confirm = useConfirm();
-  const [changes, setChanges] = useState<VersionChanges | null>(null);
+  const { locale } = useOrganization();
+  const { organizationId, modelId, version, writable } = useModel();
+  const versionId = version.is_baseline ? null : version.id;
   const text = modelMessages(locale);
-  const organizationId = workspace.organization.id;
-  const writable = workspace.subscription.writable;
+  const [changes, setChanges] = useState<VersionChanges | null>(null);
   const [graph, setGraph] = useState<Graph | null>(null);
   const [failed, setFailed] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -46,7 +40,6 @@ export function ModelCanvas() {
   const [connecting, setConnecting] = useState<{ sourceId: string; connectionTypeId: string } | null>(null);
   const [drag, setDrag] = useState<{ id: string; dx: number; dy: number; moved: boolean } | null>(null);
   const svg = useRef<SVGSVGElement>(null);
-  usePageTitle(graph?.model.name ?? text.title);
 
   const reload = useCallback(async () => {
     try {
@@ -116,36 +109,11 @@ export function ModelCanvas() {
     void act(() => createConnection(organizationId, modelId, { connection_type_id: connecting.connectionTypeId, source_node_id: source.id, target_node_id: node.id }), text.notAllowed);
   }
 
-  const selectVersion = (id: string | null) => { setSelected(null); setConnecting(null); setSearch(id ? { version: id } : {}); };
-  async function fork() {
-    const name = window.prompt(text.versionName, "");
-    if (!name?.trim() || !graph) return;
-    setNotice(null);
-    try { selectVersion((await createVersion(organizationId, modelId, name.trim(), graph.version.id)).id); } catch (cause) {
-      setNotice(cause instanceof RuleError ? text.versionDuplicate : text.failed);
-    }
-  }
-  async function removeVersion() {
-    if (!graph || graph.version.is_baseline) return;
-    if (!(await confirm({ title: text.deleteVersionConfirm(graph.version.name), confirmLabel: text.deleteVersion, destructive: true }))) return;
-    setNotice(null);
-    try { await deleteVersion(organizationId, modelId, graph.version); selectVersion(null); } catch (cause) {
-      setNotice(cause instanceof RuleError ? text.versionHasForks : text.failed);
-    }
-  }
-
   if (failed) return <Alert tone="danger" role="alert">{text.failed}</Alert>;
   if (!graph) return <p role="status" className="text-ink-muted">{text.loading}</p>;
 
   return (
     <div className="flex flex-col gap-4">
-      <Link className="inline-flex w-fit text-[13px] text-ink-muted" to={modelsHref(organizationId)}>{text.back}</Link>
-      <h1 className="m-0 text-xl font-semibold">{graph.model.name}</h1>
-      <div className="flex flex-wrap items-end gap-3">
-        <Field label={text.version} className="w-56">{(control) => <Select {...control} value={graph.version.id} onChange={(event) => selectVersion(graph.versions.find((item) => item.id === event.target.value)?.is_baseline ? null : event.target.value)}>{graph.versions.map((item) => <option key={item.id} value={item.id}>{item.is_baseline ? text.baseline : item.name}</option>)}</Select>}</Field>
-        {writable ? <Button onClick={() => void fork()}>{text.newVersion}</Button> : null}
-        {writable && !graph.version.is_baseline ? <Button variant="ghost-danger" onClick={() => void removeVersion()}>{text.deleteVersion}</Button> : null}
-      </div>
       {!writable ? <Alert tone="warning">{text.readOnly}</Alert> : null}
       {notice ? <Alert tone="danger" role="alert">{notice}</Alert> : null}
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">

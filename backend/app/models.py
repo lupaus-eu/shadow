@@ -5,6 +5,7 @@ from uuid import UUID
 
 from sqlalchemy import (
     Boolean,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -596,3 +597,29 @@ class Connection(Base):
     target_node_id: Mapped[UUID] = mapped_column(Uuid)
     version: Mapped[int] = mapped_column(Integer, server_default="1")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Metric(Base):
+    """A KPI of a Model version: monthly values, or a formula over other metrics by key."""
+
+    __tablename__ = "metrics"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    organization_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    model_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    version_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    node_id: Mapped[UUID | None] = mapped_column(Uuid)
+    key: Mapped[str] = mapped_column(String(40))
+    name: Mapped[str] = mapped_column(String(120))
+    unit: Mapped[str | None] = mapped_column(String(20))
+    formula: Mapped[str | None] = mapped_column(Text)
+    version: Mapped[int] = mapped_column(Integer, server_default="1")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class MetricValue(Base):
+    __tablename__ = "metric_values"
+    metric_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    period: Mapped[date] = mapped_column(Date, primary_key=True)
+    organization_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    version_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    value: Mapped[float] = mapped_column(Float)

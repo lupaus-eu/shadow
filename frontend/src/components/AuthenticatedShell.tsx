@@ -7,7 +7,9 @@ import { NotificationSettingsPage } from "../notifications/NotificationSettingsP
 import { NotificationsPage } from "../notifications/NotificationsPage";
 import { AccountProvider } from "../shell/AppShell";
 import { SignedOutLayout } from "../shell/SignedOutLayout";
+import { MetricsPage } from "../models/MetricsPage";
 import { ModelCanvas } from "../models/ModelCanvas";
+import { ModelShell } from "../models/ModelShell";
 import { ModelsPage } from "../models/ModelsPage";
 import { OrganizationActivation } from "./OrganizationActivation";
 import {
@@ -37,7 +39,10 @@ export function AuthenticatedShell({
         <Route path="/organizations/:organizationId" element={<OrganizationLayout />}>
           <Route index element={<OrganizationHome />} />
           <Route path="models" element={<ModelsPage />} />
-          <Route path="models/:modelId" element={<ModelCanvas />} />
+          <Route path="models/:modelId" element={<ModelShell />}>
+            <Route index element={<ModelCanvas />} />
+            <Route path="metrics" element={<MetricsPage />} />
+          </Route>
           <Route path="notifications" element={<NotificationsPage />} />
           <Route path="notification-settings" element={<NotificationSettingsPage />} />
           <Route path="admin/:section" element={<AdministrationPage />} />
