@@ -15,9 +15,9 @@ Päätetty teknologiapino:
 - database: PostgreSQL
 - ORM: SQLAlchemy
 - migrations: repository-owned Python/Psycopg runner and paired SQL migrations
-- authentication: provider-neutral backend OIDC, with direct Microsoft Entra ID
-  in both development and production under amended ADR-013; local Caddy HTTPS
-  and direct Entra are implemented by TASK-059B
+- authentication: provider-neutral backend OIDC against Shadow's own
+  self-hosted Authentik (ADR-017); local Caddy HTTPS and local Authentik are
+  implemented, production Authentik arrives with SaaS plan steps 086A to 087B
 - local target: loopback Caddy HTTPS at `https://app.localhost`, routing Vite and
   FastAPI, plus a separate prediction worker and application database
 - production target: Docker Engine/Compose on an UpCloud Ubuntu 26.04 LTS host;
@@ -28,17 +28,18 @@ Päätetty teknologiapino:
 
 ## Platform status
 
-Identity: ADR-017 replaces the direct Microsoft Entra sign-in with self-hosted Authentik
-(own instance, closed enrollment, mandatory second factor). The local stack runs
-Authentik from step 2 of the SaaS plan (tickets `authentik-sign-in/01`–`05`); the backend
-switches to it in ticket 03, and the Entra text below becomes historical with ticket 05.
+Identity: ADR-017 selects Shadow's own self-hosted Authentik (pinned 2026.8.5, own
+logical database `authentik` in the application's PostgreSQL, closed enrollment by
+invitation, mandatory second factor). The backend accepts only an Authentik
+per-provider issuer, requires a verified email (`OIDC_REQUIRE_VERIFIED_EMAIL`
+defaults to true) and uses scopes `openid profile email`. Local development runs it
+at `https://id.app.localhost`; the production host is planned as
+`https://id.shadow.lupaus.eu`, and production still runs the last release with the
+previous provider until steps 086A to 087B. Guarded pre-provisioned User linking,
+permanent identity ownership, sessions, CSRF and database roles remain unchanged.
 
-ADR-013 supersedes Coolify/Traefik and local Authentik/federation choices.
-Both environments share the existing single-tenant confidential Entra registration
-with separate secrets and independent databases. Use exact tenant issuer,
-`openid profile email`, no Graph calls and no `email_verified` requirement.
-Guarded pre-provisioned User linking, permanent identity ownership, sessions,
-CSRF and database roles remain unchanged. Builds initially run on UpCloud.
+ADR-013 supersedes Coolify/Traefik and local Authentik/federation choices for
+deployment, with its identity parts amended by ADR-017. Builds initially run on UpCloud.
 Source delivery is amended by TASK-059H: a manual, `main`-only "Deploy to
 production" GitHub Action copies the exact commit and a source manifest to a
 dedicated upload-only account; builds run on UpCloud from the manifest-verified
@@ -125,8 +126,10 @@ answer 404; every tool and prompt checks its own scope (`requires_scope`), so
 approval (`deploy-release --mcp-approval`). Users chat in their own MCP client on
 their own AI subscription; Shadow never calls an LLM or stores LLM keys.
 FastAPI hosts `/api/mcp` (read tools and prompts need `shadow.read`, write
-tools `shadow.write`) and acts as OAuth 2.1 authorization server over the existing
-Entra login, without changing the Entra registration. The write tools stage
+tools `shadow.write`) and acts as OAuth 2.1 authorization server over the
+Authentik login (ADR-015). ADR-0023 decides that AI clients will instead authenticate
+with a dedicated Authentik provider "Shadow MCP", which the backend does not use yet.
+The write tools stage
 AI change sets. **A human decides every apply and reject**: in the Metrics tab,
 or, with `MCP_CHANGE_SET_REVIEW_ENABLED=true`, by approving the MCP client's
 `apply_change_set` or `reject_change_set` call; no other MCP tool may apply

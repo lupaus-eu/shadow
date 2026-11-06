@@ -49,7 +49,7 @@ http:// {
 				replace state REDACTED
 				replace error REDACTED
 				replace error_description REDACTED
-				# Entra's login session identifier on the callback.
+				# A provider's login session identifier on the callback, if it sends one.
 				replace session_state REDACTED
 				# ADR-015: MCP OAuth pending request ids.
 				replace request REDACTED
@@ -60,7 +60,7 @@ http:// {
 				replace refresh_token REDACTED
 				replace code_verifier REDACTED
 			}
-			# Authorization redirects carry request ids, codes and Entra state.
+			# Authorization redirects carry request ids, codes and provider state.
 			resp_headers>Location replace REDACTED
 			wrap json
 		}

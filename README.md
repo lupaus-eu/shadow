@@ -42,15 +42,17 @@ Päätetty rakenne:
 - backend: Python, FastAPI, Pydantic, uv, pytest, pyright, Ruff hakemistossa `backend/`
 - database: PostgreSQL
 - ORM: SQLAlchemy
-- authentication target: backend-managed direct single-tenant Entra in development
-  and production, sharing the existing registration with separate secrets
+- authentication target: self-hosted Authentik as the identity provider, with
+  backend-managed OIDC sign-in ([ADR-017](docs/adr/0017-use-self-hosted-authentik-for-identity.md));
+  production identity is introduced by the SaaS plan
 - local target: HTTPS Caddy -> Vite/FastAPI, application database and one worker
 - production target: UpCloud Ubuntu 26.04 LTS with Docker/Compose, direct Caddy
   TLS and private PostgreSQL 18 in Docker; daily encrypted on-server backups
   in `/opt/postgres-backups` with 7-day retention required for initial release
 
 [ADR-013](docs/adr/0013-shared-entra-local-https-deployment.md) records
-the accepted amendment. TASK-059B implements the local HTTPS/direct-Entra
+the accepted amendment (its identity provider part is superseded by ADR-017).
+TASK-059B implements the local HTTPS
 runtime, TASK-059C implements the non-user reference seed and TASK-059D
 implements the empty-users-table administrator bootstrap. TASK-059G implements
 the production runtime (`docker-compose.production.yml`) and the operator
@@ -81,11 +83,11 @@ make dev-up
 make dev-down
 ```
 
-`make dev-up` creates a missing `.env`, privately collects missing direct-Entra
-configuration into ignored `.env.entra.local`, and validates or creates local
-application TLS without overwriting valid material. It then starts the local
-prerequisites, applies migrations and the idempotent development seed, and
-starts Caddy, API, prediction worker and Vite against the ready schema. It uses
+`make dev-up` creates a missing `.env` from `.env.example` and validates or
+creates local TLS material for `app.localhost` and `id.app.localhost` without
+overwriting valid material. It then starts PostgreSQL, applies migrations and
+the idempotent development seed, and starts the backend, frontend, prediction
+worker, platform worker, Mailpit, Authentik and Caddy against the ready schema. It uses
 local Docker resources only. Production, provider mutation, release, rollback,
 baseline, reset and destructive cleanup operations are intentionally not
 available through the root Makefile; production server commands live in
@@ -94,7 +96,7 @@ available through the root Makefile; production server commands live in
 Frontendin voi ajaa Dockerissa:
 
 ```bash
-docker compose --env-file .env --env-file .env.entra.local up frontend local-caddy
+docker compose --env-file .env up frontend local-caddy
 ```
 
 Frontend dev on saatavilla osoitteessa `https://app.localhost`.
@@ -103,12 +105,12 @@ Backendin voi ajaa Dockerissa:
 
 ```bash
 make dev-init
-docker compose --env-file .env --env-file .env.entra.local up backend local-caddy
+docker compose --env-file .env up backend local-caddy
 ```
 
 Ensimmäinen setup luo myös gitignored local CA:n sovelluksen HTTPS-osoitteelle
-`https://app.localhost`. CA pitää luottaa hostilla ennen browser-testausta;
-tarkat trust-, direct-Entra- ja local-admin-ohjeet ovat
+`https://app.localhost` ja Authentikin osoitteelle `https://id.app.localhost`. CA pitää luottaa hostilla ennen browser-testausta;
+tarkat trust- ja kirjautumisohjeet ovat
 `docs/operations/local-development.md`:ssä.
 
 FastAPIlla ei ole host-published porttia; Caddy reitittää API:n osoitteessa
@@ -117,7 +119,7 @@ FastAPIlla ei ole host-published porttia; Caddy reitittää API:n osoitteessa
 Prediction worker käynnistyy full-stack-komennon mukana erillisenä
 `prediction-worker`-palveluna. Sillä ei ole julkaistua porttia eikä OIDC-
 asetuksia. Sen tila näkyy komennolla
-`docker compose --env-file .env --env-file .env.entra.local ps prediction-worker`; tarkemmat käyttö- ja QA-ohjeet ovat
+`docker compose --env-file .env ps prediction-worker`; tarkemmat käyttö- ja QA-ohjeet ovat
 `docs/operations/local-development.md`:ssä ja
 `docs/operations/qa/PREDICTION-WORKER-RUNTIME-QA.md`:ssä.
 
@@ -131,7 +133,7 @@ curl --cacert /path/printed/by/setup-local-app-tls.sh/ca.crt \
 Käynnistä tietokanta ja aja kaikki puuttuvat migraatiot:
 
 ```bash
-docker compose --env-file .env --env-file .env.entra.local up -d database
+docker compose --env-file .env up -d database
 uv run --env-file .env --project backend python backend/migrate.py up
 ```
 
@@ -141,17 +143,17 @@ on kuvattu tiedostoissa `db/migrations/README.md` ja
 
 Production frontend/backend images, the same-backend-image prediction worker,
 automatic release migration, required
-direct-Entra/UpCloud configuration, manual approval gates, limited production smoke
+UpCloud configuration, manual approval gates, limited production smoke
 and rollback workflow are documented in `docs/architecture/deployment.md`. Local and
 production evidence uses `docs/operations/qa/AUTHENTICATION-QA-CHECKLIST.md`. Deployment
 runs migrations as a separate job; normal backend startup does not mutate the
-schema. These instructions do not authorize a production deployment, Entra
-resource change, tag operation, backup or restore.
+schema. These instructions do not authorize a production deployment, identity
+provider change, tag operation, backup or restore.
 
 Buildatun frontendin preview:
 
 ```bash
-docker compose --env-file .env --env-file .env.entra.local --profile preview up frontend-preview
+docker compose --env-file .env --profile preview up frontend-preview
 ```
 
 Preview on saatavilla osoitteessa `http://localhost:4173`.

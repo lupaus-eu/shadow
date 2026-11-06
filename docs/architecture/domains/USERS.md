@@ -33,7 +33,7 @@ Provides:
 
 Does NOT Own:
 
-- Microsoft Entra ID configuration and OIDC protocol adapters
+- Authentik configuration and OIDC protocol adapters
 - organisation membership rules
 - organisation data
 - scenario or graph data
@@ -163,10 +163,12 @@ Exact HTTP operations and versioned paths are defined in backend implementation 
 Depends On:
 
 - the provider-neutral FastAPI OIDC adapter
-- tenant-specific Microsoft Entra ID directly in both environments under
-  [ADR-013](../../adr/0013-shared-entra-local-https-deployment.md), using
-  the shared confidential registration and separate environment secrets
-- local Caddy/direct Entra is the checked-in development runtime
+- Shadow's own self-hosted Authentik under
+  [ADR-017](../../adr/0017-use-self-hosted-authentik-for-identity.md), with a
+  confidential client and separate environment secrets
+- local Caddy and local Authentik (`https://id.app.localhost`) are the checked-in
+  development runtime; production Authentik is planned by SaaS plan steps 086A
+  to 087B
 
 Referenced By:
 
@@ -199,7 +201,7 @@ one transaction serialized against other User writers.
 Bootstrap audit actors are null because no authenticated application actor can
 exist yet. The command never creates an identity or session, never updates,
 revives or promotes an existing User, and never runs during application startup.
-The first direct-Entra login performs the normal guarded email discovery and
+The first Authentik sign-in performs the normal guarded email discovery and
 permanent identity link. All subsequent Users are managed through the existing
 authenticated admin API/UI.
 
@@ -222,7 +224,7 @@ When implementing user features:
 - preserve role constraints
 - keep historical audit user references nullable while requiring actor writes
   from current authenticated mutations
-- do not add Entra ID behavior without an auth-specific task or ADR
+- do not add identity-provider behavior without an auth-specific task or ADR
 
 Avoid:
 
@@ -237,14 +239,15 @@ Both application roles are internal trusted users with access to all
 non-Users business domains and all organisations. Revisit ADR-004 before
 admitting users outside this boundary or adding organisation isolation.
 
-Direct-Entra first linking in both environments accepts a validated tenant email
-only to find one pre-provisioned active User. Missing email prevents first link;
-exact `(issuer, subject)` is permanent afterward. There is no provider group
-mapping, Graph access, refresh token, back-channel logout or immediate IdP
-revocation.
-Use exact tenant-specific issuer and `openid profile email`; an `email_verified`
-claim is not required. Preserve old Authentik identity rows unchanged when local
-runtime migrates; new Entra identities use the same guarded linking rules.
-TASK-059B provides explicit local-only administrator provisioning on seeded dev
-databases; TASK-059D's production bootstrap still requires an empty users table.
-Login creates no Users, and database roles remain authoritative.
+First linking accepts the email Authentik has verified (recorded as the verified
+address, `shadow_verified_email`; `email_verified` is true only while the address
+equals it) only to find one pre-provisioned active User. A missing or unverified
+email prevents first link and an unknown person gets a generic failure; exact
+`(issuer, subject)` is permanent afterward. There is no provider group mapping,
+Graph-style directory access, refresh token, back-channel logout or immediate IdP
+revocation. The backend accepts only an Authentik per-provider issuer and scopes
+`openid profile email`. `users.account_class` (`customer` or `platform`) and
+`locale` exist since migration 026; application routes, the Users API, MCP grants
+and the application sign-in accept only customer accounts. TASK-059D's production
+bootstrap still requires an empty users table. Login creates no Users (accounts
+for new people arrive with tenants), and database roles remain authoritative.

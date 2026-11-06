@@ -72,7 +72,7 @@ services:
       DATABASE_POOL_SIZE: ${DATABASE_POOL_SIZE:-5}
       DATABASE_MAX_OVERFLOW: ${DATABASE_MAX_OVERFLOW:-10}
       APP_ENV: production
-      OIDC_DISCOVERY_URL: ${OIDC_DISCOVERY_URL:?Set the tenant-specific OIDC discovery URL}
+      OIDC_DISCOVERY_URL: ${OIDC_DISCOVERY_URL:?Set the Authentik per-provider OIDC discovery URL}
       OIDC_ISSUER: ${OIDC_ISSUER:?Set the exact expected OIDC issuer}
       OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:?Set the confidential OIDC client ID}
       OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:?Set the confidential OIDC client secret}
@@ -115,7 +115,7 @@ services:
       AI_CHANGE_SET_LOCK_TIMEOUT_MS: "5000"
     tmpfs:
       - /tmp:size=64m
-    # edge provides Caddy ingress and Entra egress; data is internal-only.
+    # edge provides Caddy ingress and identity-provider egress; data is internal-only.
     networks: [edge, data]
     expose:
       - "8000"

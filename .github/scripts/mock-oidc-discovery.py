@@ -1,8 +1,8 @@
-"""Simulated Entra discovery endpoint for disposable runtime QA only.
+"""Simulated Authentik discovery endpoint for disposable runtime QA only.
 
-Serves the tenant-specific discovery document and a JWKS over HTTPS with a
-throwaway QA certificate so the production backend can start without tenant
-access. It issues no tokens; interactive login is outside this harness.
+Serves the per-provider discovery document and a JWKS over HTTPS with a throwaway QA
+certificate so the production backend can start without an identity provider. It issues no
+tokens; interactive login is outside this harness.
 """
 
 import json
@@ -10,18 +10,20 @@ import os
 import ssl
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-TENANT = os.environ.get("QA_TENANT", "qa-tenant")
-BASE = f"https://login.microsoftonline.com/{TENANT}"
+HOST = os.environ.get("QA_IDENTITY_HOST", "id.qa.example.test")
+SLUG = os.environ.get("QA_PROVIDER_SLUG", "shadow")
+ORIGIN = f"https://{HOST}"
+ISSUER = f"{ORIGIN}/application/o/{SLUG}/"
 DOCUMENTS = {
-    f"/{TENANT}/v2.0/.well-known/openid-configuration": {
-        "issuer": f"{BASE}/v2.0",
-        "authorization_endpoint": f"{BASE}/oauth2/v2.0/authorize",
-        "token_endpoint": f"{BASE}/oauth2/v2.0/token",
-        "jwks_uri": f"{BASE}/discovery/v2.0/keys",
-        "end_session_endpoint": f"{BASE}/oauth2/v2.0/logout",
+    f"/application/o/{SLUG}/.well-known/openid-configuration": {
+        "issuer": ISSUER,
+        "authorization_endpoint": f"{ORIGIN}/application/o/authorize/",
+        "token_endpoint": f"{ORIGIN}/application/o/token/",
+        "jwks_uri": f"{ISSUER}jwks/",
+        "end_session_endpoint": f"{ISSUER}end-session/",
         "id_token_signing_alg_values_supported": ["RS256"],
     },
-    f"/{TENANT}/discovery/v2.0/keys": {
+    f"/application/o/{SLUG}/jwks/": {
         "keys": [{"kty": "RSA", "kid": "qa", "use": "sig", "n": "sXch", "e": "AQAB"}]
     },
 }

@@ -1,5 +1,7 @@
 # First Production Rollout Record (TASK-059F)
 
+> Historical record (2026-11-06): the identity setup (Microsoft Entra) recorded here was replaced by Authentik (ADR-017). Kept as evidence of the runs it records.
+
 This is the F record named by the
 [production runbook](../../runbooks/production.md): sanitized evidence for the
 authorized setup of the existing UpCloud host and the first production release

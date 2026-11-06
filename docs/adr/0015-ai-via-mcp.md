@@ -12,6 +12,8 @@ Amended: 2026-10-29 ([MCP Change-Set Review](#mcp-change-set-review)),
 2026-11-03 ([One MCP Service In The Existing FastAPI App](#one-mcp-service-in-the-existing-fastapi-app)
 and [Per-Tool Scope Check](#per-tool-scope-check))
 
+> The OAuth server part of this ADR is replaced by [ADR-0023](0023-authorize-mcp-clients-with-a-dedicated-authentik-provider.md) once SaaS plan steps 080I-080K land; the MCP server, tools, skills and change sets stay.
+
 ---
 
 # Context

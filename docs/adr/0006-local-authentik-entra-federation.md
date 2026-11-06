@@ -2,6 +2,8 @@
 
 Status: Accepted
 
+> Historical and superseded by [ADR-017](0017-use-self-hosted-authentik-for-identity.md): Shadow now signs in through its own self-hosted Authentik with no Entra federation.
+
 Date: 2026-08-20
 
 Amended: 2026-08-24 to align with ADR-005's production-only environment model.

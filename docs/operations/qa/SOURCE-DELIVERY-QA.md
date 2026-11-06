@@ -1,5 +1,7 @@
 # Git-Free Source Delivery QA (TASK-059H1-H3)
 
+> Historical record (2026-11-06): the identity setup (Microsoft Entra) recorded here was replaced by Authentik (ADR-017). Kept as evidence of the runs it records.
+
 This record holds TASK-059H1 evidence for the source manifest, the verified
 receive (`shadow-receive`) and `build-release --source`
 ([ADR-013](../../adr/0013-shared-entra-local-https-deployment.md#source-delivery-without-git-on-the-server)).

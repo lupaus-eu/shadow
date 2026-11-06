@@ -185,7 +185,7 @@ def test_verified_email_is_required_by_default() -> None:
             "per-provider issuer",
         ),
         (
-            {"OIDC_ISSUER": "https://login.microsoftonline.com/tenant-id/v2.0"},
+            {"OIDC_ISSUER": "https://login.provider.test/tenant-id/v2.0"},
             "per-provider issuer",
         ),
         (

@@ -11,8 +11,7 @@ Tämän tiedoston tulee kuvata päätettyä tai toteutettua nykytilaa. Tulevaisu
 Status: MVP bootstrap with authentication and release ingress implemented
 
 [ADR-013](../adr/0013-shared-entra-local-https-deployment.md) accepts
-direct Entra in both environments, distinct HTTPS origins, a shared registration,
-and Docker deployment on UpCloud Ubuntu 26.04 LTS with direct Caddy TLS and
+distinct HTTPS origins and Docker deployment on UpCloud Ubuntu 26.04 LTS with direct Caddy TLS and
 private Docker PostgreSQL 18. Daily encrypted on-server backups with 7-day
 retention and backup/restore evidence are required. The reference-data seed,
 empty-users-table administrator bootstrap, production runtime, build/release and
@@ -32,8 +31,8 @@ Päätetty tekninen perusrakenne:
   endpoints since TASK-074)
 - database: PostgreSQL
 - ORM: SQLAlchemy
-- authentication target: provider-neutral backend OIDC connecting directly to
-  Microsoft Entra ID in development and production
+- authentication: provider-neutral backend OIDC against Shadow's own
+  self-hosted Authentik (ADR-017)
 - local target: Caddy HTTPS, Vite, FastAPI, one prediction worker and PostgreSQL
 - production target: Docker Engine/Compose on UpCloud Ubuntu 26.04 LTS, Caddy
   public TLS and private PostgreSQL 18 with persistent storage (runtime
@@ -60,7 +59,7 @@ Päätetty tekninen perusrakenne:
 - AI via MCP: ADR-015 accepts one MCP service with read and write scopes in
   the backend (since the 2026-11-03 amendment; separate read and write
   services before it), Shadow as OAuth 2.1 authorization server for MCP
-  clients over the existing Entra login, and AI change sets that a human
+  clients over the Authentik login, and AI change sets that a human
   applies or rejects, in Shadow or, since the 2026-10-29 amendment, by
   approving the MCP client's call. This is an accepted design. TASK-069B's flush-only domain service transaction
   cores, TASK-069C's deterministic timeseries generator, TASK-069D's MCP
@@ -102,8 +101,8 @@ Kun tuotesuunta täsmentyy, lisää tähän lyhyt kuvaus:
 # Accepted Runtime Shape And Implementation Status
 
 ```text
-Development: Browser --HTTPS--> local Caddy --> Vite / FastAPI --> Entra
-Production:  Browser --HTTPS--> Caddy (React) --/api, /.well-known/oauth-*--> FastAPI --> Entra
+Development: Browser --HTTPS--> local Caddy --> Vite / FastAPI --> Authentik
+Production:  Browser --HTTPS--> Caddy (React) --/api, /.well-known/oauth-*--> FastAPI --> Authentik (planned)
                                                        |--> PostgreSQL 18
 Prediction worker ------------------------------------> PostgreSQL 18
 Migration job ----------------------------------------> PostgreSQL 18
@@ -116,10 +115,9 @@ gates API/worker startup; backend health gates frontend readiness. Both API
 and worker use the same immutable backend image; worker config is database-only.
 
 The checked-in development runtime is loopback `https://app.localhost` through
-local Caddy to Vite/FastAPI and direct Entra. Caddy fixes the API Host/proxy
-headers and Vite HMR uses WSS on the same HTTPS origin. Existing Authentik
-volumes and identity rows are preserved but Authentik is not an active runtime
-dependency. The Coolify/Traefik adapter was removed by G. No
+local Caddy to Vite/FastAPI, with Authentik at `https://id.app.localhost`.
+Caddy fixes the API Host/proxy headers and Vite HMR uses WSS on the same HTTPS
+origin. The Coolify/Traefik adapter was removed by G. No
 Authentik, Traefik, forward-auth or `auth.lupaus.eu` is needed in the target.
 There is no staging environment.
 
@@ -283,38 +281,52 @@ If a concept changes meaning, lifecycle or ownership, update concept, domain, da
 
 # Authentication
 
-> Identity is provided by self-hosted Authentik since ADR-017 (the backend discovers it through
-> `OIDC_INTERNAL_BASE_URL`, requires `email_verified`, and ends the Authentik session at
-> sign-out with `id_token_hint`; see [the login sequence](diagrams/generated/sequence-oidc-login.svg)).
-> The Microsoft Entra descriptions below are historical and are removed by ticket
-> `authentik-sign-in/05`.
+> Identity is provided by Shadow's own self-hosted Authentik
+> ([ADR-017](../adr/0017-use-self-hosted-authentik-for-identity.md)). See
+> [the login sequence](diagrams/generated/sequence-oidc-login.svg) and
+> [the authentication topology](diagrams/component-authentication-topology.puml).
+> Production still runs the last release with the previous identity provider;
+> `main` is not released until Authentik runs in production
+> ([production runbook](../runbooks/production.md)).
 
 Status: backend OIDC and application-session boundary implemented
 
-FastAPI is a confidential OIDC relying party. ADR-013 selects direct
-single-tenant Entra in both environments using the existing shared registration
-and distinct secrets. React is not an OIDC client and receives no provider tokens.
-Local Caddy/direct-Entra is implemented. Historical federation QA does not
-verify the direct-Entra development or production ingress.
+FastAPI is a confidential OIDC relying party. Identity is Shadow's own Authentik
+instance (pinned 2026.8.5) with its own logical database `authentik` in the
+application's PostgreSQL. The local identity host is `https://id.app.localhost`;
+the production host is planned as `https://id.shadow.lupaus.eu`. Enrollment is
+closed and by invitation in production (`AUTHENTIK_ENROLLMENT_OPEN=false`), and a
+second factor (TOTP or passkey) is mandatory. Authentik owns credentials,
+recovery and identity sessions; Shadow keeps its own sessions and CSRF. React is
+not an OIDC client and receives no provider tokens.
 
 | Purpose | Development | Production |
 | --- | --- | --- |
 | Public origin | `https://app.localhost` | `https://shadow.lupaus.eu` |
-| Entra Web callback | `https://app.localhost/api/v1/auth/callback` | `https://shadow.lupaus.eu/api/v1/auth/callback` |
+| OIDC callback | `https://app.localhost/api/v1/auth/callback` | `https://shadow.lupaus.eu/api/v1/auth/callback` |
 | Post-logout return | `https://app.localhost/login` | `https://shadow.lupaus.eu/login` |
 
-Use exact tenant-specific issuer, `openid profile email`, no Graph calls and
-no `email_verified` requirement. Registration identity, consent, permissions,
-assignments and callbacks are shared despite separate credentials. Application
-databases and cookies remain independent. Remove obsolete Authentik callbacks
-and its Graph permission from target configuration; actual tenant cleanup
-requires authorized setup and checks for other consumers under F.
+`OIDC_DISCOVERY_URL` and `OIDC_ISSUER` are an Authentik per-provider issuer
+`https://<identity host>/application/o/<slug>/`; all provider endpoints must be
+on the issuer's origin, the production issuer has no explicit port and the
+issuer is never on the application's own origin. `OIDC_INTERNAL_BASE_URL`
+optionally gives the Docker-internal address for discovery and token calls
+(production: plain http only for a single-label service name, otherwise https).
+Scopes are `openid profile email`, and `OIDC_REQUIRE_VERIFIED_EMAIL` defaults to
+true. Authentik records the verified email as the verified address
+(`shadow_verified_email`), and `email_verified` is true only while the address
+equals it. The backend keeps the ID token with the session
+(`auth_sessions.id_token`) only to send `id_token_hint` at sign-out; sign-out
+ends the Shadow and Authentik sessions and returns to `/login`.
 
-Retain guarded linking to a pre-provisioned active User and permanent
-`(issuer, subject)` ownership. Never rewrite old Authentik identities, create
-Users during login or copy sessions between environments. B provides explicit
-local-only designated-admin provisioning for already-seeded databases; D's
-production bootstrap remains restricted to a completely empty users table.
+Shadow links an identity by verified email once, guarded, to a pre-provisioned
+active User; after that the permanent `(issuer, subject)` pair owns the link.
+Shadow never creates a User at sign-in (accounts for new people arrive with
+tenants), never copies sessions between environments, and refuses unverified or
+unknown people with a generic failure. `users.account_class` (`customer` or
+`platform`) and `locale` exist since migration 026; application routes, the
+Users API, MCP grants and the application sign-in accept only customer accounts.
+The production bootstrap remains restricted to a completely empty users table.
 
 ADR-004:n mukainen opaque sovellusistunto tallennetaan palvelinpuolelle vain
 hashatulla tunnisteella. FastAPI validoi istunnon ja aktiivisen User-rivin
@@ -323,16 +335,16 @@ kahdeksan tunnin absoluuttinen enimmäisaika, ja admin voi revokoida käyttäjä
 kaikki sovellusistunnot.
 
 Ensimmäinen onnistunut linkitys vaatii aktiivisen pre-provisionoidun Userin ja
-matching emailin; tämän jälkeen exact, case-sensitive `(issuer, subject)` on
-pysyvä avain. Missing email, väärä tenant/issuer tai ristiriitainen linkitys
-failaa suljetusti.
+Authentikin vahvistaman emailin; tämän jälkeen exact, case-sensitive
+`(issuer, subject)` on pysyvä avain. Vahvistamaton tai puuttuva email, väärä
+issuer tai ristiriitainen linkitys failaa suljetusti.
 
-Salasanapolitiikkaa ei hallita sovelluksessa, ellei Entra ID -integraation ulkopuolelle lisätä erillistä kirjautumistapaa.
+Salasanapolitiikkaa ei hallita sovelluksessa: tunnistetiedot ja palautus kuuluvat Authentikille.
 
 Tunnetut rajat: ei organisation membership authorizationia, back-channel
 logoutia, immediate IdP revocationia, provider group mappingia, Graph-kutsuja,
 refresh tokeneita tai SCIM-provisionointia. Kaikkien aktiivisten sisäisten
-käyttäjien all-organisation access ja rajattu Entra email first-link ovat
+käyttäjien all-organisation access ja rajattu vahvistetun emailin first-link ovat
 hyväksyttyjä trust-model-valintoja, eivät toteutusaukkoja.
 
 Authentication component- ja login sequence -kuvat:
@@ -365,7 +377,7 @@ Periaate:
 Kaikkien käyttäjien pääsy kaikkiin organisaatioihin on hyväksytty sisäisen
 työkalun trust boundary, ei toteuttamatta jäänyt object-level authorization.
 Mallia on arvioitava uudelleen ennen ulkopuolisten käyttäjien hyväksymistä tai
-organisaatioeristyksen lisäämistä. Route `orgId`, sähköposti, Entra tenant,
+organisaatioeristyksen lisäämistä. Route `orgId`, sähköposti, identity provider,
 provider-ryhmä tai token claim ei muodosta membershipiä tai käyttöoikeutta.
 
 ---
@@ -658,9 +670,12 @@ Accepted design:
 - Shadow is its own OAuth 2.1 authorization server: discovery, Dynamic
   Client Registration limited by a redirect URI allowlist, mandatory PKCE
   S256, opaque SHA-256-hashed tokens, rotating refresh tokens with reuse
-  detection. Authorization reuses the existing SPA login, Entra and
-  `return_to` flow plus a CSRF-protected consent page. The Entra registration
-  does not change.
+  detection. Authorization reuses the existing SPA login, the Authentik
+  sign-in and the `return_to` flow plus a CSRF-protected consent page.
+  [ADR-0023](../adr/0023-authorize-mcp-clients-with-a-dedicated-authentik-provider.md)
+  decides that AI clients will authenticate with a dedicated Authentik provider
+  ("Shadow MCP") instead; the backend serves its own server until that switch
+  is made.
 - Every MCP request re-reads the token, grant, User and role; effective scopes
   are the grant's scopes intersected with the role's allowed scopes
   (`ROLE_SCOPES`). Each grant and its tokens are bound to the one MCP resource
@@ -669,7 +684,7 @@ Accepted design:
   MCP endpoint accepts only bearer tokens, and `/api/v1` accepts only the
   session cookie.
 - Grants last at most 30 days (refresh tokens expire after 7 idle days)
-  without an Entra re-check. That is an accepted trade-off against ADR-004's
+  without an identity-provider re-check. That is an accepted trade-off against ADR-004's
   browser-session bounds, so offboarding must soft-delete the User or revoke
   the User's grants. The incident procedure is to disable MCP and revoke
   grants, with no manual database change.
@@ -1044,7 +1059,7 @@ A future UpCloud Managed PostgreSQL migration remains separately planned,
 covering data transfer, connection/TLS/session advisory locks, cutover/rollback
 and continuity of backup encryption, retention and restore verification.
 
-Releases need explicit manual approval and narrow direct-Entra production smoke.
+Releases need explicit manual approval and narrow production sign-in smoke.
 Compose does not promise zero downtime. Retain matched stable artifacts for
 coordinated application rollback only if compatible with migrated schema;
 use expand/contract changes. No automatic down migrations, volume deletion,
@@ -1078,8 +1093,9 @@ ADR-002 Database Migration Tool: accepted
 ADR-003 Coolify Deployment And Release Migrations: deployment superseded by ADR-013; release contract retained
 ADR-004 Authentication, Identity And Session Architecture: accepted
 ADR-005 Production-Only Deployment Environments: accepted
-ADR-006 Local Authentik TLS And Optional Entra Federation: target superseded by ADR-013
-ADR-013 Shared Entra Registration And Local HTTPS Deployment: accepted; source delivery H1-H3 implemented, first rollout by TASK-059F (v0.1.0)
+ADR-006 Local Authentik TLS And Optional Entra Federation: target superseded by ADR-013; historical
+ADR-013 Shared Entra Registration And Local HTTPS Deployment: accepted; deployment parts retained, identity parts amended by ADR-017; first rollout by TASK-059F (v0.1.0)
+ADR-017 Use Self-Hosted Authentik For Identity: accepted
 ADR-015 AI Via MCP With Human-Applied Change Sets: accepted, amended 2026-10-29; implemented (TASK-069B..TASK-069P), enabled in production 2026-11-03 (v0.2.0)
 ```
 

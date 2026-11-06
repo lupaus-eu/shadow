@@ -208,17 +208,16 @@ non-canonical, port-bearing, malformed or wildcard origin rejection, loopback
 health, HTTP -> HTTPS redirect, SPA fallback, wrong-Host rejection on 80 and
 443, forwarded-header replacement with the actual peer address, no HTTP/3
 advertisement, HSTS, Referrer-Policy, nosniff, frame denial, enforced CSP and
-selective callback query redaction, including Entra's `session_state`, plus
+selective callback query redaction, including the provider's `session_state`, plus
 CSRF-header redaction while retaining ordinary request metadata.
 
 Automated checks do not replace provider/browser verification. Run simulated
-direct-Entra OIDC and local Caddy checks from
-`docs/operations/qa/AUTHENTICATION-QA-CHECKLIST.md`. Authorized browser verification uses
-the designated Entra account and is recorded separately; it does not prove the
-direct production client or authorize production activity.
+OIDC and local Caddy checks from
+`docs/operations/qa/AUTHENTICATION-QA-CHECKLIST.md`. Authorized browser verification is recorded separately; it does not prove the
+production client or authorize production activity.
 
 There is no staging rehearsal. After each human-approved production
-deployment, operators run only the limited direct Entra smoke defined in
+deployment, operators run only the limited production smoke defined in
 `docs/architecture/deployment.md`; destructive, load, failure injection and broad automated
 testing are prohibited against production.
 
@@ -406,7 +405,7 @@ upload key reaches only `upload-gate`, and that no key material appears in the
 output. Run shellcheck on it, and do not run it with
 elevated privileges on shared machines beyond its read-only `sudo -n` probes.
 `docs/runbooks/production.md` commands that cannot be exercised without the real
-host or provider (for example `systemctl reload ssh`, DNS, Entra, UpCloud
+host or provider (for example `systemctl reload ssh`, DNS, the identity provider, UpCloud
 firewall) are labelled untested there and remain F verification.
 
 Real ACME issuance is not part of CI. `docs/operations/qa/PRODUCTION-RUNTIME-QA.md`
@@ -609,7 +608,7 @@ and audit actors for every mutation family.
 
 Frontend authentication tests mock Shadow's application-session endpoints:
 `GET /api/v1/auth/session` and `POST /api/v1/auth/logout`. They do not mock or
-expose Entra, Authentik, OIDC codes, provider tokens or provider claims. The
+expose Authentik, OIDC codes, provider tokens or provider claims. The
 shared request-helper tests cover same-origin credentials, memory-only CSRF
 headers, global `401` invalidation and non-invalidating `403` responses. UI
 tests cover restoration loading, protected routes, role-aware Users navigation,
@@ -909,136 +908,49 @@ cd backend
 uv run pytest tests/test_ai_change_sets_api.py tests/test_api_authorization.py -v
 ```
 
-## Local Direct-Entra Integration
+## Local Authentik Sign-In Integration
 
-Use the local Caddy/direct-Entra configuration rather than the historical
-Authentik commands below. The automated boundary is simulated OIDC plus the
-disposable local configuration check, so it requires no tenant credentials:
+The local stack runs Authentik (ADR-017) behind Caddy at `https://id.app.localhost`.
+With `make dev-up` running, check the identity provider and the sign-in end to end:
 
 ```bash
-scripts/verify-local-direct-entra-config.sh /path/to/base.env /path/to/private-entra.env
+make authentik-verify
+make sign-in-verify
+```
+
+`make authentik-verify` (`scripts/verify-authentik-local.py`) checks Authentik:
+MFA, the authorization code flow with PKCE and the MCP provider; add
+`--enrollment` for closed enrollment. `make sign-in-verify`
+(`scripts/verify-local-sign-in.py`) signs a seeded user in to Shadow through
+Authentik and out again. `make authentik-apply` forces a reapply of the
+blueprints. The dev users, TOTP and troubleshooting are in
+`docs/runbooks/authentik-local.md`.
+
+The backend auth suite uses simulated OIDC and needs no running provider:
+
+```bash
 cd backend
 uv run pytest tests/test_auth_api.py tests/test_auth_provider.py \
-  tests/test_config.py tests/test_provision_local_admin.py -v
+  tests/test_config.py -v
 ```
 
-The configuration check covers loopback ingress, no Authentik services, exact
-HTTPS origin, secure cookie setting, direct Entra claim policy, fixed Caddy peer
-and leaf-only certificate mount, and that the local Caddyfile redacts the CSRF
-header and `session_state`. The backend suite covers exact issuer, missing
-email, no `email_verified` dependency, guarded first linking, existing identity,
+It covers the Authentik per-provider issuer, the verified-email requirement
+(`OIDC_REQUIRE_VERIFIED_EMAIL`), guarded first linking, existing identity,
 sessions, CSRF, logout, spoofed forwarded headers, callback-log redaction
 including `session_state`, and trailing-slash paths answering 404 instead of a
-redirect (TASK-071).
-The local provisioning tests cover seeded/populated database preservation,
-validation, conflicts and deleted users without identities, sessions or role
-changes.
+redirect (TASK-071). Shadow never creates a User at sign-in; an unknown person
+or an unverified email gets a generic failure.
 
-An authorized browser run against the designated tenant account is separate
-evidence. Record it as pending until setup exists; mock tests do not pass it.
+Browser QA: sign in as `dev-admin` and `dev-consultant`, check the session role
+from `/api/v1/auth/session`, sign out and confirm both the Shadow session and
+the Authentik session end. Check in DevTools that no provider token is in the
+URL fragment, web storage, cookies or Shadow API responses, and that the Caddy and
+backend logs show no secret, code, token, cookie, CSRF value or personal email
+(Authentik's own log does carry the sign-out request line with `id_token_hint`,
+which contains the email and name: a known, accepted risk in ADR-017 until
+sign-out is made a POST). Record only date, commit, tester and pass/fail.
 
-## Historical Local Authentik Integration
-
-The commands and results in this retained historical section are superseded and
-must not be run against the current Compose runtime.
-
-TASK-039E:n Authentik-tarkistukset käyttävät `.env.authentik.local`-tiedostoa,
-joka sisältää vain paikallisia salaisuuksia ja salted password hasheja. Luo se
-ensin ja validoi renderöity Compose. Tarkistusskripti käyttää samaa kerrostusta
-kuin runtime: `.env` ensin ja `.env.authentik.local` sen jälkeen.
-
-```bash
-scripts/setup-local-authentik.sh
-scripts/verify-local-authentik-config.sh
-docker compose --env-file .env --env-file .env.authentik.local config --quiet
-```
-
-Fresh-volume bootstrap pitää ajaa eksplisiittisellä disposable project namella.
-Pysäytä mahdollinen normaali identity stack ensin, jotta loopback-portti 9443
-vapautuu. Seuraava teardown poistaa vain
-`shadow-authentik-bootstrap-test`-projektin kontit, networkin ja nimetyt
-volumet; se ei kohdista normaaleihin `shadow_*`-volumeihin:
-
-```bash
-docker compose --env-file .env --env-file .env.authentik.local stop authentik-tls authentik-worker authentik-server authentik-database
-scripts/setup-local-authentik.sh /tmp/shadow-authentik-bootstrap-test.env
-docker compose \
-  --project-name shadow-authentik-bootstrap-test \
-  --env-file .env \
-  --env-file /tmp/shadow-authentik-bootstrap-test.env \
-  up -d --wait authentik-database authentik-server authentik-worker authentik-tls
-scripts/smoke-local-authentik.sh
-docker compose \
-  --project-name shadow-authentik-bootstrap-test \
-  --env-file .env \
-  --env-file /tmp/shadow-authentik-bootstrap-test.env \
-  down --volumes
-rm /tmp/shadow-authentik-bootstrap-test.env
-```
-
-Käynnistä tämän jälkeen normaali full stack, aja migraatiot ja dev seed
-`docs/operations/local-development.md`:n komennoilla. Manual browser QA:
-
-- avaa `http://app.localhost:5173/api/v1/auth/login` ja kirjaudu
-  `shadow-consultant`-tunnuksella
-- varmista `/api/v1/auth/session`-vastauksesta consultant-käyttäjä ja
-  Shadowin tietokantarooli
-- kirjaudu ulos `POST /api/v1/auth/logout` -flow'n kautta ja varmista sekä
-  local sessionin että selainevästeen poistuminen
-- toista `shadow-admin`-tunnuksella ja varmista admin-rooli
-- yritä kirjautua `shadow-unmatched`-tunnuksella; odota geneeristä virhettä ja
-  varmista, ettei `users`- tai `user_identities`-riviä luotu
-- tarkista selaimen storage/cookie-näkymästä, että `app.localhost` ei lähetä
-  Shadow-cookieita `auth.localhost`-hostille eikä päinvastoin
-
-Token-claimien tarkistus tehdään Authentikin provider previewlla tai rajatulla
-kertakäyttöisellä testiclientillä: vaadi `sub`, `name`, `email` ja
-`email_verified=true`; varmista ettei tokenissa ole `groups`, `roles`, `oid` tai
-`tid`. Älä lokita tai tallenna oikean browser-flow'n authorization codea,
-tokeneita, cookieita tai salasanoja.
-
-Optional local Entra federation tarkistetaan lisäksi näin:
-
-```bash
-scripts/setup-local-entra.sh
-scripts/verify-local-entra-config.sh
-docker compose \
-  --env-file .env \
-  --env-file .env.authentik.local \
-  --env-file .env.entra.local \
-  -f docker-compose.yml \
-  -f docker-compose.entra.yml \
-  up -d --wait database authentik-database authentik-server authentik-worker authentik-tls
-uv run --env-file .env --project backend python backend/migrate.py up
-scripts/provision-local-entra-user.sh
-docker compose \
-  --env-file .env \
-  --env-file .env.authentik.local \
-  --env-file .env.entra.local \
-  -f docker-compose.yml \
-  -f docker-compose.entra.yml \
-  up -d --wait
-scripts/smoke-local-authentik.sh
-```
-
-Browser QA:ssa vaadi matching-email login, Shadowin tietokantarooli, logout
-ja unmatched Entra emailin geneerinen failure. Tarkista DevToolsista ettei
-provider tokenia ole URL-fragmentissa, web storagessa, cookieissa tai Shadowin
-API-vastauksissa. Tarkista Caddy-, Authentik- ja backend-lokeista, etteivät
-client secret, code, token, cookie, CSRF-arvo tai henkilökohtainen email näy.
-Tuloksiin kirjataan vain päivä, commit, testaaja ja pass/fail.
-
-Lopuksi aja backendin auth-harness ja normaalit baseline-tarkistukset. Local
-provider tai local federation ei korvaa human-approved limited direct-Entra
-production smokea:
-
-```bash
-cd backend
-uv run pytest tests/test_auth_api.py tests/test_auth_provider.py -v
-uv run ruff check .
-uv run pytest
-uv run pyright
-```
+Local sign-in does not replace the human-approved limited production smoke.
 
 ---
 

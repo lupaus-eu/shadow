@@ -78,9 +78,10 @@ Lue nämä yhdessä datamallin kanssa:
   identity per issuer.
 - Login transactions are browser-bound through a separate hash and contain no
   User or provider-token relationship.
-- Sessions reference one User and persist no raw session identifier or provider
-  token.
-- Authentication configuration, provider tokens and Entra/Authentik resources
+- Sessions reference one User and persist no raw session identifier. A session
+  keeps the ID token (`auth_sessions.id_token`, migration 025) only to send
+  `id_token_hint` at sign-out; no access or refresh token is stored.
+- Authentication configuration, provider tokens and Authentik resources
   are not logical entities. A session is bounded by a 30-minute idle timeout
   and fixed eight-hour absolute expiry; exact `(issuer, subject)` remains the
   durable link after guarded email-based first discovery.

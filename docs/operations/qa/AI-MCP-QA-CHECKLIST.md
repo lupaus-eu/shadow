@@ -1,5 +1,7 @@
 # AI Via MCP QA Checklist
 
+> Note (2026-11-06): the sign-in described in the Entra-era run records below was replaced by Authentik (ADR-017); those records are kept as evidence. The "Authentik MCP provider" section and the production enablement gate remain current.
+
 Use this checklist for the TASK-069P local evidence of
 [ADR-015](../../adr/0015-ai-via-mcp.md) and for the later production
 enablement record. Record the date, tester role, application commit,

@@ -3,10 +3,10 @@ SHELL := /bin/sh
 .DEFAULT_GOAL := help
 
 COMPOSE := docker compose --env-file .env
-COMPOSE_LOCAL := $(COMPOSE) --env-file .env.entra.local
+COMPOSE_LOCAL := $(COMPOSE)
 MIGRATE := uv run --env-file .env --project backend python backend/migrate.py up
 SEED := $(COMPOSE_LOCAL) exec -T database sh -c 'psql -v ON_ERROR_STOP=1 -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"' < db/init/002_seed_development_data.sql
-LOCAL_INIT := if [ ! -f .env.entra.local ] || ! grep -q '^OIDC_CLIENT_SECRET=' .env.entra.local; then scripts/setup-local-entra.sh; fi; scripts/setup-local-app-tls.sh
+LOCAL_INIT := scripts/setup-local-app-tls.sh
 
 .PHONY: \
 	help \
@@ -14,7 +14,7 @@ LOCAL_INIT := if [ ! -f .env.entra.local ] || ! grep -q '^OIDC_CLIENT_SECRET=' .
 	check backend-check backend-lint backend-test backend-typecheck \
 	frontend-check frontend-format frontend-format-check frontend-lint frontend-test frontend-build \
 	dev-init db-up migrate seed dev-up dev-down preview-up \
-	diagrams local-verify authentik-verify sign-in-verify authentik-apply provision-local-admin
+	diagrams authentik-verify sign-in-verify authentik-apply
 
 help:
 	@printf '%s\n' \
@@ -33,7 +33,7 @@ help:
 		'  frontend-format-check  Check frontend formatting with Prettier' \
 		'' \
 		'Local development (uses local Docker resources only):' \
-		'  dev-init            Create missing private direct-Entra configuration and local TLS material' \
+		'  dev-init            Create the local TLS material (app.localhost and id.app.localhost)' \
 		'  db-up               Start the local application database' \
 		'  migrate             Apply pending migrations (requires the local database)' \
 		'  seed                Apply migrations and the dev seed (requires dev-init and database)' \
@@ -43,13 +43,11 @@ help:
 		'' \
 		'Local verification:' \
 		'  diagrams            Render the default PlantUML diagram' \
-		'  local-verify        Verify local Caddy/direct-Entra Compose configuration' \
 		'  authentik-verify    Verify the local Authentik setup (sign-in, MFA, tokens)' \
 		'  sign-in-verify      Verify signing in to Shadow through Authentik end to end' \
 		'  authentik-apply     Reapply the Authentik blueprints even if nothing changed' \
-		'  provision-local-admin  Interactively pre-provision a designated local Entra admin' \
 		'' \
-		'Production, Entra, release, rollback, baseline, reset, and cleanup operations' \
+		'Production, release, rollback, baseline, reset, and cleanup operations' \
 		'are intentionally not available through this Makefile. Production server' \
 		'commands are in deploy/Makefile, run on the host from the verified source copy:' \
 		'  make -C /opt/apps/shadow-sources/<commit>/deploy help' \
@@ -136,9 +134,3 @@ authentik-verify:
 
 sign-in-verify:
 	python3 scripts/verify-local-sign-in.py
-
-local-verify:
-	scripts/verify-local-direct-entra-config.sh
-
-provision-local-admin:
-	cd backend && uv run --env-file ../.env --env-file ../.env.entra.local python -m app.provision_local_admin

@@ -46,9 +46,9 @@ model {
     }
   }
 
-  entra = externalSystem 'Microsoft Entra ID' {
+  authentik = externalSystem 'Authentik' {
     #existing
-    description 'Existing single-tenant registration. Unchanged by ADR-015.'
+    description 'Shadow\'s own self-hosted Authentik instance (ADR-017), with its own logical database in the application PostgreSQL. Web client Shadow and MCP client Shadow MCP (ADR-0023). Target state for MCP: the AI client signs in through the provider Shadow MCP and the backend verifies its tokens from SaaS plan step 080I.'
   }
 
   shadow = system 'Shadow' {
@@ -80,7 +80,7 @@ model {
       authSession = component 'Session auth and CSRF guard' {
         #existing
         technology 'OIDC RP, opaque sessions'
-        description 'Entra login, guarded User linking, SameSite=Strict session, CSRF token and exact Origin.'
+        description 'Authentik login, guarded User linking, SameSite=Strict session, CSRF token and exact Origin.'
       }
       domainServices = component 'Domain services' {
         #existing
@@ -175,7 +175,7 @@ model {
   shadow.backend.consentApi -> shadow.backend.authSession 'Requires session + CSRF'
   shadow.backend.reviewApi -> shadow.backend.authSession 'Requires session + CSRF'
   shadow.backend.skills -> shadow.backend.authSession 'Zip download requires session'
-  shadow.backend.authSession -> entra 'OIDC login' {
+  shadow.backend.authSession -> authentik 'OIDC login (client Shadow)' {
     technology 'Authorization Code + PKCE'
   }
   shadow.backend.restApi -> shadow.backend.domainServices 'Calls'

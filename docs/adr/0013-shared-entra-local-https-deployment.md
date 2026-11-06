@@ -5,6 +5,8 @@ first rollout performed by TASK-059F (`v0.1.0`, accepted 2026-11-02)
 
 Date: 2026-09-11
 
+> Partly superseded by [ADR-017](0017-use-self-hosted-authentik-for-identity.md): the Entra parts (shared Entra registration, direct Entra in both environments, Entra egress) are replaced by self-hosted Authentik. The deployment, hardening, TLS and backup parts stay in force until their own replacements (ADR-021 for backups, the GHCR decision for source delivery).
+
 Amended: 2026-09-17 for UpCloud, direct Caddy TLS, direct Entra in both
 application environments and Ubuntu 26.04 LTS. Subsequent approved amendment
 restores initial daily encrypted on-server backups with 7-day retention,

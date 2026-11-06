@@ -137,8 +137,8 @@ POSTGRES_DB=shadow
 POSTGRES_USER=shadow
 POSTGRES_PASSWORD=${db_password}
 DATABASE_URL=postgresql://shadow:${db_password}@database:5432/shadow
-OIDC_DISCOVERY_URL=https://login.microsoftonline.com/qa-tenant/v2.0/.well-known/openid-configuration
-OIDC_ISSUER=https://login.microsoftonline.com/qa-tenant/v2.0
+OIDC_DISCOVERY_URL=https://id.qa.example.test/application/o/shadow/.well-known/openid-configuration
+OIDC_ISSUER=https://id.qa.example.test/application/o/shadow/
 OIDC_CLIENT_ID=qa-client
 OIDC_CLIENT_SECRET=${client_secret}
 PUBLIC_ORIGIN=https://app.example.test
@@ -153,7 +153,7 @@ EOF
 chmod 0600 "${env_file}"
 upload_root="${opt}/apps/shadow-upload"
 export SHADOW_ENV_FILE="${env_file}" SHADOW_SOURCES_DIR="${opt}/apps/shadow-sources" SHADOW_UPLOAD_DIR="${upload_root}"
-# QA-only override: internal TLS issuer and a simulated Entra discovery endpoint
+# QA-only override: internal TLS issuer and a simulated Authentik discovery endpoint
 # on a separate network, trusted through a throwaway CA. Production is unchanged.
 override="${qa_root}/qa-override.yml"
 cat >"${override}" <<OVERRIDE
@@ -179,8 +179,8 @@ cp "${repo}/.github/scripts/mock-oidc-discovery.py" "${qa_root}/oidc/"
 docker run --rm --user "$(id -u):$(id -g)" --volume "${qa_root}:${qa_root}" --workdir "${qa_root}/oidc" \
   --entrypoint bash "${postgres_image}" -c "
     openssl req -x509 -newkey rsa:2048 -nodes -keyout ca.key -out ca.pem -days 2 -subj '/CN=Shadow QA OIDC CA' 2>/dev/null
-    openssl req -newkey rsa:2048 -nodes -keyout server.key -out server.csr -subj '/CN=login.microsoftonline.com' 2>/dev/null
-    printf 'subjectAltName=DNS:login.microsoftonline.com\nbasicConstraints=CA:FALSE\n' > server.ext
+    openssl req -newkey rsa:2048 -nodes -keyout server.key -out server.csr -subj '/CN=id.qa.example.test' 2>/dev/null
+    printf 'subjectAltName=DNS:id.qa.example.test\nbasicConstraints=CA:FALSE\n' > server.ext
     openssl x509 -req -in server.csr -CA ca.pem -CAkey ca.key -CAcreateserial -out server.pem -days 2 -extfile server.ext 2>/dev/null
     chmod 0644 server.key"
 # shellcheck source=../../deploy/lib/common.sh
@@ -410,14 +410,14 @@ done
 bin="${dir_one}/source/deploy/bin"
 pass "release ${release_one} records commit, manifest digest, ref, run ID, tools and matching immutable image IDs"
 
-step "Simulated Entra discovery endpoint"
+step "Simulated Authentik discovery endpoint"
 docker network create shadow-qa-oidc >/dev/null
-docker run --detach --name qa-oidc --network shadow-qa-oidc --network-alias login.microsoftonline.com \
+docker run --detach --name qa-oidc --network shadow-qa-oidc --network-alias id.qa.example.test \
   --restart unless-stopped --user 10001:10001 --read-only --cap-drop ALL --security-opt no-new-privileges:true \
   --sysctl net.ipv4.ip_unprivileged_port_start=443 \
   --volume "${qa_root}/oidc:/qa:ro" --env QA_TLS_CERT=/qa/server.pem --env QA_TLS_KEY=/qa/server.key \
   --entrypoint python "$(release_value "${dir_one}" BACKEND_IMAGE_ID)" /qa/mock-oidc-discovery.py >/dev/null
-pass "simulated login.microsoftonline.com discovery on an isolated QA network"
+pass "simulated id.qa.example.test Authentik discovery on an isolated QA network"
 
 step "First-install deployment (no previous release)"
 expect_failure "deployment requires an approval reference" 'approval' "${bin}/deploy-release" "${release_one}" --first-install
@@ -544,7 +544,7 @@ name, email = os.environ["QA_ADMIN_NAME"], os.environ["QA_ADMIN_EMAIL"]
 pid, fd = pty.fork()
 if pid == 0:
     os.execv(sys.argv[1], sys.argv[1:])
-answers = [(rb"display name: ", name), (rb"Entra email: ", email)]
+answers = [(rb"display name: ", name), (rb"administrator email: ", email)]
 output, position, deadline = b"", 0, time.time() + 300
 while time.time() < deadline:
     if select.select([fd], [], [], 1)[0]:

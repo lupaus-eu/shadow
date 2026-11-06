@@ -1,14 +1,14 @@
 > **Release block (ADR-017):** until Authentik runs in production (SaaS plan steps 086A to
 > 087B) do not tag a release from `main`. Since ticket `authentik-sign-in/03` the backend
-> accepts only Authentik issuers and requires a verified email; with the current Entra
-> configuration it would not start.
+> accepts only Authentik issuers and requires a verified email; with the identity
+> configuration of the running production it would not start.
 
 # Production Runbook: UpCloud Docker Host
 
 This is the integrated operator runbook for Shadow on the existing UpCloud
 **Ubuntu 26.04 LTS** host: Docker Engine/Compose, direct Caddy TLS for
-`https://shadow.lupaus.eu`, private PostgreSQL 18 in Docker, direct Entra
-OIDC, daily encrypted on-server backups with 7-day retention and the hardened
+`https://shadow.lupaus.eu`, private PostgreSQL 18 in Docker, OIDC sign-in
+(Authentik from SaaS plan steps 086A to 087B, see section 2.7), daily encrypted on-server backups with 7-day retention and the hardened
 Ofelia scheduler. It integrates TASK-059B/C/D/G and the Git-free source
 delivery of TASK-059H1-H3 under
 [ADR-013](../adr/0013-shared-entra-local-https-deployment.md). The
@@ -23,7 +23,7 @@ AI via MCP ([ADR-015](../adr/0015-ai-via-mcp.md)), enabled in production
 with its change-set review on 2026-11-03 after its separate approval
 (`v0.2.0`).
 
-**This runbook authorizes nothing.** Every host, DNS, firewall, GitHub, Entra,
+**This runbook authorizes nothing.** Every host, DNS, firewall, GitHub, identity,
 backup-activation and production step is TASK-059F work and needs explicit
 operational approval first. Until F records it, every live fact below is
 *reported* or *pending*, never *verified*.
@@ -479,9 +479,9 @@ POSTGRES_DB=shadow
 POSTGRES_USER=shadow
 POSTGRES_PASSWORD=<generated>
 DATABASE_URL=postgresql://shadow:<same password>@database:5432/shadow
-OIDC_DISCOVERY_URL=https://login.microsoftonline.com/<tenant-id>/v2.0/.well-known/openid-configuration
-OIDC_ISSUER=https://login.microsoftonline.com/<tenant-id>/v2.0
-OIDC_CLIENT_ID=<shared client ID>
+OIDC_DISCOVERY_URL=https://<identity host>/application/o/<slug>/.well-known/openid-configuration
+OIDC_ISSUER=https://<identity host>/application/o/<slug>/
+OIDC_CLIENT_ID=<Authentik provider client ID>
 OIDC_CLIENT_SECRET=<production-only secret>
 PUBLIC_ORIGIN=https://shadow.lupaus.eu
 DOCKER_SOCKET_GID=<stat output>
@@ -557,28 +557,21 @@ Caddy obtains the Let's Encrypt certificate on first start over HTTP-01
 recreate `shadow_caddy_data`: it holds the certificate and ACME account, and
 repeated issuance hits CA rate limits.
 
-### 2.7 Entra (shared registration, tenant administrator)
+### 2.7 Identity
 
-| Setting | Production value |
-| --- | --- |
-| Web redirect URI | `https://shadow.lupaus.eu/api/v1/auth/callback` |
-| Post-logout return | `https://shadow.lupaus.eu/login` |
-| Development entries kept | `https://app.localhost/api/v1/auth/callback`, `https://app.localhost/login` |
-| Issuer | `https://login.microsoftonline.com/<tenant-id>/v2.0` (exact) |
-| Scopes | `openid profile email` only; no Graph calls; `email_verified` not required |
-| Secret | New **production-only** client secret; record owner and expiry date, never the value |
-
-Both environments authenticate the same app identity: consent, permissions,
-enterprise-app assignments and callbacks are shared. Confirm the designated
-production users are assigned. Remove the obsolete Authentik callbacks and the
-Graph `User.Read` grant only after confirming no remaining consumer needs them.
-No Authentik, Traefik, Coolify, forward-auth or `auth.lupaus.eu` is required.
-
-To rotate the production secret: add the new secret in Entra, replace
-`OIDC_CLIENT_SECRET` in `production.env`, redeploy the **current** release
-from its verified copy (`$M deploy RELEASE=<current-id> APPROVAL=<ref>`;
-Compose recreates only containers whose configuration changed), verify login,
-then delete the old secret in Entra.
+Production identity is Shadow's own Authentik
+([ADR-017](../adr/0017-use-self-hosted-authentik-for-identity.md)). It is not
+part of the running production yet: SaaS plan steps 086A to 087B introduce it,
+including the identity host (planned `https://id.shadow.lupaus.eu`), SMTP through
+Scaleway TEM, backups of the Authentik database and of the production env file,
+and invitations (closed enrollment, `AUTHENTIK_ENROLLMENT_OPEN=false`). Those
+procedures will be in [authentik-invitations.md](authentik-invitations.md),
+[authentik-upgrade.md](authentik-upgrade.md) and the other
+`authentik-*.md` runbooks in this directory. The procedures for the currently
+running production, which still uses the previous identity provider, are in
+`docs/PRODUCTION-RUNBOOK.md` (section 2.7: the registration, its callbacks and the
+secret rotation) at tag `v0.2.0`; they apply until step 087B. Do not tag a release from `main` before step 087B
+(see the banner at the top).
 
 ### 2.8 Operator state and prerequisites
 
@@ -606,7 +599,7 @@ Before approval, for the exact commit to release:
 1. Confirm CI passed for that commit on `main` and record the run URL. Local
    checks for the changed scope, simulated OIDC and the disposable runtime
    harness are part of that CI run.
-2. Confirm real local direct-Entra browser evidence exists for the release
+2. Confirm real local Authentik browser evidence exists for the release
    scope (see the [authentication checklist](../operations/qa/AUTHENTICATION-QA-CHECKLIST.md));
    it does not prove production DNS, TLS or secrets.
 3. **Run the Action.** In GitHub: Actions -> "Deploy to production" -> Run
@@ -716,13 +709,13 @@ R=<release-id>; S=/opt/apps/shadow-sources/<commit>; M="make -C $S/deploy"; B=$S
 | 3 | `$B/verify-runtime-hardening` | `PASSED runtime hardening`; `deploy-release` already required this, rerun it to capture the output for the record (Ofelia is checked on activation in step 11) |
 | 4 | `$B/initialize status` | `users_including_deleted=0`, `active_default_metamodels=0`, `organisations=0`: nothing was seeded at startup |
 | 5 | `$B/initialize reference-seed` then `$B/initialize status` | `active_default_metamodels=1`, non-zero `node_types`/`edge_types`/`type_attributes`/`allowed_connections`, still `users_including_deleted=0` |
-| 6 | `$B/initialize bootstrap-admin` in a private terminal | Prompts for the designated display name and Entra email; prints `Administrator bootstrap completed.` |
+| 6 | `$B/initialize bootstrap-admin` in a private terminal | Prompts for the designated display name and verified email; prints `Administrator bootstrap completed.` |
 | 7 | `$B/initialize status` | `users_including_deleted=1`, `active_admins=1`, `user_identities=0`, `auth_sessions=0` |
 | 8 | `$M backup` | `BACKUP_ID=` of the initialized database |
 | 9 | Restore rehearsal of that ID (section 8.3) | `STATUS=success`; evidence shows `rows table=users count=1` and `rows table=metamodels count=1` |
 | 10 | `$M status` | Both backups listed; latest restore evidence `STATUS=success` |
 | 11 | `$B/deploy-release $R --approval <ref> --enable-scheduler` | Scheduler activation (section 9): hardening passes including Ofelia; `SCHEDULER=active` in the record |
-| 12 | First direct-Entra login by the designated admin | Guarded first link; then provision the designated consultant through the normal Users administration |
+| 12 | First Authentik sign-in by the designated admin | Guarded first link; then provision the designated consultant through the normal Users administration |
 | 13 | Narrow production smoke (section 7) | All items pass |
 | 14 | Next day: `$M status` | A `-scheduled-` backup is listed and Ofelia logged `failed: false` |
 
@@ -825,7 +818,7 @@ isolated test records only:
    data, session restored on reload, Users administration visible, logout
    returns to `/login` and the session endpoint then returns `401`.
 3. Designated consultant: login, no Users administration (database role
-   enforcement, not Entra claims), logout.
+   enforcement, not identity-provider claims), logout.
 4. First rollout or any authentication/provider change: a designated account
    with no matching Shadow User fails generically; no User, identity or
    session is created (confirm with `initialize status` counts).
@@ -1041,7 +1034,7 @@ Services use `restart: unless-stopped`. On reboot Docker restarts database, API,
 worker and frontend from their existing containers, except services stopped
 with `$M stop`, which stay stopped until `$M start` (10.2); the completed migration
 job and the runners are not rerun. Until PostgreSQL is healthy, database-backed
-API requests fail and the worker restarts. The API exits if Entra discovery is
+API requests fail and the worker restarts. The API exits if OIDC discovery is
 unreachable at startup and is retried; the frontend waits for a healthy API.
 
 For a planned reboot (including a pending unattended-upgrades reboot), choose a
@@ -1079,7 +1072,7 @@ identities or restored data:
 | "Deploy to production" run URL, `SOURCE_RUN_ID`, `SOURCE_MANIFEST_SHA256`, the run checks of section 3 step 4 | Run page, `release.env` |
 | Backend and frontend image IDs | `release.env` |
 | Tool versions, build duration and available memory | `release.env` |
-| Local/CI evidence and real local Entra evidence reference | CI, authentication checklist |
+| Local/CI evidence and real local Authentik evidence reference | CI, authentication checklist |
 | Approval reference | `--approval` value |
 | Mode, previous release or explicit first-release absence | Deployment record `MODE`, `PREVIOUS_RELEASE` |
 | Pre-change backup ID | Deployment record `PRE_CHANGE_BACKUP_ID` |
@@ -1128,7 +1121,7 @@ verification.
 | 2.3 Configuration | Configuration contract and privacy checks (`check-host`) with synthetic values | Real secrets |
 | 2.4 Backup keys | Key generation/export commands with gpg 2.4.8 on Ubuntu 26.04; passphrase-protected key used for all harness restores | Vault storage and custodians |
 | 2.5-2.6 Storage, DNS | Backup directory ownership/mode checks | DNS, public certificate issuance |
-| 2.7 Entra | Simulated discovery only | Callbacks, secret, assignments, cleanup |
+| 2.7 Identity | None (pointer only) | Production Authentik, introduced by steps 086A to 087B |
 | 3 Delivery | The pinned action's upload through `upload-gate` in an sshd container, the job summary digest, `shadow-receive` acceptance and rejections, Git-free `make build` (H1-H3) | The real Action run, its run page checks and the `file://` log line |
 | 2.8, 4-6 | `init-state`, `check-host`, `make build`, `make first-install`, `make deploy` and its guards, initialization, `make backup`/`restore`/`status`, gates and direct-command rollback on Engine 28.5.2 and 29.8.1 daemons, with Git absent from `PATH` | The real host and its resources |
 | 7 Smoke | Local simulated-OIDC suites | Production smoke |
@@ -1142,8 +1135,8 @@ client (claude.ai, Claude Desktop, Claude Code or another client) to one URL,
 `https://shadow.lupaus.eu/api/mcp`, and authorize it once for read and write
 (TASK-074, ADR-015 amendment of 2026-11-03). Releases before TASK-074,
 including `v0.2.0`, serve the two URLs `/api/mcp/read` and `/api/mcp/write`
-instead; switching is in 14.10. Shadow is the OAuth 2.1 server over the
-existing Entra login; the Entra registration does not change. Local evidence and the
+instead; switching is in 14.10. Shadow is the OAuth 2.1 server over
+its own sign-in (Entra on the running `v0.2.0` production, Authentik from step 087B; ADR-0023 moves MCP client authentication to a dedicated Authentik provider; the backend does not use it yet). Local evidence and the
 [production enablement record of 2026-11-03](../operations/qa/AI-MCP-QA-CHECKLIST.md#production-enablement-record-2026-11-03)
 are in [AI-MCP-QA-CHECKLIST.md](../operations/qa/AI-MCP-QA-CHECKLIST.md); the record covers
 Claude Code with the plugin, and the claude.ai and Claude Desktop connectors
@@ -1258,8 +1251,8 @@ deployed values and the env file's values.
 
 ### 14.4 Offboarding
 
-Disabling the Entra account alone does **not** end MCP access: a grant lives up
-to 30 days, renewed by refresh, without an Entra check (ADR-015 accepted
+Disabling the identity account alone does **not** end MCP access: a grant lives up
+to 30 days, renewed by refresh, without an identity-provider check (ADR-015 accepted
 trade-off). When a person leaves or loses access:
 
 1. soft-delete their Shadow User in the Users tab, which stops every MCP call

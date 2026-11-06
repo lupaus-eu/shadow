@@ -11,7 +11,7 @@ views {
       user,
       aiClient,
       aiVendor,
-      entra,
+      authentik,
       shadow
     include aiClient -> aiVendor with {
       title 'Prompts, tool calls and tool results'
@@ -27,7 +27,7 @@ views {
       user,
       aiClient.*,
       aiVendor.*,
-      entra
+      authentik
     include shadow.caddy -> shadow.backend with {
       title 'Proxies /api, /.well-known/oauth-*'
     }
@@ -68,7 +68,7 @@ views {
 
   dynamic view connectFlow {
     title 'Connect An AI Client (OAuth 2.1 + Consent)'
-    description 'Implemented (TASK-069B..TASK-069P, TASK-074); MCP is enabled in production since 2026-11-03, and the one /api/mcp service of TASK-074 reaches production with its own approved release. Shadow is the authorization server; the user signs in with the existing Entra login and approves consent in the SPA. The Entra registration does not change.'
+    description 'Implemented (TASK-069B..TASK-069P, TASK-074); MCP is enabled in production since 2026-11-03, and the one /api/mcp service of TASK-074 reaches production with its own approved release. Shadow is the authorization server; the user signs in with the Authentik login (client Shadow) and approves consent in the SPA. Target state from SaaS plan step 080I: the AI client signs in through the Authentik provider Shadow MCP and the backend verifies its tokens (ADR-0023).'
 
     user -> aiClient.webChat 'Adds one connector URL /api/mcp'
     aiClient.webChat -> aiVendor.broker 'Register connector'
@@ -79,7 +79,7 @@ views {
     user -> shadow.backend.oauthServer 'Browser: GET /api/oauth/authorize (PKCE S256, scope, resource)'
     shadow.backend.oauthServer -> shadow.spa '303 to /ai/authorize?request=<id> (stored hashed, 10 min)'
     shadow.spa -> shadow.backend.authSession 'If anonymous: existing login with return_to'
-    shadow.backend.authSession -> entra 'Existing OIDC login'
+    shadow.backend.authSession -> authentik 'Authentik OIDC login'
     shadow.spa -> shadow.backend.consentApi 'GET request (scopes narrowed to the role); POST approve with CSRF + Origin'
     shadow.backend.consentApi -> shadow.backend.oauthServer 'Record User, issue 60 s one-time code (hashed)'
     shadow.spa -> aiVendor.broker 'Navigate to server-built redirectUrl (code, state, iss)'

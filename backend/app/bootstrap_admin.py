@@ -84,7 +84,7 @@ def main(arguments: Sequence[str] | None = None) -> int:
 
     try:
         name = input("Designated administrator display name: ")
-        email = input("Designated Entra email: ")
+        email = input("Designated administrator email: ")
         bootstrap_admin(database_url, name=name, email=email)
     except (EOFError, KeyboardInterrupt):
         print("\nAdministrator bootstrap cancelled.", file=sys.stderr)

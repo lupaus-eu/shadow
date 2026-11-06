@@ -66,7 +66,7 @@ Responsible for:
 
 - application user records
 - user role data
-- future Entra ID identity mapping
+- identity mapping to the Authentik identity (`(issuer, subject)`), `account_class` and `locale`
 
 Owns:
 
@@ -80,7 +80,7 @@ Does NOT Own:
 
 Depends On:
 
-- Microsoft Entra ID, when authentication is implemented
+- Authentik (ADR-017), the identity provider for sign-in
 
 Primary APIs:
 
@@ -370,7 +370,7 @@ Responsible for:
 - MCP access for the user's own AI client: one MCP service `/api/mcp` with
   read and write tools, each checking its own scope
 - Shadow as OAuth 2.1 authorization server for MCP clients, reusing the
-  existing Entra login, Users and roles
+  Authentik login, Users and roles (ADR-0023 moves MCP client authentication to a dedicated Authentik provider; not yet switched)
 - AI change sets staged through MCP and applied or rejected only by a human
   in Shadow
 - the deterministic timeseries generator contract, skills and MCP prompts
@@ -405,7 +405,7 @@ Does NOT Own:
 
 Depends On:
 
-- Users Domain for Users, roles, the Entra login and the session/CSRF guard
+- Users Domain for Users, roles, the Authentik login and the session/CSRF guard
 - Organisations Domain for change-set organisation ownership
 - Organisation States Domain service cores for scenario, org state, event,
   timeserie, value and derived-metric operations

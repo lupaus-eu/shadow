@@ -1,6 +1,6 @@
 # Local Development
 
-Local development is `https://app.localhost`: loopback-only Caddy terminates a locally trusted certificate, proxies `/api` and the OAuth discovery paths `/.well-known/oauth-authorization-server*` and `/.well-known/oauth-protected-resource*` to FastAPI and proxies the Vite application (including HMR WebSockets) on every other path. Authentik is no longer part of the active runtime. This does not delete old Authentik Docker volumes, existing application data, or existing `(issuer, subject)` rows.
+Local development is `https://app.localhost`: loopback-only Caddy terminates a locally trusted certificate, proxies `/api` and the OAuth discovery paths `/.well-known/oauth-authorization-server*` and `/.well-known/oauth-protected-resource*` to FastAPI and proxies the Vite application (including HMR WebSockets) on every other path. Identity is self-hosted Authentik (ADR-017) at `https://id.app.localhost`, reachable only through the same Caddy.
 
 ## Initial setup
 
@@ -9,14 +9,9 @@ cp .env.example .env
 make dev-init
 ```
 
-`make dev-init` privately prompts for the shared registration's client ID, tenant ID and development client secret, then writes mode-600 `.env.entra.local`. It is ignored by Git. It contains only OIDC configuration and secret material; do not put an administrator email in it. The generated values use the exact tenant issuer and discovery endpoint, request only `openid profile email`, and set no Graph permissions or verified-email requirement.
+`make dev-init` only prepares local TLS material (`scripts/setup-local-app-tls.sh`); `make dev-up` runs it too. Only `.env` is needed: there is no second environment file and no provider secret to collect.
 
-If an earlier federation-era `.env.entra.local` exists, move that private file
-aside first and then run `make dev-init`; the setup script refuses to overwrite
-an existing secret file. This preserves the old Authentik volumes and
-application database while preventing a silent use of obsolete provider values.
-
-The same command creates `.local/app-tls/app.localhost.crt` and key. If valid legacy local CA material exists at `.local/authentik-tls`, its CA is reused to sign the app leaf; otherwise a separate app CA is created in `.local/app-tls`. The Caddy container mounts only the app leaf and its key, never a CA private key. Existing valid material is inspected for signature, hostname coverage and 30-day validity and is never overwritten. If renewal is required, the script tells the operator to remove only the expiring leaf certificate; the next run reuses its valid private key. The script explains incomplete and invalid states instead of replacing key material.
+The TLS script creates `.local/app-tls/app.localhost.crt` and key (the certificate covers `app.localhost` and `id.app.localhost`). If valid legacy local CA material exists at `.local/authentik-tls`, its CA is reused to sign the app leaf; otherwise a separate app CA is created in `.local/app-tls`. The Caddy container mounts only the app leaf and its key, never a CA private key. Existing valid material is inspected for signature, hostname coverage and 30-day validity and is never overwritten. If renewal is required, the script tells the operator to remove only the expiring leaf certificate; the next run reuses its valid private key. The script explains incomplete and invalid states instead of replacing key material.
 
 Trust the displayed CA certificate on the host before browser testing. For Debian/Ubuntu, using the CA path printed by the script:
 
@@ -31,13 +26,14 @@ Remove that explicit trust entry when it is no longer needed. Never copy or trus
 
 ```bash
 make dev-up
-make local-verify
+make authentik-verify
+make sign-in-verify
 ```
 
 `make dev-up` starts the application database, applies pending migrations and
 the idempotent development seed, then starts the backend, one prediction worker,
 the platform `worker` (background jobs and the email outbox, ADR-019), Vite and
-local Caddy. The platform worker needs only `DATABASE_URL`; check it with
+local Caddy. `make authentik-verify` checks Authentik (MFA, authorization code with PKCE, the MCP provider; `--enrollment` for closed enrollment) and `make sign-in-verify` signs a seeded user in to Shadow through Authentik end to end and out again; `make authentik-apply` forces a reapply of the blueprints. The platform worker needs only `DATABASE_URL`; check it with
 `docker compose … exec worker uv run python -m app.platform.worker health-check`
 (exit code 0 when the database is reachable). Authentik (ADR-017) runs beside it: `authentik-server`, `authentik-worker` and the one-shot
 `authentik-config-init`, behind Caddy at `https://id.app.localhost`; see
@@ -54,11 +50,9 @@ It never runs a reset, `down -v`, volume deletion or provider mutation. The
 database port and ingress are bound only to loopback; FastAPI and Vite have no
 host-published ports.
 
-All local Compose commands load `.env` followed by `.env.entra.local`, including
-database-only, preview and diagram commands: Compose validates the required
-OIDC variables for the whole model. Run `make dev-init` once before these targets.
+All local Compose commands use `docker compose --env-file .env ...`, including database-only, preview and diagram commands.
 
-Open `https://app.localhost`. Caddy permits only the exact Host, discards browser-supplied forwarding headers and sends FastAPI a fixed HTTPS/Host plus a client IP only from its fixed peer address. FastAPI accepts that header only from the Caddy `/32` peer. The backend and Caddy both redact callback `code`, `state`, `error`, `error_description` and Entra `session_state` values, ADR-015's MCP OAuth request id carriers `request` and `return_to`, and misplaced OAuth token parameters (`token`, `access_token`, `refresh_token`, `code_verifier`) from access logs. Caddy also replaces the `Location` response header and the `Authorization` and `X-Csrf-Token` request headers in its access log. Cookies are Secure, HttpOnly, host-only and preserve the existing SameSite and Path policy; unsafe requests still require exact Origin and CSRF checks.
+Open `https://app.localhost`. Caddy permits only the exact Host, discards browser-supplied forwarding headers and sends FastAPI a fixed HTTPS/Host plus a client IP only from its fixed peer address. FastAPI accepts that header only from the Caddy `/32` peer. The backend and Caddy both redact callback `code`, `state`, `error`, `error_description` and a provider's `session_state` values, ADR-015's MCP OAuth request id carriers `request` and `return_to`, and misplaced OAuth token parameters (`token`, `access_token`, `refresh_token`, `code_verifier`) from access logs. Caddy also replaces the `Location` response header and the `Authorization` and `X-Csrf-Token` request headers in its access log. Cookies are Secure, HttpOnly, host-only and preserve the existing SameSite and Path policy; unsafe requests still require exact Origin and CSRF checks.
 
 The Vite HMR client uses `wss://app.localhost` port 443. Do not browse the internal Vite service directly: it is intentionally unexposed.
 
@@ -70,7 +64,7 @@ and verify page rendering and HMR in a browser. Reload an already-running local
 Caddy after changing its policy:
 
 ```bash
-docker compose --env-file .env --env-file .env.entra.local exec -T local-caddy \
+docker compose --env-file .env exec -T local-caddy \
   caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
 ```
 
@@ -111,7 +105,7 @@ claude
 
 In Claude Code, run `/mcp`, select `shadow` and authenticate **once**.
 Claude Code registers itself and opens the consent page in the browser, where
-you sign in with Entra and approve read and write access; the code returns to
+you sign in with Authentik and approve read and write access; the code returns to
 Claude Code on an allowlisted loopback redirect and Claude Code exchanges it
 for tokens. One connection then appears in the Metrics tab AI panel. Ask it
 to call the `whoami` tool, which returns your Shadow User. The one grant
@@ -192,32 +186,24 @@ The MCP prompts `model_building` and `timeseries_generation` serve the same
 `/mcp__shadow__timeseries_generation`. The backend reads the files when
 it builds the app, and the dev server reloads only on Python changes, so
 restart the backend container after editing a skill
-(`docker compose --env-file .env --env-file .env.entra.local restart backend`).
+(`docker compose --env-file .env restart backend`).
 The Metrics tab AI panel's Connect section links the skill zips
 (`/api/v1/ai/skills/<name>.zip`, read on each request) for upload to claude.ai
 or Claude Desktop; those vendor-cloud clients cannot reach `app.localhost`, so
 test them only against an environment they can reach.
 
-## Designated local Entra administrator
+## Local sign-in
 
-After migrations and the development seed have completed, pre-provision the designated administrator interactively:
+The Authentik blueprint `authentik/dev/shadow-dev-users.yaml` (local only) creates `dev-admin` (admin@example.local) and `dev-consultant` (consultant@example.local). Their password is `AUTHENTIK_DEV_USER_PASSWORD` from `.env.example`, and each has a TOTP device whose secret is the RFC 6238 test secret; [authentik-local](../runbooks/authentik-local.md) shows how to print the current code. Their emails are the accounts the development seed creates, so the first sign-in links to the seeded accounts. Shadow never creates an account at sign-in: a person Shadow does not know, or whose email is not verified, gets a generic failure. Invitations are described in [authentik-invitations](../runbooks/authentik-invitations.md) and upgrades in [authentik-upgrade](../runbooks/authentik-upgrade.md).
 
-```bash
-make provision-local-admin
-```
+The production administrator bootstrap is separate and unchanged (`python -m app.bootstrap_admin`, prompt "Designated administrator email", only with an empty users table).
 
-The command accepts no identity arguments, requires a terminal confirmation, validates display name and email through the shared User validation, and creates only an active `admin` User. It prints no email and creates no identity or session. It is development-only, is not an HTTP endpoint, and preserves all existing users, seeded users and roles. An existing active admin with the same email is verified without change; a consultant conflict, ambiguous match or soft-deleted account fails without an implicit role change or replacement.
+## Operator configuration
 
-Direct Entra login then uses the ordinary guarded first-link flow: only one active pre-provisioned User with the normalized email may receive a new exact `(issuer, subject)` binding. Login never creates a User. Existing Authentik bindings remain unchanged and are not relabelled or copied.
-
-## Operator configuration and rotation
-
-The Entra registration must already authorize the exact callback `https://app.localhost/api/v1/auth/callback` and post-logout return `https://app.localhost/login`, with the designated tester permitted by the tenant's policy. Those are authorized provider actions and are not performed by this repository. A missing/invalid private configuration makes Compose and FastAPI fail with an actionable configuration error without printing a secret.
-
-To rotate the development secret, deliberately replace only `.env.entra.local` using `scripts/setup-local-entra.sh`, restart the local stack, and re-run `make local-verify`. Keep the development secret separate from the production secret. Removing obsolete callbacks or unused Graph permissions requires the remaining-consumer check and authorization under TASK-059F.
+The local OIDC values are fixed in `docker-compose.yml` (issuer `https://id.app.localhost/application/o/shadow/`); there is nothing to rotate locally. Production identity is introduced by the SaaS plan; see ADR-017.
 
 ## Browser evidence
 
-Automated tests simulate direct Entra; they do not prove a real tenant login. Record authorized browser verification separately with date, commit, tester, environment and redacted result for login, callback, guarded first-link, session role and logout. Until that setup is authorized, record it as pending; do not treat mock evidence as live-provider evidence.
+Automated tests and the local verification scripts use the local Authentik only; they do not prove a production login. Record authorized browser verification separately with date, commit, tester, environment and redacted result for login, callback, guarded first-link, session role and logout. Until that setup is authorized, record it as pending; do not treat mock evidence as live-provider evidence.
 
-The authorized TASK-059B browser run is recorded in `docs/operations/qa/AUTHENTICATION-QA-CHECKLIST.md`; TASK-059E repeated only the automated and read-only local probes. Local HTTPS and direct-Entra success does not establish production DNS, TLS or client-secret correctness; production setup follows `docs/runbooks/production.md` under TASK-059F. When probing HMR without a browser, note that the Vite WebSocket requires the per-server `token` query value served in `/@vite/client`; a tokenless upgrade returns `400`.
+The authorized TASK-059B browser run is recorded in `docs/operations/qa/AUTHENTICATION-QA-CHECKLIST.md`; TASK-059E repeated only the automated and read-only local probes. Local HTTPS and local sign-in success does not establish production DNS, TLS or identity configuration; production setup follows `docs/runbooks/production.md` under TASK-059F. When probing HMR without a browser, note that the Vite WebSocket requires the per-server `token` query value served in `/@vite/client`; a tokenless upgrade returns `400`.

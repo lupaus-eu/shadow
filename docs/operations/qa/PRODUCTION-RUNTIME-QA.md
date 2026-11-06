@@ -1,5 +1,7 @@
 # Production Runtime QA (TASK-059G)
 
+> Historical record (2026-11-06): the identity setup (Microsoft Entra) recorded here was replaced by Authentik (ADR-017). Kept as evidence of the runs it records.
+
 This record holds TASK-059G implementation evidence for the UpCloud Docker
 runtime, build/release, backup and scheduler tooling. All checks used
 disposable local infrastructure, synthetic secrets, a throwaway GPG key and a

@@ -1,5 +1,7 @@
 # Prediction Worker Runtime QA
 
+> Note (2026-11-06): this record predates the move from Microsoft Entra to Authentik (ADR-017); the worker checks below are unaffected.
+
 This checklist records TASK-057E local runtime evidence. Use only disposable or
 local development data. It does not authorize production deployment, failure
 injection, down migrations or Coolify changes.
@@ -27,7 +29,7 @@ for the first release; see
 - Trust the local application CA and use `https://app.localhost`.
 - Use non-sensitive synthetic prediction names. Never paste snapshots,
   credentials, cookies, CSRF tokens or personal data into this record.
-- Keep a terminal ready for `docker compose --env-file .env --env-file .env.entra.local ps prediction-worker` and
+- Keep a terminal ready for `docker compose --env-file .env ps prediction-worker` and
   credential-safe worker logs.
 
 ## Browser And Runtime Procedure

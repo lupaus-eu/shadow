@@ -12,9 +12,14 @@ uv run fastapi dev app/main.py
 The API fails closed outside tests unless the OIDC relying-party settings are
 present. Copy the non-secret names from `.env.example` and inject the client
 secret through the local environment or deployment secret store. Local
-development uses direct Entra with `OIDC_REQUIRE_VERIFIED_EMAIL=false`; the
-reviewed workforce flow uses the email claim only for guarded first-link
-discovery.
+development uses the local Authentik provider
+(issuer `https://id.app.localhost/application/o/shadow/`, fixed in
+`docker-compose.yml`). The issuer must be an Authentik per-provider issuer
+`https://<identity host>/application/o/<slug>/`; discovery is the issuer plus
+`.well-known/openid-configuration`, and `OIDC_INTERNAL_BASE_URL` optionally
+names the Docker-internal address of Authentik. `OIDC_REQUIRE_VERIFIED_EMAIL`
+defaults to true; the email claim is used only for guarded first-link
+discovery and sign-in never creates an account.
 
 `PUBLIC_ORIGIN` determines the one accepted Host, callback URL and local
 redirect base. `APP_ALLOWED_ORIGIN` is the exact Origin accepted by unsafe
@@ -94,12 +99,12 @@ or OIDC configuration.
 
 Run the bootstrap only after migrations and the reference seed, from a private
 operator terminal with session recording and screen sharing disabled. It prompts
-for the designated administrator's display name and matching Entra email; never
+for the designated administrator's display name and designated administrator email; never
 place either value in command arguments or repository records. The command
 creates one active fixed-role `admin` with null bootstrap audit actors only when
 the entire `users` table is empty, including soft-deleted rows. Any existing User
 causes a nonzero refusal without mutation. It creates no identity or session;
-the administrator's first direct-Entra login uses normal guarded identity
+the administrator's first Authentik sign-in links to that account by verified email using normal guarded identity
 linking. Manage every later User through the authenticated Users UI/API.
 
 Deployment policy and secret-safe operator commands are documented in

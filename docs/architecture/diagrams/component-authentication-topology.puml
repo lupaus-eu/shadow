@@ -1,28 +1,37 @@
 @startuml
 !include <C4/C4_Container>
-title Shadow - Accepted ADR-013 Topology (local and production implemented; first production rollout F, v0.1.0)
+title Shadow - Authentication Topology (Authentik, ADR-017 and ADR-0023; production Authentik planned, steps 086A-087B)
 
-System_Ext(entra, "Microsoft Entra ID", "One tenant; shared confidential Web registration\nShared permissions, consent, assignments and callbacks\nSeparate dev/prod secrets; exact tenant issuer\nopenid profile email; no Graph; email_verified not required")
+System_Ext(mail_prod, "Scaleway TEM", "Production transactional email\nAuthentik invitations and recovery")
 
 System_Boundary(local, "Development - https://app.localhost") {
   Person(local_browser, "Local browser")
   Container(app_tls, "Application TLS", "Loopback Caddy :443", "Local CA; secure host-only cookies\nDirect /api routing; HMR WebSockets")
   Container(vite, "Frontend", "Vite :5173", "SPA and HMR")
-  Container(local_api, "Local API", "FastAPI :8000", "Direct Entra; development secret\nGuarded pre-provisioned User linking")
+  Container(id_tls, "Identity host", "Local Caddy", "https://id.app.localhost")
+  Container(local_authentik, "Authentik (own instance)", "Authentik server + worker", "Web client 'Shadow'; MCP client 'Shadow MCP'\nPre-registered, PKCE required\nOwn logical database")
+  Container(mailpit, "Mailpit", "Local only", "Catches Authentik mail")
+  Container(local_api, "Local API", "FastAPI :8000", "OIDC via Authentik; development client\nGuarded pre-provisioned User linking\nShadow's own OAuth server still exists")
   Container(local_worker, "Prediction worker", "Backend runtime", "One worker; database settings only")
-  ContainerDb(local_db, "Local database", "PostgreSQL", "Independent development data\nPreserve old identities without issuer rewrites")
+  ContainerDb(local_db, "Local database", "PostgreSQL", "Independent development data")
 
   Rel(local_browser, app_tls, "Uses", "HTTPS")
   Rel(app_tls, vite, "SPA / HMR", "HTTP / WebSocket")
   Rel(app_tls, local_api, "/api; fixed headers", "HTTP")
   Rel(local_api, local_db, "Users, identities, sessions")
   Rel(local_worker, local_db, "Queue + advisory lock")
+  Rel(local_browser, id_tls, "Sign-in", "HTTPS")
+  Rel(id_tls, local_authentik, "Proxies", "HTTP")
+  Rel(local_authentik, local_db, "Own logical database")
+  Rel(local_authentik, mailpit, "Mail", "SMTP")
+  Rel(local_api, local_authentik, "Token and JWKS (OIDC_INTERNAL_BASE_URL)", "HTTP, Docker network")
 }
 
 System_Boundary(prod, "UpCloud Ubuntu 26.04 LTS - Docker Engine / Compose (runtime G; first rollout F)") {
   Person(prod_browser, "Production browser")
   Container(caddy, "Frontend and TLS", "Caddy :80 / :443 + React", "https://shadow.lupaus.eu\nPersistent certificate/account storage")
-  Container(prod_api, "Production API", "FastAPI :8000", "Direct Entra; production secret\nPrivate; database roles and sessions")
+  Container(prod_id, "Authentik (own instance)", "Planned, steps 086A-087B", "https://id.shadow.lupaus.eu\nWeb client 'Shadow'; MCP client 'Shadow MCP'\nPKCE required; own logical database")
+  Container(prod_api, "Production API", "FastAPI :8000", "OIDC via Authentik; production client\nPrivate; database roles and sessions\nShadow's own OAuth server still exists")
   Container(prod_worker, "Prediction worker", "Same backend image", "One worker; private; database settings only")
   Container(migration, "One-shot migration", "Same backend image", "Success gates API and worker startup")
   Container(ofelia, "Operational scheduler", "Ofelia; pinned digest", "Fixed read-only job file\nNo network or public ports\nDaily backups / weekly cleanup")
@@ -34,20 +43,24 @@ System_Boundary(prod, "UpCloud Ubuntu 26.04 LTS - Docker Engine / Compose (runti
   Rel(caddy, prod_api, "/api; fixed headers", "HTTP")
   Rel(prod_api, prod_db, "Users, identities, sessions")
   Rel(prod_worker, prod_db, "Queue + advisory lock")
+  Rel(prod_browser, prod_id, "Sign-in", "HTTPS")
+  Rel(prod_api, prod_id, "Token and JWKS (OIDC_INTERNAL_BASE_URL)", "HTTP, Docker network")
+  Rel(prod_id, prod_db, "Own logical database")
   Rel(migration, prod_db, "Forward migrations")
   Rel(ofelia, docker_api, "Triggers reviewed jobs", "Local Unix socket")
   Rel(docker_api, ops_jobs, "Executes with verified restrictions")
   Rel(ops_jobs, prod_db, "Backup runner only", "Private database network")
 }
 
-Rel(local_api, entra, "Direct OIDC; callback:\nhttps://app.localhost/api/v1/auth/callback", "HTTPS")
-Rel(prod_api, entra, "Direct OIDC; callback:\nhttps://shadow.lupaus.eu/api/v1/auth/callback", "HTTPS")
+Rel(prod_id, mail_prod, "Invitations, recovery", "SMTP")
 
 note bottom of app_tls
-  Target excludes Authentik in both environments.
-  Local Caddy/direct Entra and the production runtime are implemented.
-  Browser authorization redirects go directly to Entra.
-  Logout returns to /login at each application origin.
+  Each environment has its own Authentik instance (ADR-017).
+  Local Authentik runs behind Caddy at https://id.app.localhost; mail goes to Mailpit.
+  Production Authentik (https://id.shadow.lupaus.eu, Scaleway TEM) is planned.
+  Browser authorization redirects go to the identity host.
+  The backend reaches Authentik inside the Docker network.
+  Backend verification of Shadow MCP tokens is a later step (080I).
 end note
 
 note bottom of caddy

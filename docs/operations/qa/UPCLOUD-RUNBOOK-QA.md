@@ -1,5 +1,7 @@
 # UpCloud Runbook And Integrated QA (TASK-059E)
 
+> Historical record (2026-11-06): the identity setup (Microsoft Entra) recorded here was replaced by Authentik (ADR-017). Kept as evidence of the runs it records.
+
 This record holds TASK-059E evidence for the integrated
 [production runbook](../../runbooks/production.md): B/C/D/G combined in the
 documented operator sequence and executed against **disposable** local

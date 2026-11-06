@@ -3,8 +3,8 @@
 ## Accepted Plan And Current Implementation
 
 [ADR-013](../adr/0013-shared-entra-local-https-deployment.md) selects
-UpCloud **Ubuntu 26.04 LTS**, Docker Engine/Compose, direct Caddy TLS and direct
-Entra in development and production. Initially PostgreSQL 18 runs in Docker;
+UpCloud **Ubuntu 26.04 LTS**, Docker Engine/Compose and direct Caddy TLS;
+identity is Authentik under [ADR-017](../adr/0017-use-self-hosted-authentik-for-identity.md). Initially PostgreSQL 18 runs in Docker;
 **daily encrypted on-server backups with 7-day retention are required**.
 This document records the accepted plan, not a completed
 deployment or authorization to change providers, credentials or production data.
@@ -15,7 +15,7 @@ migration job, API, one prediction worker, Ofelia and hardened operational
 runners), the frozen-image build/release commands in `deploy/bin/`, and the
 encrypted backup, restore-rehearsal and Docker-cleanup jobs in `deploy/ops/`.
 The Coolify adapter and `docker-compose.release.yml` are removed. Local
-development uses loopback Caddy HTTPS and direct Entra (B); C/D provide the
+development uses loopback Caddy HTTPS and local Authentik (B); C/D provide the
 initialization commands. TASK-059E supplies the integrated, disposably tested
 operator procedure in [PRODUCTION-RUNBOOK.md](../runbooks/production.md) with
 evidence in [UPCLOUD-RUNBOOK-QA.md](../operations/qa/UPCLOUD-RUNBOOK-QA.md). F performed the
@@ -46,7 +46,7 @@ integrated runbook for this path
 UpCloud Ubuntu 26.04 LTS: Docker Engine + Compose
 
 Browser --HTTPS :443--> Caddy (React SPA; persistent TLS storage)
-                         +-- /api --> FastAPI :8000 --> Entra
+                         +-- /api --> FastAPI :8000 --> Authentik (planned)
                                        |
                                        +--> private PostgreSQL 18 (persistent volume)
 Migration job ------------------------------> PostgreSQL
@@ -60,8 +60,9 @@ source-delivery Action; `AllowUsers deploy root shadow-upload` admits
 `deploy` and key-only root from any address, and SSH accepts public keys only
 (ADR-013 TASK-059J amendment).
 Only Caddy publishes application ports. API, migration job, worker and database
-have no public ports or domains. No Authentik, Traefik, Coolify, forward-auth,
-`auth.lupaus.eu` or new staging environment is required.
+have no public ports or domains. No Traefik, Coolify, forward-auth,
+`auth.lupaus.eu` or new staging environment is required; the Authentik
+services arrive with SaaS plan step 086A.
 
 Frontend and backend are separate immutable images built from the same release
 commit. API, migration and worker share the backend artifact. Successful migration
@@ -157,43 +158,65 @@ service does not silently remove these gates.
 Application rollback cannot recover lost database contents; production restoration
 requires separate explicit approval and impact review.
 
-## Shared Entra Registration
+## Identity (Authentik)
 
-Reuse the existing single-tenant confidential Web registration and client ID.
-Both FastAPI instances connect directly to the exact tenant-specific issuer.
+[ADR-017](../adr/0017-use-self-hosted-authentik-for-identity.md) replaces the
+direct Microsoft sign-in with Shadow's own self-hosted Authentik (pinned
+2026.8.5), which uses its own logical database `authentik` in the application's
+PostgreSQL. Local development runs it at `https://id.app.localhost`; the
+production identity host is planned as `https://id.shadow.lupaus.eu`. Production
+enrollment is closed and by invitation (`AUTHENTIK_ENROLLMENT_OPEN=false`), a
+second factor (TOTP or passkey) is mandatory, and the verified email is recorded
+as the verified address (`shadow_verified_email`; `email_verified` is true only
+while the address equals it).
+
+**Production does not run Authentik yet.** Production still runs the last release
+with the previous identity provider (the `v0.2.0` line), and `main` cannot be
+released until Authentik runs in production (SaaS plan steps 086A to 087B). The
+Authentik services, the identity host, SMTP through Scaleway TEM and the
+backups of the Authentik database are added to the production runtime by those
+steps; the runbook's [Identity](../runbooks/production.md) section points to the
+operating procedures.
 
 | Purpose | Development | Production |
 | --- | --- | --- |
 | Public origin | `https://app.localhost` | `https://shadow.lupaus.eu` |
-| Entra Web callback | `https://app.localhost/api/v1/auth/callback` | `https://shadow.lupaus.eu/api/v1/auth/callback` |
+| Identity host | `https://id.app.localhost` | `https://id.shadow.lupaus.eu` (planned) |
+| OIDC callback | `https://app.localhost/api/v1/auth/callback` | `https://shadow.lupaus.eu/api/v1/auth/callback` |
 | Post-logout return | `https://app.localhost/login` | `https://shadow.lupaus.eu/login` |
 
-Register the exact Web callbacks and allow the post-logout return URIs. A `/login`
-return page is not a front-channel logout handler. Do not add wildcards, generic
-Entra authorities or SPA/public-client mode. `PUBLIC_ORIGIN` is public configuration,
-not a secret, and has no path or trailing slash.
+The backend accepts only an Authentik per-provider issuer
+`https://<identity host>/application/o/<slug>/` for `OIDC_DISCOVERY_URL` and
+`OIDC_ISSUER`: all provider endpoints are on the issuer's origin, the production
+issuer has no explicit port, and the issuer is never on the application's own
+origin. `OIDC_INTERNAL_BASE_URL` is optional and gives the Docker-internal
+address (production: plain http only for a single-label service name, otherwise
+https). Scopes are `openid profile email` and `OIDC_REQUIRE_VERIFIED_EMAIL`
+defaults to `true`. `PUBLIC_ORIGIN` is public configuration, not a secret, and has
+no path or trailing slash. Development and production use separate client
+secrets in protected environment storage, and application databases and cookies
+are separate.
 
-Use separate development/production secrets in protected environment storage,
-with independent rotation and owners. Application databases/cookies are separate.
-All secrets authenticate the same app identity: permissions, consent,
-enterprise-app assignments and callbacks are shared, not environment-isolated.
-Ensure designated local testers and production users can use that enterprise app.
+Authentik owns credentials, recovery and identity sessions. Shadow keeps PKCE,
+state/nonce/browser binding, its own sessions, revocation, CSRF/Origin and audit
+rules, and links an identity by verified email once, guarded, to a
+pre-provisioned User; the permanent exact `(issuer, subject)` then owns the link.
+No User is created at sign-in (accounts for new people arrive with tenants), an
+unverified or unknown person gets a generic failure, and React receives no
+provider tokens. The backend keeps the ID token with the session
+(`auth_sessions.id_token`, migration 025) only to send `id_token_hint` at
+sign-out, which ends the Shadow and Authentik sessions and returns to `/login`.
+`users.account_class` (`customer` or `platform`, migration 026) separates
+accounts: application routes, the Users API, MCP grants and the application
+sign-in accept only customer accounts.
 
-Request only `openid profile email`; make no Graph calls and do not require an
-`email_verified` claim (`OIDC_REQUIRE_VERIFIED_EMAIL=false`; historical, ADR-017 requires
-it: `true`). Missing email still
-blocks first linking. Retain validated tenant issuer, PKCE, state/nonce/browser
-binding, guarded first linking to a pre-provisioned User, permanent exact
-`(issuer, subject)`, database roles, sessions, revocation, CSRF/Origin and audit
-rules. No Users are created during login and React receives no provider tokens.
-
-Authentik callbacks and its Graph `User.Read` permission are excluded from target
-configuration. Actual removal is authorized F setup only after checking remaining
-consumers and coordinating cutover. Preserve OIDC scopes and unrelated consumers.
-Old Authentik identities are retained unchanged; a new Entra identity uses normal
-guarded linking. B provides explicit local-only admin provisioning even when a
-development database already has seeded Users; it does not relax D's production
-empty-users-table rule. Real-Entra browser results are separate from mock tests.
+AI clients will authenticate with a dedicated Authentik provider "Shadow MCP"
+([ADR-0023](../adr/0023-authorize-mcp-clients-with-a-dedicated-authentik-provider.md)):
+a confidential pre-registered client with PKCE S256, consent every time, audience
+the MCP client id and the MCP issuer. The blueprint
+`authentik/blueprints/shadow-mcp-application.yaml` creates it, but the backend
+still serves its own OAuth 2.1 server (ADR-015) until the SaaS plan steps 080I
+to 080K switch token verification and remove it.
 
 ## Required Configuration Contract
 
@@ -212,8 +235,8 @@ rendered `docker compose config` output into evidence.
 | `NOTIFICATION_RETENTION_DAYS`, `OUTBOX_RETENTION_DAYS`, `NOTIFICATION_EMAILS_PER_DAY` | Notification retention (default 90), retention of finished outbox emails that hold addresses and text (default 7), and the daily email limit per recipient (default 10, soft) |
 | `WORKER_SCHEDULE_INTERVAL_SECONDS`, `QUEUE_CLAIM_TIMEOUT_SECONDS` | Optional platform worker settings (defaults 3600 and 900); the worker is not started in production until the runtime adopts it |
 | `DATABASE_POOL_SIZE`, `DATABASE_MAX_OVERFLOW` | Optional connection pool of each backend or worker process (defaults 5 and 10, SQLAlchemy's own defaults) |
-| `OIDC_DISCOVERY_URL`, `OIDC_ISSUER` | The Authentik per-provider issuer `https://<identity host>/application/o/shadow/` and its discovery URL (ADR-017); the backend refuses anything else. `OIDC_INTERNAL_BASE_URL` (optional) is the private Docker address of Authentik: plain http only for a single-label service name |
-| `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` | Shared confidential app ID, production's own secret |
+| `OIDC_DISCOVERY_URL`, `OIDC_ISSUER` | The Authentik per-provider issuer `https://<identity host>/application/o/<slug>/` and its discovery URL (ADR-017); the backend refuses anything else (see [Identity (Authentik)](#identity-authentik)). `OIDC_INTERNAL_BASE_URL` (optional) is the private Docker address of Authentik: plain http only for a single-label service name |
+| `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` | Confidential client of the Authentik provider and production's own secret; `OIDC_CLIENT_SECRET` is a secret in the protected env file |
 | `PUBLIC_ORIGIN` | `https://shadow.lupaus.eu`, exact canonical application Host |
 | `DOCKER_SOCKET_GID` | Group ID of the host `/var/run/docker.sock` for Ofelia and the cleanup runner only |
 | `SHADOW_BACKUP_PUBLIC_KEY` | Path of the backup encryption **public** key, outside `/opt/postgres-backups` |
@@ -505,7 +528,7 @@ Docker, reruns cloud-init or changes swap.
 | Service | Image | Network | Persistent state | Restart |
 | --- | --- | --- | --- | --- |
 | `frontend` (Caddy) | frozen frontend image ID | `edge` (fixed `172.30.59.2`), publishes TCP 80/443 | `shadow_caddy_data` at `/data` | `unless-stopped` |
-| `backend` | frozen backend image ID | `edge` (ingress, Entra egress) + `data` | none | `unless-stopped` |
+| `backend` | frozen backend image ID | `edge` (ingress, identity egress) + `data` | none | `unless-stopped` |
 | `prediction-worker` | same backend image ID | `data` only | none | `unless-stopped` |
 | `worker` (profile `worker`, not started by any deploy command yet) | same backend image ID | `data` only | none | `unless-stopped` |
 | `migration` (one-shot) | same backend image ID | `data` only | none | `no` |
@@ -781,7 +804,7 @@ services from their existing containers without Compose ordering: the API
 health check does not query the database, so database-backed requests fail
 until PostgreSQL is healthy, and a worker that cannot connect exits and is
 restarted. The completed migration job and the runners are not rerun. The API fetches
-Entra discovery during startup and exits if it is unreachable; the restart
+OIDC discovery during startup and exits if it is unreachable; the restart
 policy retries, and the frontend stays gated until the API is healthy. Caddy obtains
 and renews certificates over HTTP-01 on port 80 or TLS-ALPN-01 on port 443
 and keeps them in `shadow_caddy_data`.
@@ -825,11 +848,11 @@ For a fresh database, the explicit order is:
 3. Run interactive `python -m app.bootstrap_admin` from that artifact in a private
    operator terminal with screen sharing and session recording disabled. Supply
    `DATABASE_URL` through protected environment configuration and enter the
-   designated Entra name/email only at the prompts, never in arguments or
+   designated name and verified email only at the prompts, never in arguments or
    repository records. The command validates and trims both fields and creates
    one fixed-role admin only when the entire users table is empty, including
    soft-deleted rows.
-4. First direct-Entra login links the pre-provisioned admin normally. Provision
+4. The designated admin's first Authentik sign-in links the pre-provisioned admin normally. Provision
    subsequent Users through existing admin functionality, then run limited smoke.
 
 C's reference seed is database-only, creates no Users, identities or sessions,
@@ -851,12 +874,12 @@ backup safeguards are not permission to auto-baseline or overwrite existing data
 
 Caddy access logs retain useful method, path, query, status, client and timing
 metadata. Its query filter replaces every value for `code`, `state`, `error`,
-`error_description`, Entra's `session_state`, ADR-015's pending request id
+`error_description`, the provider's `session_state`, ADR-015's pending request id
 carriers `request` and `return_to`, and OAuth token parameters a client might
 misplace in a query string (`token`, `access_token`, `refresh_token`,
 `code_verifier`), with `REDACTED` on every path. The log filter also replaces
 the `Location` response header (authorization redirects carry request ids,
-codes and the Entra `state`), the `X-Csrf-Token` request header and,
+codes and the OIDC `state`), the `X-Csrf-Token` request header and,
 explicitly, the `Authorization` request header. Default Caddy credential-header redaction
 remains enabled; do not enable `log_credentials`. The backend access-log
 filter redacts the same query keys.
@@ -891,9 +914,8 @@ operational approval. Before deployment:
 
 1. Record passing target-commit CI/local checks for the changed scope, including
    simulated OIDC and production-style Compose/ingress/worker verification.
-2. Complete separately recorded real local direct-Entra browser checks after
-   authorized setup. Historical Authentik/federation evidence is not equivalent;
-   local success does not prove production DNS/TLS/secret correctness.
+2. Complete separately recorded real local Authentik browser checks (sign-in,
+   second factor, sign-out). Local success does not prove production DNS/TLS/secret correctness.
 3. Freeze matching image references and record approval, target commit and
    previous stable references, or the explicit first-release absence. Confirm
    schema compatibility and failure/stop path. Record a completed pre-change
@@ -950,7 +972,7 @@ test never triggers automatic database restoration.
   or the 30-minute idle/eight-hour absolute limit.
 - No provider group mapping, Graph access, refresh tokens, SCIM or provider
   access-token retention.
-- Local logout is guaranteed; provider end-session is best effort.
+- Sign-out ends the Shadow session and, with `id_token_hint`, the Authentik session.
 - The in-memory public-auth limiter supports one backend replica. Multiple
   replicas require shared rate limiting and architecture review.
 
@@ -971,4 +993,5 @@ Git-free build) precedes
 workflow), and [H3](../archive/tasks/TASK-059H3-server-makefile-runbook.md) (server
 Makefile and runbook) follows both.
 [F](../archive/tasks/TASK-059F-first-production-rollout.md) follows H3 and explicit
-operational approval. Production Authentik remains excluded.
+operational approval. Production Authentik is introduced by SaaS plan steps
+086A to 087B.

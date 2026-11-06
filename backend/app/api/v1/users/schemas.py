@@ -13,7 +13,7 @@ USER_EMAIL_PATTERN = re.compile(
 
 
 def validate_user_email_address(value: str) -> str:
-    """Validate a trimmed User email intended for Entra first linking."""
+    """Validate a trimmed User email, matched to the provider's verified email."""
     if not USER_EMAIL_PATTERN.fullmatch(value):
         raise ValueError("Value must be a valid email address.")
     return value

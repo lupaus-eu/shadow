@@ -19,6 +19,9 @@ sessions and database authorization remain active. Direct Entra uses
 `openid profile email`, no Graph calls and no `email_verified` requirement in
 both environments. Local runtime migration remains pending TASK-059B.
 
+
+> Superseded in part by [ADR-017](0017-use-self-hosted-authentik-for-identity.md): the direct Entra sign-in is replaced by self-hosted Authentik (see the note at the end of this ADR).
+
 ---
 
 # Context

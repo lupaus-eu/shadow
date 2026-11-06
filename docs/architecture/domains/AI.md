@@ -201,10 +201,14 @@ generator version at submit, and apply uses the frozen values.
 ## Rule 6: Same People, Roles And Login
 
 An MCP token belongs to an existing User and is issued only after that User
-signs in with the existing Entra login and approves consent. Every MCP request
+signs in with the Authentik login and approves consent. Every MCP request
 re-reads the User and role; effective scopes are the grant's scopes
 intersected with the role's allowed scopes (`ROLE_SCOPES`). Both current roles
-have both scopes. The Entra registration does not change.
+have both scopes. ADR-0023 decides that AI clients will instead authenticate
+with a dedicated Authentik provider "Shadow MCP" (confidential pre-registered
+client, PKCE S256, consent every time, audience the MCP client id); the backend
+still serves its own OAuth 2.1 server until the SaaS plan steps 080I to 080K
+switch token verification.
 
 A grant is bound to the one MCP resource `<PUBLIC_ORIGIN>/api/mcp` and holds
 `shadow.read` or both scopes, so one grant covers read and write, and a
@@ -213,9 +217,9 @@ scope: a role limited to read in `ROLE_SCOPES` would see only the read tools
 and prompts on the same URL. Read-only access is decided by the role, not on
 the consent page. A grant lives at most 30 days, and refresh tokens expire
 after 7 days without use. That is longer than ADR-004's browser sessions and
-has no Entra re-check, which ADR-015 accepts as a trade-off. Offboarding must
+has no identity-provider re-check, which ADR-015 accepts as a trade-off. Offboarding must
 therefore soft-delete the Shadow User or revoke the User's grants; disabling
-the Entra account alone does not end MCP access.
+the Authentik account alone does not end MCP access.
 
 ## Rule 7: Secrets Are Hashed And Never Logged
 
@@ -988,7 +992,7 @@ Consent page `/ai/authorize` (`AuthorizePage.tsx`):
 
 - An anonymous visitor gets the existing login page, whose "Sign in" sends
   `return_to=/ai/authorize?request=<id>` to `GET /api/v1/auth/login`, so the
-  page reopens with the same request after the Entra login.
+  page reopens with the same request after the Authentik login.
 - With `features.mcp` false the page shows "AI connections are not available"
   and calls no API. Without a `request` query parameter it shows the "not
   found" state.
@@ -1396,7 +1400,7 @@ the version at submit rather than regenerating at apply.
 
 Depends On:
 
-- Users Domain for Users, roles, the Entra login and session/CSRF guard
+- Users Domain for Users, roles, the Authentik login and session/CSRF guard
 - Organisations Domain for the organisation of a change set
 - Organisation States Domain service cores for scenarios, org states, events,
   timeseries, values and derived metrics
@@ -1418,7 +1422,7 @@ Referenced By:
 2. It registers dynamically with an allowlisted redirect URI.
 3. The browser opens `/api/oauth/authorize`; Shadow stores a hashed pending
    request and redirects to the SPA consent page.
-4. An anonymous user signs in with the existing Entra login and returns to
+4. An anonymous user signs in with the Authentik login and returns to
    the consent page.
 5. The consent page shows the self-declared client name, the vendor host or
    the loopback notice, and the requested access. The user approves or
@@ -1469,7 +1473,7 @@ Avoid:
 - calling an LLM or storing LLM credentials;
 - adding background workers, queues or schedulers;
 - logging tokens, codes, request ids or tool arguments;
-- changing the Entra registration.
+- changing the Authentik configuration outside an authentication ticket or ADR.
 
 ---
 

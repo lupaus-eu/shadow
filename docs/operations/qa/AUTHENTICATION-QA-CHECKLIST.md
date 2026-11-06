@@ -1,5 +1,7 @@
 # Authentication And Production Ingress QA Checklist
 
+> Note (2026-11-06): the Entra-era sections below are historical evidence of runs against the previous identity provider (replaced by Authentik, ADR-017); the "Authentik local evidence" section is current and is where Authentik runs are recorded.
+
 Use this checklist for TASK-039G local evidence and later production deployment
 records. Record date, tester, application commit and evidence location. Never
 paste codes, tokens, cookies, client secrets, CSRF values, names or personal
