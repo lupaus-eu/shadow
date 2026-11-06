@@ -1,0 +1,459 @@
+[
+ {
+  "name": "plain text",
+  "input": "Just some text",
+  "blocks": [
+   {
+    "p": [
+     [
+      "Just some text"
+     ]
+    ]
+   }
+  ],
+  "plain": "Just some text"
+ },
+ {
+  "name": "bold",
+  "input": "a **bold** word",
+  "blocks": [
+   {
+    "p": [
+     [
+      "a ",
+      {
+       "b": [
+        "bold"
+       ]
+      },
+      " word"
+     ]
+    ]
+   }
+  ],
+  "plain": "a bold word"
+ },
+ {
+  "name": "italic",
+  "input": "an *italic* word",
+  "blocks": [
+   {
+    "p": [
+     [
+      "an ",
+      {
+       "i": [
+        "italic"
+       ]
+      },
+      " word"
+     ]
+    ]
+   }
+  ],
+  "plain": "an italic word"
+ },
+ {
+  "name": "bold and italic together",
+  "input": "*a **b** c*",
+  "blocks": [
+   {
+    "p": [
+     [
+      {
+       "i": [
+        "a ",
+        {
+         "b": [
+          "b"
+         ]
+        },
+        " c"
+       ]
+      }
+     ]
+    ]
+   }
+  ],
+  "plain": "a b c"
+ },
+ {
+  "name": "triple stars",
+  "input": "***both***",
+  "blocks": [
+   {
+    "p": [
+     [
+      {
+       "b": [
+        "*both"
+       ]
+      },
+      "*"
+     ]
+    ]
+   }
+  ],
+  "plain": "*both*"
+ },
+ {
+  "name": "stars with spaces stay literal",
+  "input": "2 * 3 * 4",
+  "blocks": [
+   {
+    "p": [
+     [
+      "2 * 3 * 4"
+     ]
+    ]
+   }
+  ],
+  "plain": "2 * 3 * 4"
+ },
+ {
+  "name": "unclosed markers stay literal",
+  "input": "**unclosed and *also",
+  "blocks": [
+   {
+    "p": [
+     [
+      "**unclosed and *also"
+     ]
+    ]
+   }
+  ],
+  "plain": "**unclosed and *also"
+ },
+ {
+  "name": "empty markers stay literal",
+  "input": "**** and **",
+  "blocks": [
+   {
+    "p": [
+     [
+      "**** and **"
+     ]
+    ]
+   }
+  ],
+  "plain": "**** and **"
+ },
+ {
+  "name": "bullet list",
+  "input": "- one\n- two",
+  "blocks": [
+   {
+    "ul": [
+     [
+      "one"
+     ],
+     [
+      "two"
+     ]
+    ]
+   }
+  ],
+  "plain": "- one\n- two"
+ },
+ {
+  "name": "numbered list",
+  "input": "1. first\n2. second",
+  "blocks": [
+   {
+    "ol": [
+     [
+      "first"
+     ],
+     [
+      "second"
+     ]
+    ]
+   }
+  ],
+  "plain": "1. first\n2. second"
+ },
+ {
+  "name": "lists and paragraphs",
+  "input": "Intro\n\n- a\n- b\n\nOutro line 1\nOutro line 2",
+  "blocks": [
+   {
+    "p": [
+     [
+      "Intro"
+     ]
+    ]
+   },
+   {
+    "ul": [
+     [
+      "a"
+     ],
+     [
+      "b"
+     ]
+    ]
+   },
+   {
+    "p": [
+     [
+      "Outro line 1"
+     ],
+     [
+      "Outro line 2"
+     ]
+    ]
+   }
+  ],
+  "plain": "Intro\n\n- a\n- b\n\nOutro line 1\nOutro line 2"
+ },
+ {
+  "name": "a blank line splits lists",
+  "input": "- a\n\n- b",
+  "blocks": [
+   {
+    "ul": [
+     [
+      "a"
+     ]
+    ]
+   },
+   {
+    "ul": [
+     [
+      "b"
+     ]
+    ]
+   }
+  ],
+  "plain": "- a\n\n- b"
+ },
+ {
+  "name": "a list of another kind starts a new list",
+  "input": "- a\n1. b",
+  "blocks": [
+   {
+    "ul": [
+     [
+      "a"
+     ]
+    ]
+   },
+   {
+    "ol": [
+     [
+      "b"
+     ]
+    ]
+   }
+  ],
+  "plain": "- a\n\n1. b"
+ },
+ {
+  "name": "no space after the dash is text",
+  "input": "-a\n1.b",
+  "blocks": [
+   {
+    "p": [
+     [
+      "-a"
+     ],
+     [
+      "1.b"
+     ]
+    ]
+   }
+  ],
+  "plain": "-a\n1.b"
+ },
+ {
+  "name": "link",
+  "input": "see [the plan](https://example.com/plan) now",
+  "blocks": [
+   {
+    "p": [
+     [
+      "see ",
+      {
+       "a": "the plan",
+       "href": "https://example.com/plan"
+      },
+      " now"
+     ]
+    ]
+   }
+  ],
+  "plain": "see the plan (https://example.com/plan) now"
+ },
+ {
+  "name": "link with another scheme stays text",
+  "input": "[bad](ftp://example.com) and [worse](javascript:alert(1))",
+  "blocks": [
+   {
+    "p": [
+     [
+      "[bad](ftp://example.com) and [worse](javascript:alert(1))"
+     ]
+    ]
+   }
+  ],
+  "plain": "[bad](ftp://example.com) and [worse](javascript:alert(1))"
+ },
+ {
+  "name": "bare address and trailing punctuation",
+  "input": "Go to https://example.com/a, or (https://example.org).",
+  "blocks": [
+   {
+    "p": [
+     [
+      "Go to ",
+      {
+       "a": "https://example.com/a",
+       "href": "https://example.com/a"
+      },
+      ", or (",
+      {
+       "a": "https://example.org",
+       "href": "https://example.org"
+      },
+      ")."
+     ]
+    ]
+   }
+  ],
+  "plain": "Go to https://example.com/a, or (https://example.org)."
+ },
+ {
+  "name": "escapes",
+  "input": "\\*not italic\\* \\[x\\](https://e.com) \\\\ back",
+  "blocks": [
+   {
+    "p": [
+     [
+      "*not italic* [x](",
+      {
+       "a": "https://e.com",
+       "href": "https://e.com"
+      },
+      ") \\ back"
+     ]
+    ]
+   }
+  ],
+  "plain": "*not italic* [x](https://e.com) \\ back"
+ },
+ {
+  "name": "html is plain text",
+  "input": "<b>bold</b> <script>alert(1)</script>",
+  "blocks": [
+   {
+    "p": [
+     [
+      "<b>bold</b> <script>alert(1)</script>"
+     ]
+    ]
+   }
+  ],
+  "plain": "<b>bold</b> <script>alert(1)</script>"
+ },
+ {
+  "name": "line breaks are kept",
+  "input": "line one\nline two\n\nline three",
+  "blocks": [
+   {
+    "p": [
+     [
+      "line one"
+     ],
+     [
+      "line two"
+     ]
+    ]
+   },
+   {
+    "p": [
+     [
+      "line three"
+     ]
+    ]
+   }
+  ],
+  "plain": "line one\nline two\n\nline three"
+ },
+ {
+  "name": "windows line breaks",
+  "input": "a\r\nb\r\n\r\nc",
+  "blocks": [
+   {
+    "p": [
+     [
+      "a"
+     ],
+     [
+      "b"
+     ]
+    ]
+   },
+   {
+    "p": [
+     [
+      "c"
+     ]
+    ]
+   }
+  ],
+  "plain": "a\nb\n\nc"
+ },
+ {
+  "name": "formatting inside a list item",
+  "input": "- **Deadline**: 5 Nov\n- see https://example.com",
+  "blocks": [
+   {
+    "ul": [
+     [
+      {
+       "b": [
+        "Deadline"
+       ]
+      },
+      ": 5 Nov"
+     ],
+     [
+      "see ",
+      {
+       "a": "https://example.com",
+       "href": "https://example.com"
+      }
+     ]
+    ]
+   }
+  ],
+  "plain": "- Deadline: 5 Nov\n- see https://example.com"
+ },
+ {
+  "name": "a link inside bold",
+  "input": "**[go](https://example.com)**",
+  "blocks": [
+   {
+    "p": [
+     [
+      {
+       "b": [
+        {
+         "a": "go",
+         "href": "https://example.com"
+        }
+       ]
+      }
+     ]
+    ]
+   }
+  ],
+  "plain": "go (https://example.com)"
+ },
+ {
+  "name": "only blank lines",
+  "input": "\n\n  \n",
+  "blocks": [],
+  "plain": ""
+ }
+]

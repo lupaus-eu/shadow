@@ -1,0 +1,11 @@
+[Unit]
+Description=Run the Yearclock backup
+
+[Timer]
+# Alpha: daily. Beta: change to `hourly` (see docs/runbooks/backup.md).
+OnCalendar=*-*-* 03:15:00
+RandomizedDelaySec=300
+Persistent=true
+
+[Install]
+WantedBy=timers.target

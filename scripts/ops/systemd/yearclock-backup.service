@@ -1,0 +1,9 @@
+[Unit]
+Description=Yearclock off-host database backup
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/yearclock
+ExecStart=/opt/yearclock/scripts/ops/backup-offsite.sh

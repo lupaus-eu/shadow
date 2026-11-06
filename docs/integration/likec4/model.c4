@@ -1,0 +1,246 @@
+// Concept model of Yearclock and eTWIN, and the PROPOSED relationships between them.
+// Sources: Yearclock CONTEXT.md; etwin/docs; docs/integration/yearclock-etwin-spec.md (v0.2).
+// Concepts are domain terms, not containers or tables.
+//
+// eTWIN is modelled here as its ORIGINAL, LOCKED core concepts only. The ontology (defining your own
+// types) is a later extension and is deliberately not part of this first model (spec 3.1, 3.5).
+
+model {
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // YEARCLOCK  (amber): what an organization intends to do, and when
+  // ════════════════════════════════════════════════════════════════════════════
+  yc = ycSystem 'Yearclock' {
+    description 'Visual planning of recurring and predictable organizational work across a calendar year. Plans intent; does not measure.'
+
+    organization = ycConcept 'Organization' {
+      description 'Customer organization that owns its Yearclocks and controls its users\' access.'
+    }
+    orgUser = ycConcept 'Organization User' {
+      description 'A User Account\'s membership in one Organization (Owner, Admin or Member); occupies a seat.'
+    }
+    group = ycConcept 'Group' {
+      description 'Named set of members that can receive Editor or Viewer access to a Yearclock.'
+    }
+    subscription = ycConcept 'Subscription' {
+      description 'Monthly prepaid per-seat entitlement of one Organization.'
+    }
+    yearclock = ycConcept 'Yearclock' {
+      description 'Enduring visual planning timeline of an Organization. Contains Lanes and Events.'
+    }
+    lane = ycConcept 'Lane' {
+      description 'Concentric ring: a process, responsibility, team or focus area. Never defines access.'
+    }
+    event = ycConcept 'Event (plan entry)' {
+      description 'Dated planning entry in one Lane: something INTENDED to occur. No status and no execution state (ADR-0027). Past or future is derived from the date: when real time passes the date, it simply becomes history. No Tentative or Hypothetical status (owner decision): alternatives belong to eTWIN scenarios.'
+    }
+    series = ycConcept 'Series' {
+      description 'Recurrence definition (weekly, monthly, yearly) that produces Occurrences.'
+    }
+    occurrence = ycConcept 'Occurrence' {
+      description 'One dated Event produced by a Series; may be an individually changed exception.'
+    }
+    category = ycConcept 'Category' {
+      description 'Optional name and colour classifying one Event (Yearclock- or Organization-level).'
+    }
+    label = ycConcept 'Label' {
+      description 'Organization-defined name and colour; up to ten per Event; never affects access.'
+    }
+    urlLink = ycConcept 'Link' {
+      description 'Titled http(s) address on an Event or Series; up to ten. Already exists, so it can point at eTWIN without any schema change.'
+    }
+    externalSignal = ycConcept 'External Signal' {
+      #deferred
+      description 'NOT IN V1 (ADR-0003, ADR-0027). Sourced, read-only observation from outside, kept distinct from Events.'
+    }
+    recommendation = ycConcept 'Recommendation' {
+      #deferred
+      description 'NOT IN V1 (ADR-0027). Machine-generated proposal; Pending until a human marks it Accepted or Dismissed.'
+    }
+  }
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // eTWIN  (indigo): how the company works, and what happens if something changes
+  // Two worlds: REALITY (the baseline model) and SIMULATION (scenarios). The simulation never writes
+  // into reality. Scenario events never leak outside their scenario; every run is separate.
+  // ════════════════════════════════════════════════════════════════════════════
+  et = etSystem 'eTWIN' {
+    description 'Enterprise twin: the company modelled as teams, services, goals and KPIs; events that change it; and a separate simulation world for trying alternatives.'
+
+    // ── Reality (the baseline) ───────────────────────────────────────────────
+    reality = etWorld 'Reality (baseline)' {
+      description 'What is known about the company and what has happened or is committed to happen. Updated only when reality changes.'
+
+      company = etConcept 'Company' {
+        description 'The customer company whose model this is. All data is company-scoped.'
+      }
+      team = etConcept 'Team' {
+        description 'A group of people that does work and pursues goals.'
+      }
+      service = etConcept 'Service' {
+        description 'A service the company delivers; can be measured by KPIs.'
+      }
+      goal = etConcept 'Goal' {
+        description 'A target that a Team pursues; its fulfilment is followed through KPIs.'
+      }
+      kpi = etConcept 'KPI' {
+        description 'A measure with a unit that tells how a Service or Team is doing and how a Goal is progressing.'
+      }
+      kpiSeries = etConcept 'KPI Timeseries' {
+        description 'The actual readings of a KPI over time. The truth; wins over any simulated value.'
+      }
+      event = etConcept 'Event' {
+        description 'Something that HAPPENED or WILL HAPPEN in reality: it either changes the model internally (an organisation change) or describes an external occurrence (a stock market crash). The date may be in the future: it takes effect when real time reaches that date. No stored state: "in effect" is derived from the date.'
+      }
+    }
+
+    // ── Simulation ───────────────────────────────────────────────────────────
+    simulation = etWorld 'Simulation' {
+      description 'Hypothetical worlds for trying alternatives. Nothing here ever flows into reality by itself.'
+
+      scenario = etSimConcept 'Scenario' {
+        description 'A separate simulation world that starts as a copy of reality. Everything in it stays in it.'
+      }
+      scenarioEvent = etSimConcept 'Scenario Event' {
+        description 'An ASSUMED event inside one scenario ("what if this happened"). Lives only in that scenario and never leaks outside it.'
+      }
+      run = etSimConcept 'Simulation Run' {
+        description 'One separate simulation run of a scenario. Runs never share results.'
+      }
+      projectedKpi = etSimConcept 'Projected KPI Series' {
+        description 'The KPI values a run projects into the future. Not the same as KPI Timeseries, which are actual readings.'
+      }
+      action = etSimConcept 'Action' {
+        description 'A proposed measure based on the simulation. A human decides whether to adopt it.'
+      }
+    }
+  }
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // Relationships INSIDE Yearclock (grey)
+  // ════════════════════════════════════════════════════════════════════════════
+  yc.organization -[uses]-> yc.yearclock 'owns'
+  yc.organization -[uses]-> yc.orgUser 'has members'
+  yc.organization -[uses]-> yc.group 'defines'
+  yc.organization -[uses]-> yc.subscription 'pays for (per seat)'
+  yc.group -[uses]-> yc.orgUser 'contains'
+  yc.yearclock -[uses]-> yc.lane 'contains rings'
+  yc.lane -[uses]-> yc.event 'holds'
+  yc.series -[uses]-> yc.occurrence 'produces'
+  yc.occurrence -[uses]-> yc.event 'is an'
+  yc.event -[uses]-> yc.category 'has at most one'
+  yc.event -[uses]-> yc.label 'carries up to ten'
+  yc.event -[uses]-> yc.urlLink 'carries up to ten'
+  yc.externalSignal -[uses]-> yc.event 'may be answered by'
+  yc.recommendation -[uses]-> yc.event 'proposes (when accepted)'
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // Relationships INSIDE eTWIN: reality (grey)
+  // ════════════════════════════════════════════════════════════════════════════
+  et.reality.company -[uses]-> et.reality.team 'has'
+  et.reality.company -[uses]-> et.reality.service 'delivers'
+  et.reality.company -[uses]-> et.reality.goal 'sets'
+  et.reality.team -[uses]-> et.reality.service 'delivers'
+  et.reality.team -[uses]-> et.reality.goal 'pursues'
+  et.reality.goal -[uses]-> et.reality.kpi 'is measured by'
+  et.reality.kpi -[uses]-> et.reality.service 'measures'
+  et.reality.kpi -[uses]-> et.reality.team 'measures'
+  et.reality.kpi -[uses]-> et.reality.kpiSeries 'has actual readings'
+  // An Event changes the model (internal) or describes an outside occurrence (external).
+  et.reality.event -[uses]-> et.reality.team 'internal: changes'
+  et.reality.event -[uses]-> et.reality.service 'internal: changes'
+  et.reality.event -[uses]-> et.reality.kpi 'affects (internal or external)'
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // Relationships INSIDE eTWIN: simulation (grey)
+  // ════════════════════════════════════════════════════════════════════════════
+  et.simulation.scenario -[uses]-> et.simulation.scenarioEvent 'contains (and only here)'
+  et.simulation.scenario -[uses]-> et.simulation.run 'is run as separate runs'
+  et.simulation.run -[uses]-> et.simulation.projectedKpi 'projects'
+  et.simulation.run -[uses]-> et.simulation.action 'yields proposals'
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // BETWEEN THE TWO eTWIN WORLDS
+  // ════════════════════════════════════════════════════════════════════════════
+  // A scenario starts as a snapshot copy of reality. After that it is independent: changes in a
+  // scenario never write back, and later changes in reality do not rewrite finished runs.
+  et.simulation.scenario -[startsAsCopy]-> et.reality.company 'starts as a copy of reality (snapshot)'
+  // The ONLY way from simulation to reality: a user picks a scenario event and copies it.
+  // One-way, manual, never automatic. The scenario keeps its own event untouched.
+  et.simulation.scenarioEvent -[manualCopy]-> et.reality.event 'copied by a user (manual, one-way, never automatic)'
+  // A projected series refers to the KPI it forecasts, by reference.
+  et.simulation.projectedKpi -[uses]-> et.reality.kpi 'projects this KPI (reference)'
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // CROSS-SYSTEM relationships: ALL PROPOSED, none exists today.
+  // Colour tells the direction of meaning:
+  //   red   = Yearclock -> eTWIN  (a plan becomes simulation input)
+  //   green = eTWIN -> Yearclock  (model output returns to the plan, human-approved)
+  //   slate = alignment only, by reference; the two sides stay separate records
+  // Spec reference: section 5 of docs/integration/yearclock-etwin-spec.md.
+  // ════════════════════════════════════════════════════════════════════════════
+
+  // 5.7 Identity. One Organization is linked to one Company, 1:1 by default. A reference stored on
+  // both sides, not a merge. Rights are NOT inherited in either direction.
+  yc.organization -[alignsWith]-> et.reality.company 'same customer (1:1 link, no shared rights)' {
+    description 'Spec 5.7. A reference stored on both sides. Users are matched by e-mail / OIDC subject (both use Authentik), but no access is ever inherited automatically.'
+  }
+
+  // 5.1 Event is the key shared word, but the two Events make different claims.
+  // Yearclock Event = INTENT. eTWIN Event = FACT. Scenario Event = ASSUMPTION.
+  // Past or future does not tell them apart (a fact can be future-dated, a plan can be in the past).
+  // A plan entry is intent, not fact, so by default it goes to a SCENARIO, never straight to reality.
+  yc.event -[plannedToModel]-> et.simulation.scenarioEvent 'exported as an assumption in a scenario (default)' {
+    description 'Spec 5.1 and 6.3 phase 2. A chosen plan entry becomes a Scenario Event. Started by a person, idempotent on external_id = Event or Occurrence id. It reaches reality only if a user later copies it there (manualCopy).'
+  }
+  // When reality catches up, the fact is linked to the plan, but they stay two separate records.
+  // Planned and actual dates can differ, and a plan can be realised partially or as several events,
+  // so the plan entry is never changed into a fact and never gets a completion state.
+  et.reality.event -[modelToPlan]-> yc.event 'occurrence link: this plan entry was realised as this fact' {
+    description 'Spec 5.1 and 6.3 phase 4. Shown read-only beside the plan entry for plan versus actual. The Yearclock Event stays an intent with no status (ADR-0027).'
+  }
+
+  // 5.2 A Lane is a ring; its meaning (a team, a service) is a Team or Service in eTWIN.
+  // Stored as an optional external_ref on the Lane. The Lane never defines access.
+  yc.lane -[plannedToModel]-> et.reality.team 'optional external_ref: this ring is that team' {
+    description 'Spec 5.2. Attaches an exported plan entry to the right team in the scenario.'
+  }
+  yc.lane -[plannedToModel]-> et.reality.service 'optional external_ref: this ring is that service' {
+    description 'Spec 5.2. Same, when the ring stands for a service.'
+  }
+
+  // 5.3 A Yearclock Category is only a name and a colour; an eTWIN Event has a class that
+  // matters computationally. A mapping table connects them. Unmapped plan entries still arrive, without class.
+  yc.category -[alignsWith]-> et.reality.event 'mapping table entry: Category to event class (optional)' {
+    description 'Spec 5.3. Needs tenant-level impact rules first (EVENT_IMPACT_RULE_SCOPE_V2).'
+  }
+
+  // 5.4 Series are not exported as recurrence rules by default; each Occurrence becomes its own Scenario Event.
+  yc.series -[plannedToModel]-> et.simulation.scenarioEvent 'each Occurrence exported as its own Scenario Event' {
+    description 'Spec 5.4. eTWIN has no recurrence concept in its locked core.'
+  }
+
+  // 5.9 The existing Link concept is a zero-change first integration: it points a plan entry at an
+  // eTWIN scenario, KPI or run. Stored as a URL reference, not a copy.
+  yc.urlLink -[plannedToModel]-> et.simulation.scenario 'URL to a scenario, KPI or run (phase 1, no schema change)' {
+    description 'Spec 5.9. Works today: a Yearclock Link whose address is an eTWIN page.'
+  }
+
+  // 5.6 KPI and Goal are deliberately NOT brought into Yearclock (ADR-0027: no execution state).
+  // At most the latest KPI reading is shown read-only beside a plan entry.
+  et.reality.kpiSeries -[modelToPlan]-> yc.event 'latest KPI reading shown read-only beside the plan entry (phase 4)' {
+    description 'Spec 5.6. Yearclock never stores KPI or Goal. A read-only view over an external reference.'
+  }
+
+  // 5.5 Same idea in two vocabularies: the machine proposes, a human decides. eTWIN is the provider;
+  // Yearclock is where the decision is made. Accepting creates a plan entry. This reopens ADR-0027.
+  et.simulation.action -[modelToPlan]-> yc.recommendation 'offered as a Pending Recommendation (a human accepts or dismisses)' {
+    description 'Spec 5.5 and 6.3 phase 3. Never created or changed autonomously. Accepting it creates a Yearclock plan entry.'
+  }
+  // External facts in eTWIN (a market crash) are useful context in Yearclock, as a read-only Signal.
+  et.reality.event -[modelToPlan]-> yc.externalSignal 'an external Event offered as a Signal (phase 3)' {
+    description 'Spec 5.5. A sourced, read-only observation kept distinct from Yearclock Events (ADR-0003). Assigned to Yearclocks by an Organization Admin.'
+  }
+
+  // Label, Event Revision and Audit Log are not exported (spec section 7).
+}

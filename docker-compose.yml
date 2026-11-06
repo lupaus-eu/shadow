@@ -1,366 +1,223 @@
+# Yearclock owns host ports 8100-8199 (see docs/architecture/docker.md).
+# Every published port binds to 127.0.0.1 by default and is overridable through
+# a YEARCLOCK_*_PORT variable; scripts/check-compose-ports.py enforces this.
+name: yearclock
+
 services:
-  database:
-    image: docker.io/library/postgres:18.6@sha256:4ef4dbc939d61acea57712655ddb4b4ab27419c913f94cca0cd57cb3ea3c2280
-    ports:
-      - "127.0.0.1:${DATABASE_PORT:-5432}:5432"
+  db:
+    image: postgres:17-alpine
     environment:
-      POSTGRES_DB: ${DATABASE_NAME:-shadow}
-      POSTGRES_USER: ${DATABASE_USER:-shadow}
-      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-shadow_dev_password}
-    working_dir: /workspace
-    volumes:
-      - database_data:/var/lib/postgresql
-      - ./db/init:/workspace/db/init:ro
+      POSTGRES_DB: ${POSTGRES_DB:-yearclock}
+      POSTGRES_USER: ${POSTGRES_USER:-yearclock}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-yearclock}
+      AUTHENTIK_POSTGRES_DB: ${AUTHENTIK_POSTGRES_DB:-authentik}
+      AUTHENTIK_POSTGRES_USER: ${AUTHENTIK_POSTGRES_USER:-authentik}
+      AUTHENTIK_POSTGRES_PASSWORD: ${AUTHENTIK_POSTGRES_PASSWORD:-authentik}
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready --username \"$$POSTGRES_USER\" --dbname \"$$POSTGRES_DB\" --host 127.0.0.1"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-yearclock} -d ${POSTGRES_DB:-yearclock}"]
       interval: 2s
       timeout: 5s
-      retries: 30
-      start_period: 5s
-    networks:
-      local:
-        ipv4_address: 172.28.59.4
+      retries: 15
+    ports:
+      - "${YEARCLOCK_BIND_ADDRESS:-127.0.0.1}:${YEARCLOCK_DB_PORT:-8132}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
 
-  backend:
-    build:
-      context: .
-      dockerfile: backend/Dockerfile
-      target: dev
-    # Execute the bind-mounted entrypoint so an existing image cannot retain
-    # the retired Authentik startup checks after a branch update.
-    command: ["/app/docker-entrypoint-dev.sh"]
+  authentik-db-init:
+    image: postgres:17-alpine
+    command: ["/scripts/02-create-authentik-database.sh"]
     environment:
-      DATABASE_URL: postgresql://${DATABASE_USER:-shadow}:${DATABASE_PASSWORD:-shadow_dev_password}@database:5432/${DATABASE_NAME:-shadow}
-      DATABASE_POOL_SIZE: ${DATABASE_POOL_SIZE:-5}
-      DATABASE_MAX_OVERFLOW: ${DATABASE_MAX_OVERFLOW:-10}
-      APP_ENV: development
-      # Sign-in through the local Authentik (ADR-017). The issuer is fixed by design; the
-      # backend reaches Authentik inside the Docker network (OIDC_INTERNAL_BASE_URL) while
-      # browsers use https://id.app.localhost. The client is the one the blueprint registers.
-      OIDC_DISCOVERY_URL: https://id.app.localhost/application/o/shadow/.well-known/openid-configuration
-      OIDC_ISSUER: https://id.app.localhost/application/o/shadow/
-      OIDC_INTERNAL_BASE_URL: http://authentik-server:9000
-      OIDC_CLIENT_ID: ${LOCAL_OIDC_CLIENT_ID:-shadow-local}
-      OIDC_CLIENT_SECRET: ${LOCAL_OIDC_CLIENT_SECRET:-replace-with-a-random-oidc-secret}
-      OIDC_SCOPES: openid profile email
-      OIDC_CALLBACK_PATH: /api/v1/auth/callback
-      OIDC_ALLOWED_SIGNING_ALGORITHMS: RS256
-      OIDC_REQUIRE_VERIFIED_EMAIL: "true"
-      PUBLIC_ORIGIN: https://app.localhost
-      APP_ALLOWED_ORIGIN: https://app.localhost
-      TRUSTED_CADDY_PEER_CIDRS: 172.28.59.2/32
-      SESSION_COOKIE_SECURE: "true"
-      AUTH_SESSION_IDLE_TIMEOUT_SECONDS: ${AUTH_SESSION_IDLE_TIMEOUT_SECONDS:-1800}
-      AUTH_SESSION_ABSOLUTE_LIFETIME_SECONDS: ${AUTH_SESSION_ABSOLUTE_LIFETIME_SECONDS:-28800}
-      AUTH_SESSION_ACTIVITY_WRITE_SECONDS: ${AUTH_SESSION_ACTIVITY_WRITE_SECONDS:-300}
-      OIDC_TRANSACTION_LIFETIME_SECONDS: ${OIDC_TRANSACTION_LIFETIME_SECONDS:-600}
-      MCP_ENABLED: ${MCP_ENABLED:-false}
-      MCP_CHANGE_SET_REVIEW_ENABLED: ${MCP_CHANGE_SET_REVIEW_ENABLED:-false}
-      MCP_OAUTH_REDIRECT_URIS: ${MCP_OAUTH_REDIRECT_URIS:-https://claude.ai/api/mcp/auth_callback https://claude.com/api/mcp/auth_callback http://localhost:{port}/callback}
-      MCP_OAUTH_AUTHORIZATION_REQUEST_LIFETIME_SECONDS: ${MCP_OAUTH_AUTHORIZATION_REQUEST_LIFETIME_SECONDS:-600}
-      MCP_OAUTH_AUTHORIZATION_CODE_LIFETIME_SECONDS: ${MCP_OAUTH_AUTHORIZATION_CODE_LIFETIME_SECONDS:-60}
-      MCP_OAUTH_ACCESS_TOKEN_LIFETIME_SECONDS: ${MCP_OAUTH_ACCESS_TOKEN_LIFETIME_SECONDS:-3600}
-      MCP_OAUTH_REFRESH_TOKEN_IDLE_LIFETIME_SECONDS: ${MCP_OAUTH_REFRESH_TOKEN_IDLE_LIFETIME_SECONDS:-604800}
-      MCP_OAUTH_GRANT_LIFETIME_SECONDS: ${MCP_OAUTH_GRANT_LIFETIME_SECONDS:-2592000}
-      MCP_OAUTH_REGISTER_RATE_LIMIT_PER_MINUTE: ${MCP_OAUTH_REGISTER_RATE_LIMIT_PER_MINUTE:-30}
-      MCP_OAUTH_AUTHORIZE_RATE_LIMIT_PER_MINUTE: ${MCP_OAUTH_AUTHORIZE_RATE_LIMIT_PER_MINUTE:-20}
-      MCP_OAUTH_TOKEN_RATE_LIMIT_PER_MINUTE: ${MCP_OAUTH_TOKEN_RATE_LIMIT_PER_MINUTE:-300}
-      MCP_OAUTH_REVOKE_RATE_LIMIT_PER_MINUTE: ${MCP_OAUTH_REVOKE_RATE_LIMIT_PER_MINUTE:-60}
-      MCP_OAUTH_MAX_PENDING_REQUESTS_PER_CLIENT: ${MCP_OAUTH_MAX_PENDING_REQUESTS_PER_CLIENT:-20}
-      MCP_OAUTH_MAX_PENDING_REQUESTS: ${MCP_OAUTH_MAX_PENDING_REQUESTS:-1000}
-      MCP_OAUTH_MAX_CLIENTS: ${MCP_OAUTH_MAX_CLIENTS:-10000}
-      MCP_TOOL_CONCURRENCY: ${MCP_TOOL_CONCURRENCY:-4}
-      MCP_RATE_LIMIT_PER_MINUTE: ${MCP_RATE_LIMIT_PER_MINUTE:-120}
-      AI_CHANGE_SET_STATEMENT_TIMEOUT_MS: ${AI_CHANGE_SET_STATEMENT_TIMEOUT_MS:-30000}
-      AI_CHANGE_SET_LOCK_TIMEOUT_MS: ${AI_CHANGE_SET_LOCK_TIMEOUT_MS:-5000}
+      PGHOST: db
+      PGUSER: ${POSTGRES_USER:-yearclock}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-yearclock}
+      PGDATABASE: ${POSTGRES_DB:-yearclock}
+      POSTGRES_USER: ${POSTGRES_USER:-yearclock}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-yearclock}
+      POSTGRES_DB: ${POSTGRES_DB:-yearclock}
+      AUTHENTIK_POSTGRES_DB: ${AUTHENTIK_POSTGRES_DB:-authentik}
+      AUTHENTIK_POSTGRES_USER: ${AUTHENTIK_POSTGRES_USER:-authentik}
+      AUTHENTIK_POSTGRES_PASSWORD: ${AUTHENTIK_POSTGRES_PASSWORD:-authentik}
+    volumes:
+      - ./docker/postgres/init:/scripts:ro
     depends_on:
-      database:
-        condition: service_started
-      # The backend discovers the provider at startup, so Authentik must be configured.
-      authentik-server:
+      db:
         condition: service_healthy
-      authentik-config-init:
-        condition: service_completed_successfully
-    volumes:
-      - ./backend:/app
-      - backend_uv_cache:/root/.cache/uv
-      - backend_venv:/app/.venv
-    networks:
-      local:
-        ipv4_address: 172.28.59.3
 
-  prediction-worker:
-    build:
-      context: .
-      dockerfile: backend/Dockerfile
-      target: dev
-    command: ["uv", "run", "python", "-m", "app.api.v1.predictions.worker"]
-    environment:
-      DATABASE_URL: postgresql://${DATABASE_USER:-shadow}:${DATABASE_PASSWORD:-shadow_dev_password}@database:5432/${DATABASE_NAME:-shadow}
-      DATABASE_POOL_SIZE: ${DATABASE_POOL_SIZE:-5}
-      DATABASE_MAX_OVERFLOW: ${DATABASE_MAX_OVERFLOW:-10}
-    depends_on:
-      database:
-        condition: service_started
-    healthcheck:
-      test: ["CMD", "uv", "run", "python", "-m", "app.api.v1.predictions.worker", "health-check"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-      start_period: 10s
-    init: true
-    restart: unless-stopped
-    stop_grace_period: 10s
+  authentik-server:
+    image: ghcr.io/goauthentik/server:${AUTHENTIK_VERSION:-2026.8.5}
+    command: server
+    environment: &authentik_environment
+      AUTHENTIK_POSTGRESQL__HOST: db
+      AUTHENTIK_POSTGRESQL__NAME: ${AUTHENTIK_POSTGRES_DB:-authentik}
+      AUTHENTIK_POSTGRESQL__USER: ${AUTHENTIK_POSTGRES_USER:-authentik}
+      AUTHENTIK_POSTGRESQL__PASSWORD: ${AUTHENTIK_POSTGRES_PASSWORD:-authentik}
+      AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY:-local-development-secret-change-me}
+      # authentik 2026.8 honours X-Forwarded-* only from these networks (ADR-0036).
+      AUTHENTIK_LISTEN__TRUSTED_PROXY_CIDRS: ${AUTHENTIK_TRUSTED_PROXY_CIDRS:-127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fe80::/10,::1/128}
+      AUTHENTIK_WEB__BASE_URL: ${AUTHENTIK_BASE_URL:-http://localhost:${YEARCLOCK_AUTHENTIK_PORT:-8190}}
+      AUTHENTIK_ENROLLMENT_OPEN: ${AUTHENTIK_ENROLLMENT_OPEN:-true}
+      AUTHENTIK_BOOTSTRAP_PASSWORD: ${AUTHENTIK_BOOTSTRAP_PASSWORD:-local-admin-change-me}
+      AUTHENTIK_EMAIL__HOST: smtp.tem.scaleway.com
+      AUTHENTIK_EMAIL__PORT: "587"
+      AUTHENTIK_EMAIL__USERNAME: ${SCW_DEFAULT_PROJECT_ID:-}
+      AUTHENTIK_EMAIL__PASSWORD: ${SCW_SECRET_KEY:-}
+      AUTHENTIK_EMAIL__USE_TLS: "true"
+      AUTHENTIK_EMAIL__FROM: ${SCW_TEM_DEFAULT_SENDER_EMAIL:-identity@example.com}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-yearclock-local}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-replace-with-a-random-oidc-secret}
+      OIDC_REDIRECT_URI: ${OIDC_REDIRECT_URI:-http://localhost:8100/api/v1/auth/callback}
+      MCP_OIDC_CLIENT_ID: ${MCP_OIDC_CLIENT_ID:-yearclock-mcp-local}
+      MCP_OIDC_CLIENT_SECRET: ${MCP_OIDC_CLIENT_SECRET:-replace-with-a-random-mcp-secret}
+      # The web application's stylesheet for the sign-in pages (ADR-0039); the Vite dev server serves it at this address.
+      AUTHENTIK_THEME_CSS_URL: ${AUTHENTIK_THEME_CSS_URL:-http://localhost:8173/src/theme.css?direct}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:8173}
+    ports:
+      - "${YEARCLOCK_BIND_ADDRESS:-127.0.0.1}:${YEARCLOCK_AUTHENTIK_PORT:-8190}:9000"
     volumes:
-      - ./backend:/app
-      - backend_uv_cache:/root/.cache/uv
-      - backend_venv:/app/.venv
-    networks:
-      local:
-        ipv4_address: 172.28.59.5
+      - authentik_media:/media
+      - authentik_templates:/templates
+    depends_on:
+      authentik-db-init:
+        condition: service_completed_successfully
+
+  authentik-worker:
+    image: ghcr.io/goauthentik/server:${AUTHENTIK_VERSION:-2026.8.5}
+    command: worker
+    environment: *authentik_environment
+    volumes:
+      - authentik_media:/media
+      - authentik_templates:/templates
+      - ./authentik/blueprints:/blueprints/custom:ro
+    depends_on:
+      authentik-db-init:
+        condition: service_completed_successfully
+
+  authentik-config-init:
+    image: ghcr.io/goauthentik/server:${AUTHENTIK_VERSION:-2026.8.5}
+    entrypoint: ["/bin/sh", "/config/configure.sh"]
+    environment: *authentik_environment
+    volumes:
+      - ./authentik:/config:ro
+      - ./authentik/blueprints:/blueprints/custom:ro
+    depends_on:
+      authentik-worker:
+        condition: service_healthy
+
+  migrate:
+    build:
+      context: ./backend
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://yearclock:yearclock@db:5432/yearclock}
+    depends_on:
+      db:
+        condition: service_healthy
 
   frontend:
     build:
       context: ./frontend
-      target: dev
+      target: development
     environment:
-      VITE_DEV_API_PROXY_TARGET: ${FRONTEND_DEV_API_PROXY_TARGET:-http://backend:8000}
-    volumes:
-      - ./frontend:/app
-      - frontend_node_modules:/app/node_modules
-    networks:
-      local:
-        ipv4_address: 172.28.59.6
-
-  local-caddy:
-    image: docker.io/library/caddy:2.11.7-alpine@sha256:e70b164da81ef698b3ad19af799ea6086ce6d9e48ed4079eb9fe26f6fbf14ee5
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8100}
     ports:
-      - "127.0.0.1:443:443"
+      - "${YEARCLOCK_BIND_ADDRESS:-127.0.0.1}:${YEARCLOCK_FRONTEND_PORT:-8173}:8173"
     depends_on:
-      backend:
-        condition: service_started
-      frontend:
-        condition: service_started
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--spider", "--no-check-certificate", "--header=Host: app.localhost", "https://127.0.0.1/health"]
-      interval: 5s
-      timeout: 5s
-      retries: 12
-      start_period: 5s
-    volumes:
-      - ./local/Caddyfile:/etc/caddy/Caddyfile:ro
-      - ./.local/app-tls/app.localhost.crt:/certs/app.localhost.crt:ro
-      - ./.local/app-tls/app.localhost.key:/certs/app.localhost.key:ro
-    networks:
-      local:
-        ipv4_address: 172.28.59.2
+      - backend
 
-  frontend-preview:
-    profiles: [preview]
+  backend:
     build:
-      context: ./frontend
-      target: preview
-    ports:
-      - "127.0.0.1:4173:4173"
-
-  diagram-renderer:
-    profiles: [docs]
-    build:
-      context: ./docs/architecture/diagrams
-    user: "${UID:-1000}:${GID:-1000}"
-    working_dir: /workspace/docs/architecture/diagrams
-    volumes:
-      - .:/workspace
-    command: ["-tsvg", "-o", "generated", "db-physical-schema.puml"]
-
-  # Identity (ADR-017): Authentik in its own logical database of the application's
-  # PostgreSQL container, reachable only through Caddy at https://id.app.localhost.
-  authentik-db-init:
-    image: docker.io/library/postgres:18.6@sha256:4ef4dbc939d61acea57712655ddb4b4ab27419c913f94cca0cd57cb3ea3c2280
-    entrypoint: ["/bin/sh", "/scripts/create-authentik-database.sh"]
+      context: ./backend
     environment:
-      PGHOST: database
-      POSTGRES_USER: ${DATABASE_USER:-shadow}
-      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-shadow_dev_password}
-      POSTGRES_DB: ${DATABASE_NAME:-shadow}
-      AUTHENTIK_POSTGRES_DB: ${AUTHENTIK_POSTGRES_DB:-authentik}
-      AUTHENTIK_POSTGRES_USER: ${AUTHENTIK_POSTGRES_USER:-authentik}
-      AUTHENTIK_POSTGRES_PASSWORD: ${AUTHENTIK_POSTGRES_PASSWORD:-authentik_dev_password}
-    volumes:
-      - ./authentik/db-init:/scripts:ro
-    depends_on:
-      database:
-        condition: service_healthy
-    networks:
-      - local
-
-  authentik-server:
-    image: &authentik_image ghcr.io/goauthentik/server:${AUTHENTIK_VERSION:-2026.8.5}
-    command: server
-    environment: &authentik_environment
-      AUTHENTIK_POSTGRESQL__HOST: database
-      AUTHENTIK_POSTGRESQL__NAME: ${AUTHENTIK_POSTGRES_DB:-authentik}
-      AUTHENTIK_POSTGRESQL__USER: ${AUTHENTIK_POSTGRES_USER:-authentik}
-      AUTHENTIK_POSTGRESQL__PASSWORD: ${AUTHENTIK_POSTGRES_PASSWORD:-authentik_dev_password}
-      AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY:-local-development-secret-change-me}
-      # Authentik honours X-Forwarded-* only from these peers: Caddy (browsers) and the
-      # backend (its internal OIDC calls say that the public scheme is https). No other
-      # container can set the client address Authentik rate-limits and logs.
-      AUTHENTIK_LISTEN__TRUSTED_PROXY_CIDRS: 172.28.59.2/32,172.28.59.3/32
-      AUTHENTIK_WEB__BASE_URL: ${AUTHENTIK_BASE_URL:-https://id.app.localhost}
-      AUTHENTIK_BOOTSTRAP_PASSWORD: ${AUTHENTIK_BOOTSTRAP_PASSWORD:-local-admin-change-me}
-      AUTHENTIK_BOOTSTRAP_TOKEN: ${AUTHENTIK_BOOTSTRAP_TOKEN:-local-bootstrap-token-change-me}
-      AUTHENTIK_BOOTSTRAP_EMAIL: akadmin@app.localhost
-      # Development mail goes to Mailpit (http://localhost:8025).
-      AUTHENTIK_EMAIL__HOST: mailpit
-      AUTHENTIK_EMAIL__PORT: "1025"
-      AUTHENTIK_EMAIL__USE_TLS: "false"
-      AUTHENTIK_EMAIL__FROM: shadow-identity@app.localhost
-    volumes:
-      - authentik_media:/media
-      - authentik_templates:/templates
-    depends_on:
-      authentik-db-init:
-        condition: service_completed_successfully
-      mailpit:
-        condition: service_started
-    restart: unless-stopped
-    networks:
-      local:
-        ipv4_address: 172.28.59.9
-
-  authentik-worker:
-    image: *authentik_image
-    command: worker
-    environment:
-      <<: *authentik_environment
-      # Inputs of the blueprints (only the worker and the configuration job read them): the
-      # web OIDC client of the backend with its own LOCAL_ names (they are not the OIDC_*
-      # values the backend gets), and the MCP client (ADR-0023).
-      AUTHENTIK_ENROLLMENT_OPEN: ${AUTHENTIK_ENROLLMENT_OPEN:-true}
-      AUTHENTIK_DEV_USER_PASSWORD: ${AUTHENTIK_DEV_USER_PASSWORD:-shadow_dev_password}
-      OIDC_CLIENT_ID: ${LOCAL_OIDC_CLIENT_ID:-shadow-local}
-      OIDC_CLIENT_SECRET: ${LOCAL_OIDC_CLIENT_SECRET:-replace-with-a-random-oidc-secret}
-      OIDC_REDIRECT_URI: ${LOCAL_OIDC_REDIRECT_URI:-https://app.localhost/api/v1/auth/callback}
-      FRONTEND_URL: ${FRONTEND_URL:-https://app.localhost}
-      MCP_OIDC_CLIENT_ID: ${MCP_OIDC_CLIENT_ID:-shadow-mcp-local}
+      PROJECT_NAME: ${PROJECT_NAME:-Yearclock}
+      FRONTEND_ORIGINS: ${FRONTEND_ORIGINS:-http://localhost:8173,http://127.0.0.1:8173}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://yearclock:yearclock@db:5432/yearclock}
+      PUBLIC_API_BASE_URL: ${PUBLIC_API_BASE_URL:-http://localhost:8100}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:8173}
+      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
+      AUTH_SESSION_MAX_AGE_SECONDS: ${AUTH_SESSION_MAX_AGE_SECONDS:-28800}
+      LIMIT_YEARCLOCKS_PER_ORGANIZATION: ${LIMIT_YEARCLOCKS_PER_ORGANIZATION:-50}
+      LIMIT_LANES_PER_YEARCLOCK: ${LIMIT_LANES_PER_YEARCLOCK:-12}
+      LIMIT_CATEGORIES_PER_YEARCLOCK: ${LIMIT_CATEGORIES_PER_YEARCLOCK:-40}
+      LIMIT_EVENTS_PER_YEARCLOCK: ${LIMIT_EVENTS_PER_YEARCLOCK:-3000}
+      LIMIT_SERIES_PER_YEARCLOCK: ${LIMIT_SERIES_PER_YEARCLOCK:-100}
+      LIMIT_LABELS_PER_ORGANIZATION: ${LIMIT_LABELS_PER_ORGANIZATION:-200}
+      LIMIT_LABELS_PER_EVENT: ${LIMIT_LABELS_PER_EVENT:-10}
+      LIMIT_ORGANIZATION_CATEGORIES: ${LIMIT_ORGANIZATION_CATEGORIES:-40}
+      RECURRENCE_BUFFER_DAYS: ${RECURRENCE_BUFFER_DAYS:-366}
+      DELETED_CONTENT_RETENTION_DAYS: ${DELETED_CONTENT_RETENTION_DAYS:-30}
+      ORGANIZATION_DELETION_RETENTION_DAYS: ${ORGANIZATION_DELETION_RETENTION_DAYS:-30}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      STRIPE_MONTHLY_SEAT_PRICE_ID: ${STRIPE_MONTHLY_SEAT_PRICE_ID:-}
+      OIDC_ISSUER: ${OIDC_ISSUER:-http://localhost:8190/application/o/yearclock/}
+      OIDC_INTERNAL_BASE_URL: ${OIDC_INTERNAL_BASE_URL:-http://authentik-server:9000}
+      # The MCP interface (ADR-0037, ADR-0038); off until the MCP provider is configured in Authentik.
+      MCP_ENABLED: ${MCP_ENABLED:-false}
+      LEGAL_SHOW_DRAFTS: ${LEGAL_SHOW_DRAFTS:-true}
+      LEGAL_CONTACT_EMAIL: ${LEGAL_CONTACT_EMAIL:-legal@yearclock.example.com}
+      MCP_OIDC_ISSUER: ${MCP_OIDC_ISSUER:-http://localhost:8190/application/o/yearclock-mcp/}
+      MCP_OIDC_CLIENT_ID: ${MCP_OIDC_CLIENT_ID:-yearclock-mcp-local}
       MCP_OIDC_CLIENT_SECRET: ${MCP_OIDC_CLIENT_SECRET:-replace-with-a-random-mcp-secret}
-      # The image version feeds the configuration fingerprint (a new image reapplies it).
-      CONFIG_IMAGE_VERSION: ${AUTHENTIK_VERSION:-2026.8.5}
-    volumes:
-      - authentik_media:/media
-      - authentik_templates:/templates
-      - ./authentik/blueprints:/blueprints/custom:ro
-    depends_on:
-      authentik-db-init:
-        condition: service_completed_successfully
-      mailpit:
-        condition: service_started
-    restart: unless-stopped
-    networks:
-      - local
-
-  # Applies the blueprints (flows, the web and MCP applications, brand, development users).
-  authentik-config-init:
-    image: *authentik_image
-    entrypoint: ["/bin/sh", "/config/configure.sh"]
-    environment:
-      <<: *authentik_environment
-      # Inputs of the blueprints (only the worker and the configuration job read them): the
-      # web OIDC client of the backend with its own LOCAL_ names (they are not the OIDC_*
-      # values the backend gets), and the MCP client (ADR-0023).
-      AUTHENTIK_ENROLLMENT_OPEN: ${AUTHENTIK_ENROLLMENT_OPEN:-true}
-      AUTHENTIK_DEV_USER_PASSWORD: ${AUTHENTIK_DEV_USER_PASSWORD:-shadow_dev_password}
-      OIDC_CLIENT_ID: ${LOCAL_OIDC_CLIENT_ID:-shadow-local}
-      OIDC_CLIENT_SECRET: ${LOCAL_OIDC_CLIENT_SECRET:-replace-with-a-random-oidc-secret}
-      OIDC_REDIRECT_URI: ${LOCAL_OIDC_REDIRECT_URI:-https://app.localhost/api/v1/auth/callback}
-      FRONTEND_URL: ${FRONTEND_URL:-https://app.localhost}
-      MCP_OIDC_CLIENT_ID: ${MCP_OIDC_CLIENT_ID:-shadow-mcp-local}
-      MCP_OIDC_CLIENT_SECRET: ${MCP_OIDC_CLIENT_SECRET:-replace-with-a-random-mcp-secret}
-      # The image version feeds the configuration fingerprint (a new image reapplies it).
-      CONFIG_IMAGE_VERSION: ${AUTHENTIK_VERSION:-2026.8.5}
-    volumes:
-      - authentik_media:/media
-      - ./authentik:/config:ro
-      - ./authentik/blueprints:/blueprints/custom:ro
-      - ./authentik/dev:/blueprints/dev:ro
-    depends_on:
-      authentik-worker:
-        condition: service_healthy
-    restart: "no"
-    networks:
-      - local
-
-  # Catches the worker's and Authentik's development email (ADR-019); nothing leaves the host.
-  mailpit:
-    image: docker.io/axllent/mailpit:v1.33.0@sha256:9b3a463be15354c0f0eba91697d80e3e0d8a5623ef0e627cacc836bc17fd5231
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-yearclock-local}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-replace-with-a-random-oidc-secret}
+      SCW_SECRET_KEY: ${SCW_SECRET_KEY:-}
+      SCW_DEFAULT_PROJECT_ID: ${SCW_DEFAULT_PROJECT_ID:-}
+      SCW_TEM_REGION: ${SCW_TEM_REGION:-fr-par}
+      SCW_TEM_API_BASE_URL: ${SCW_TEM_API_BASE_URL:-https://api.scaleway.com/transactional-email/v1alpha1/regions}
+      SCW_TEM_DEFAULT_SENDER_EMAIL: ${SCW_TEM_DEFAULT_SENDER_EMAIL:-}
+      SCW_TEM_DEFAULT_SENDER_NAME: ${SCW_TEM_DEFAULT_SENDER_NAME:-Yearclock}
     ports:
-      - "127.0.0.1:${MAILPIT_UI_PORT:-8025}:8025"
-    restart: unless-stopped
-    networks:
-      local:
-        ipv4_address: 172.28.59.8
+      - "${YEARCLOCK_BIND_ADDRESS:-127.0.0.1}:${YEARCLOCK_BACKEND_PORT:-8100}:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      authentik-config-init:
+        condition: service_completed_successfully
 
   worker:
     build:
-      context: .
-      dockerfile: backend/Dockerfile
-      target: dev
-    command: ["uv", "run", "python", "-m", "app.platform.worker"]
+      context: ./backend
+    command: ["python", "-m", "app.worker"]
     environment:
-      DATABASE_URL: postgresql://${DATABASE_USER:-shadow}:${DATABASE_PASSWORD:-shadow_dev_password}@database:5432/${DATABASE_NAME:-shadow}
-      DATABASE_POOL_SIZE: ${DATABASE_POOL_SIZE:-5}
-      DATABASE_MAX_OVERFLOW: ${DATABASE_MAX_OVERFLOW:-10}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://yearclock:yearclock@db:5432/yearclock}
+      RECURRENCE_BUFFER_DAYS: ${RECURRENCE_BUFFER_DAYS:-366}
       WORKER_SCHEDULE_INTERVAL_SECONDS: ${WORKER_SCHEDULE_INTERVAL_SECONDS:-3600}
-      QUEUE_CLAIM_TIMEOUT_SECONDS: ${QUEUE_CLAIM_TIMEOUT_SECONDS:-900}
-      NOTIFICATION_RETENTION_DAYS: ${NOTIFICATION_RETENTION_DAYS:-90}
-      OUTBOX_RETENTION_DAYS: ${OUTBOX_RETENTION_DAYS:-7}
-      NOTIFICATION_EMAILS_PER_DAY: ${NOTIFICATION_EMAILS_PER_DAY:-10}
-      # Development mail goes to Mailpit (web UI at http://localhost:8025).
-      EMAIL_BACKEND: smtp
-      SMTP_HOST: mailpit
-      SMTP_PORT: "1025"
-      SCW_TEM_DEFAULT_SENDER_EMAIL: shadow@app.localhost
-      SCW_TEM_DEFAULT_SENDER_NAME: Shadow (local)
+      DELETED_CONTENT_RETENTION_DAYS: ${DELETED_CONTENT_RETENTION_DAYS:-30}
+      ORGANIZATION_DELETION_RETENTION_DAYS: ${ORGANIZATION_DELETION_RETENTION_DAYS:-30}
+      SCW_SECRET_KEY: ${SCW_SECRET_KEY:-}
+      SCW_DEFAULT_PROJECT_ID: ${SCW_DEFAULT_PROJECT_ID:-}
+      SCW_TEM_REGION: ${SCW_TEM_REGION:-fr-par}
+      SCW_TEM_API_BASE_URL: ${SCW_TEM_API_BASE_URL:-https://api.scaleway.com/transactional-email/v1alpha1/regions}
+      SCW_TEM_DEFAULT_SENDER_EMAIL: ${SCW_TEM_DEFAULT_SENDER_EMAIL:-}
+      SCW_TEM_DEFAULT_SENDER_NAME: ${SCW_TEM_DEFAULT_SENDER_NAME:-Yearclock}
     depends_on:
-      database:
-        condition: service_started
-      mailpit:
-        condition: service_started
-    healthcheck:
-      test: ["CMD", "uv", "run", "python", "-m", "app.platform.worker", "health-check"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-      start_period: 10s
-    init: true
-    restart: unless-stopped
-    stop_grace_period: 10s
+      migrate:
+        condition: service_completed_successfully
+
+  # The edge proxy is opt-in locally: docker compose --profile edge up.
+  # Production sets YEARCLOCK_EDGE_BIND_ADDRESS=0.0.0.0, YEARCLOCK_HTTP_PORT=80,
+  # YEARCLOCK_HTTPS_PORT=443, and YEARCLOCK_SITE_ADDRESS to the real domain.
+  caddy:
+    image: caddy:2-alpine
+    profiles: ["edge"]
+    environment:
+      YEARCLOCK_SITE_ADDRESS: ${YEARCLOCK_SITE_ADDRESS:-http://localhost}
+      YEARCLOCK_IDENTITY_ADDRESS: ${YEARCLOCK_IDENTITY_ADDRESS:-http://identity.localhost}
+    ports:
+      - "${YEARCLOCK_EDGE_BIND_ADDRESS:-127.0.0.1}:${YEARCLOCK_HTTP_PORT:-8180}:80"
+      - "${YEARCLOCK_EDGE_BIND_ADDRESS:-127.0.0.1}:${YEARCLOCK_HTTPS_PORT:-8143}:443"
     volumes:
-      - ./backend:/app
-      - backend_uv_cache:/root/.cache/uv
-      - backend_venv:/app/.venv
-    networks:
-      local:
-        ipv4_address: 172.28.59.7
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - frontend
+      - backend
 
 volumes:
-  # The first two are retained declarations of the earlier Authentik setup (never deleted
-  # automatically; see docs/runbooks/authentik-local.md); the others are in use (ADR-017).
-  authentik_data:
-  authentik_database_data:
+  caddy_data:
+  caddy_config:
   authentik_media:
   authentik_templates:
-  backend_uv_cache:
-  backend_venv:
-  database_data:
-  frontend_node_modules:
-
-networks:
-  local:
-    ipam:
-      config:
-        - subnet: 172.28.59.0/24
-          # Containers without a fixed address are allocated from the upper half, so they
-          # never take one of the fixed local addresses (.2 to .15).
-          ip_range: 172.28.59.128/25
+  postgres_data:

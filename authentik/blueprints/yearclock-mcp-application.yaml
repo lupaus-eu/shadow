@@ -1,0 +1,50 @@
+# yaml-language-server: $schema=https://goauthentik.io/blueprints/schema.json
+# The OIDC provider for MCP clients (ADR-0038): a dedicated, pre-registered, confidential client.
+# Authentik does not implement RFC 8707, so this provider's client id is the audience the MCP
+# server checks; tokens of the Yearclock web provider carry another audience and are refused.
+# Clients are never registered dynamically. To allow another MCP client, add its redirect URL below.
+version: 1
+metadata:
+  name: Yearclock MCP application
+  labels:
+    blueprints.goauthentik.io/instantiate: "true"
+entries:
+  - id: yearclock-mcp-provider
+    model: authentik_providers_oauth2.oauth2provider
+    state: present
+    identifiers:
+      name: Yearclock MCP
+    attrs:
+      client_type: confidential
+      client_id: !Env MCP_OIDC_CLIENT_ID
+      client_secret: !Env MCP_OIDC_CLIENT_SECRET
+      grant_types:
+        - authorization_code
+        - refresh_token
+      # Explicit consent: the person sees that an agent asks to act as them.
+      authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-explicit-consent]]
+      invalidation_flow: !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
+      redirect_uris:
+        - matching_mode: strict
+          redirect_uri_type: authorization
+          url: https://claude.ai/api/mcp/auth_callback
+        - matching_mode: strict
+          redirect_uri_type: authorization
+          url: https://claude.com/api/mcp/auth_callback
+      property_mappings:
+        - !Find [authentik_providers_oauth2.scopemapping, [scope_name, openid]]
+        - !Find [authentik_providers_oauth2.scopemapping, [scope_name, profile]]
+        - !Find [authentik_providers_oauth2.scopemapping, [scope_name, offline_access]]
+      signing_key: !Find [authentik_crypto.certificatekeypair, [name, authentik Self-signed Certificate]]
+      sub_mode: hashed_user_id
+      issuer_mode: per_provider
+
+  - model: authentik_core.application
+    state: present
+    identifiers:
+      slug: yearclock-mcp
+    attrs:
+      name: Yearclock MCP
+      provider: !KeyOf yearclock-mcp-provider
+      policy_engine_mode: any
+      meta_launch_url: blank://blank

@@ -1,6 +1,4 @@
-.venv
-.pytest_cache
-.ruff_cache
 __pycache__
 *.pyc
-uv.lock.tmp
+.pytest_cache
+tests

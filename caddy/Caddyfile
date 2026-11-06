@@ -1,0 +1,52 @@
+# Edge proxy (ADR-0022, docs/architecture/deployment.md).
+# - YEARCLOCK_SITE_ADDRESS serves the customer app (/), the operator console
+#   (/platform), and the API (/api/*) from one origin.
+# - YEARCLOCK_IDENTITY_ADDRESS serves Authentik on its own origin.
+# Use http:// addresses locally; real domains get automatic TLS.
+
+(security_headers) {
+  header {
+    Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    X-Content-Type-Options "nosniff"
+    Referrer-Policy "strict-origin-when-cross-origin"
+    Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+    Cross-Origin-Opener-Policy "same-origin"
+    -Server
+  }
+}
+
+{$YEARCLOCK_SITE_ADDRESS:yearclock.example.com} {
+  import security_headers
+
+  # Backend routes already start with /api/, so keep the prefix (handle, not handle_path).
+  handle /api/* {
+    reverse_proxy backend:8000 {
+      header_down Cache-Control "no-store"
+    }
+  }
+
+  # OAuth Protected Resource Metadata of the MCP interface (RFC 9728, ADR-0037); the endpoint itself is /api/mcp.
+  handle /.well-known/oauth-protected-resource* {
+    reverse_proxy backend:8000
+  }
+
+  # The operator console is part of the SPA; it gets the same strict policy
+  # and is never framed or cached.
+  handle /platform* {
+    header Content-Security-Policy "{$YEARCLOCK_CONTENT_SECURITY_POLICY:default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'}"
+    reverse_proxy frontend:8173 {
+      header_down Cache-Control "no-store"
+    }
+  }
+
+  handle {
+    header Content-Security-Policy "{$YEARCLOCK_CONTENT_SECURITY_POLICY:default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'}"
+    reverse_proxy frontend:8173
+  }
+}
+
+{$YEARCLOCK_IDENTITY_ADDRESS:identity.yearclock.example.com} {
+  import security_headers
+  # Authentik sets its own Content-Security-Policy and framing rules.
+  reverse_proxy authentik-server:9000
+}

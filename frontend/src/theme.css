@@ -1,0 +1,355 @@
+/*
+ * Yearclock design foundation (docs/design/ui-foundation.md).
+ * Tailwind's theme and utilities without its preflight reset; the base rules
+ * below set the page font and focus ring, and the components layer holds the
+ * circle's SVG styles and the `.ui-native` bridge. This is the only stylesheet.
+ * Tokens are named by meaning, so a dark theme only redefines these variables.
+ */
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+
+@page {
+  size: A4 landscape;
+  margin: 12mm;
+}
+
+@theme {
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  --color-canvas: #f4f6f7;
+  --color-surface: #ffffff;
+  --color-surface-subtle: #f8fafb;
+  --color-surface-sunken: #e9edf0;
+  --color-line: #dde2e6;
+  --color-line-strong: #8a96a0;
+  --color-ink: #17212b;
+  --color-ink-muted: #56636e;
+  --color-accent: #0f766e;
+  --color-accent-hover: #0b5f59;
+  --color-accent-soft: #e3f2ef;
+  --color-danger: #b42318;
+  --color-danger-hover: #912018;
+  --color-danger-soft: #fef1f0;
+  --color-warning-ink: #6b4e00;
+  --color-warning-soft: #fff4d6;
+  --color-warning-line: #f1d48a;
+  --color-success-ink: #0b5f3a;
+  --color-success-soft: #e7f6ee;
+  --color-info-ink: #1d4f86;
+  --color-info-soft: #eaf2fb;
+  --color-sidebar: #111c24;
+  --color-sidebar-raised: #1a2731;
+  --color-sidebar-line: #26343f;
+  --color-sidebar-ink: #c9d3da;
+  --color-sidebar-muted: #8c9aa5;
+  --color-focus-on-dark: #5eead4;
+  --color-circle-ring: #bcc5cc;
+  --color-circle-scale: #9aa5ad;
+  --color-circle-label: #3b4650;
+
+  --radius-control: 8px;
+  --radius-card: 12px;
+  --shadow-card: 0 1px 2px rgb(16 24 40 / 0.06);
+  --shadow-overlay: 0 12px 32px rgb(16 24 40 / 0.16);
+}
+
+@layer base {
+  body {
+    margin: 0;
+    background: var(--color-canvas);
+  }
+  :where(.ui-root, .ui-root *) {
+    box-sizing: border-box;
+  }
+  .ui-root {
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--color-ink);
+  }
+  :where(.ui-root) :is(h1, h2, h3, h4, h5, h6, p) {
+    margin: 0;
+  }
+  :where(.ui-root) :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+  :where(.ui-root) :where(.bg-sidebar) :focus-visible {
+    outline-color: var(--color-focus-on-dark);
+  }
+}
+
+/*
+ * Native controls inside `.ui-native` (structure managers, the Label picker,
+ * History) take the component look until they are rebuilt on `src/ui`.
+ * Components from `src/ui` carry their own utilities and are not affected.
+ */
+@layer components {
+  .ui-native :where(input:not([type="checkbox"], [type="radio"], [type="color"]), select) {
+    height: 34px;
+    border: 1px solid var(--color-line-strong);
+    border-radius: var(--radius-control);
+    background: var(--color-surface);
+    color: var(--color-ink);
+    font: inherit;
+    font-size: 13px;
+    padding: 0 10px;
+    max-width: 100%;
+  }
+  .ui-native :where(textarea) {
+    border: 1px solid var(--color-line-strong);
+    border-radius: var(--radius-control);
+    font: inherit;
+    font-size: 13px;
+    padding: 8px 10px;
+  }
+  .ui-native :where(input[type="color"]) {
+    height: 34px;
+    width: 44px;
+    border: 1px solid var(--color-line-strong);
+    border-radius: var(--radius-control);
+    background: var(--color-surface);
+    padding: 3px;
+  }
+  .ui-native :where(input[type="checkbox"], input[type="radio"]) {
+    accent-color: var(--color-accent);
+    width: 16px;
+    height: 16px;
+  }
+  .ui-native :where(button:not([class*="inline-flex"])) {
+    height: 32px;
+    padding: 0 10px;
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-control);
+    background: var(--color-surface);
+    color: var(--color-ink);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  .ui-native :where(button:not([class*="inline-flex"]):hover:not(:disabled)) {
+    background: var(--color-surface-subtle);
+  }
+  .ui-native :where(button:disabled) {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+  .ui-native :where(h3, h4, h5) {
+    margin: 0 0 12px;
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .ui-native :where(fieldset) {
+    margin: 8px 0;
+    border: 1px solid var(--color-line);
+    border-radius: 10px;
+    padding: 8px 12px 12px;
+  }
+  .ui-native :where(legend) {
+    padding: 0 4px;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .ui-native :where(label, p, li, summary) {
+    font-size: 13px;
+  }
+  .ui-native :where(p) {
+    margin: 6px 0;
+  }
+  .ui-native :where(ol, ul) {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 8px 0;
+    padding: 0;
+    list-style: none;
+  }
+  .ui-native :where(li) {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+  }
+  .ui-native :where(summary) {
+    cursor: pointer;
+    font-weight: 600;
+  }
+}
+
+@layer components {
+  @media (pointer: coarse) {
+    .ui-native :where(button:not([class*="inline-flex"]), input:not([type="checkbox"], [type="radio"]), select) {
+      min-height: 44px;
+    }
+  }
+}
+
+/*
+ * The circle (YearclockView). SVG drawing keeps a few class rules because
+ * markers combine element type, state, and focus; every colour is a token.
+ */
+@layer components {
+  .yc-view {
+    margin: 0 auto;
+    /* As large as the column allows, but short enough to stay on screen with the toolbar. */
+    max-width: max(300px, min(860px, calc(100vh - 290px)));
+    width: 100%;
+  }
+  .yc-svg {
+    display: block;
+    height: auto;
+    overflow: visible;
+    width: 100%;
+  }
+  .yc-ring,
+  .yc-lane {
+    fill: none;
+    stroke: var(--color-circle-ring);
+    stroke-width: 1;
+  }
+  .yc-month-line {
+    stroke: var(--color-line);
+    stroke-width: 1;
+  }
+  .yc-month-label {
+    fill: var(--color-circle-label);
+    font-size: 11px;
+  }
+  .yc-elapsed {
+    fill: var(--color-ink);
+    opacity: 0.06;
+  }
+  .yc-today {
+    stroke: var(--color-danger);
+    stroke-width: 2;
+  }
+  .yc-center-label {
+    fill: var(--color-ink-muted);
+    font-size: 11px;
+  }
+  .yc-center-value {
+    fill: var(--color-ink);
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .yc-lane-hit {
+    cursor: copy;
+    fill: none;
+    pointer-events: stroke;
+    stroke: transparent;
+  }
+  .yc-svg g[aria-hidden="true"] > :not(.yc-lane-hit),
+  .yc-svg g[aria-hidden="true"] > g {
+    pointer-events: none;
+  }
+  .yc-marker {
+    cursor: pointer;
+  }
+  .yc-marker:focus {
+    outline: none;
+  }
+  circle.yc-marker,
+  rect.yc-marker {
+    stroke: var(--color-surface);
+    stroke-width: 1;
+  }
+  path.yc-marker {
+    stroke-linecap: butt;
+  }
+  rect.yc-marker.yc-exception {
+    stroke: var(--color-ink);
+    stroke-width: 1.5;
+  }
+  path.yc-marker.yc-exception {
+    stroke-dasharray: 6 3;
+  }
+  circle.yc-marker:focus-visible,
+  circle.yc-marker.yc-selected,
+  rect.yc-marker:focus-visible,
+  rect.yc-marker.yc-selected {
+    stroke: var(--color-ink);
+    stroke-width: 3;
+  }
+  path.yc-marker:focus-visible,
+  path.yc-marker.yc-selected {
+    filter: drop-shadow(0 0 2px var(--color-ink)) drop-shadow(0 0 1px var(--color-ink));
+  }
+  .yc-marked {
+    stroke: var(--color-warning-ink);
+    stroke-width: 2px;
+  }
+  .yc-series-label {
+    fill: var(--color-ink);
+    font-size: 9px;
+    font-weight: 600;
+    pointer-events: none;
+  }
+  .yc-lane-unavailable {
+    fill: none;
+    stroke: var(--color-line);
+    stroke-dasharray: 3 5;
+  }
+  .yc-lane-tint {
+    fill: none;
+    stroke-opacity: 0.14;
+    pointer-events: none;
+  }
+  .yc-day-tick {
+    stroke: var(--color-ink-muted);
+    stroke-width: 1;
+  }
+  .yc-day-label {
+    fill: var(--color-circle-label);
+    font-size: 9px;
+  }
+  .yc-scale-edge,
+  .yc-scale-line {
+    fill: none;
+    stroke: var(--color-circle-scale);
+    stroke-width: 0.8;
+  }
+  .yc-scale-label {
+    fill: var(--color-circle-label);
+    font-size: 8px;
+  }
+  .yc-quarter-label {
+    font-weight: 600;
+  }
+  .yc-preview-title {
+    fill: var(--color-ink);
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .yc-preview-meta {
+    fill: var(--color-circle-label);
+    font-size: 9px;
+  }
+}
+
+/* Printing (Yearclock V2 P7): the chrome is hidden with `print:hidden`; these rules size the circle and keep colours. */
+@layer components {
+  @media print {
+    html, body {
+      background: #ffffff;
+    }
+    .ui-root {
+      background: #ffffff;
+      print-color-adjust: exact;
+      -webkit-print-color-adjust: exact;
+    }
+    .yc-view {
+      max-width: 150mm;
+    }
+    .yc-print-header {
+      margin-bottom: 4mm;
+    }
+    .yc-print-events {
+      break-before: page;
+    }
+    tr {
+      break-inside: avoid;
+    }
+  }
+}

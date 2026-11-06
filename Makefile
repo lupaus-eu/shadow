@@ -1,136 +1,56 @@
-SHELL := /bin/sh
+# Local development shortcuts (docs/architecture/docker.md).
+# Values come from .env; see .env.example for the 8100-8199 port range.
 
-.DEFAULT_GOAL := help
+COMPOSE ?= docker compose
+LIKEC4 ?= npx --yes likec4@1.59.4
+DBML_CLI ?= npx --yes -p @dbml/cli@10.2.0 dbml2sql
+STRIPE_WEBHOOK_URL ?= http://localhost:8100/api/v1/billing/stripe/webhook
+STRIPE_EVENTS ?= checkout.session.completed,customer.subscription.updated,customer.subscription.deleted,customer.subscription.pending_update_applied,customer.subscription.pending_update_expired,invoice.paid,invoice.payment_failed
 
-COMPOSE := docker compose --env-file .env
-COMPOSE_LOCAL := $(COMPOSE)
-MIGRATE := uv run --env-file .env --project backend python backend/migrate.py up
-SEED := $(COMPOSE_LOCAL) exec -T database sh -c 'psql -v ON_ERROR_STOP=1 -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"' < db/init/002_seed_development_data.sql
-LOCAL_INIT := scripts/setup-local-app-tls.sh
+.PHONY: help up down restart ps logs test test-backend test-frontend check-ports stripe-listen models c4 dbml
 
-.PHONY: \
-	help \
-	install backend-install frontend-install \
-	check backend-check backend-lint backend-test backend-typecheck \
-	frontend-check frontend-format frontend-format-check frontend-lint frontend-test frontend-build \
-	dev-init db-up migrate seed dev-up dev-down preview-up \
-	diagrams authentik-verify sign-in-verify authentik-apply
+help: ## List the targets
+	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  %-15s %s\n", $$1, $$2}'
 
-help:
-	@printf '%s\n' \
-		'Usage: make <target>' \
-		'' \
-		'Installation (explicit; checks do not install dependencies):' \
-		'  install             Install backend and frontend dependencies' \
-		'  backend-install     Run uv sync in backend/' \
-		'  frontend-install    Run pnpm install --frozen-lockfile in frontend/' \
-		'' \
-		'Validation:' \
-		'  check               Run all backend and frontend checks' \
-		'  backend-check       Run backend lint, tests, and typecheck' \
-		'  frontend-check      Run frontend format check, lint, tests, and build' \
-		'  frontend-format     Format frontend files with Prettier' \
-		'  frontend-format-check  Check frontend formatting with Prettier' \
-		'' \
-		'Local development (uses local Docker resources only):' \
-		'  dev-init            Create the local TLS material (app.localhost and id.app.localhost)' \
-		'  db-up               Start the local application database' \
-		'  migrate             Apply pending migrations (requires the local database)' \
-		'  seed                Apply migrations and the dev seed (requires dev-init and database)' \
-		'  dev-up              Initialize and start the full local development stack' \
-		'  dev-down            Stop the local stack; retain volumes and data' \
-		'  preview-up          Start the local frontend preview container' \
-		'' \
-		'Local verification:' \
-		'  diagrams            Render the default PlantUML diagram' \
-		'  authentik-verify    Verify the local Authentik setup (sign-in, MFA, tokens)' \
-		'  sign-in-verify      Verify signing in to Shadow through Authentik end to end' \
-		'  authentik-apply     Reapply the Authentik blueprints even if nothing changed' \
-		'' \
-		'Production, release, rollback, baseline, reset, and cleanup operations' \
-		'are intentionally not available through this Makefile. Production server' \
-		'commands are in deploy/Makefile, run on the host from the verified source copy:' \
-		'  make -C /opt/apps/shadow-sources/<commit>/deploy help' \
-		'See docs/runbooks/production.md.'
+up: ## Build and start the local stack in the background
+	$(COMPOSE) up -d --build
+	@echo "Yearclock: http://localhost:8173  API: http://localhost:8100  Authentik: http://localhost:8190"
 
-backend-install:
-	cd backend && uv sync
+down: ## Stop the local stack (data volumes are kept)
+	$(COMPOSE) down
 
-frontend-install:
-	cd frontend && pnpm install --frozen-lockfile
+restart: down up ## Stop and start the local stack
 
-install: backend-install frontend-install
+ps: ## Show service status
+	$(COMPOSE) ps
 
-backend-lint:
-	cd backend && uv run ruff check .
+logs: ## Follow logs (make logs SERVICE=backend)
+	$(COMPOSE) logs -f $(SERVICE)
 
-backend-test:
-	cd backend && uv run pytest
+test: test-backend test-frontend ## Run backend and frontend checks
 
-backend-typecheck:
-	cd backend && uv run pyright
+test-backend: ## Run backend tests against the local test database
+	cd backend && ../.venv/bin/python -m pytest -q
 
-backend-check: backend-lint backend-test backend-typecheck
+test-frontend: ## Typecheck, build, unit and browser tests
+	npm --prefix frontend run typecheck
+	npm --prefix frontend run build
+	npm --prefix frontend run test:unit
+	cd frontend && npx playwright test
 
-frontend-format:
-	cd frontend && pnpm format
+check-ports: ## Verify Compose ports stay inside 8100-8199
+	python3 scripts/check-compose-ports.py
 
-frontend-format-check:
-	cd frontend && pnpm format:check
+models: ## Validate the C4 model and the DBML schema (docs/architecture/c4, dbml)
+	$(LIKEC4) validate docs/architecture/c4
+	cd backend && ../.venv/bin/python -m pytest -q tests/test_dbml_model.py
+	cd "$$(mktemp -d)" && $(DBML_CLI) "$(CURDIR)/docs/architecture/dbml/yearclock.dbml" --postgres -o schema.sql
 
-frontend-lint:
-	cd frontend && pnpm lint
+c4: ## Browse the C4 views at http://localhost:8176
+	$(LIKEC4) start --port 8176 docs/architecture/c4
 
-frontend-test:
-	cd frontend && pnpm test
+dbml: ## Regenerate docs/architecture/dbml/yearclock.dbml from the migrated test database
+	cd backend && UPDATE_DBML=1 ../.venv/bin/python -m pytest -q tests/test_dbml_model.py
 
-frontend-build:
-	cd frontend && pnpm build
-
-frontend-check: frontend-format-check frontend-lint frontend-test frontend-build
-
-check: backend-check frontend-check
-
-dev-init:
-	@set -ex; \
-	if [ ! -f .env ]; then cp .env.example .env; fi; \
-	$(LOCAL_INIT)
-
-db-up:
-	$(COMPOSE_LOCAL) up -d database
-
-migrate:
-	$(MIGRATE)
-
-seed:
-	@set -ex; \
-	$(MIGRATE); \
-	$(SEED)
-
-dev-up:
-	@set -ex; \
-	if [ ! -f .env ]; then cp .env.example .env; fi; \
-	$(LOCAL_INIT); \
-	$(COMPOSE_LOCAL) up -d database; \
-	$(MIGRATE); \
-	$(SEED); \
-	$(COMPOSE_LOCAL) up -d prediction-worker mailpit authentik-server authentik-worker worker backend frontend local-caddy
-
-dev-down:
-	$(COMPOSE_LOCAL) down
-
-preview-up:
-	$(COMPOSE_LOCAL) --profile preview up frontend-preview
-
-diagrams:
-	$(COMPOSE_LOCAL) --profile docs build diagram-renderer
-	$(COMPOSE_LOCAL) --profile docs run --rm diagram-renderer
-
-authentik-apply:
-	$(COMPOSE_LOCAL) run --rm -e AUTHENTIK_CONFIG_FORCE=true authentik-config-init
-
-authentik-verify:
-	python3 scripts/verify-authentik-local.py
-
-sign-in-verify:
-	python3 scripts/verify-local-sign-in.py
+stripe-listen: ## Forward Stripe test-mode webhooks to the local backend
+	@set -a; . ./.env; set +a; stripe listen --api-key "$$STRIPE_SECRET_KEY" --forward-to $(STRIPE_WEBHOOK_URL) --events $(STRIPE_EVENTS)

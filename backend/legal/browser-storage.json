@@ -1,0 +1,64 @@
+{
+  "_note": "Every cookie and web-storage key Yearclock sets. Tests (frontend/tests/unit/browser-storage.test.ts and backend/tests/test_browser_storage.py) fail when the code and this list differ. Update the browser storage notice (backend/legal/storage.*.md) in the same change. All entries are strictly necessary or the person's own preferences; no analytics or advertising storage is used.",
+  "cookies": [
+    {
+      "name": "yearclock_session",
+      "purpose": "Keeps the person signed in (an opaque session identifier; HttpOnly, SameSite=Lax, Secure in production).",
+      "lifetime": "Up to 8 hours (AUTH_SESSION_MAX_AGE_SECONDS); removed at sign-out."
+    },
+    {
+      "name": "yearclock_oidc_flow",
+      "purpose": "Protects the sign-in round trip to the identity provider against forgery (HttpOnly, SameSite=Lax, limited to the sign-in callback path).",
+      "lifetime": "10 minutes; removed when the sign-in completes."
+    }
+  ],
+  "localStorage": [
+    {
+      "key": "yearclock.locale",
+      "purpose": "Remembers the chosen language on this device so signed-out pages use it.",
+      "lifetime": "Until the person clears site data."
+    },
+    {
+      "key": "yearclock.filters.",
+      "dynamic": true,
+      "purpose": "Remembers the Lane, Category, and Label filters chosen for one Yearclock (key ends with the Yearclock's id).",
+      "lifetime": "Until the filters are cleared or the person clears site data."
+    },
+    {
+      "key": "yearclock.display.",
+      "dynamic": true,
+      "purpose": "Remembers the chosen display (circle, timeline, list, agenda) for one Yearclock.",
+      "lifetime": "Until the default display is chosen again or the person clears site data."
+    },
+    {
+      "key": "yearclock.length.",
+      "dynamic": true,
+      "purpose": "Remembers the chosen planning window length for one Yearclock.",
+      "lifetime": "Until the default length is chosen again or the person clears site data."
+    }
+  ],
+  "sessionStorage": [
+    {
+      "key": "yearclock.had-session",
+      "purpose": "Tells the sign-in page whether the session ended unexpectedly, so it can say so.",
+      "lifetime": "Until the browser tab is closed."
+    },
+    {
+      "key": "yearclock.signed-out",
+      "purpose": "Lets the sign-in page confirm a deliberate sign-out once.",
+      "lifetime": "Until the next page load; removed after one use."
+    }
+  ],
+  "identityProvider": [
+    {
+      "name": "authentik_session",
+      "purpose": "Authentik's own session on the identity host (not set by the Yearclock application; verify the names against the running Authentik version).",
+      "lifetime": "Set by Authentik."
+    },
+    {
+      "name": "authentik_csrf",
+      "purpose": "Authentik's own forgery protection on the identity host.",
+      "lifetime": "Set by Authentik."
+    }
+  ]
+}

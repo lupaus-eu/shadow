@@ -1,87 +1,151 @@
-import { lazy, Suspense } from "react";
-import { Navigate, Route, Routes, useLocation, useMatch } from "react-router-dom";
-import { AuthProvider } from "./auth/AuthProvider";
-import { useAuth } from "./auth/AuthContext";
-import LoginPage from "./auth/LoginPage";
-import SessionControls from "./auth/SessionControls";
-import { RouteErrorBoundary, RouteLoadingFallback } from "./components/DeferredRoute";
-import AuthorizePage from "./features/ai/AuthorizePage";
-import HomePage from "./pages/HomePage";
-import NotFound from "./pages/NotFound";
+import { useEffect, useState } from "react";
+import { BrowserRouter, Route, Routes } from "react-router";
 
-const Workspace = lazy(() => import("./pages/Workspace"));
+import {
+  AuthenticationRequiredError,
+  PlatformAccountError,
+  loadSession,
+  saveLocale,
+  type UserAccount,
+} from "./auth-client";
+import { AuthenticatedShell } from "./components/AuthenticatedShell";
+import { LegalRoutes } from "./legal/LegalPages";
+import { PlatformConsole } from "./platform/PlatformConsole";
+import { SignIn } from "./components/SignIn";
+import { SignedOutLayout } from "./shell/SignedOutLayout";
+import { Alert, OverlayProvider } from "./ui";
+import {
+  messages,
+  rememberLocale,
+  storedLocale,
+  type Locale,
+} from "./i18n";
 
-export default function App() {
+const hadSessionKey = "yearclock.had-session";
+const signedOutKey = "yearclock.signed-out";
+
+type AuthState =
+  | { state: "loading"; locale: Locale }
+  | { state: "anonymous"; expired: boolean; signedOut: boolean; locale: Locale }
+  | { state: "authenticated"; userAccount: UserAccount }
+  | { state: "platform"; locale: Locale }
+  | { state: "error"; locale: Locale };
+
+export function App() {
   return (
-    <AuthProvider>
-      <AuthenticatedApplication />
-    </AuthProvider>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/platform/*" element={<PlatformConsole />} />
+        <Route path="/legal/*" element={<LegalRoutes />} />
+        <Route path="*" element={<CustomerApp />} />
+      </Routes>
+    </BrowserRouter>
   );
 }
 
-function AuthenticatedApplication() {
-  const location = useLocation();
-  const workspaceMatch = useMatch("/shadow/:orgId/*");
-  const { status } = useAuth();
+function CustomerApp() {
+  const [authState, setAuthState] = useState<AuthState>({
+    state: "loading",
+    locale: storedLocale(),
+  });
 
-  if (status === "loading") {
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function load() {
+      try {
+        const userAccount = await loadSession(controller.signal);
+        if (userAccount === null) {
+          setAuthState({
+            state: "anonymous",
+            expired: sessionStorage.getItem(hadSessionKey) === "true",
+            signedOut: consumeSignedOut(),
+            locale: storedLocale(),
+          });
+          return;
+        }
+        sessionStorage.setItem(hadSessionKey, "true");
+        rememberLocale(userAccount.locale);
+        setAuthState({ state: "authenticated", userAccount });
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return;
+        }
+        if (error instanceof PlatformAccountError) {
+          setAuthState({ state: "platform", locale: storedLocale() });
+          return;
+        }
+        setAuthState({ state: "error", locale: storedLocale() });
+      }
+    }
+
+    void load();
+    return () => controller.abort();
+  }, []);
+
+  async function changeLocale(locale: Locale) {
+    if (authState.state !== "authenticated") {
+      return;
+    }
+    try {
+      const userAccount = await saveLocale(locale);
+      rememberLocale(userAccount.locale);
+      setAuthState({ state: "authenticated", userAccount });
+    } catch (error) {
+      if (error instanceof AuthenticationRequiredError) {
+        setAuthState({ state: "anonymous", expired: true, signedOut: false, locale });
+        return;
+      }
+      setAuthState({ state: "error", locale });
+    }
+  }
+
+  if (authState.state === "loading") {
     return (
-      <main className="center-page" aria-busy="true">
-        <section className="home-panel">
-          <p className="eyebrow">Shadow</p>
-          <h1 className="display-title">Loading session...</h1>
-        </section>
-      </main>
+      <SignedOutLayout>
+        <p role="status" className="text-[13px] text-ink-muted">{messages(authState.locale).checkingSession}</p>
+      </SignedOutLayout>
     );
   }
-
-  if (location.pathname === "/login") {
-    if (status === "authenticated") return <Navigate to="/" replace />;
-    const authenticationFailed =
-      new URLSearchParams(location.search).get("error") === "authentication_failed";
-    return <LoginPage returnTo="/" authenticationFailed={authenticationFailed} />;
+  if (authState.state === "anonymous") {
+    return (
+      <SignIn expired={authState.expired} signedOut={authState.signedOut} locale={authState.locale} />
+    );
   }
-
-  if (status === "anonymous") {
-    return <LoginPage returnTo={`${location.pathname}${location.search}`} />;
+  if (authState.state === "platform") {
+    return (
+      <SignedOutLayout>
+        <Alert tone="info" role="alert">{messages(authState.locale).platformAccount}</Alert>
+        <a className="inline-flex h-10 items-center justify-center rounded-[var(--radius-control)] bg-accent px-4 text-sm font-semibold text-white no-underline hover:bg-accent-hover" href="/platform">{messages(authState.locale).openConsole}</a>
+      </SignedOutLayout>
+    );
   }
-
+  if (authState.state === "error") {
+    return (
+      <SignedOutLayout>
+        <Alert tone="danger" role="alert">{messages(authState.locale).unavailable}</Alert>
+      </SignedOutLayout>
+    );
+  }
+  const shellLocale: Locale = authState.userAccount.locale === "fi" ? "fi" : "en";
   return (
-    <div className="authenticated-shell">
-      {/* Workspace routes show the session controls in the workspace header instead,
-          or in the route fallbacks below until that header renders. */}
-      {workspaceMatch ? null : <SessionControls />}
-      <div className="authenticated-shell__content">
-        <Routes>
-          <Route path="/" element={<HomePage />} />
-          {/* An anonymous visitor gets the login page above, which returns here
-              with the same `request` query after sign-in. */}
-          <Route path="/ai/authorize" element={<AuthorizePage />} />
-          <Route
-            path="/shadow/:orgId/*"
-            element={
-              <RouteErrorBoundary
-                title="Unable to load workspace"
-                resetKey={location.pathname}
-                errorPrefix={<SessionControls />}
-              >
-                <Suspense
-                  fallback={
-                    <>
-                      <SessionControls />
-                      <RouteLoadingFallback message="Loading workspace..." />
-                    </>
-                  }
-                >
-                  <Workspace />
-                </Suspense>
-              </RouteErrorBoundary>
-            }
-          />
-          <Route path="/404" element={<NotFound />} />
-          <Route path="*" element={<Navigate to="/404" replace />} />
-        </Routes>
-      </div>
-    </div>
+    <OverlayProvider labels={messages(shellLocale).overlay}>
+      <AuthenticatedShell
+        userAccount={authState.userAccount}
+        onLocaleChange={changeLocale}
+        onLogout={() => { sessionStorage.removeItem(hadSessionKey); sessionStorage.setItem(signedOutKey, "true"); }}
+      />
+    </OverlayProvider>
   );
+}
+
+/** True once after the user signed out on purpose, so the sign-in page can confirm it. */
+function consumeSignedOut(): boolean {
+  try {
+    const signedOut = sessionStorage.getItem(signedOutKey) === "true";
+    sessionStorage.removeItem(signedOutKey);
+    return signedOut;
+  } catch {
+    return false;
+  }
 }

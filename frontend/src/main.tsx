@@ -1,16 +1,12 @@
 import React from "react";
-import ReactDOM from "react-dom/client";
-import { BrowserRouter } from "react-router-dom";
-import App from "./App";
-import "./styles/reset.css";
-import "./styles/tokens.css";
-import "./styles/components.css";
-import "./styles/app.css";
+import { createRoot } from "react-dom/client";
 
-ReactDOM.createRoot(document.getElementById("root")!).render(
+import { App } from "./App";
+import "@fontsource-variable/inter";
+import "./theme.css";
+
+createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <BrowserRouter>
-      <App />
-    </BrowserRouter>
-  </React.StrictMode>
+    <App />
+  </React.StrictMode>,
 );

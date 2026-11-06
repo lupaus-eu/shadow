@@ -1,0 +1,123 @@
+# yaml-language-server: $schema=https://goauthentik.io/blueprints/schema.json
+version: 1
+metadata:
+  name: Yearclock strong customer authentication
+  labels:
+    blueprints.goauthentik.io/instantiate: "false"
+entries:
+  - id: yearclock-record-verified-email
+    model: authentik_policies_expression.expressionpolicy
+    state: present
+    identifiers:
+      name: yearclock-record-verified-email
+    attrs:
+      expression: |
+        flow_plan = request.context.get("flow_plan")
+        user = flow_plan.context.get("pending_user") if flow_plan else None
+        if not user or not user.email or not user.is_active:
+            return False
+        attributes = dict(user.attributes)
+        attributes["yearclock_email_verified"] = True
+        user.attributes = attributes
+        user.save(update_fields=["attributes"])
+        return True
+
+  # Enrollment needs an invitation link created in Authentik (Directory,
+  # Invitations) unless AUTHENTIK_ENROLLMENT_OPEN is "true". Production compose
+  # defaults to closed; local development defaults to open.
+  - id: yearclock-enrollment-invitation
+    model: authentik_stages_invitation.invitationstage
+    state: present
+    identifiers:
+      name: yearclock-enrollment-invitation
+    attrs:
+      continue_flow_without_invitation: !Env [AUTHENTIK_ENROLLMENT_OPEN, "false"]
+
+  - model: authentik_flows.flowstagebinding
+    state: present
+    identifiers:
+      target: !Find [authentik_flows.flow, [slug, default-enrollment-flow]]
+      stage: !KeyOf yearclock-enrollment-invitation
+      order: 0
+
+  - id: yearclock-enrollment-login-binding
+    model: authentik_flows.flowstagebinding
+    state: present
+    identifiers:
+      target: !Find [authentik_flows.flow, [slug, default-enrollment-flow]]
+      stage: !Find [authentik_stages_user_login.userloginstage, [name, default-enrollment-user-login]]
+      order: 100
+    attrs:
+      evaluate_on_plan: false
+      re_evaluate_policies: true
+
+  - model: authentik_policies.policybinding
+    state: present
+    identifiers:
+      policy: !KeyOf yearclock-record-verified-email
+      target: !KeyOf yearclock-enrollment-login-binding
+      order: 0
+    attrs:
+      enabled: true
+      negate: false
+      timeout: 30
+      failure_result: false
+
+  - id: yearclock-webauthn-setup
+    model: authentik_stages_authenticator_webauthn.authenticatorwebauthnstage
+    state: present
+    identifiers:
+      name: default-authenticator-webauthn-setup
+    attrs:
+      configure_flow: !Find [authentik_flows.flow, [slug, default-authenticator-webauthn-setup]]
+      friendly_name: Passkey
+      prevent_duplicate_devices: true
+      resident_key_requirement: required
+      user_verification: required
+
+  - id: yearclock-login-mfa
+    model: authentik_stages_authenticator_validate.authenticatorvalidatestage
+    state: present
+    identifiers:
+      name: default-authentication-mfa-validation
+    attrs:
+      not_configured_action: configure
+      device_classes:
+        - totp
+        - webauthn
+      configuration_stages:
+        - !Find [authentik_stages_authenticator_totp.authenticatortotpstage, [name, default-authenticator-totp-setup]]
+        - !KeyOf yearclock-webauthn-setup
+      webauthn_user_verification: required
+
+  - id: yearclock-recovery-mfa
+    model: authentik_stages_authenticator_validate.authenticatorvalidatestage
+    state: present
+    identifiers:
+      name: default-recovery-mfa
+    attrs:
+      not_configured_action: deny
+      device_classes:
+        - totp
+        - webauthn
+      webauthn_user_verification: required
+
+  - model: authentik_stages_email.emailstage
+    state: present
+    identifiers:
+      name: default-recovery-email
+    attrs:
+      use_global_settings: true
+      activate_user_on_success: true
+
+  - model: authentik_stages_identification.identificationstage
+    state: present
+    identifiers:
+      name: default-authentication-identification
+    attrs:
+      user_fields:
+        - email
+        - username
+      enrollment_flow: !Find [authentik_flows.flow, [slug, default-enrollment-flow]]
+      recovery_flow: !Find [authentik_flows.flow, [slug, default-recovery-flow]]
+      webauthn_stage: !KeyOf yearclock-login-mfa

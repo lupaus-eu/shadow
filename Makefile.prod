@@ -1,0 +1,77 @@
+# Production shortcuts for the Docker Compose host (docs/runbooks/first-deployment.md).
+#
+# This file is not used from a development checkout (that is `Makefile`). Copy it
+# to the host under the name `Makefile`:
+#
+#   rsync -av Makefile.prod hetzner-deploy:/opt/yearclock/Makefile
+#
+# Then, in /opt/yearclock on the host, run `make help`. Settings come from
+# `.env.production` (ENV_FILE overrides it).
+
+ENV_FILE ?= .env.production
+COMPOSE ?= docker compose -f docker-compose.prod.yml --env-file $(ENV_FILE)
+
+.PHONY: help config pull up deploy reload-edge down restart ps logs version tag stats \
+	authentik-apply enroll-platform backup timers prune
+
+help: ## List the targets
+	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  %-16s %s\n", $$1, $$2}'
+
+config: ## Check that the Compose file and .env.production resolve (starts nothing)
+	@$(COMPOSE) config > /dev/null && echo "Compose file and $(ENV_FILE) resolve."
+
+pull: ## Download the images named by YEARCLOCK_TAG
+	$(COMPOSE) pull
+
+up: ## Start or update the stack in the background (no download)
+	$(COMPOSE) up -d
+
+deploy: pull up reload-edge ps ## Download the images, start or update the stack, reload the edge, show the status
+
+reload-edge: ## Make Caddy read the Caddyfile again (no downtime)
+	$(COMPOSE) exec -T caddy caddy reload --config /etc/caddy/Caddyfile
+
+down: ## Stop the stack (data volumes are kept)
+	$(COMPOSE) down
+
+restart: ## Restart one service (make restart SERVICE=backend)
+	@test -n "$(SERVICE)" || { echo "Usage: make restart SERVICE=<service>"; exit 2; }
+	$(COMPOSE) restart $(SERVICE)
+
+ps: ## Show service status, including finished one-shot containers
+	$(COMPOSE) ps -a
+
+logs: ## Follow logs (make logs SERVICE=backend); all services when SERVICE is empty
+	$(COMPOSE) logs -f --tail=100 $(SERVICE)
+
+version: ## Show the configured release tag and the image each service runs
+	@grep -E '^YEARCLOCK_TAG=' $(ENV_FILE) || echo "YEARCLOCK_TAG is not set in $(ENV_FILE)"
+	@$(COMPOSE) ps -a --format 'table {{.Service}}\t{{.Image}}\t{{.Status}}'
+
+tag: ## Set the release to run (make tag TAG=sha-1234567); then run `make deploy`
+	@case "$(TAG)" in ""|*[!A-Za-z0-9._-]*) echo "Usage: make tag TAG=<image tag, e.g. sha-1234567 or v0.1.0>"; exit 2;; esac
+	@if grep -q '^YEARCLOCK_TAG=' $(ENV_FILE); then \
+		sed -i.bak 's/^YEARCLOCK_TAG=.*/YEARCLOCK_TAG=$(TAG)/' $(ENV_FILE) && rm -f $(ENV_FILE).bak; \
+	else echo 'YEARCLOCK_TAG=$(TAG)' >> $(ENV_FILE); fi
+	@grep '^YEARCLOCK_TAG=' $(ENV_FILE)
+
+stats: ## Show memory and CPU use per container, and the host's memory and disk
+	docker stats --no-stream
+	@free -h
+	@df -h /
+
+authentik-apply: ## Apply the Authentik blueprints now, even if nothing changed
+	$(COMPOSE) run --rm -e AUTHENTIK_CONFIG_FORCE=true authentik-config-init
+
+enroll-platform: ## Allow a Platform sign-in (make enroll-platform EMAIL=you@example.com ROLE=platform_admin)
+	@test -n "$(EMAIL)" -a -n "$(ROLE)" || { echo "Usage: make enroll-platform EMAIL=<address> ROLE=platform_admin|support_agent"; exit 2; }
+	$(COMPOSE) exec backend python -m app.platform_admin enroll --email "$(EMAIL)" --role "$(ROLE)"
+
+backup: ## Run the off-host backup once, now (docs/runbooks/backup.md)
+	scripts/ops/backup-offsite.sh
+
+timers: ## Show whether the backup and disk-check timers are active
+	systemctl list-timers 'yearclock-*' --all
+
+prune: ## Remove images no container uses (frees disk after several releases)
+	docker image prune -af

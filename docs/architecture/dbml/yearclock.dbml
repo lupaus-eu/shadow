@@ -1,0 +1,776 @@
+// Yearclock PostgreSQL schema, generated from the migrated database by backend/app/dbml.py.
+// Alembic revision 0049. Do not edit by hand: run `UPDATE_DBML=1 pytest tests/test_dbml_model.py` in backend/.
+
+Project yearclock {
+  database_type: 'PostgreSQL'
+  Note: 'Yearclock application database. Tenant tables carry organization_id and PostgreSQL row-level security (ADR-0012); see docs/architecture/database.md.'
+}
+
+Table audit_events {
+  id uuid [pk]
+  actor_user_account_id uuid
+  organization_id uuid
+  support_access_id uuid
+  action varchar(120) [not null]
+  target_type varchar(120) [not null]
+  target_id uuid [not null]
+  occurred_at "timestamp with time zone" [not null, default: `now()`]
+  request_id varchar(120) [not null]
+  change_summary jsonb [not null]
+
+  indexes {
+    organization_id [name: 'ix_audit_events_organization_id']
+    (organization_id, occurred_at) [name: 'ix_audit_events_organization_occurred']
+  }
+
+  Note: 'RLS forced: audit_events_insert insert, audit_events_purge_scrub update, audit_events_select select'
+}
+
+Table background_jobs {
+  id uuid [pk]
+  organization_id uuid
+  job_type varchar(120) [not null]
+  payload jsonb [not null]
+  idempotency_key varchar(200) [not null, unique]
+  status varchar(20) [not null, default: `'pending'::character varying`]
+  attempts integer [not null, default: `0`]
+  available_at "timestamp with time zone" [not null, default: `now()`]
+  created_at "timestamp with time zone" [not null, default: `now()`]
+  claimed_at "timestamp with time zone"
+  last_error text
+
+  indexes {
+    (status, available_at) [name: 'ix_background_jobs_claimable']
+    organization_id [name: 'ix_background_jobs_organization_id']
+  }
+
+  Note: 'Checks: ck_background_jobs_status: status::text = ANY (ARRAY[\'pending\'::character varying, \'processing\'::character varying, \'completed\'::character varying, \'failed\'::character varying]::text[])'
+}
+
+Table categories {
+  id uuid [pk]
+  organization_id uuid [not null]
+  yearclock_id uuid
+  name varchar(120) [not null]
+  color varchar(7)
+  display_order integer [not null, default: `0`]
+  version integer [not null, default: `1`]
+  created_at "timestamp with time zone" [not null, default: `now()`]
+
+  indexes {
+    organization_id [name: 'ix_categories_organization_id']
+    yearclock_id [name: 'ix_categories_yearclock_id']
+    (`organization_id`, `lower(name::text)`) [unique, name: 'uq_categories_organization_name']
+  }
+
+  Note: 'RLS forced: categories_live_organization (restrictive) all, categories_policy all, categories_support_delete (restrictive) delete, categories_support_insert (restrictive) insert, categories_support_select (restrictive) select, categories_support_update (restrictive) update'
+}
+
+Table event_labels {
+  event_id uuid
+  label_id uuid
+  organization_id uuid [not null]
+
+  indexes {
+    (event_id, label_id) [pk]
+    label_id [name: 'ix_event_labels_label_id']
+  }
+
+  Note: 'RLS forced: event_labels_live_organization (restrictive) all, event_labels_policy all, event_labels_support_delete (restrictive) delete, event_labels_support_insert (restrictive) insert, event_labels_support_select (restrictive) select, event_labels_support_update (restrictive) update'
+}
+
+Table event_revisions {
+  id uuid [pk]
+  organization_id uuid [not null]
+  yearclock_id uuid [not null]
+  event_id uuid [not null]
+  series_id uuid
+  kind varchar(20) [not null]
+  reason varchar(30) [not null]
+  reason_detail jsonb [not null, default: `'{}'::jsonb`]
+  actor_account_id uuid
+  actor_kind varchar(10) [not null]
+  snapshot jsonb [not null]
+  changed_fields "varchar(20)[]" [not null, default: `'{}'::character varying[]`]
+  created_at "timestamp with time zone" [not null, default: `now()`]
+
+  indexes {
+    (event_id, created_at) [name: 'ix_event_revisions_event_created']
+    (yearclock_id, created_at) [name: 'ix_event_revisions_yearclock_created']
+  }
+
+  Note: 'Checks: ck_event_revisions_actor_kind: actor_kind::text = ANY (ARRAY[\'member\'::character varying, \'support\'::character varying, \'system\'::character varying]::text[]); ck_event_revisions_kind: kind::text = ANY (ARRAY[\'created\'::character varying, \'updated\'::character varying, \'deleted\'::character varying, \'restored\'::character varying, \'version_restored\'::character varying]::text[]). RLS forced: event_revisions_live_organization (restrictive) all, event_revisions_policy all, event_revisions_support_delete (restrictive) delete, event_revisions_support_insert (restrictive) insert, event_revisions_support_select (restrictive) select'
+}
+
+Table event_series {
+  id uuid [pk]
+  organization_id uuid [not null]
+  yearclock_id uuid [not null]
+  lane_id uuid [not null]
+  category_id uuid
+  title varchar(200) [not null]
+  description text
+  starts_on date [not null]
+  frequency varchar(10) [not null]
+  interval integer [not null, default: `1`]
+  until date
+  occurrence_count integer
+  last_day boolean [not null, default: `false`]
+  created_at "timestamp with time zone" [not null, default: `now()`]
+  effective_from date [not null]
+  version integer [not null, default: `1`]
+  location varchar(200)
+  links jsonb [not null, default: `'[]'::jsonb`]
+  description_format varchar(10) [not null, default: `'plain'::character varying`]
+  starts_at "time without time zone"
+  ends_at "time without time zone"
+
+  Note: 'Checks: ck_event_series_description_format: description_format::text = ANY (ARRAY[\'plain\'::character varying, \'markdown\'::character varying]::text[]); ck_event_series_end_time_needs_start: ends_at IS NULL OR starts_at IS NOT NULL; ck_event_series_links_list: jsonb_typeof(links) = \'array\'::text. RLS forced: event_series_live_organization (restrictive) all, event_series_policy all, event_series_support_delete (restrictive) delete, event_series_support_insert (restrictive) insert, event_series_support_select (restrictive) select, event_series_support_update (restrictive) update, event_series_worker_enumerate select'
+}
+
+Table events {
+  id uuid [pk]
+  organization_id uuid [not null]
+  yearclock_id uuid [not null]
+  lane_id uuid [not null]
+  title varchar(200) [not null]
+  description text
+  starts_on date [not null]
+  ends_on date
+  version integer [not null, default: `1`]
+  created_at "timestamp with time zone" [not null, default: `now()`]
+  category_id uuid
+  deleted_at "timestamp with time zone"
+  location varchar(200)
+  links jsonb [not null, default: `'[]'::jsonb`]
+  description_format varchar(10) [not null, default: `'plain'::character varying`]
+  starts_at "time without time zone"
+  ends_at "time without time zone"
+
+  indexes {
+    deleted_at [name: 'ix_events_deleted_at']
+    ends_on [name: 'ix_events_ends_on']
+    organization_id [name: 'ix_events_organization_id']
+    starts_on [name: 'ix_events_starts_on']
+    yearclock_id [name: 'ix_events_yearclock_id']
+  }
+
+  Note: 'Checks: ck_events_date_range: ends_on IS NULL OR ends_on >= starts_on; ck_events_description_format: description_format::text = ANY (ARRAY[\'plain\'::character varying, \'markdown\'::character varying]::text[]); ck_events_end_time_needs_start: ends_at IS NULL OR starts_at IS NOT NULL; ck_events_links_list: jsonb_typeof(links) = \'array\'::text. RLS forced: events_live_organization (restrictive) all, events_policy all, events_support_delete (restrictive) delete, events_support_insert (restrictive) insert, events_support_select (restrictive) select, events_support_update (restrictive) update'
+}
+
+Table invitation_groups {
+  invitation_id uuid
+  group_id uuid
+  organization_id uuid [not null]
+
+  indexes {
+    (group_id, invitation_id) [pk]
+  }
+
+  Note: 'RLS forced: invitation_groups_live_organization (restrictive) all, invitation_groups_no_support (restrictive) all, invitation_groups_policy all'
+}
+
+Table labels {
+  id uuid [pk]
+  organization_id uuid [not null]
+  name varchar(60) [not null]
+  color varchar(7) [not null]
+  version integer [not null, default: `1`]
+  created_at "timestamp with time zone" [not null, default: `now()`]
+
+  indexes {
+    organization_id [name: 'ix_labels_organization_id']
+    (`organization_id`, `lower(name::text)`) [unique, name: 'uq_labels_organization_name']
+  }
+
+  Note: 'Checks: ck_labels_color: color::text ~ \'^#[0-9a-f]{6}$\'::text; ck_labels_name: length(btrim(name::text)) > 0. RLS forced: labels_live_organization (restrictive) all, labels_policy all, labels_support_delete (restrictive) delete, labels_support_insert (restrictive) insert, labels_support_select (restrictive) select, labels_support_update (restrictive) update'
+}
+
+Table lanes {
+  id uuid [pk]
+  organization_id uuid [not null]
+  yearclock_id uuid [not null]
+  name varchar(200) [not null]
+  display_order integer [not null, default: `0`]
+  created_at "timestamp with time zone" [not null, default: `now()`]
+  version integer [not null, default: `1`]
+  tint varchar(7)
+  height varchar(10) [not null, default: `'normal'::character varying`]
+  source_lane_id uuid
+
+  indexes {
+    organization_id [name: 'ix_lanes_organization_id']
+    source_lane_id [name: 'ix_lanes_source_lane_id']
+    yearclock_id [name: 'ix_lanes_yearclock_id']
+  }
+
+  Note: 'Checks: ck_lanes_height: height::text = ANY (ARRAY[\'normal\'::character varying, \'tall\'::character varying]::text[]); ck_lanes_not_own_source: source_lane_id IS NULL OR source_lane_id <> id; ck_lanes_tint: tint IS NULL OR tint::text ~ \'^#[0-9a-f]{6}$\'::text. RLS forced: lanes_delete delete, lanes_insert insert, lanes_live_organization (restrictive) all, lanes_select select, lanes_support_delete (restrictive) delete, lanes_support_insert (restrictive) insert, lanes_support_select (restrictive) select, lanes_support_update (restrictive) update, lanes_update update'
+}
+
+Table legal_acceptances {
+  id uuid [pk]
+  organization_id uuid [not null]
+  user_account_id uuid
+  accepted_by_email varchar(320) [not null]
+  document_key varchar(40) [not null]
+  version integer [not null]
+  locale varchar(5) [not null]
+  accepted_at "timestamp with time zone" [not null, default: `now()`]
+  request_id varchar(120) [not null]
+
+  indexes {
+    (organization_id, document_key, version) [unique]
+    organization_id [name: 'ix_legal_acceptances_organization_id']
+  }
+
+  Note: 'RLS forced: legal_acceptances_no_support (restrictive) all, legal_acceptances_policy all'
+}
+
+Table legal_announcements {
+  document_key varchar(40)
+  version integer
+  announced_at "timestamp with time zone" [not null, default: `now()`]
+
+  indexes {
+    (document_key, version) [pk]
+  }
+}
+
+Table member_group_members {
+  group_id uuid
+  membership_id uuid
+  organization_id uuid [not null]
+
+  indexes {
+    (group_id, membership_id) [pk]
+    membership_id [name: 'ix_member_group_members_membership']
+  }
+
+  Note: 'RLS forced: member_group_members_live_organization (restrictive) all, member_group_members_no_support (restrictive) all, member_group_members_policy all'
+}
+
+Table member_groups {
+  id uuid [pk]
+  organization_id uuid [not null]
+  name varchar(80) [not null]
+  version integer [not null, default: `1`]
+  created_at "timestamp with time zone" [not null, default: `now()`]
+
+  indexes {
+    organization_id [name: 'ix_member_groups_organization_id']
+    (`organization_id`, `lower(name::text)`) [unique, name: 'uq_member_groups_organization_name']
+  }
+
+  Note: 'Checks: ck_member_groups_name: length(btrim(name::text)) > 0. RLS forced: member_groups_live_organization (restrictive) all, member_groups_no_support (restrictive) all, member_groups_policy all'
+}
+
+Table notification_preferences {
+  organization_id uuid
+  user_id uuid
+  settings jsonb [not null, default: `'{}'::jsonb`]
+  summary_frequency varchar(10) [not null, default: `'off'::character varying`]
+  summary_yearclock_ids "uuid[]"
+  summary_sent_on date
+  updated_at "timestamp with time zone" [not null, default: `now()`]
+
+  indexes {
+    (organization_id, user_id) [pk]
+  }
+
+  Note: 'Checks: ck_notification_preferences_frequency: summary_frequency::text = ANY (ARRAY[\'off\'::character varying, \'daily\'::character varying, \'weekly\'::character varying]::text[]). RLS forced: notification_preferences_live_organization (restrictive) all, notification_preferences_no_support (restrictive) all, notification_preferences_policy all'
+}
+
+Table notifications {
+  id uuid [pk]
+  organization_id uuid [not null]
+  recipient_user_id uuid [not null]
+  type varchar(60) [not null]
+  params jsonb [not null, default: `'{}'::jsonb`]
+  dedupe_key varchar(120)
+  created_at "timestamp with time zone" [not null, default: `now()`]
+  read_at "timestamp with time zone"
+
+  indexes {
+    created_at [name: 'ix_notifications_created_at']
+    (recipient_user_id, organization_id, created_at) [name: 'ix_notifications_recipient']
+    (recipient_user_id, organization_id, dedupe_key) [unique, name: 'uq_notifications_unread_dedupe']
+  }
+
+  Note: 'RLS forced: notifications_live_organization (restrictive) all, notifications_no_support (restrictive) all, notifications_policy all'
+}
+
+Table oidc_login_attempts {
+  state_hash varchar(64) [pk]
+  flow_token_hash varchar(64) [not null]
+  nonce varchar(128) [not null]
+  code_verifier varchar(128) [not null]
+  return_to varchar(500) [not null]
+  expires_at "timestamp with time zone" [not null]
+  created_at "timestamp with time zone" [not null, default: `now()`]
+  audience varchar(20) [not null, default: `'customer'::character varying`]
+
+  Note: 'Checks: ck_oidc_login_attempts_audience: audience::text = ANY (ARRAY[\'customer\'::character varying, \'platform\'::character varying]::text[])'
+}
+
+Table organization_invitations {
+  id uuid [pk]
+  organization_id uuid [not null]
+  invited_by_user_account_id uuid [not null]
+  email varchar(320) [not null]
+  role varchar(20) [not null]
+  token_hash varchar(64) [not null, unique]
+  status varchar(20) [not null]
+  expires_at "timestamp with time zone" [not null]
+  accepted_by_user_account_id uuid
+  accepted_at "timestamp with time zone"
+  created_at "timestamp with time zone" [not null, default: `now()`]
+  version integer [not null, default: `1`]
+
+  indexes {
+    invited_by_user_account_id [name: 'ix_organization_invitations_invited_by_user_account_id']
+    organization_id [name: 'ix_organization_invitations_organization_id']
+  }
+
+  Note: 'Checks: ck_organization_invitations_role: role::text = ANY (ARRAY[\'owner\'::character varying, \'admin\'::character varying, \'member\'::character varying]::text[]); ck_organization_invitations_status: status::text = ANY (ARRAY[\'pending\'::character varying, \'accepted\'::character varying, \'revoked\'::character varying, \'superseded\'::character varying, \'expired\'::character varying]::text[]). RLS forced: organization_invitations_insert insert, organization_invitations_live_organization (restrictive) all, organization_invitations_purge delete, organization_invitations_select select, organization_invitations_update update'
+}
+
+Table organization_memberships {
+  id uuid [pk]
+  organization_id uuid [not null]
+  user_account_id uuid [not null]
+  role varchar(20) [not null]
+  created_at "timestamp with time zone" [not null, default: `now()`]
+  version integer [not null, default: `1`]
+
+  indexes {
+    (organization_id, user_account_id) [unique]
+    organization_id [name: 'ix_organization_memberships_organization_id']
+    user_account_id [name: 'ix_organization_memberships_user_account_id']
+  }
+
+  Note: 'Checks: ck_organization_memberships_role: role::text = ANY (ARRAY[\'owner\'::character varying, \'admin\'::character varying, \'member\'::character varying]::text[]). RLS forced: organization_memberships_delete delete, organization_memberships_insert insert, organization_memberships_live_organization (restrictive) all, organization_memberships_select select, organization_memberships_update update'
+}
+
+Table organization_seat_changes {
+  id uuid [pk]
+  organization_id uuid [not null]
+  requested_by_user_account_id uuid [not null]
+  kind varchar(20) [not null]
+  status varchar(30) [not null]
+  from_quantity integer [not null]
+  target_quantity integer [not null]
+  stripe_reference varchar(255)
+  effective_at "timestamp with time zone"
+  created_at "timestamp with time zone" [not null, default: `now()`]
+  applied_at "timestamp with time zone"
+
+  indexes {
+    organization_id [name: 'ix_organization_seat_changes_organization_id']
+    organization_id [unique, name: 'uq_organization_seat_changes_open']
+  }
+
+  Note: 'Checks: ck_organization_seat_changes_kind: kind::text = ANY (ARRAY[\'increase\'::character varying, \'decrease\'::character varying]::text[]); ck_organization_seat_changes_quantities: from_quantity >= 1 AND target_quantity >= 1; ck_organization_seat_changes_status: status::text = ANY (ARRAY[\'pending_payment\'::character varying, \'scheduled\'::character varying, \'applied\'::character varying, \'failed\'::character varying]::text[]). RLS forced: organization_seat_changes_insert insert, organization_seat_changes_select select, organization_seat_changes_update update'
+}
+
+Table organization_seat_previews {
+  id uuid [pk]
+  organization_id uuid [not null]
+  seat_version integer [not null]
+  from_quantity integer [not null]
+  target_quantity integer [not null]
+  amount_due integer [not null]
+  currency varchar(3) [not null]
+  proration_date "timestamp with time zone" [not null]
+  expires_at "timestamp with time zone" [not null]
+  consumed_at "timestamp with time zone"
+  created_at "timestamp with time zone" [not null, default: `now()`]
+
+  indexes {
+    organization_id [name: 'ix_organization_seat_previews_organization_id']
+  }
+
+  Note: 'Checks: ck_organization_seat_previews_amount: amount_due >= 0; ck_organization_seat_previews_values: seat_version >= 1 AND from_quantity >= 1 AND target_quantity > from_quantity. RLS forced: organization_seat_previews_insert insert, organization_seat_previews_select select, organization_seat_previews_update update'
+}
+
+Table organizations {
+  id uuid [pk]
+  name varchar(200) [not null]
+  time_zone varchar(100) [not null]
+  default_locale varchar(2) [not null]
+  status varchar(30) [not null]
+  created_by_user_account_id uuid [not null]
+  billing_name varchar(200) [not null]
+  billing_email varchar(320) [not null]
+  purchased_seats integer [not null]
+  stripe_checkout_session_id varchar(255) [unique]
+  stripe_customer_id varchar(255) [unique]
+  stripe_subscription_id varchar(255) [unique]
+  pending_activation_expires_at "timestamp with time zone" [not null]
+  activated_at "timestamp with time zone"
+  created_at "timestamp with time zone" [not null, default: `now()`]
+  reserved_seats integer [not null, default: `0`]
+  seat_version integer [not null, default: `1`]
+  subscription_access_state varchar(30) [not null, default: `'active'::character varying`]
+  grace_expires_at "timestamp with time zone"
+  deletion_requested_at "timestamp with time zone"
+  cancel_at_period_end boolean [not null, default: `false`]
+  current_period_end "timestamp with time zone"
+  subscription_event_at "timestamp with time zone"
+  purged_at "timestamp with time zone"
+  previous_subscription_ids "varchar(255)[]" [not null, default: `'{}'::character varying[]`]
+  resubscribe_checkout_session_id varchar(255)
+  mcp_enabled boolean [not null, default: `true`]
+  mcp_platform_blocked boolean [not null, default: `false`]
+
+  indexes {
+    created_by_user_account_id [name: 'ix_organizations_created_by_user_account_id']
+  }
+
+  Note: 'Checks: ck_organizations_default_locale: default_locale::text = ANY (ARRAY[\'en\'::character varying, \'fi\'::character varying]::text[]); ck_organizations_purchased_seats: purchased_seats >= 1; ck_organizations_reserved_seats: reserved_seats >= 0; ck_organizations_seat_version: seat_version >= 1; ck_organizations_status: status::text = ANY (ARRAY[\'pending_activation\'::character varying, \'active\'::character varying, \'expired\'::character varying, \'pending_deletion\'::character varying, \'purged\'::character varying]::text[]). RLS forced: organizations_delete delete, organizations_insert insert, organizations_select select, organizations_update update, organizations_worker_enumerate select'
+}
+
+Table outbox_messages {
+  id uuid [pk]
+  organization_id uuid
+  topic varchar(120) [not null]
+  payload jsonb [not null]
+  idempotency_key varchar(200) [not null, unique]
+  status varchar(20) [not null, default: `'pending'::character varying`]
+  attempts integer [not null, default: `0`]
+  available_at "timestamp with time zone" [not null, default: `now()`]
+  created_at "timestamp with time zone" [not null, default: `now()`]
+  claimed_at "timestamp with time zone"
+  last_error text
+  provider_message_id varchar(255)
+
+  indexes {
+    (status, available_at) [name: 'ix_outbox_messages_claimable']
+    organization_id [name: 'ix_outbox_messages_organization_id']
+  }
+
+  Note: 'Checks: ck_outbox_messages_status: status::text = ANY (ARRAY[\'pending\'::character varying, \'processing\'::character varying, \'completed\'::character varying, \'failed\'::character varying]::text[])'
+}
+
+Table platform_enrollments {
+  id uuid [pk]
+  email varchar(320) [not null]
+  roles "varchar(30)[]" [not null]
+  created_at "timestamp with time zone" [not null, default: `now()`]
+  expires_at "timestamp with time zone" [not null]
+  consumed_at "timestamp with time zone"
+  user_account_id uuid
+
+  indexes {
+    email [name: 'ix_platform_enrollments_email']
+  }
+
+  Note: 'Checks: ck_platform_enrollments_roles: roles <@ ARRAY[\'platform_admin\'::character varying, \'support_agent\'::character varying] AND cardinality(roles) > 0'
+}
+
+Table platform_roles {
+  id uuid [pk]
+  user_account_id uuid [not null]
+  role varchar(30) [not null]
+
+  indexes {
+    (user_account_id, role) [unique]
+  }
+
+  Note: 'Checks: ck_platform_roles_role: role::text = ANY (ARRAY[\'platform_admin\'::character varying, \'support_agent\'::character varying]::text[])'
+}
+
+Table series_labels {
+  series_id uuid
+  label_id uuid
+  organization_id uuid [not null]
+
+  indexes {
+    (label_id, series_id) [pk]
+    label_id [name: 'ix_series_labels_label_id']
+  }
+
+  Note: 'RLS forced: series_labels_live_organization (restrictive) all, series_labels_policy all, series_labels_support_delete (restrictive) delete, series_labels_support_insert (restrictive) insert, series_labels_support_select (restrictive) select, series_labels_support_update (restrictive) update'
+}
+
+Table series_occurrences {
+  id uuid [pk]
+  series_id uuid [not null]
+  organization_id uuid [not null]
+  series_date date [not null]
+  event_id uuid [not null, unique]
+  skipped boolean [not null, default: `false`]
+  overrides jsonb [not null, default: `'{}'::jsonb`]
+
+  indexes {
+    (series_id, series_date) [unique]
+  }
+
+  Note: 'RLS forced: series_occurrences_live_organization (restrictive) all, series_occurrences_policy all, series_occurrences_support_delete (restrictive) delete, series_occurrences_support_insert (restrictive) insert, series_occurrences_support_select (restrictive) select, series_occurrences_support_update (restrictive) update'
+}
+
+Table stripe_webhook_events {
+  event_id varchar(255) [pk]
+  organization_id uuid
+  event_type varchar(120) [not null]
+  outcome varchar(40) [not null]
+  processed_at "timestamp with time zone" [not null, default: `now()`]
+
+  indexes {
+    organization_id [name: 'ix_stripe_webhook_events_organization_id']
+  }
+}
+
+Table support_access_requests {
+  id uuid [pk]
+  organization_id uuid [not null]
+  requested_by_user_account_id uuid [not null]
+  case_reference varchar(200) [not null]
+  scope varchar(20) [not null]
+  status varchar(20) [not null]
+  expires_at "timestamp with time zone"
+  approved_by_user_account_id uuid
+  requested_hours integer [not null, default: `1`]
+  created_at "timestamp with time zone" [not null, default: `now()`]
+  decided_at "timestamp with time zone"
+  revoked_at "timestamp with time zone"
+
+  Note: 'Checks: ck_support_access_hours: requested_hours >= 1 AND requested_hours <= 24; ck_support_access_scope: scope::text = ANY (ARRAY[\'read\'::character varying, \'write\'::character varying]::text[]); ck_support_access_status: status::text = ANY (ARRAY[\'pending\'::character varying, \'approved\'::character varying, \'rejected\'::character varying, \'revoked\'::character varying, \'expired\'::character varying]::text[]). RLS forced: support_access_requests_insert insert, support_access_requests_purge delete, support_access_requests_select select, support_access_requests_update update'
+}
+
+Table user_accounts {
+  id uuid [pk]
+  oidc_issuer varchar(500) [not null]
+  oidc_subject varchar(255) [not null]
+  account_class varchar(20) [not null]
+  email varchar(320) [not null]
+  display_name varchar(200) [not null]
+  locale varchar(2) [not null, default: `'en'::character varying`]
+  created_at "timestamp with time zone" [not null, default: `now()`]
+  updated_at "timestamp with time zone" [not null, default: `now()`]
+
+  indexes {
+    (oidc_issuer, oidc_subject) [unique]
+  }
+
+  Note: 'Checks: ck_user_accounts_account_class: account_class::text = ANY (ARRAY[\'customer\'::character varying, \'platform\'::character varying]::text[]); ck_user_accounts_locale: locale::text = ANY (ARRAY[\'en\'::character varying, \'fi\'::character varying]::text[])'
+}
+
+Table user_sessions {
+  id uuid [pk]
+  user_account_id uuid [not null]
+  token_hash varchar(64) [not null, unique]
+  expires_at "timestamp with time zone" [not null]
+  revoked_at "timestamp with time zone"
+  created_at "timestamp with time zone" [not null, default: `now()`]
+  id_token_hint text
+
+  indexes {
+    expires_at [name: 'ix_user_sessions_expires_at']
+    user_account_id [name: 'ix_user_sessions_user_account_id']
+  }
+}
+
+Table yearclock_access_grants {
+  id uuid [pk]
+  organization_id uuid [not null]
+  yearclock_id uuid [not null]
+  user_account_id uuid [not null]
+  role varchar(20) [not null]
+  created_at "timestamp with time zone" [not null, default: `now()`]
+  version integer [not null, default: `1`]
+
+  indexes {
+    (yearclock_id, user_account_id) [unique]
+    organization_id [name: 'ix_yearclock_access_grants_organization_id']
+    yearclock_id [name: 'ix_yearclock_access_grants_yearclock_id']
+  }
+
+  Note: 'Checks: ck_yearclock_access_grants_role: role::text = ANY (ARRAY[\'editor\'::character varying, \'viewer\'::character varying]::text[]). RLS forced: yearclock_access_grants_live_organization (restrictive) all, yearclock_access_grants_policy all, yearclock_access_grants_support_delete (restrictive) delete, yearclock_access_grants_support_insert (restrictive) insert, yearclock_access_grants_support_select (restrictive) select, yearclock_access_grants_support_update (restrictive) update'
+}
+
+Table yearclock_group_grants {
+  id uuid [pk]
+  organization_id uuid [not null]
+  yearclock_id uuid [not null]
+  group_id uuid [not null]
+  role varchar(10) [not null]
+  version integer [not null, default: `1`]
+  created_at "timestamp with time zone" [not null, default: `now()`]
+
+  indexes {
+    (yearclock_id, group_id) [unique]
+    group_id [name: 'ix_yearclock_group_grants_group_id']
+    yearclock_id [name: 'ix_yearclock_group_grants_yearclock_id']
+  }
+
+  Note: 'Checks: ck_yearclock_group_grants_role: role::text = ANY (ARRAY[\'editor\'::character varying, \'viewer\'::character varying]::text[]). RLS forced: yearclock_group_grants_live_organization (restrictive) all, yearclock_group_grants_no_support (restrictive) all, yearclock_group_grants_policy all'
+}
+
+Table yearclock_visits {
+  membership_id uuid
+  yearclock_id uuid
+  organization_id uuid [not null]
+  user_account_id uuid [not null]
+  visited_at "timestamp with time zone" [not null, default: `now()`]
+  previous_visited_at "timestamp with time zone"
+
+  indexes {
+    (membership_id, yearclock_id) [pk]
+    (organization_id, user_account_id, visited_at) [name: 'ix_yearclock_visits_user_recent']
+  }
+
+  Note: 'RLS forced: yearclock_visits_live_organization (restrictive) all, yearclock_visits_own all'
+}
+
+Table yearclocks {
+  id uuid [pk]
+  organization_id uuid [not null]
+  name varchar(200) [not null]
+  display_order integer [not null, default: `0`]
+  created_at "timestamp with time zone" [not null, default: `now()`]
+  version integer [not null, default: `1`]
+  archived_at "timestamp with time zone"
+  deleted_at "timestamp with time zone"
+  start_month smallint [not null, default: `'1'::smallint`]
+  show_week_ring boolean [not null, default: `false`]
+  show_quarter_ring boolean [not null, default: `false`]
+  organization_access varchar(10) [not null, default: `'none'::character varying`]
+
+  indexes {
+    (organization_id, id) [unique]
+    deleted_at [name: 'ix_yearclocks_deleted_at']
+    organization_id [name: 'ix_yearclocks_organization_id']
+  }
+
+  Note: 'Checks: ck_yearclocks_organization_access: organization_access::text = ANY (ARRAY[\'none\'::character varying, \'viewer\'::character varying, \'editor\'::character varying]::text[]); ck_yearclocks_start_month: start_month >= 1 AND start_month <= 12. RLS forced: yearclocks_delete delete, yearclocks_insert insert, yearclocks_live_organization (restrictive) all, yearclocks_select select, yearclocks_support_delete (restrictive) delete, yearclocks_support_insert (restrictive) insert, yearclocks_support_select (restrictive) select, yearclocks_support_update (restrictive) update, yearclocks_update update'
+}
+
+Ref: categories.organization_id > organizations.id [delete: cascade]
+Ref: categories.yearclock_id > yearclocks.id [delete: cascade]
+Ref: event_labels.event_id > events.id [delete: cascade]
+Ref: event_labels.label_id > labels.id [delete: cascade]
+Ref: event_labels.organization_id > organizations.id [delete: cascade]
+Ref: event_revisions.event_id > events.id [delete: cascade]
+Ref: event_revisions.organization_id > organizations.id [delete: cascade]
+Ref: event_revisions.yearclock_id > yearclocks.id [delete: cascade]
+Ref: event_series.category_id > categories.id [delete: set null]
+Ref: event_series.lane_id > lanes.id [delete: restrict]
+Ref: event_series.organization_id > organizations.id [delete: cascade]
+Ref: event_series.yearclock_id > yearclocks.id [delete: cascade]
+Ref: events.category_id > categories.id [delete: set null]
+Ref: events.lane_id > lanes.id [delete: restrict]
+Ref: events.organization_id > organizations.id [delete: cascade]
+Ref: events.yearclock_id > yearclocks.id [delete: cascade]
+Ref: invitation_groups.group_id > member_groups.id [delete: cascade]
+Ref: invitation_groups.invitation_id > organization_invitations.id [delete: cascade]
+Ref: invitation_groups.organization_id > organizations.id [delete: cascade]
+Ref: labels.organization_id > organizations.id [delete: cascade]
+Ref: lanes.(organization_id, yearclock_id) > yearclocks.(organization_id, id) [delete: cascade]
+Ref: lanes.organization_id > organizations.id [delete: cascade]
+Ref: lanes.source_lane_id > lanes.id [delete: cascade]
+Ref: legal_acceptances.organization_id > organizations.id [delete: cascade]
+Ref: legal_acceptances.user_account_id > user_accounts.id [delete: set null]
+Ref: member_group_members.group_id > member_groups.id [delete: cascade]
+Ref: member_group_members.membership_id > organization_memberships.id [delete: cascade]
+Ref: member_group_members.organization_id > organizations.id [delete: cascade]
+Ref: member_groups.organization_id > organizations.id [delete: cascade]
+Ref: notification_preferences.organization_id > organizations.id [delete: cascade]
+Ref: notification_preferences.user_id > user_accounts.id [delete: cascade]
+Ref: notifications.organization_id > organizations.id [delete: cascade]
+Ref: notifications.recipient_user_id > user_accounts.id [delete: cascade]
+Ref: organization_invitations.invited_by_user_account_id > user_accounts.id
+Ref: organization_invitations.organization_id > organizations.id [delete: cascade]
+Ref: organization_memberships.organization_id > organizations.id [delete: cascade]
+Ref: organization_memberships.user_account_id > user_accounts.id [delete: cascade]
+Ref: organization_seat_changes.organization_id > organizations.id [delete: cascade]
+Ref: organization_seat_changes.requested_by_user_account_id > user_accounts.id
+Ref: organization_seat_previews.organization_id > organizations.id [delete: cascade]
+Ref: organizations.created_by_user_account_id > user_accounts.id
+Ref: platform_enrollments.user_account_id > user_accounts.id [delete: set null]
+Ref: platform_roles.user_account_id > user_accounts.id [delete: cascade]
+Ref: series_labels.label_id > labels.id [delete: cascade]
+Ref: series_labels.organization_id > organizations.id [delete: cascade]
+Ref: series_labels.series_id > event_series.id [delete: cascade]
+Ref: series_occurrences.event_id > events.id [delete: cascade]
+Ref: series_occurrences.organization_id > organizations.id [delete: cascade]
+Ref: series_occurrences.series_id > event_series.id [delete: cascade]
+Ref: stripe_webhook_events.organization_id > organizations.id [delete: set null]
+Ref: support_access_requests.organization_id > organizations.id [delete: cascade]
+Ref: support_access_requests.requested_by_user_account_id > user_accounts.id
+Ref: user_sessions.user_account_id > user_accounts.id [delete: cascade]
+Ref: yearclock_access_grants.organization_id > organizations.id [delete: cascade]
+Ref: yearclock_access_grants.user_account_id > user_accounts.id [delete: cascade]
+Ref: yearclock_access_grants.yearclock_id > yearclocks.id [delete: cascade]
+Ref: yearclock_group_grants.group_id > member_groups.id [delete: cascade]
+Ref: yearclock_group_grants.organization_id > organizations.id [delete: cascade]
+Ref: yearclock_group_grants.yearclock_id > yearclocks.id [delete: cascade]
+Ref: yearclock_visits.membership_id > organization_memberships.id [delete: cascade]
+Ref: yearclock_visits.organization_id > organizations.id [delete: cascade]
+Ref: yearclock_visits.user_account_id > user_accounts.id [delete: cascade]
+Ref: yearclock_visits.yearclock_id > yearclocks.id [delete: cascade]
+Ref: yearclocks.organization_id > organizations.id [delete: cascade]
+
+TableGroup identity {
+  user_accounts
+  user_sessions
+  oidc_login_attempts
+  platform_roles
+  platform_enrollments
+}
+
+TableGroup organization {
+  organizations
+  organization_memberships
+  organization_invitations
+  invitation_groups
+}
+
+TableGroup billing {
+  organization_seat_changes
+  organization_seat_previews
+  stripe_webhook_events
+}
+
+TableGroup legal {
+  legal_acceptances
+  legal_announcements
+}
+
+TableGroup yearclock_structure {
+  yearclocks
+  lanes
+  categories
+  yearclock_access_grants
+  yearclock_visits
+}
+
+TableGroup yearclock_content {
+  events
+  event_series
+  series_occurrences
+  event_revisions
+}
+
+TableGroup classification {
+  labels
+  event_labels
+  series_labels
+}
+
+TableGroup groups {
+  member_groups
+  member_group_members
+  yearclock_group_grants
+}
+
+TableGroup notifications {
+  notifications
+  notification_preferences
+}
+
+TableGroup operations {
+  audit_events
+  background_jobs
+  outbox_messages
+  support_access_requests
+}

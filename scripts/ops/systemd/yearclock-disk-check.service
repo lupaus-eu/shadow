@@ -1,0 +1,7 @@
+[Unit]
+Description=Yearclock disk usage check
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/yearclock
+ExecStart=/opt/yearclock/scripts/ops/check-disk.sh

@@ -196,7 +196,7 @@ def render() -> str:
 
     return "\n".join(
         [
-            "# Shadow'n feature-portfolio",
+            "# Yearclockin feature-portfolio",
             "",
             "> Tämä näkymä muodostetaan `.scratch`-tiedostojen `Status:`-riveistä ja hyväksymiskriteerien valintaruuduista. Päivitä se komennolla `python3 scripts/scratch-status.py > .scratch/_PORTFOLIO.md` aina, kun feature tai ticket etenee.",
             "",

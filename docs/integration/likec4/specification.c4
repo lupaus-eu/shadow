@@ -1,0 +1,108 @@
+// Kinds, colors and tags of the Yearclock x eTWIN concept model (LikeC4).
+// This model is deliberately separate from docs/architecture/c4 (the Yearclock C4 model);
+// merge them only when the integration design is settled.
+// Colour convention: Yearclock concepts are amber, eTWIN concepts are indigo.
+// Cross-system relationships use their own colours (see the relationship kinds below).
+specification {
+
+  // ── Yearclock: amber ───────────────────────────────────────────────────────
+  element ycSystem {
+    notation 'Yearclock (system)'
+    style {
+      color amber
+      opacity 10%
+      border dotted
+    }
+  }
+  element ycConcept {
+    notation 'Yearclock concept'
+    style {
+      color amber
+      shape rectangle
+    }
+  }
+
+  // ── eTWIN: indigo ──────────────────────────────────────────────────────────
+  element etSystem {
+    notation 'eTWIN (system)'
+    style {
+      color indigo
+      opacity 10%
+      border dotted
+    }
+  }
+  // The two worlds inside eTWIN: reality (baseline) and simulation.
+  element etWorld {
+    notation 'eTWIN world (reality or simulation)'
+    style {
+      color indigo
+      opacity 25%
+      border dashed
+    }
+  }
+  // A concept of reality (the baseline model).
+  element etConcept {
+    notation 'eTWIN concept (reality)'
+    style {
+      color indigo
+      shape rectangle
+    }
+  }
+  // A concept that exists only inside the simulation world. Dashed border = "not reality".
+  element etSimConcept {
+    notation 'eTWIN concept (simulation only)'
+    style {
+      color indigo
+      shape rectangle
+      border dashed
+    }
+  }
+
+  // Marks a Yearclock concept that is described but not built (ADR-0027).
+  tag deferred
+
+  // ── Relationships inside one system: plain grey ────────────────────────────
+  relationship uses {
+    color muted
+    line solid
+  }
+
+  // ── Relationships BETWEEN the systems: each kind says what the arrow means ─
+  // All cross-system relationships are PROPOSALS (docs/integration/yearclock-etwin-spec.md);
+  // none of them exists in either product today.
+
+  // Yearclock -> eTWIN: a plan (intent) becomes input to the simulation.
+  relationship plannedToModel {
+    color red
+    line dashed
+    head normal
+  }
+  // eTWIN -> Yearclock: model output (action proposal, external event, actuals) comes back to the plan.
+  // Always human-approved on the Yearclock side; never creates anything autonomously.
+  relationship modelToPlan {
+    color green
+    line dashed
+    head normal
+  }
+  // Alignment only: the two concepts are the same thing seen from two sides, linked by reference, not merged.
+  relationship alignsWith {
+    color slate
+    line dotted
+    head diamond
+    tail diamond
+  }
+
+  // ── Inside eTWIN, between its two worlds ───────────────────────────────────
+  // Simulation -> reality is ONLY a manual, one-way copy made by a user. Never automatic.
+  relationship manualCopy {
+    color primary
+    line dashed
+    head open
+  }
+  // Reality -> simulation: a scenario starts as a snapshot copy of reality.
+  relationship startsAsCopy {
+    color gray
+    line dotted
+    head open
+  }
+}

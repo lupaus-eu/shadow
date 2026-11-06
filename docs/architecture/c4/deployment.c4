@@ -1,0 +1,54 @@
+// Where the containers run: the local Docker Compose stack and the production Compose host.
+deployment {
+  environment local 'Local development' {
+    host developerMachine 'Developer machine' {
+      description 'docker compose up (make up); ports 8100-8199 on 127.0.0.1 (docs/architecture/docker.md).'
+      containerRuntime compose 'Docker Compose project "yearclock"' {
+        webApp = instanceOf yearclock.webApp {
+          description 'Vite dev server, host port 8173.'
+        }
+        api = instanceOf yearclock.api {
+          description 'uvicorn, host port 8100.'
+        }
+        worker = instanceOf yearclock.worker
+        migrate = instanceOf yearclock.migrate
+        database = instanceOf yearclock.database {
+          description 'postgres:17-alpine, host port 8132.'
+        }
+        authentikServer = instanceOf authentik.authentikServer
+        authentikWorker = instanceOf authentik.authentikWorker
+        authentikDatabase = instanceOf authentik.authentikDatabase
+        edge = instanceOf yearclock.edge {
+          description 'Optional "edge" profile with the production Caddyfile.'
+        }
+      }
+    }
+  }
+
+  environment production 'Production' {
+    host composeHost 'Docker Compose host (UpCloud, 2 to 4 GB)' {
+      description 'docker-compose.prod.yml pulls the backend and frontend images from GHCR (built by .github/workflows/images.yml, ADR-0035); only Caddy is published (docs/architecture/deployment.md).'
+      containerRuntime prodCompose 'Docker Compose' {
+        edge = instanceOf yearclock.edge {
+          description 'Production TLS on ports 80 and 443; serves the SPA build.'
+        }
+        webApp = instanceOf yearclock.webApp {
+          description 'Production build served by Caddy.'
+        }
+        api = instanceOf yearclock.api {
+          description 'BACKEND_WORKERS uvicorn processes.'
+        }
+        worker = instanceOf yearclock.worker
+        migrate = instanceOf yearclock.migrate {
+          description 'Runs before the API and worker.'
+        }
+        database = instanceOf yearclock.database {
+          description 'Volume postgres_data; backups per database (scripts/ops).'
+        }
+        authentikServer = instanceOf authentik.authentikServer
+        authentikWorker = instanceOf authentik.authentikWorker
+        authentikDatabase = instanceOf authentik.authentikDatabase
+      }
+    }
+  }
+}

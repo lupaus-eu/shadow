@@ -1,0 +1,20 @@
+# Static server for the production frontend image. The edge Caddy adds TLS and
+# security headers; this server only maps SPA routes to index.html.
+{
+  admin off
+  auto_https off
+}
+
+:8173 {
+  root * /srv
+  encode zstd gzip
+  @assets path /assets/*
+  header @assets Cache-Control "public, max-age=31536000, immutable"
+  # Public static files; the Authentik sign-in pages (another origin) load the fonts the stylesheet names.
+  header @assets Access-Control-Allow-Origin "*"
+  # The Authentik sign-in pages import this copy of the stylesheet (ADR-0039); it must follow every release.
+  header /theme.css Cache-Control "no-cache"
+  header /index.html Cache-Control "no-cache"
+  try_files {path} /index.html
+  file_server
+}

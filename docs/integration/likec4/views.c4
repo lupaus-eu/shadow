@@ -1,0 +1,13 @@
+// One view only: the concept model of Yearclock (amber) and eTWIN (indigo),
+// with the proposed relationships between them (red, green, slate).
+views {
+
+  view index {
+    title 'Concept model: Yearclock and eTWIN'
+    description 'Amber = Yearclock concepts, indigo = eTWIN concepts. Arrows between the two systems are proposals: red = plan to model, green = model back to plan, slate = alignment by reference. Grey arrows are relationships inside one system. Blue dashed = manual one-way copy from a scenario to reality; grey dotted = a scenario starts as a copy of reality.'
+    include
+      yc, yc.*,
+      et, et.*, et.reality.*, et.simulation.*
+    autoLayout LeftRight
+  }
+}

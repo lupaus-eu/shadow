@@ -1,0 +1,52 @@
+// Element and relationship kinds for the Yearclock C4 model (LikeC4).
+specification {
+  element person {
+    style {
+      shape person
+      color green
+    }
+  }
+  element softwareSystem {
+    style {
+      color primary
+    }
+  }
+  element externalSystem {
+    style {
+      color gray
+    }
+  }
+  element container {
+    style {
+      color blue
+    }
+  }
+  element component {
+    style {
+      color sky
+    }
+  }
+  element database {
+    style {
+      shape storage
+      color blue
+    }
+  }
+  element spa {
+    style {
+      shape browser
+      color blue
+    }
+  }
+
+  tag external
+  tag selfHosted
+
+  relationship async {
+    line dashed
+  }
+
+  deploymentNode environment
+  deploymentNode host
+  deploymentNode containerRuntime
+}

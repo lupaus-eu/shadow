@@ -1,0 +1,261 @@
+# Production stack (docs/architecture/deployment.md, docs/runbooks/production-readiness.md).
+#
+#   docker compose -f docker-compose.prod.yml --env-file .env.production pull
+#   docker compose -f docker-compose.prod.yml --env-file .env.production up -d
+#
+# Images are built in CI and pushed to GHCR (.github/workflows/images.yml,
+# ADR-0035); this file builds nothing. YEARCLOCK_TAG selects the release
+# (a v* tag or sha-<short>); roll back by setting the previous tag.
+#
+# Only Caddy publishes ports. The defaults keep scripts/check-compose-ports.py
+# (127.0.0.1, 8100-8199) satisfied; production sets
+# YEARCLOCK_EDGE_BIND_ADDRESS=0.0.0.0, YEARCLOCK_HTTP_PORT=80, and
+# YEARCLOCK_HTTPS_PORT=443. Values marked :? are required secrets.
+name: yearclock
+
+x-backend-image: &backend_image ${YEARCLOCK_IMAGE_PREFIX:-ghcr.io/lupaus-eu/yearclock}-backend:${YEARCLOCK_TAG:?set YEARCLOCK_TAG}
+
+x-yearclock-database: &yearclock_database
+  DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:?set POSTGRES_USER}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-yearclock}
+
+x-scaleway: &scaleway
+  SCW_SECRET_KEY: ${SCW_SECRET_KEY:?set SCW_SECRET_KEY}
+  SCW_DEFAULT_PROJECT_ID: ${SCW_DEFAULT_PROJECT_ID:?set SCW_DEFAULT_PROJECT_ID}
+  SCW_TEM_REGION: ${SCW_TEM_REGION:-fr-par}
+  SCW_TEM_API_BASE_URL: ${SCW_TEM_API_BASE_URL:-https://api.scaleway.com/transactional-email/v1alpha1/regions}
+  SCW_TEM_DEFAULT_SENDER_EMAIL: ${SCW_TEM_DEFAULT_SENDER_EMAIL:?set SCW_TEM_DEFAULT_SENDER_EMAIL}
+  SCW_TEM_DEFAULT_SENDER_NAME: ${SCW_TEM_DEFAULT_SENDER_NAME:-Yearclock}
+
+x-lifecycle: &lifecycle
+  RECURRENCE_BUFFER_DAYS: ${RECURRENCE_BUFFER_DAYS:-366}
+  DELETED_CONTENT_RETENTION_DAYS: ${DELETED_CONTENT_RETENTION_DAYS:-30}
+  ORGANIZATION_DELETION_RETENTION_DAYS: ${ORGANIZATION_DELETION_RETENTION_DAYS:-30}
+
+# Every service rotates its json-file logs so a chatty container cannot fill the
+# host disk (docs/operations/monitoring.md). Override the size and count in
+# .env.production with LOG_MAX_SIZE and LOG_MAX_FILE.
+x-logging: &default_logging
+  driver: json-file
+  options:
+    max-size: ${LOG_MAX_SIZE:-10m}
+    max-file: ${LOG_MAX_FILE:-5}
+
+services:
+  db:
+    logging: *default_logging
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-yearclock}
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      AUTHENTIK_POSTGRES_DB: ${AUTHENTIK_POSTGRES_DB:-authentik}
+      AUTHENTIK_POSTGRES_USER: ${AUTHENTIK_POSTGRES_USER:-authentik}
+      AUTHENTIK_POSTGRES_PASSWORD: ${AUTHENTIK_POSTGRES_PASSWORD:?set AUTHENTIK_POSTGRES_PASSWORD}
+    command: ["postgres", "-c", "max_connections=${POSTGRES_MAX_CONNECTIONS:-100}"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init/02-create-authentik-database.sh:/docker-entrypoint-initdb.d/02-create-authentik-database.sh:ro
+
+  authentik-db-init:
+    logging: *default_logging
+    image: postgres:17-alpine
+    command: ["/scripts/02-create-authentik-database.sh"]
+    environment:
+      PGHOST: db
+      PGUSER: ${POSTGRES_USER:?set POSTGRES_USER}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      PGDATABASE: ${POSTGRES_DB:-yearclock}
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-yearclock}
+      AUTHENTIK_POSTGRES_DB: ${AUTHENTIK_POSTGRES_DB:-authentik}
+      AUTHENTIK_POSTGRES_USER: ${AUTHENTIK_POSTGRES_USER:-authentik}
+      AUTHENTIK_POSTGRES_PASSWORD: ${AUTHENTIK_POSTGRES_PASSWORD:?set AUTHENTIK_POSTGRES_PASSWORD}
+    volumes:
+      - ./docker/postgres/init:/scripts:ro
+    depends_on:
+      db:
+        condition: service_healthy
+
+  authentik-server:
+    logging: *default_logging
+    image: ghcr.io/goauthentik/server:${AUTHENTIK_VERSION:-2026.8.5}
+    restart: unless-stopped
+    command: server
+    environment: &authentik_environment
+      AUTHENTIK_POSTGRESQL__HOST: db
+      AUTHENTIK_POSTGRESQL__NAME: ${AUTHENTIK_POSTGRES_DB:-authentik}
+      AUTHENTIK_POSTGRESQL__USER: ${AUTHENTIK_POSTGRES_USER:-authentik}
+      AUTHENTIK_POSTGRESQL__PASSWORD: ${AUTHENTIK_POSTGRES_PASSWORD:?set AUTHENTIK_POSTGRES_PASSWORD}
+      AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY:?set AUTHENTIK_SECRET_KEY}
+      # authentik 2026.8 honours X-Forwarded-* only from these networks (ADR-0036).
+      AUTHENTIK_LISTEN__TRUSTED_PROXY_CIDRS: ${AUTHENTIK_TRUSTED_PROXY_CIDRS:-127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fe80::/10,::1/128}
+      AUTHENTIK_WEB__BASE_URL: ${AUTHENTIK_BASE_URL:-}
+      AUTHENTIK_ENROLLMENT_OPEN: ${AUTHENTIK_ENROLLMENT_OPEN:-false}
+      AUTHENTIK_BOOTSTRAP_PASSWORD: ${AUTHENTIK_BOOTSTRAP_PASSWORD:?set AUTHENTIK_BOOTSTRAP_PASSWORD}
+      AUTHENTIK_EMAIL__HOST: smtp.tem.scaleway.com
+      AUTHENTIK_EMAIL__PORT: "587"
+      AUTHENTIK_EMAIL__USERNAME: ${SCW_DEFAULT_PROJECT_ID:?set SCW_DEFAULT_PROJECT_ID}
+      AUTHENTIK_EMAIL__PASSWORD: ${SCW_SECRET_KEY:?set SCW_SECRET_KEY}
+      AUTHENTIK_EMAIL__USE_TLS: "true"
+      AUTHENTIK_EMAIL__FROM: ${AUTHENTIK_EMAIL_FROM:?set AUTHENTIK_EMAIL_FROM}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:?set OIDC_CLIENT_ID}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:?set OIDC_CLIENT_SECRET}
+      OIDC_REDIRECT_URI: ${PUBLIC_API_BASE_URL:?set PUBLIC_API_BASE_URL}/api/v1/auth/callback
+      MCP_OIDC_CLIENT_ID: ${MCP_OIDC_CLIENT_ID:?set MCP_OIDC_CLIENT_ID}
+      MCP_OIDC_CLIENT_SECRET: ${MCP_OIDC_CLIENT_SECRET:?set MCP_OIDC_CLIENT_SECRET}
+      # The web application's stylesheet for the sign-in pages (ADR-0039).
+      AUTHENTIK_THEME_CSS_URL: ${FRONTEND_URL:?set FRONTEND_URL}/theme.css
+      FRONTEND_URL: ${FRONTEND_URL:?set FRONTEND_URL}
+    volumes:
+      - authentik_media:/media
+      - authentik_templates:/templates
+    depends_on:
+      authentik-db-init:
+        condition: service_completed_successfully
+
+  authentik-worker:
+    logging: *default_logging
+    image: ghcr.io/goauthentik/server:${AUTHENTIK_VERSION:-2026.8.5}
+    restart: unless-stopped
+    command: worker
+    environment: *authentik_environment
+    volumes:
+      - authentik_media:/media
+      - authentik_templates:/templates
+      - ./authentik/blueprints:/blueprints/custom:ro
+    depends_on:
+      authentik-db-init:
+        condition: service_completed_successfully
+
+  authentik-config-init:
+    logging: *default_logging
+    image: ghcr.io/goauthentik/server:${AUTHENTIK_VERSION:-2026.8.5}
+    entrypoint: ["/bin/sh", "/config/configure.sh"]
+    environment: *authentik_environment
+    volumes:
+      - ./authentik:/config:ro
+      - ./authentik/blueprints:/blueprints/custom:ro
+      # Holds the fingerprint that lets an unchanged configuration be skipped.
+      - authentik_media:/media
+    # The server applies Authentik's own database migrations on start and reports
+    # healthy (the image's built-in health check) only once they are done, so the
+    # blueprints are never applied to a half-migrated database on the first start.
+    depends_on:
+      authentik-server:
+        condition: service_healthy
+      authentik-worker:
+        condition: service_healthy
+
+  migrate:
+    logging: *default_logging
+    image: *backend_image
+    command: ["alembic", "upgrade", "head"]
+    environment: *yearclock_database
+    depends_on:
+      db:
+        condition: service_healthy
+
+  backend:
+    logging: *default_logging
+    image: *backend_image
+    restart: unless-stopped
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "${BACKEND_WORKERS:-2}", "--proxy-headers", "--forwarded-allow-ips", "*"]
+    environment:
+      <<: [*yearclock_database, *scaleway, *lifecycle]
+      PROJECT_NAME: ${PROJECT_NAME:-Yearclock}
+      FRONTEND_ORIGINS: ${FRONTEND_URL:?set FRONTEND_URL}
+      PUBLIC_API_BASE_URL: ${PUBLIC_API_BASE_URL:?set PUBLIC_API_BASE_URL}
+      FRONTEND_URL: ${FRONTEND_URL:?set FRONTEND_URL}
+      AUTH_COOKIE_SECURE: "true"
+      AUTH_SESSION_MAX_AGE_SECONDS: ${AUTH_SESSION_MAX_AGE_SECONDS:-28800}
+      LIMIT_YEARCLOCKS_PER_ORGANIZATION: ${LIMIT_YEARCLOCKS_PER_ORGANIZATION:-50}
+      LIMIT_LANES_PER_YEARCLOCK: ${LIMIT_LANES_PER_YEARCLOCK:-12}
+      LIMIT_CATEGORIES_PER_YEARCLOCK: ${LIMIT_CATEGORIES_PER_YEARCLOCK:-40}
+      LIMIT_EVENTS_PER_YEARCLOCK: ${LIMIT_EVENTS_PER_YEARCLOCK:-3000}
+      LIMIT_SERIES_PER_YEARCLOCK: ${LIMIT_SERIES_PER_YEARCLOCK:-100}
+      LIMIT_LABELS_PER_ORGANIZATION: ${LIMIT_LABELS_PER_ORGANIZATION:-200}
+      LIMIT_LABELS_PER_EVENT: ${LIMIT_LABELS_PER_EVENT:-10}
+      LIMIT_ORGANIZATION_CATEGORIES: ${LIMIT_ORGANIZATION_CATEGORIES:-40}
+      DATABASE_POOL_SIZE: ${DATABASE_POOL_SIZE:-5}
+      DATABASE_MAX_OVERFLOW: ${DATABASE_MAX_OVERFLOW:-5}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:?set STRIPE_SECRET_KEY}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:?set STRIPE_WEBHOOK_SECRET}
+      STRIPE_MONTHLY_SEAT_PRICE_ID: ${STRIPE_MONTHLY_SEAT_PRICE_ID:?set STRIPE_MONTHLY_SEAT_PRICE_ID}
+      OIDC_ISSUER: ${OIDC_ISSUER:?set OIDC_ISSUER}
+      OIDC_INTERNAL_BASE_URL: http://authentik-server:9000
+      # The MCP interface (ADR-0037, ADR-0038); MCP_OIDC_ISSUER is needed when MCP_ENABLED is true.
+      MCP_ENABLED: ${MCP_ENABLED:-false}
+      LEGAL_SHOW_DRAFTS: ${LEGAL_SHOW_DRAFTS:-false}
+      LEGAL_CONTACT_EMAIL: ${LEGAL_CONTACT_EMAIL:-}
+      MCP_OIDC_ISSUER: ${MCP_OIDC_ISSUER:-}
+      MCP_OIDC_CLIENT_ID: ${MCP_OIDC_CLIENT_ID:?set MCP_OIDC_CLIENT_ID}
+      MCP_OIDC_CLIENT_SECRET: ${MCP_OIDC_CLIENT_SECRET:?set MCP_OIDC_CLIENT_SECRET}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:?set OIDC_CLIENT_ID}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:?set OIDC_CLIENT_SECRET}
+      MONITORING_TOKEN: ${MONITORING_TOKEN:?set MONITORING_TOKEN}
+      MONITORING_EMAIL_MAX_AGE_MINUTES: ${MONITORING_EMAIL_MAX_AGE_MINUTES:-15}
+      MONITORING_DATABASE_MAX_BYTES: ${MONITORING_DATABASE_MAX_BYTES:-0}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    depends_on:
+      # No dependency on authentik-config-init: the backend needs the OIDC
+      # application only when someone signs in, so `up -d` must not wait for it.
+      migrate:
+        condition: service_completed_successfully
+
+  worker:
+    logging: *default_logging
+    image: *backend_image
+    restart: unless-stopped
+    command: ["python", "-m", "app.worker"]
+    environment:
+      <<: [*yearclock_database, *scaleway, *lifecycle]
+      WORKER_SCHEDULE_INTERVAL_SECONDS: ${WORKER_SCHEDULE_INTERVAL_SECONDS:-3600}
+      DATABASE_POOL_SIZE: ${WORKER_DATABASE_POOL_SIZE:-2}
+      DATABASE_MAX_OVERFLOW: "0"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  frontend:
+    logging: *default_logging
+    image: ${YEARCLOCK_IMAGE_PREFIX:-ghcr.io/lupaus-eu/yearclock}-frontend:${YEARCLOCK_TAG:?set YEARCLOCK_TAG}
+    restart: unless-stopped
+
+  caddy:
+    logging: *default_logging
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      YEARCLOCK_SITE_ADDRESS: ${YEARCLOCK_SITE_ADDRESS:?set YEARCLOCK_SITE_ADDRESS}
+      YEARCLOCK_IDENTITY_ADDRESS: ${YEARCLOCK_IDENTITY_ADDRESS:?set YEARCLOCK_IDENTITY_ADDRESS}
+    ports:
+      - "${YEARCLOCK_EDGE_BIND_ADDRESS:-127.0.0.1}:${YEARCLOCK_HTTP_PORT:-8180}:80"
+      - "${YEARCLOCK_EDGE_BIND_ADDRESS:-127.0.0.1}:${YEARCLOCK_HTTPS_PORT:-8143}:443"
+    volumes:
+      # The directory, not the file: a file mount keeps pointing at the old inode after a deploy replaces
+      # the Caddyfile, so `caddy reload` would never see the change.
+      - ./caddy:/etc/caddy:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - frontend
+      - backend
+      - authentik-server
+
+volumes:
+  caddy_data:
+  caddy_config:
+  authentik_media:
+  authentik_templates:
+  postgres_data:

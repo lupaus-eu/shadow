@@ -1,188 +1,299 @@
-from collections.abc import AsyncGenerator, Callable
-from contextlib import AsyncExitStack, asynccontextmanager
-from ipaddress import IPv4Network, IPv6Network, ip_address
-from typing import TYPE_CHECKING, cast
+import os
+from urllib.parse import urlparse
+from collections.abc import Iterator
+from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request, Response
+from fastapi import Depends, FastAPI, HTTPException, Request
+from mcp.server.auth.provider import TokenVerifier
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy import text
 from sqlalchemy.orm import Session
-from starlette.middleware.base import RequestResponseEndpoint
 
-from app.api.v1.ai_skills.router import router as ai_skills_router
-from app.api.v1.auth.dependencies import AuthHttpError
-from app.api.v1.auth.logging import install_sensitive_query_filter
-from app.api.v1.auth.provider import AuthlibOidcProvider, OidcProvider
-from app.api.v1.auth.rate_limit import FixedWindowRateLimiter
-from app.api.v1.mcp_oauth.audit_log import install_mcp_oauth_audit_log
-from app.api.v1.mcp_oauth.consent_router import router as mcp_oauth_consent_router
-from app.api.v1.mcp_oauth.router import router as mcp_oauth_router
-from app.api.v1.router import router as api_v1_router
-from app.core.config import Settings, get_settings
-from app.health.router import router as health_router
+from app.auth import AuthenticatedUser, AuthSettings, Clock, OIDCClient, authenticate_session, utc_now
+from app.auth_routes import (
+    create_auth_router,
+    create_authenticated_user_dependency,
+)
+from app.billing import (
+    StripeBilling,
+    StripeBillingClient,
+    StripeSettings,
+    StripeSignatureVerifier,
+    StripeWebhookVerifier,
+)
+from app.database import (
+    RequestContext,
+    create_database_engine,
+    create_session_factory,
+    transaction_session,
+)
+from app.models import AccountClass
+from app.legal_documents import LegalLibrary
+from app.legal_routes import create_legal_router
+from app.organization_legal_routes import create_organization_legal_router
+from app.mcp_routes import create_mcp_router
+from app.mcp_server.server import create_mcp_app
+from app.mcp_server.settings import McpSettings
+from app.oidc import AuthentikOIDCClient
+from app.organization_context_routes import create_organization_context_router
+from app.organization_routes import create_organization_router
+from app.invitation_routes import create_invitation_router
+from app.membership_routes import create_membership_router
+from app.yearclock_routes import create_yearclock_router
+from app.yearclock_access_routes import create_yearclock_access_router
+from app.event_routes import create_event_router
+from app.export_routes import create_export_router
+from app.data_transfer import create_data_transfer_router
+from app.import_routes import create_import_router
+from app.notification_routes import create_notification_router
+from app.subscription_routes import create_subscription_router
+from app.organization_export import create_organization_export_router
+from app.category_routes import create_category_router, create_organization_category_router
+from app.series_routes import create_series_router
+from app.occurrence_routes import create_occurrence_router
+from app.audit_routes import create_audit_router
+from app.platform_routes import create_platform_router
+from app.label_routes import create_label_router
+from app.search_routes import create_search_router
+from app.history_routes import create_history_router
+from app.group_routes import create_group_router
+from app.access_overview_routes import create_access_overview_router
+from app.monitoring_routes import AuthentikProbe, create_monitoring_router
+from app.support_access_routes import create_platform_support_access_router, create_support_access_router
+from app.organization_deletion_routes import create_organization_deletion_router
+from app.seat_capacity_routes import create_seat_capacity_router
+from app.billing_routes import create_billing_router
 
-if TYPE_CHECKING:
-    from app.mcp.endpoints import McpEndpoint
-
-NO_STORE_PATH_PREFIXES = (
-    "/api/v1/auth",
-    "/api/v1/ai/oauth",
-    "/api/oauth",
-    "/api/mcp",
-    "/.well-known/oauth-",
+PROJECT_NAME = os.getenv("PROJECT_NAME", "Yearclock")
+FRONTEND_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv(
+        "FRONTEND_ORIGINS",
+        "http://localhost:8173,http://127.0.0.1:8173",
+    ).split(",")
+    if origin.strip()
+]
+DEFAULT_DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+    "postgresql+psycopg://yearclock:yearclock@localhost:8132/yearclock",
 )
 
 
 def create_app(
+    database_url: str = DEFAULT_DATABASE_URL,
     *,
-    settings: Settings | None = None,
-    oidc_provider: OidcProvider | None = None,
-    mcp_session_factory: Callable[[], Session] | None = None,
+    oidc_client: OIDCClient | None = None,
+    clock: Clock = utc_now,
+    auth_settings: AuthSettings | None = None,
+    stripe_billing: StripeBilling | None = None,
+    stripe_webhook_verifier: StripeWebhookVerifier | None = None,
+    authentik_probe: AuthentikProbe | None = None,
+    monitoring_token: str | None = None,
+    mcp_settings: McpSettings | None = None,
+    mcp_token_verifier: TokenVerifier | None = None,
+    legal_library: LegalLibrary | None = None,
 ) -> FastAPI:
-    resolved_settings = settings or get_settings()
-    resolved_settings.validate_auth_configuration()
-    install_sensitive_query_filter()
-    # The connections API revokes grants even with MCP_ENABLED=false.
-    install_mcp_oauth_audit_log()
-    resolved_provider = oidc_provider or AuthlibOidcProvider(resolved_settings)
-    # ADR-015: MCP traffic is limited per grant by its own limiter, never by
-    # the login or OAuth limiters.
-    mcp_rate_limiter = FixedWindowRateLimiter()
-    mcp_endpoint: McpEndpoint | None = None
-    if resolved_settings.mcp_enabled:
-        # Imported only here: fastmcp costs memory and startup time and sets
-        # up its own logging on import, so a disabled backend never loads it.
-        from app.mcp.endpoints import build_mcp_endpoint
-
-        mcp_endpoint = build_mcp_endpoint(
-            resolved_settings,
-            rate_limiter=mcp_rate_limiter,
-            session_factory=mcp_session_factory,
-        )
+    engine = create_database_engine(database_url)
 
     @asynccontextmanager
-    async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
-        if resolved_settings.app_environment != "test":
-            resolved_provider.initialize()
-        async with AsyncExitStack() as stack:
-            # The app's lifespan also runs the MCP server's session manager.
-            if mcp_endpoint is not None:
-                await stack.enter_async_context(
-                    mcp_endpoint.http_app.lifespan(mcp_endpoint.http_app)
-                )
+    async def lifespan(application: FastAPI):
+        mcp_app = application.state.mcp_app
+        if mcp_app is None:
             yield
-
-    # A slash redirect would build Location from the request's scheme and Host,
-    # and FastAPI sees http behind Caddy. Trailing-slash paths answer 404.
-    app = FastAPI(title="Shadow API", lifespan=lifespan, redirect_slashes=False)
-    app.state.settings = resolved_settings
-    app.state.oidc_provider = resolved_provider
-    app.state.auth_rate_limiter = FixedWindowRateLimiter()
-    # ADR-015: OAuth traffic never consumes the login limiter's entries.
-    app.state.oauth_rate_limiter = FixedWindowRateLimiter()
-    app.state.mcp_rate_limiter = mcp_rate_limiter
-
-    async def auth_error_handler(request: Request, exc: Exception) -> JSONResponse:
-        auth_error = cast(AuthHttpError, exc)
-        response = JSONResponse(
-            status_code=auth_error.status_code,
-            content={
-                "error": {
-                    "code": auth_error.code,
-                    "message": auth_error.message,
-                }
-            },
-        )
-        if (
-            auth_error.code == "AUTHENTICATION_REQUIRED"
-            and resolved_settings.session_cookie_name in request.cookies
-        ):
-            response.delete_cookie(
-                resolved_settings.session_cookie_name,
-                secure=resolved_settings.session_cookie_secure,
-                httponly=True,
-                samesite="strict",
-                path="/",
-            )
-        return response
-
-    app.add_exception_handler(AuthHttpError, auth_error_handler)
-
-    async def authentication_boundary(
-        request: Request,
-        call_next: RequestResponseEndpoint,
-    ) -> Response:
-        host_values = request.headers.getlist("host")
-        if len(host_values) != 1 or host_values[0] != resolved_settings.public_host:
-            response = JSONResponse(
-                status_code=400,
-                content={"error": {"code": "INVALID_HOST", "message": "Invalid host"}},
-            )
         else:
-            forwarded_values = request.headers.getlist("x-shadow-client-ip")
-            peer = request.client.host if request.client is not None else ""
-            trusted_peer = _is_trusted_peer(
-                peer, resolved_settings.trusted_caddy_peer_cidrs
-            )
-            if forwarded_values and (
-                len(forwarded_values) != 1
-                or not trusted_peer
-                or not _is_ip_address(forwarded_values[0])
-            ):
-                response = JSONResponse(
-                    status_code=400,
-                    content={
-                        "error": {
-                            "code": "UNTRUSTED_FORWARDED_HEADER",
-                            "message": "Invalid forwarded client address",
-                        }
-                    },
-                )
-            else:
-                request.state.client_ip = (
-                    forwarded_values[0] if forwarded_values else peer
-                )
-                response = await call_next(request)
-        if request.url.path.startswith(NO_STORE_PATH_PREFIXES):
-            response.headers["Cache-Control"] = "no-store"
-        return response
+            async with mcp_app.router.lifespan_context(mcp_app):
+                yield
+        engine.dispose()
 
-    if resolved_settings.app_environment == "development":
-        app.add_middleware(
-            CORSMiddleware,
-            allow_origins=[resolved_settings.allowed_origin],
-            allow_credentials=True,
-            allow_methods=["GET", "POST", "OPTIONS"],
-            allow_headers=["Content-Type", "X-CSRF-Token"],
+    application = FastAPI(title=PROJECT_NAME, lifespan=lifespan)
+    application.state.database_engine = engine
+    application.state.session_factory = create_session_factory(engine)
+    resolved_mcp_settings = mcp_settings or McpSettings.from_environment()
+    application.state.mcp_settings = resolved_mcp_settings
+    application.state.mcp_app = (
+        create_mcp_app(application.state.session_factory, resolved_mcp_settings, token_verifier=mcp_token_verifier)
+        if resolved_mcp_settings.enabled
+        else None
+    )
+    # A malformed legal text stops the start-up here (ADR-0041).
+    application.state.legal_library = legal_library or LegalLibrary.from_environment()
+    resolved_auth_settings = auth_settings or AuthSettings.from_environment()
+    stripe_settings = StripeSettings.from_environment()
+    resolved_stripe_billing = stripe_billing or StripeBillingClient(
+        stripe_settings
+    )
+    authenticated_user_dependency = create_authenticated_user_dependency(
+        session_factory=application.state.session_factory,
+        clock=clock,
+        settings=resolved_auth_settings,
+    )
+    platform_user_dependency = create_authenticated_user_dependency(
+        session_factory=application.state.session_factory,
+        clock=clock,
+        settings=resolved_auth_settings,
+        account_class=AccountClass.PLATFORM.value,
+    )
+    resolved_oidc_client = oidc_client or AuthentikOIDCClient.from_environment()
+
+    trusted_origins = set(FRONTEND_ORIGINS)
+    if public_api := os.getenv("PUBLIC_API_BASE_URL"):
+        parsed = urlparse(public_api)
+        trusted_origins.add(f"{parsed.scheme}://{parsed.netloc}")
+
+    @application.middleware("http")
+    async def reject_cross_origin_writes(request: Request, call_next):
+        """CSRF defense in depth beside SameSite=Lax cookies: a browser write must come from a trusted origin."""
+        origin = request.headers.get("origin")
+        if (
+            request.method not in {"GET", "HEAD", "OPTIONS"}
+            and origin is not None
+            and origin not in trusted_origins
+            and request.url.path != "/api/v1/billing/stripe/webhook"
+        ):
+            return JSONResponse(status_code=403, content={"detail": "cross-origin request refused"})
+        return await call_next(request)
+
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=FRONTEND_ORIGINS,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+        # The browser reads the file name of an export and when to retry a refused one.
+        expose_headers=["Content-Disposition", "Retry-After"],
+    )
+    application.include_router(
+        create_auth_router(
+            session_factory=application.state.session_factory,
+            oidc_client=resolved_oidc_client,
+            clock=clock,
+            settings=resolved_auth_settings,
+            authenticated_user_dependency=authenticated_user_dependency,
         )
-    app.middleware("http")(authentication_boundary)
-    app.include_router(health_router)
-    app.include_router(api_v1_router)
-    if resolved_settings.mcp_enabled:
-        app.include_router(mcp_oauth_router)
-        app.include_router(mcp_oauth_consent_router)
-        app.include_router(ai_skills_router)
-    if mcp_endpoint is not None:
-        app.router.routes.append(mcp_endpoint.route)
-    return app
+    )
+    application.include_router(
+        create_organization_router(
+            session_factory=application.state.session_factory,
+            authenticated_user_dependency=authenticated_user_dependency,
+            stripe_billing=resolved_stripe_billing,
+            stripe_webhook_verifier=(
+                stripe_webhook_verifier
+                or StripeSignatureVerifier(stripe_settings.webhook_secret)
+            ),
+            clock=clock,
+            legal_library=application.state.legal_library,
+        )
+    )
+    application.include_router(
+        create_organization_context_router(
+            session_factory=application.state.session_factory,
+            authenticated_user_dependency=authenticated_user_dependency,
+        )
+    )
+    application.include_router(
+        create_seat_capacity_router(
+            session_factory=application.state.session_factory,
+            authenticated_user_dependency=authenticated_user_dependency,
+            stripe_billing=resolved_stripe_billing,
+            clock=clock,
+        )
+    )
+    application.include_router(
+        create_billing_router(
+            session_factory=application.state.session_factory,
+            authenticated_user_dependency=authenticated_user_dependency,
+            stripe_billing=resolved_stripe_billing,
+        )
+    )
+    application.include_router(
+        create_subscription_router(
+            session_factory=application.state.session_factory,
+            authenticated_user_dependency=authenticated_user_dependency,
+            stripe_billing=resolved_stripe_billing,
+        )
+    )
+    application.include_router(
+        create_invitation_router(
+            session_factory=application.state.session_factory,
+            authenticated_user_dependency=authenticated_user_dependency,
+            clock=clock,
+        )
+    )
+    application.include_router(
+        create_membership_router(
+            session_factory=application.state.session_factory,
+            authenticated_user_dependency=authenticated_user_dependency,
+        )
+    )
+    application.include_router(create_yearclock_router(session_factory=application.state.session_factory, authenticated_user_dependency=authenticated_user_dependency))
+    application.include_router(create_yearclock_access_router(session_factory=application.state.session_factory, authenticated_user_dependency=authenticated_user_dependency))
+    application.include_router(create_event_router(session_factory=application.state.session_factory, authenticated_user_dependency=authenticated_user_dependency))
+    application.include_router(create_export_router(session_factory=application.state.session_factory, authenticated_user_dependency=authenticated_user_dependency))
+    application.include_router(create_import_router(session_factory=application.state.session_factory, authenticated_user_dependency=authenticated_user_dependency))
+    application.include_router(create_data_transfer_router(session_factory=application.state.session_factory, authenticated_user_dependency=authenticated_user_dependency))
+    application.include_router(create_notification_router(session_factory=application.state.session_factory, authenticated_user_dependency=authenticated_user_dependency))
+    application.include_router(create_organization_export_router(session_factory=application.state.session_factory, authenticated_user_dependency=authenticated_user_dependency))
+    application.include_router(create_category_router(session_factory=application.state.session_factory, authenticated_user_dependency=authenticated_user_dependency))
+    application.include_router(create_organization_category_router(session_factory=application.state.session_factory, authenticated_user_dependency=authenticated_user_dependency))
+    application.include_router(create_search_router(session_factory=application.state.session_factory, authenticated_user_dependency=authenticated_user_dependency))
+    application.include_router(create_history_router(session_factory=application.state.session_factory, authenticated_user_dependency=authenticated_user_dependency))
+    application.include_router(create_group_router(session_factory=application.state.session_factory, authenticated_user_dependency=authenticated_user_dependency))
+    application.include_router(create_access_overview_router(session_factory=application.state.session_factory, authenticated_user_dependency=authenticated_user_dependency))
+    application.include_router(create_label_router(session_factory=application.state.session_factory, authenticated_user_dependency=authenticated_user_dependency))
+    application.include_router(create_series_router(session_factory=application.state.session_factory, authenticated_user_dependency=authenticated_user_dependency))
+    application.include_router(create_occurrence_router(session_factory=application.state.session_factory, authenticated_user_dependency=authenticated_user_dependency))
+    application.include_router(create_audit_router(session_factory=application.state.session_factory, authenticated_user_dependency=authenticated_user_dependency))
+    application.include_router(create_platform_router(session_factory=application.state.session_factory, platform_user_dependency=platform_user_dependency, oidc_client=resolved_oidc_client, settings=resolved_auth_settings, clock=clock))
+    application.include_router(create_support_access_router(session_factory=application.state.session_factory, authenticated_user_dependency=authenticated_user_dependency))
+    application.include_router(create_platform_support_access_router(session_factory=application.state.session_factory, platform_user_dependency=platform_user_dependency))
+    application.include_router(create_monitoring_router(session_factory=application.state.session_factory, authentik_probe=authentik_probe, token=monitoring_token))
+    application.include_router(create_mcp_router(session_factory=application.state.session_factory, authenticated_user_dependency=authenticated_user_dependency, settings=resolved_mcp_settings))
+    def reader_is_signed_in(request: Request) -> bool:
+        """Whether the request carries a live customer session (drafts are shown to those people only)."""
+        with transaction_session(application.state.session_factory, RequestContext()) as session:
+            try:
+                authenticate_session(session, session_token=request.cookies.get(resolved_auth_settings.session_cookie_name), now=clock())
+            except HTTPException:
+                return False
+        return True
+
+    application.include_router(create_legal_router(library=application.state.legal_library, is_signed_in=reader_is_signed_in))
+    application.include_router(create_organization_legal_router(session_factory=application.state.session_factory, authenticated_user_dependency=authenticated_user_dependency, library=application.state.legal_library))
+    application.include_router(create_organization_deletion_router(session_factory=application.state.session_factory, authenticated_user_dependency=authenticated_user_dependency))
+
+    def get_session(request: Request) -> Iterator[Session]:
+        with transaction_session(
+            request.app.state.session_factory,
+            RequestContext(),
+        ) as session:
+            yield session
+
+    @application.get("/health")
+    def health() -> dict[str, str]:
+        return {"status": "ok", "service": PROJECT_NAME}
+
+    @application.get("/api/v1/system/status")
+    def system_status(
+        session: Session = Depends(get_session),
+        _authenticated_user: AuthenticatedUser = Depends(
+            authenticated_user_dependency
+        ),
+    ) -> dict[str, str]:
+        revision = session.execute(
+            text("SELECT version_num FROM alembic_version")
+        ).scalar_one()
+        return {
+            "status": "ok",
+            "database": "ready",
+            "schema_revision": revision,
+        }
+
+    if application.state.mcp_app is not None:
+        # Last, so that every application route keeps precedence; serves the MCP endpoint and its metadata.
+        application.mount("/", application.state.mcp_app)
+
+    return application
 
 
 app = create_app()
-
-
-def _is_trusted_peer(
-    peer: str, networks: tuple[IPv4Network | IPv6Network, ...]
-) -> bool:
-    try:
-        address = ip_address(peer)
-    except ValueError:
-        return False
-    return any(address in network for network in networks)
-
-
-def _is_ip_address(value: str) -> bool:
-    try:
-        ip_address(value)
-    except ValueError:
-        return False
-    return True
