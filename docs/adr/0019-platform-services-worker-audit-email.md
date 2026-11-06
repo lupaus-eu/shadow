@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # Add platform services: audit log, worker and outbox, email, notifications
