@@ -7,6 +7,8 @@ import { NotificationSettingsPage } from "../notifications/NotificationSettingsP
 import { NotificationsPage } from "../notifications/NotificationsPage";
 import { AccountProvider } from "../shell/AppShell";
 import { SignedOutLayout } from "../shell/SignedOutLayout";
+import { ModelCanvas } from "../models/ModelCanvas";
+import { ModelsPage } from "../models/ModelsPage";
 import { OrganizationActivation } from "./OrganizationActivation";
 import {
   InvitationAcceptance,
@@ -34,6 +36,8 @@ export function AuthenticatedShell({
         <Route path="/organization-signups/*" element={<SignedOutLayout wide><OrganizationActivation userAccount={userAccount} locale={locale} /></SignedOutLayout>} />
         <Route path="/organizations/:organizationId" element={<OrganizationLayout />}>
           <Route index element={<OrganizationHome />} />
+          <Route path="models" element={<ModelsPage />} />
+          <Route path="models/:modelId" element={<ModelCanvas />} />
           <Route path="notifications" element={<NotificationsPage />} />
           <Route path="notification-settings" element={<NotificationSettingsPage />} />
           <Route path="admin/:section" element={<AdministrationPage />} />

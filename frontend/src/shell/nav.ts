@@ -18,4 +18,6 @@ export function isAdminSection(value: string | undefined, role: OrganizationRole
 }
 
 export const organizationHref = (organizationId: string) => `/organizations/${organizationId}`;
+export const modelsHref = (organizationId: string) => `${organizationHref(organizationId)}/models`;
+export const modelHref = (organizationId: string, modelId: string) => `${modelsHref(organizationId)}/${modelId}`;
 export const adminHref = (organizationId: string, section: AdminSection) => `${organizationHref(organizationId)}/admin/${section}`;

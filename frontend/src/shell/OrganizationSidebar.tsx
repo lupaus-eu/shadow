@@ -5,7 +5,8 @@ import { NavLink, useNavigate } from "react-router";
 
 import { messages, type Locale } from "../i18n";
 import { loadOrganizations, type OrganizationSummary, type OrganizationWorkspace } from "../organization-client";
-import { adminHref, adminSections, organizationHref } from "./nav";
+import { modelMessages } from "../models/messages";
+import { adminHref, adminSections, modelsHref, organizationHref } from "./nav";
 
 const LIST = "m-0 flex list-none flex-col gap-0.5 p-0";
 const LINK = "flex min-h-8 items-center gap-2 rounded-[6px] px-2 py-1.5 text-[13px] text-sidebar-ink no-underline hover:bg-sidebar-raised hover:text-white aria-[current=page]:bg-sidebar-raised aria-[current=page]:font-semibold aria-[current=page]:text-white pointer-coarse:min-h-11";
@@ -30,6 +31,7 @@ export function OrganizationSidebar({ workspace, locale }: { workspace: Organiza
       <OrganizationSwitcher workspace={workspace} locale={locale} />
       <ul className={LIST}>
         <li><NavLink end className={LINK} to={organizationHref(organizationId)}><LayoutGrid size={15} aria-hidden="true" />{text.shell.overview}</NavLink></li>
+        <li><NavLink className={LINK} to={modelsHref(organizationId)}>{modelMessages(locale).nav}</NavLink></li>
       </ul>
       {sections.length > 0 ? (
         <Section title={text.shell.administration}>
