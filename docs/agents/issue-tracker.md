@@ -52,8 +52,10 @@ the path the user supplied.
 Name a branch after the work and ticket:
 `feature/<feature-slug>-NN-short-name`, `fix/<slug>-NN-short-name`,
 `docs/…`, `chore/…`, or `refactor/…`. Branches stay local like the tickets:
-only `main` is pushed to GitHub, so GitHub pull requests are not used. A human
-reviews the branch locally, merges it into `main`, and pushes `main`.
+only `main` is pushed to GitHub, so GitHub pull requests are not used. When a
+ticket is complete, the agent merges its branch into the local `main`
+(fast-forward) and deletes the branch; the human reviews the unpushed commits
+and pushes `main`. Agents never push.
 
 A commit message names the feature slug and ticket number; because the ticket
 itself is local, the message also states the goal, the checks run, and the

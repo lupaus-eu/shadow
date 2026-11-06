@@ -17,4 +17,6 @@
   environments, caches, or anything under `.scratch/` other than its README and
   templates.
 - Do not add a dependency, delete a test, change the architecture without an
-  ADR, merge to `main`, or touch production without human approval.
+  ADR, or touch production without human approval.
+- Merge a finished ticket's branch into the local `main` yourself, but never
+  push: the human pushes `main`.

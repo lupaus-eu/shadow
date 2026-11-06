@@ -10,7 +10,8 @@ Shadow is developed with AI agents using the same workflow as Yearclock.
 3. Implement one ticket at a time on its own local branch and record the
    checks, the AI review, and the documentation updates in the ticket
    ([definition of done](docs/agents/definition-of-done.md)).
-4. A human reviews the branch locally, merges it into `main`, and pushes
+4. The agent merges the finished ticket into the local `main`. A human
+   reviews the unpushed commits (`git log origin/main..main`) and pushes
    `main`; it is the only branch on GitHub. Production releases need separate
    approval ([production runbook](docs/runbooks/production.md)).
 

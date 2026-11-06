@@ -111,9 +111,10 @@ below, or explain why no durable documentation changes:
 8. The agent runs the applicable backend, frontend, browser, database, and
    architecture checks, then starts the AI review itself (a fresh-context
    reviewer, at most three rounds) and records the evidence in each ticket.
-9. A human reviews the branch locally, merges it into `main`, and pushes
-   `main`, the only branch on GitHub. Production releases need separate human
-   approval.
+9. The agent merges the finished ticket's branch into the local `main`. The
+   human reviews the unpushed commits and pushes `main`, the only branch on
+   GitHub; the push is the human's release control. Production releases need
+   separate human approval.
 
 Do not begin substantial implementation until the PRD acceptance criteria and
 the essential technical decisions are sufficiently clear.

@@ -77,7 +77,7 @@ Always:
 Never, without explicit human approval:
 
 - add a dependency, delete a test, or change the architecture without an ADR;
-- merge to `main`;
+- push to GitHub (the human pushes `main`);
 - release to production, change the production database by hand, or run any
   production, backup, restore, or identity-provider operation.
 
@@ -115,13 +115,21 @@ message.
 
 ## Branches and releases
 
-`main` is the only branch pushed to GitHub (`lupaus-eu/shadow`). Work happens
-on local branches named after the ticket
-(`feature/<feature-slug>-NN-short-name`, `fix/…`, `docs/…`, `chore/…`,
-`refactor/…`); they are never pushed. A human reviews the branch locally,
-merges it into `main`, and pushes `main`; agents do not merge to `main` or
-push. Pushing `main` runs CI. Production releases need separate human
-approval.
+`main` is the only branch pushed to GitHub (`lupaus-eu/shadow`), and only the
+human pushes it. Agents never push.
+
+1. Work on a local branch named after the ticket
+   (`feature/<feature-slug>-NN-short-name`, `fix/…`, `docs/…`, `chore/…`,
+   `refactor/…`), or in a local worktree; branches are never pushed.
+2. When the ticket is done (checks pass, AI review recorded), merge the branch
+   into the local `main` yourself (`git merge --ff-only`, rebasing the branch on
+   `main` first if needed) and delete the branch. Do not merge unfinished work
+   or work whose checks fail.
+3. The human reviews the unpushed commits (`git log origin/main..main`) and
+   pushes `main`. The push is the human's release control: it runs CI (and,
+   once implemented, builds the images).
+
+Production releases need separate human approval.
 
 If you are unsure, do not guess: check the ticket, the architecture, the
 ADRs, and `CONTEXT.md`, and ask the human when they do not answer it.
