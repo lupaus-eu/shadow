@@ -652,3 +652,20 @@ class SimulationPoint(Base):
     value: Mapped[float] = mapped_column(Float)
     lower: Mapped[float | None] = mapped_column(Float)
     upper: Mapped[float | None] = mapped_column(Float)
+
+
+class Recommendation(Base):
+    """An action proposal derived from a simulation; people accept or dismiss it."""
+
+    __tablename__ = "recommendations"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    organization_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    simulation_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    kind: Mapped[str] = mapped_column(String(30))
+    severity: Mapped[str] = mapped_column(String(10))
+    metric_key: Mapped[str] = mapped_column(String(40))
+    title: Mapped[str] = mapped_column(String(200))
+    rationale: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(12), server_default="proposed")
+    version: Mapped[int] = mapped_column(Integer, server_default="1")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

@@ -7,6 +7,7 @@ import { NotificationSettingsPage } from "../notifications/NotificationSettingsP
 import { NotificationsPage } from "../notifications/NotificationsPage";
 import { AccountProvider } from "../shell/AppShell";
 import { SignedOutLayout } from "../shell/SignedOutLayout";
+import { AnalysisPage } from "../models/AnalysisPage";
 import { MetricsPage } from "../models/MetricsPage";
 import { ModelCanvas } from "../models/ModelCanvas";
 import { ModelShell } from "../models/ModelShell";
@@ -44,6 +45,7 @@ export function AuthenticatedShell({
             <Route index element={<ModelCanvas />} />
             <Route path="metrics" element={<MetricsPage />} />
             <Route path="simulations" element={<SimulationsPage />} />
+            <Route path="analysis" element={<AnalysisPage />} />
           </Route>
           <Route path="notifications" element={<NotificationsPage />} />
           <Route path="notification-settings" element={<NotificationSettingsPage />} />

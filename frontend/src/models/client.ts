@@ -145,3 +145,22 @@ export async function loadSimulation(organizationId: string, modelId: string, ve
 export async function deleteSimulation(organizationId: string, modelId: string, versionId: string, simulationId: string): Promise<void> {
   await call(`${simulationsUrl(organizationId, modelId, versionId)}/${simulationId}`, { method: "DELETE" });
 }
+
+export type Finding = { key: string; name: string; unit: string | null; derived: boolean; start: number | null; end: number | null; change_pct: number | null; trend: string; turns_negative: string | null; band_ratio: number | null; versus: number | null };
+export type RecommendationStatus = "proposed" | "accepted" | "dismissed";
+export type Recommendation = { id: string; kind: string; severity: "high" | "medium" | "low"; metric_key: string; title: string; rationale: string; status: RecommendationStatus; version: number };
+export type Analysis = { simulation: Simulation; compared_to: Simulation | null; findings: Finding[]; recommendations: Recommendation[] };
+
+const analysisUrl = (organizationId: string, modelId: string, simulationId: string, compareTo: string | null) => `${modelsUrl(organizationId)}/${modelId}/simulations/${simulationId}/analysis${compareTo ? `?compare_to=${compareTo}` : ""}`;
+
+export async function loadAnalysis(organizationId: string, modelId: string, simulationId: string, compareTo: string | null): Promise<Analysis> {
+  return (await call(analysisUrl(organizationId, modelId, simulationId, compareTo))).json();
+}
+
+export async function generateAnalysis(organizationId: string, modelId: string, simulationId: string, compareTo: string | null): Promise<Analysis> {
+  return (await call(analysisUrl(organizationId, modelId, simulationId, compareTo), { method: "POST" })).json();
+}
+
+export async function decideRecommendation(organizationId: string, modelId: string, simulationId: string, recommendation: Recommendation, status: RecommendationStatus): Promise<Recommendation> {
+  return (await call(`${modelsUrl(organizationId)}/${modelId}/simulations/${simulationId}/recommendations/${recommendation.id}`, { method: "PATCH", ...json({ status, expected_version: recommendation.version }) })).json();
+}

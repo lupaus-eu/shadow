@@ -76,6 +76,7 @@ export function ModelShell() {
         {tab("", text.tabs.structure, true)}
         {tab("/metrics", text.tabs.metrics)}
         {tab("/simulations", text.tabs.simulations)}
+        {tab("/analysis", text.tabs.analysis)}
       </nav>
       {notice ? <Alert tone="danger" role="alert">{notice}</Alert> : null}
       <Outlet context={{ organizationId, modelId, model, version, versions, writable, reloadVersions } satisfies ModelOutlet} />
