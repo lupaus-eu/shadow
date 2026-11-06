@@ -65,3 +65,45 @@
 		}
 	}
 }
+
+# Identity (ADR-017): Authentik, reached by browsers only through this host. The
+# application reaches it inside the Docker network (OIDC_INTERNAL_BASE_URL).
+id.app.localhost:443 {
+	tls /certs/app.localhost.crt /certs/app.localhost.key
+
+	log {
+		output stdout
+		format filter {
+			request>headers>Authorization replace REDACTED
+			request>headers>Cookie replace REDACTED
+			request>uri query {
+				replace code REDACTED
+				replace state REDACTED
+				replace token REDACTED
+				replace code_verifier REDACTED
+				replace id_token_hint REDACTED
+				# Invitation and email-verification tokens, also inside the flow executor's
+				# URL-encoded `query` parameter.
+				replace itoken REDACTED
+				replace flow_token REDACTED
+				replace query REDACTED
+			}
+			resp_headers>Location replace REDACTED
+			resp_headers>Set-Cookie replace REDACTED
+			wrap json
+		}
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		# Authentik pages need inline scripts and styles; this keeps the rest of the
+		# policy that does not break them.
+		Content-Security-Policy "frame-ancestors 'none'; base-uri 'self'; object-src 'none'"
+	}
+
+	reverse_proxy authentik-server:9000 {
+		# Replace Authentik's own values instead of adding a second one.
+		header_down Referrer-Policy "no-referrer"
+		header_down X-Content-Type-Options "nosniff"
+	}
+}

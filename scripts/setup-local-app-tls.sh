@@ -11,7 +11,9 @@ readonly RENEWAL_WINDOW_SECONDS=2592000
 command -v openssl >/dev/null || { printf 'openssl is required\n' >&2; exit 1; }
 
 certificate_has_app_hostname() {
-  openssl x509 -noout -ext subjectAltName -in "$1" 2>/dev/null | grep -Fq 'DNS:app.localhost'
+  local san
+  san="$(openssl x509 -noout -ext subjectAltName -in "$1" 2>/dev/null)"
+  grep -Fq 'DNS:app.localhost' <<<"${san}" && grep -Fq 'DNS:id.app.localhost' <<<"${san}"
 }
 
 key_matches_certificate() {
@@ -38,14 +40,14 @@ if [[ -e "${LEAF_CERTIFICATE}" ]]; then
     exit 1
   fi
   if ! openssl verify -CAfile "${CA_CERTIFICATE}" "${LEAF_CERTIFICATE}" >/dev/null || ! certificate_has_app_hostname "${LEAF_CERTIFICATE}" || ! key_matches_certificate "${LEAF_CERTIFICATE}" "${LEAF_KEY}"; then
-    printf 'Application TLS material is invalid, signed by another CA, lacks app.localhost, or has a mismatched key. Refusing to overwrite it. Inspect and rotate it deliberately.\n' >&2
+    printf 'Application TLS material is invalid, signed by another CA, lacks app.localhost or id.app.localhost (the identity host, ADR-017), or has a mismatched key. Refusing to overwrite it. To add id.app.localhost, keep the CA and key, delete only the leaf certificate %s, and rerun this script.\n' "${LEAF_CERTIFICATE}" >&2
     exit 1
   fi
   if ! openssl x509 -checkend "${RENEWAL_WINDOW_SECONDS}" -noout -in "${LEAF_CERTIFICATE}" >/dev/null; then
     printf 'Application leaf certificate expires within 30 days. Keep the valid CA/key, deliberately remove only %s, then rerun this script to renew and re-check host trust.\n' "${LEAF_CERTIFICATE}" >&2
     exit 1
   fi
-  printf 'Application TLS material already exists, is valid, and covers app.localhost: %s\n' "${OUTPUT_DIRECTORY}"
+  printf 'Application TLS material already exists, is valid, and covers app.localhost and id.app.localhost: %s\n' "${OUTPUT_DIRECTORY}"
   printf 'Trust CA certificate on the host if browser trust is missing: %s\n' "${CA_CERTIFICATE}"
   exit 0
 fi
@@ -88,7 +90,7 @@ if [[ -r "${LEAF_KEY}" ]]; then
 else
   openssl req -newkey rsa:3072 -sha256 -nodes -subj '/CN=app.localhost' -keyout "${LEAF_KEY}" -out "${temporary_directory}/app.localhost.csr" >/dev/null 2>&1
 fi
-printf '%s\n' 'basicConstraints=critical,CA:FALSE' 'keyUsage=critical,digitalSignature,keyEncipherment' 'extendedKeyUsage=serverAuth' 'subjectAltName=DNS:app.localhost' >"${temporary_directory}/app.localhost.ext"
+printf '%s\n' 'basicConstraints=critical,CA:FALSE' 'keyUsage=critical,digitalSignature,keyEncipherment' 'extendedKeyUsage=serverAuth' 'subjectKeyIdentifier=hash' 'authorityKeyIdentifier=keyid,issuer' 'subjectAltName=DNS:app.localhost,DNS:id.app.localhost' >"${temporary_directory}/app.localhost.ext"
 openssl x509 -req -sha256 -days 825 -in "${temporary_directory}/app.localhost.csr" -CA "${CA_CERTIFICATE}" -CAkey "${CA_KEY}" -CAcreateserial -extfile "${temporary_directory}/app.localhost.ext" -out "${LEAF_CERTIFICATE}" >/dev/null 2>&1
 chmod 600 "${LEAF_KEY}"
 chmod 644 "${LEAF_CERTIFICATE}"

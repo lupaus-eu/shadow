@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=https://goauthentik.io/blueprints/schema.json
+# The look of the sign-in pages: Shadow's colours in shadow-brand.css, light theme only, and no
+# background image. The pages need no network access to the web application.
+version: 1
+metadata:
+  name: Shadow sign-in pages
+  labels:
+    blueprints.goauthentik.io/instantiate: "true"
+entries:
+  - model: authentik_brands.brand
+    state: present
+    identifiers:
+      domain: authentik-default
+    attrs:
+      default: true
+      branding_title: Shadow
+      flow_recovery: !Find [authentik_flows.flow, [slug, default-recovery-flow]]
+      branding_custom_css: !File /blueprints/custom/shadow-brand.css
+      # The page always asks for a background; a tiny image keeps it from fetching a 1 MB photograph.
+      branding_default_flow_background: /static/dist/assets/images/user_default.png
+      attributes:
+        settings:
+          theme:
+            base: light

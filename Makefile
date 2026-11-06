@@ -14,7 +14,7 @@ LOCAL_INIT := if [ ! -f .env.entra.local ] || ! grep -q '^OIDC_CLIENT_SECRET=' .
 	check backend-check backend-lint backend-test backend-typecheck \
 	frontend-check frontend-format frontend-format-check frontend-lint frontend-test frontend-build \
 	dev-init db-up migrate seed dev-up dev-down preview-up \
-	diagrams local-verify provision-local-admin
+	diagrams local-verify authentik-verify authentik-apply provision-local-admin
 
 help:
 	@printf '%s\n' \
@@ -44,6 +44,8 @@ help:
 		'Local verification:' \
 		'  diagrams            Render the default PlantUML diagram' \
 		'  local-verify        Verify local Caddy/direct-Entra Compose configuration' \
+		'  authentik-verify    Verify the local Authentik setup (sign-in, MFA, tokens)' \
+		'  authentik-apply     Reapply the Authentik blueprints even if nothing changed' \
 		'  provision-local-admin  Interactively pre-provision a designated local Entra admin' \
 		'' \
 		'Production, Entra, release, rollback, baseline, reset, and cleanup operations' \
@@ -113,7 +115,8 @@ dev-up:
 	$(COMPOSE_LOCAL) up -d database; \
 	$(MIGRATE); \
 	$(SEED); \
-	$(COMPOSE_LOCAL) up -d prediction-worker mailpit worker backend frontend local-caddy
+	$(COMPOSE_LOCAL) up -d prediction-worker mailpit authentik-server authentik-worker worker backend frontend local-caddy; \
+	$(COMPOSE_LOCAL) run --rm authentik-config-init
 
 dev-down:
 	$(COMPOSE_LOCAL) down
@@ -124,6 +127,12 @@ preview-up:
 diagrams:
 	$(COMPOSE_LOCAL) --profile docs build diagram-renderer
 	$(COMPOSE_LOCAL) --profile docs run --rm diagram-renderer
+
+authentik-apply:
+	$(COMPOSE_LOCAL) run --rm -e AUTHENTIK_CONFIG_FORCE=true authentik-config-init
+
+authentik-verify:
+	python3 scripts/verify-authentik-local.py
 
 local-verify:
 	scripts/verify-local-direct-entra-config.sh

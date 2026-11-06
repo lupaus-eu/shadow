@@ -1,0 +1,65 @@
+# yaml-language-server: $schema=https://goauthentik.io/blueprints/schema.json
+version: 1
+metadata:
+  name: Shadow OIDC application
+  labels:
+    blueprints.goauthentik.io/instantiate: "true"
+entries:
+  - id: shadow-email-scope
+    model: authentik_providers_oauth2.scopemapping
+    state: present
+    identifiers:
+      name: Shadow verified email
+    attrs:
+      scope_name: email
+      description: Shadow email address and explicit verification state
+      expression: |
+        return {
+          "email": request.user.email,
+          # Verified only while the address is the one that was verified.
+          "email_verified": bool(request.user.email) and (
+            request.user.attributes.get("shadow_verified_email", "")
+            == request.user.email.lower()
+          ),
+        }
+
+  - id: shadow-provider
+    model: authentik_providers_oauth2.oauth2provider
+    state: present
+    identifiers:
+      name: Shadow
+    attrs:
+      client_type: confidential
+      client_id: !Env OIDC_CLIENT_ID
+      client_secret: !Env OIDC_CLIENT_SECRET
+      grant_types:
+        - authorization_code
+      authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
+      invalidation_flow: !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
+      redirect_uris:
+        - matching_mode: strict
+          redirect_uri_type: authorization
+          url: !Env OIDC_REDIRECT_URI
+        - matching_mode: strict
+          redirect_uri_type: logout
+          url: !Env FRONTEND_URL
+        - matching_mode: strict
+          redirect_uri_type: logout
+          url: !Format ["%s/platform", !Env FRONTEND_URL]
+      property_mappings:
+        - !Find [authentik_providers_oauth2.scopemapping, [scope_name, openid]]
+        - !Find [authentik_providers_oauth2.scopemapping, [scope_name, profile]]
+        - !KeyOf shadow-email-scope
+      signing_key: !Find [authentik_crypto.certificatekeypair, [name, authentik Self-signed Certificate]]
+      sub_mode: hashed_user_id
+      issuer_mode: per_provider
+
+  - model: authentik_core.application
+    state: present
+    identifiers:
+      slug: shadow
+    attrs:
+      name: Shadow
+      provider: !KeyOf shadow-provider
+      policy_engine_mode: any
+      meta_launch_url: !Env FRONTEND_URL

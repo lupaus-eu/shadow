@@ -11,6 +11,12 @@ services:
     volumes:
       - database_data:/var/lib/postgresql
       - ./db/init:/workspace/db/init:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready --username \"$$POSTGRES_USER\" --dbname \"$$POSTGRES_DB\" --host 127.0.0.1"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+      start_period: 5s
     networks:
       local:
         ipv4_address: 172.28.59.4
@@ -158,7 +164,126 @@ services:
       - .:/workspace
     command: ["-tsvg", "-o", "generated", "db-physical-schema.puml"]
 
-  # Catches the worker's development email (ADR-019); nothing leaves the host.
+  # Identity (ADR-017): Authentik in its own logical database of the application's
+  # PostgreSQL container, reachable only through Caddy at https://id.app.localhost.
+  authentik-db-init:
+    image: docker.io/library/postgres:18.6@sha256:4ef4dbc939d61acea57712655ddb4b4ab27419c913f94cca0cd57cb3ea3c2280
+    entrypoint: ["/bin/sh", "/scripts/create-authentik-database.sh"]
+    environment:
+      PGHOST: database
+      POSTGRES_USER: ${DATABASE_USER:-shadow}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-shadow_dev_password}
+      POSTGRES_DB: ${DATABASE_NAME:-shadow}
+      AUTHENTIK_POSTGRES_DB: ${AUTHENTIK_POSTGRES_DB:-authentik}
+      AUTHENTIK_POSTGRES_USER: ${AUTHENTIK_POSTGRES_USER:-authentik}
+      AUTHENTIK_POSTGRES_PASSWORD: ${AUTHENTIK_POSTGRES_PASSWORD:-authentik_dev_password}
+    volumes:
+      - ./authentik/db-init:/scripts:ro
+    depends_on:
+      database:
+        condition: service_healthy
+    networks:
+      - local
+
+  authentik-server:
+    image: &authentik_image ghcr.io/goauthentik/server:${AUTHENTIK_VERSION:-2026.8.5}
+    command: server
+    environment: &authentik_environment
+      AUTHENTIK_POSTGRESQL__HOST: database
+      AUTHENTIK_POSTGRESQL__NAME: ${AUTHENTIK_POSTGRES_DB:-authentik}
+      AUTHENTIK_POSTGRESQL__USER: ${AUTHENTIK_POSTGRES_USER:-authentik}
+      AUTHENTIK_POSTGRESQL__PASSWORD: ${AUTHENTIK_POSTGRES_PASSWORD:-authentik_dev_password}
+      AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY:-local-development-secret-change-me}
+      # Authentik honours X-Forwarded-* only from these peers: Caddy (browsers) and the
+      # backend (its internal OIDC calls say that the public scheme is https). No other
+      # container can set the client address Authentik rate-limits and logs.
+      AUTHENTIK_LISTEN__TRUSTED_PROXY_CIDRS: 172.28.59.2/32,172.28.59.3/32
+      AUTHENTIK_WEB__BASE_URL: ${AUTHENTIK_BASE_URL:-https://id.app.localhost}
+      AUTHENTIK_BOOTSTRAP_PASSWORD: ${AUTHENTIK_BOOTSTRAP_PASSWORD:-local-admin-change-me}
+      AUTHENTIK_BOOTSTRAP_TOKEN: ${AUTHENTIK_BOOTSTRAP_TOKEN:-local-bootstrap-token-change-me}
+      AUTHENTIK_BOOTSTRAP_EMAIL: akadmin@app.localhost
+      # Development mail goes to Mailpit (http://localhost:8025).
+      AUTHENTIK_EMAIL__HOST: mailpit
+      AUTHENTIK_EMAIL__PORT: "1025"
+      AUTHENTIK_EMAIL__USE_TLS: "false"
+      AUTHENTIK_EMAIL__FROM: shadow-identity@app.localhost
+    volumes:
+      - authentik_media:/media
+      - authentik_templates:/templates
+    depends_on:
+      authentik-db-init:
+        condition: service_completed_successfully
+      mailpit:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      local:
+        ipv4_address: 172.28.59.9
+
+  authentik-worker:
+    image: *authentik_image
+    command: worker
+    environment:
+      <<: *authentik_environment
+      # Inputs of the blueprints (only the worker and the configuration job read them): the
+      # web OIDC client of the backend with its own LOCAL_ names (they are not the OIDC_*
+      # values the backend gets), and the MCP client (ADR-0023).
+      AUTHENTIK_ENROLLMENT_OPEN: ${AUTHENTIK_ENROLLMENT_OPEN:-true}
+      AUTHENTIK_DEV_USER_PASSWORD: ${AUTHENTIK_DEV_USER_PASSWORD:-shadow_dev_password}
+      OIDC_CLIENT_ID: ${LOCAL_OIDC_CLIENT_ID:-shadow-local}
+      OIDC_CLIENT_SECRET: ${LOCAL_OIDC_CLIENT_SECRET:-replace-with-a-random-oidc-secret}
+      OIDC_REDIRECT_URI: ${LOCAL_OIDC_REDIRECT_URI:-https://app.localhost/api/v1/auth/callback}
+      FRONTEND_URL: ${FRONTEND_URL:-https://app.localhost}
+      MCP_OIDC_CLIENT_ID: ${MCP_OIDC_CLIENT_ID:-shadow-mcp-local}
+      MCP_OIDC_CLIENT_SECRET: ${MCP_OIDC_CLIENT_SECRET:-replace-with-a-random-mcp-secret}
+      # The image version feeds the configuration fingerprint (a new image reapplies it).
+      CONFIG_IMAGE_VERSION: ${AUTHENTIK_VERSION:-2026.8.5}
+    volumes:
+      - authentik_media:/media
+      - authentik_templates:/templates
+      - ./authentik/blueprints:/blueprints/custom:ro
+    depends_on:
+      authentik-db-init:
+        condition: service_completed_successfully
+      mailpit:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - local
+
+  # Applies the blueprints (flows, the web application, brand, development users; the MCP
+  # application with ticket authentik-sign-in/02).
+  authentik-config-init:
+    image: *authentik_image
+    entrypoint: ["/bin/sh", "/config/configure.sh"]
+    environment:
+      <<: *authentik_environment
+      # Inputs of the blueprints (only the worker and the configuration job read them): the
+      # web OIDC client of the backend with its own LOCAL_ names (they are not the OIDC_*
+      # values the backend gets), and the MCP client (ADR-0023).
+      AUTHENTIK_ENROLLMENT_OPEN: ${AUTHENTIK_ENROLLMENT_OPEN:-true}
+      AUTHENTIK_DEV_USER_PASSWORD: ${AUTHENTIK_DEV_USER_PASSWORD:-shadow_dev_password}
+      OIDC_CLIENT_ID: ${LOCAL_OIDC_CLIENT_ID:-shadow-local}
+      OIDC_CLIENT_SECRET: ${LOCAL_OIDC_CLIENT_SECRET:-replace-with-a-random-oidc-secret}
+      OIDC_REDIRECT_URI: ${LOCAL_OIDC_REDIRECT_URI:-https://app.localhost/api/v1/auth/callback}
+      FRONTEND_URL: ${FRONTEND_URL:-https://app.localhost}
+      MCP_OIDC_CLIENT_ID: ${MCP_OIDC_CLIENT_ID:-shadow-mcp-local}
+      MCP_OIDC_CLIENT_SECRET: ${MCP_OIDC_CLIENT_SECRET:-replace-with-a-random-mcp-secret}
+      # The image version feeds the configuration fingerprint (a new image reapplies it).
+      CONFIG_IMAGE_VERSION: ${AUTHENTIK_VERSION:-2026.8.5}
+    volumes:
+      - authentik_media:/media
+      - ./authentik:/config:ro
+      - ./authentik/blueprints:/blueprints/custom:ro
+      - ./authentik/dev:/blueprints/dev:ro
+    depends_on:
+      authentik-worker:
+        condition: service_healthy
+    restart: "no"
+    networks:
+      - local
+
+  # Catches the worker's and Authentik's development email (ADR-019); nothing leaves the host.
   mailpit:
     image: docker.io/axllent/mailpit:v1.33.0@sha256:9b3a463be15354c0f0eba91697d80e3e0d8a5623ef0e627cacc836bc17fd5231
     ports:
@@ -212,9 +337,12 @@ services:
         ipv4_address: 172.28.59.7
 
 volumes:
-  # Retained declarations avoid any volume deletion during the Authentik retirement.
+  # The first two are retained declarations of the earlier Authentik setup (never deleted
+  # automatically; see docs/runbooks/authentik-local.md); the others are in use (ADR-017).
   authentik_data:
   authentik_database_data:
+  authentik_media:
+  authentik_templates:
   backend_uv_cache:
   backend_venv:
   database_data:
@@ -225,3 +353,6 @@ networks:
     ipam:
       config:
         - subnet: 172.28.59.0/24
+          # Containers without a fixed address are allocated from the upper half, so they
+          # never take one of the fixed local addresses (.2 to .15).
+          ip_range: 172.28.59.128/25

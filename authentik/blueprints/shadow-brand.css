@@ -1,0 +1,47 @@
+/*
+ * The look of the Authentik sign-in pages (ADR-017): Shadow's brand colours
+ * (frontend/src/styles/tokens.css) mapped onto the variables Authentik's pages read.
+ * Every value has a fallback, so the pages need nothing from the web application.
+ * It applies only to pages that hold a flow (sign-in, enrolment, recovery, consent), not to
+ * the Authentik user and admin interfaces. The background image is removed.
+ */
+:root:has(ak-flow-executor) {
+  --ak-global--background-image: none !important;
+  background: var(--color-canvas, #faf7f2);
+
+  --pf-global--FontFamily--sans-serif: var(--font-sans, "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif);
+  --pf-global--FontFamily--heading--sans-serif: var(--font-sans, "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif);
+  --pf-global--FontFamily--text--sans-serif: var(--font-sans, "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif);
+
+  --pf-global--primary-color--100: var(--shadow-accent, #c94a11);
+  --pf-global--primary-color--200: var(--shadow-accent-hover, #a83d0d);
+  --pf-global--active-color--100: var(--shadow-accent, #c94a11);
+  --pf-global--link--Color: var(--shadow-accent, #c94a11);
+  --pf-global--link--Color--hover: var(--shadow-accent-hover, #a83d0d);
+  --pf-global--danger-color--100: var(--color-danger, #b42318);
+  --pf-global--danger-color--200: var(--color-danger-hover, #912018);
+
+  --pf-global--Color--100: var(--color-ink, #17212b);
+  --pf-global--Color--200: var(--color-ink-muted, #56636e);
+  --pf-global--BorderColor--100: var(--color-line, #dde2e6);
+  --pf-global--BackgroundColor--100: var(--color-surface, #ffffff);
+  --pf-global--BackgroundColor--200: var(--color-canvas, #faf7f2);
+
+  --pf-global--BorderRadius--sm: var(--radius-control, 8px);
+  --pf-global--BorderRadius--lg: var(--radius-card, 12px);
+}
+
+/* The card that holds the form. */
+:root:has(ak-flow-executor) ak-flow-executor::part(main) {
+  border-radius: var(--radius-card, 12px);
+  box-shadow: var(--shadow-card, 0 1px 2px rgb(16 24 40 / 0.06));
+  border: 1px solid var(--color-line, #dde2e6);
+}
+
+/* The footer and the language selector are written for a dark photograph (white text). */
+:root:has(ak-flow-executor) ak-flow-executor::part(footer),
+:root:has(ak-flow-executor) ak-flow-executor::part(locale-select),
+:root:has(ak-flow-executor) ak-flow-executor::part(locale-select-label) {
+  color: var(--color-ink-muted, #56636e);
+  text-shadow: none;
+}

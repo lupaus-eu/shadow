@@ -28,6 +28,11 @@ Päätetty teknologiapino:
 
 ## Platform status
 
+Identity: ADR-017 replaces the direct Microsoft Entra sign-in with self-hosted Authentik
+(own instance, closed enrollment, mandatory second factor). The local stack runs
+Authentik from step 2 of the SaaS plan (tickets `authentik-sign-in/01`–`05`); the backend
+switches to it in ticket 03, and the Entra text below becomes historical with ticket 05.
+
 ADR-013 supersedes Coolify/Traefik and local Authentik/federation choices.
 Both environments share the existing single-tenant confidential Entra registration
 with separate secrets and independent databases. Use exact tenant issuer,

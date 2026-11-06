@@ -1,0 +1,42 @@
+# yaml-language-server: $schema=https://goauthentik.io/blueprints/schema.json
+# Development users (ADR-017). Mounted only by the local Compose project; production
+# never applies this file. The emails are the ones db/init/002_seed_development_data.sql
+# provisions, so the first sign-in links to the seeded accounts.
+#
+# The password comes from AUTHENTIK_DEV_USER_PASSWORD (.env.example). Multi-factor
+# authentication stays enforced: each user also gets a TOTP device with the RFC 6238
+# test secret "12345678901234567890" (base32 GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ), a
+# documented development value that must never be used outside this project. A blueprint
+# cannot set a device's key, so authentik/dev/provision-dev-totp.py (run by configure.sh
+# through `ak shell`) creates the devices.
+version: 1
+metadata:
+  name: Shadow development users
+  labels:
+    blueprints.goauthentik.io/instantiate: "true"
+entries:
+  - id: dev-admin
+    model: authentik_core.user
+    state: present
+    identifiers:
+      username: dev-admin
+    attrs:
+      name: Development Admin
+      email: admin@example.local
+      is_active: true
+      password: !Env AUTHENTIK_DEV_USER_PASSWORD
+      attributes:
+        shadow_verified_email: admin@example.local
+
+  - id: dev-consultant
+    model: authentik_core.user
+    state: present
+    identifiers:
+      username: dev-consultant
+    attrs:
+      name: Development Consultant
+      email: consultant@example.local
+      is_active: true
+      password: !Env AUTHENTIK_DEV_USER_PASSWORD
+      attributes:
+        shadow_verified_email: consultant@example.local

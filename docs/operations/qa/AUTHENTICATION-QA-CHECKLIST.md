@@ -26,6 +26,29 @@ New simulated-OIDC/Compose and live Entra evidence belongs to B/G/E/F; the
 pending production gates below reflect the amended plan and are executed with
 [the production runbook](../../runbooks/production.md).
 
+## Authentik local evidence (ADR-017, ticket `authentik-sign-in/01`)
+
+The Entra sections below are historical and are removed by ticket `authentik-sign-in/05`.
+Run on 2026-11-06 against the local stack (Authentik 2026.8.5 on PostgreSQL 18.6, Caddy,
+Mailpit), by `scripts/verify-authentik-local.py` (also `make authentik-verify`):
+
+- [x] Discovery of the web provider names the public issuer and the end-session endpoint.
+- [x] The web provider is confidential, `hashed_user_id`, `per_provider`, with exactly the
+  declared redirect URI.
+- [x] A password alone does not sign a seeded user in (the flow stops at the second-factor
+  stage); the password plus a TOTP code does.
+- [x] Authorization code with PKCE for the web client returns a code; the token endpoint
+  answers with an ID token whose issuer, audience and verified `email` are correct.
+- [x] With `AUTHENTIK_ENROLLMENT_OPEN=false` (`--enrollment`): enrollment without an
+  invitation is refused; an invitation opens the form; a verification email arrives in
+  Mailpit; the person must set up a second factor; the verified address is recorded; the
+  `email` scope reports it as verified, and no longer after the address is changed.
+- [x] The local TLS certificate covers `app.localhost` and `id.app.localhost`; Caddy serves
+  Authentik at `https://id.app.localhost`.
+- [ ] Passkey enrollment and sign-in (needs a browser or virtual authenticator; not run).
+- [ ] The recovery flow end to end (email link plus a second factor; not run).
+- [ ] Sign-in at Shadow itself (the backend switches to Authentik in ticket 03).
+
 ## TASK-059B Direct-Entra Local Evidence
 
 - [x] Authorized real-Entra browser verification records login, clean callback,

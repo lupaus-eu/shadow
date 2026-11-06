@@ -39,7 +39,12 @@ the idempotent development seed, then starts the backend, one prediction worker,
 the platform `worker` (background jobs and the email outbox, ADR-019), Vite and
 local Caddy. The platform worker needs only `DATABASE_URL`; check it with
 `docker compose … exec worker uv run python -m app.platform.worker health-check`
-(exit code 0 when the database is reachable). Local email goes to Mailpit, started by `make dev-up`; read it at
+(exit code 0 when the database is reachable). Authentik (ADR-017) runs beside it: `authentik-server`, `authentik-worker` and the one-shot
+`authentik-config-init`, behind Caddy at `https://id.app.localhost`; see
+[authentik-local](../runbooks/authentik-local.md) for the dev users, the blueprints and
+`make authentik-verify`. The local TLS certificate covers `app.localhost` and
+`id.app.localhost`; an earlier certificate that lacks the second name must be renewed as
+the script says. Local email goes to Mailpit, started by `make dev-up`; read it at
 `http://localhost:8025` (`MAILPIT_UI_PORT`, loopback only). Optional settings:
 `WORKER_SCHEDULE_INTERVAL_SECONDS` (default 3600) and `QUEUE_CLAIM_TIMEOUT_SECONDS`
 (default 900, after which an unfinished claim is taken again). The development wrapper keeps its two local Users in the
