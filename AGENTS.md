@@ -118,16 +118,13 @@ message.
 `main` is the only branch pushed to GitHub (`lupaus-eu/shadow`), and only the
 human pushes it. Agents never push.
 
-1. Work on a local branch named after the ticket
-   (`feature/<feature-slug>-NN-short-name`, `fix/…`, `docs/…`, `chore/…`,
-   `refactor/…`), or in a local worktree; branches are never pushed.
-2. When the ticket is done (checks pass, AI review recorded), merge the branch
-   into the local `main` yourself (`git merge --ff-only`, rebasing the branch on
-   `main` first if needed) and delete the branch. Do not merge unfinished work
-   or work whose checks fail.
+1. Work directly on the local `main`; do not create branches.
+2. Commit only when the ticket is done: its checks pass and its AI review is
+   recorded. Keep unfinished work uncommitted, and never commit work whose
+   checks fail. One ticket normally becomes one commit.
 3. The human reviews the unpushed commits (`git log origin/main..main`) and
-   pushes `main`. The push is the human's release control: it runs CI (and,
-   once implemented, builds the images).
+   pushes `main`. Pushing `main` runs CI. Container images are built only from
+   a `v*` release tag, which the human creates and pushes.
 
 Production releases need separate human approval.
 

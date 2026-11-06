@@ -106,15 +106,15 @@ below, or explain why no durable documentation changes:
 5. The agent creates a technical design and small tickets.
 6. The user accepts material technical decisions where approval is needed
    (new dependencies, architecture changes, production operations).
-7. The agent implements tickets one at a time on a local branch, with focused
-   tests and the required documentation updates.
+7. The agent implements tickets one at a time on the local `main`, with
+   focused tests and the required documentation updates.
 8. The agent runs the applicable backend, frontend, browser, database, and
    architecture checks, then starts the AI review itself (a fresh-context
    reviewer, at most three rounds) and records the evidence in each ticket.
-9. The agent merges the finished ticket's branch into the local `main`. The
-   human reviews the unpushed commits and pushes `main`, the only branch on
-   GitHub; the push is the human's release control. Production releases need
-   separate human approval.
+9. The agent commits the finished ticket to the local `main`. The human
+   reviews the unpushed commits and pushes `main`, the only branch on GitHub.
+   Images are built only from a `v*` tag that the human pushes, and production
+   releases need separate human approval.
 
 Do not begin substantial implementation until the PRD acceptance criteria and
 the essential technical decisions are sufficiently clear.

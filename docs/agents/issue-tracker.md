@@ -49,15 +49,13 @@ the path the user supplied.
 
 ## Branches and commits
 
-Name a branch after the work and ticket:
-`feature/<feature-slug>-NN-short-name`, `fix/<slug>-NN-short-name`,
-`docs/…`, `chore/…`, or `refactor/…`. Branches stay local like the tickets:
-only `main` is pushed to GitHub, so GitHub pull requests are not used. When a
-ticket is complete, the agent merges its branch into the local `main`
-(fast-forward) and deletes the branch; the human reviews the unpushed commits
-and pushes `main`. Agents never push.
+Agents commit directly to the local `main`; there are no feature branches
+and no GitHub pull requests. Commit a ticket only when it is done (checks pass,
+AI review recorded). The human reviews the unpushed commits and pushes `main`,
+the only branch on GitHub. Agents never push.
 
-A commit message names the feature slug and ticket number; because the ticket
+A commit message starts with a conventional prefix (`feat:`, `fix:`, `docs:`,
+`chore:`, `refactor:`) and names the feature slug and ticket number; because the ticket
 itself is local, the message also states the goal, the checks run, and the
 one-line AI review summary.
 

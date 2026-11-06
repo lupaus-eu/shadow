@@ -18,5 +18,5 @@
   templates.
 - Do not add a dependency, delete a test, change the architecture without an
   ADR, or touch production without human approval.
-- Merge a finished ticket's branch into the local `main` yourself, but never
-  push: the human pushes `main`.
+- Commit a finished ticket directly to the local `main`, but never push: the
+  human pushes `main` and creates release tags.
