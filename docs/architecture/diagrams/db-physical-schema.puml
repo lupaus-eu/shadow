@@ -357,6 +357,20 @@ entity "mcp_oauth_tokens" as mcp_oauth_tokens {
   revoked_time : TIMESTAMPTZ
 }
 
+entity "audit_events" as audit_events {
+  * id : UUID
+  --
+  actor_user_id : BIGINT
+  tenant_id : UUID
+  support_access_id : UUID
+  action : TEXT
+  target_type : TEXT
+  target_id : TEXT
+  occurred_time : TIMESTAMPTZ
+  request_id : TEXT
+  change_summary : JSONB
+}
+
 entity "ai_change_sets" as ai_change_sets {
   * change_set_id : BIGINT
   --
@@ -444,5 +458,6 @@ scenarios |o--o{ ai_change_sets : derived reference
 mcp_oauth_grants |o--o{ ai_change_sets : staged by (set null)
 users ||--o{ ai_change_sets : creates / reviews
 ai_change_sets ||--o{ ai_change_set_operations : cascade
+users |o--o{ audit_events : acts (append-only)
 
 @enduml

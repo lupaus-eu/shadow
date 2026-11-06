@@ -5,6 +5,7 @@
 | `backend/` | FastAPI application (`app/`), tests (`tests/`), migration runner `migrate.py`, `pyproject.toml` and `uv.lock` |
 | `backend/app/api/v1/` | One package per domain API (auth, users, organisations, customers, org states, twin structure, predictions, MCP OAuth, AI change sets, AI skills) |
 | `backend/app/mcp/` | The MCP server `/api/mcp`, its tools, and the Claude Code plugin and skills (`plugin/`) |
+| `backend/app/platform/` | Platform foundation (ADR-016, ADR-019): audit log, background jobs and worker, email delivery, and notifications |
 | `backend/app/core/` | Settings, database session, and migration helpers |
 | `frontend/` | React SPA (`src/`), Vite and lint configuration, and the production Caddy edge (`Caddyfile`, `caddy-entrypoint.sh`) |
 | `frontend/src/` | `App.tsx` routes, `pages/`, `workspace/` tabs, `features/` by area, `components/`, `auth/`, `api/` client, and `styles/` |

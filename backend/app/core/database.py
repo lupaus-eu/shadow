@@ -69,6 +69,7 @@ class RequestContext:
 
 def apply_request_context(session: Session, request_context: RequestContext) -> None:
     settings = {
+        "app.request_context": "applied",
         "app.current_user_id": request_context.user_id,
         "app.current_tenant_id": request_context.tenant_id,
         "app.current_support_access_id": request_context.support_access_id,

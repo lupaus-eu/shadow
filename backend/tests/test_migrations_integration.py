@@ -2280,7 +2280,8 @@ def test_mcp_single_resource_migration_down_restores_the_017_checks(
 
 
 def _shadow_app_privilege_count(database_url: str) -> int:
-    return int(
+    return cast(
+        int,
         _scalar(
             database_url,
             "SELECT (SELECT count(*) FROM pg_default_acl a "

@@ -27,6 +27,7 @@ def test_apply_request_context_sets_every_setting_transaction_locally() -> None:
 
     values = {params["name"]: params["value"] for _, params in _executed(session)}
     assert values == {
+        "app.request_context": "applied",
         "app.current_user_id": "101",
         "app.current_tenant_id": str(tenant_id),
         "app.current_support_access_id": "",
@@ -41,7 +42,9 @@ def test_empty_context_clears_all_settings() -> None:
 
     apply_request_context(session, RequestContext())
 
-    assert {params["value"] for _, params in _executed(session)} == {""}
+    values = {params["name"]: params["value"] for _, params in _executed(session)}
+    assert values.pop("app.request_context") == "applied"
+    assert set(values.values()) == {""}
 
 
 def test_application_role_name_is_shadow_app() -> None:

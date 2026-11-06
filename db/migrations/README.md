@@ -99,6 +99,7 @@ The current ordered migration chain is:
 019_add_ai_change_set_review_channel.sql
 020_alter_mcp_oauth_single_resource.sql
 021_create_application_role.sql
+022_create_audit_events.sql
 ```
 
 Jokaisella yllä olevalla tiedostolla on vastaava `.down.sql`-tiedosto.

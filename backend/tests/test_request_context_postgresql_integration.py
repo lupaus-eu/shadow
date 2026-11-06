@@ -83,6 +83,7 @@ def test_role_and_context_do_not_leak_after_a_rollback_on_the_same_connection(
         max_overflow=0,
     )
     factory = sessionmaker(bind=engine, autoflush=False)
+    first_pid: object = None
     try:
         with pytest.raises(RuntimeError):
             with transaction_session(factory, RequestContext(user_id=7)) as session:
