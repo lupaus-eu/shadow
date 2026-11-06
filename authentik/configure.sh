@@ -30,6 +30,7 @@ ak apply_blueprint \
 
 ak apply_blueprint /blueprints/custom/shadow-identity-flows.yaml
 ak apply_blueprint /blueprints/custom/shadow-application.yaml
+ak apply_blueprint /blueprints/custom/shadow-mcp-application.yaml
 ak apply_blueprint /blueprints/custom/shadow-brand.yaml
 ak shell < /config/apply-tenant-settings.py
 

@@ -18,6 +18,34 @@ its date, in production; `[ ]` **pending**, **partly** checked or **not
 recorded**, with the reason and what is still open. Production items stay
 pending until an authorised rollout records them.
 
+
+## Authentik MCP provider (ADR-0023, ticket `authentik-sign-in/02`)
+
+Run on 2026-11-06 by `scripts/verify-authentik-local.py` against the local stack (Authentik
+2026.8.5), simulating a pre-registered client:
+
+- [x] The provider "Shadow MCP" is confidential, `hashed_user_id`, `per_provider`, allows only the
+  authorization code and refresh token grants, and has exactly the declared redirect URIs (two
+  strict, one loopback pattern); dynamic registration is not offered.
+- [x] PKCE with S256 is enforced by a policy: authorization without a challenge, or with `plain`,
+  is refused; a code is refused without the verifier and with a wrong one.
+- [x] Consent is asked every time (own authorization flow, `always_require`).
+- [x] Discovery, the RFC 8414 metadata and the JWKS are served at the MCP issuer, which differs
+  from the web issuer.
+- [x] Authorization asks for explicit consent and a code is delivered to a loopback callback; the
+  token endpoint accepts the client id, secret and PKCE verifier and issues an access token
+  whose `aud` is the MCP client id and `iss` the MCP issuer, plus a refresh token; the refresh
+  grant works and rotates the refresh token (the old one is refused); a code cannot be used twice;
+  a wrong secret is refused (`invalid_client`). Web-provider tokens do not carry the MCP audience.
+- [x] Ten unregistered redirect URIs (other host, extra path or query, trailing slash, other port
+  text, https, look-alike host, userinfo trick) are refused with HTTP 400 and no redirect; the
+  registered loopback URI is accepted.
+- [ ] A real client signs in (Claude Code with `--client-id/--client-secret/--callback-port`, MCP
+  Inspector): not run, it needs an interactive browser and the CLI is not on the automation
+  host. To do before step 3b begins.
+- [ ] The claude.ai custom connector and the `claude.com` callback: not testable locally; the
+  `claude.com` callback is kept from Yearclock's production-tested blueprint.
+
 ## Local Run Record (2026-10-30)
 
 | Field | Value |

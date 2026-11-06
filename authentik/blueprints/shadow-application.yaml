@@ -5,6 +5,23 @@ metadata:
   labels:
     blueprints.goauthentik.io/instantiate: "true"
 entries:
+  # PKCE with S256 is required: the client secret of the MCP provider is shared by every
+  # person, so PKCE is what ties an authorization code to the client that asked for it.
+  # Authentik stores a challenge only when the client sends one, so this policy refuses an
+  # authorization request without one (and the "plain" method). Also defined, identically,
+  # in the other application blueprint.
+  - id: shadow-require-pkce
+    model: authentik_policies_expression.expressionpolicy
+    state: present
+    identifiers:
+      name: shadow-require-pkce
+    attrs:
+      expression: |
+        return (
+            context.get("oauth_code_challenge_method") == "S256"
+            and bool(context.get("oauth_code_challenge"))
+        )
+
   - id: shadow-email-scope
     model: authentik_providers_oauth2.scopemapping
     state: present
@@ -54,7 +71,8 @@ entries:
       sub_mode: hashed_user_id
       issuer_mode: per_provider
 
-  - model: authentik_core.application
+  - id: shadow-application
+    model: authentik_core.application
     state: present
     identifiers:
       slug: shadow
@@ -63,3 +81,15 @@ entries:
       provider: !KeyOf shadow-provider
       policy_engine_mode: any
       meta_launch_url: !Env FRONTEND_URL
+
+  - model: authentik_policies.policybinding
+    state: present
+    identifiers:
+      policy: !KeyOf shadow-require-pkce
+      target: !KeyOf shadow-application
+      order: 0
+    attrs:
+      enabled: true
+      negate: false
+      timeout: 30
+      failure_result: false

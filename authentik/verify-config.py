@@ -10,8 +10,9 @@ from authentik.tenants.models import Tenant
 
 problems = []
 
-if not Application.objects.filter(slug="shadow").exists():
-    problems.append("application shadow is missing")
+for slug in ("shadow", "shadow-mcp"):
+    if not Application.objects.filter(slug=slug).exists():
+        problems.append(f"application {slug} is missing")
 
 enrollment = Flow.objects.filter(slug="default-enrollment-flow").first()
 if enrollment is None:

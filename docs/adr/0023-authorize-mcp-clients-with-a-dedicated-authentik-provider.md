@@ -78,8 +78,10 @@ exactly this (its ADR-0038):
 - Clients that only support anonymous registration cannot connect. Claude Code
   documents pre-registered clients (`claude mcp add --client-id --client-secret
   --callback-port`) and the claude.ai custom connector takes a client id and
-  secret; both are verified against the real provider in ticket
-  `authentik-sign-in/02` before the verifier work starts. The documentation
+  secret. Ticket `authentik-sign-in/02` verified the provider with a scripted
+  pre-registered client on 2026-11-06 (consent, loopback code with PKCE, audience and
+  issuer, refresh, refused redirect URIs); a session with the real clients is still to
+  be done before the verifier work starts. The documentation
   confirms the claude.ai callback `https://claude.ai/api/mcp/auth_callback` only;
   the claude.com callback is kept from Yearclock's production-tested blueprint. A
   failing client means a new decision (public client or facade).

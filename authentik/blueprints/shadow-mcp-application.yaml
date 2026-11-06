@@ -1,0 +1,119 @@
+# yaml-language-server: $schema=https://goauthentik.io/blueprints/schema.json
+# The OIDC provider for MCP clients (ADR-0023): a dedicated, pre-registered, confidential client.
+# Authentik does not implement RFC 8707, so this provider's client id is the audience the MCP
+# server checks; tokens of the Shadow web provider carry another audience and are refused.
+# Clients are never registered dynamically. To allow another MCP client, add its redirect URL
+# below (strict for a remote client, never a wildcard).
+version: 1
+metadata:
+  name: Shadow MCP application
+  labels:
+    blueprints.goauthentik.io/instantiate: "true"
+entries:
+  # PKCE with S256 is required: the client secret of the MCP provider is shared by every
+  # person, so PKCE is what ties an authorization code to the client that asked for it.
+  # Authentik stores a challenge only when the client sends one, so this policy refuses an
+  # authorization request without one (and the "plain" method). Also defined, identically,
+  # in the other application blueprint.
+  - id: shadow-require-pkce
+    model: authentik_policies_expression.expressionpolicy
+    state: present
+    identifiers:
+      name: shadow-require-pkce
+    attrs:
+      expression: |
+        return (
+            context.get("oauth_code_challenge_method") == "S256"
+            and bool(context.get("oauth_code_challenge"))
+        )
+
+  # Its own authorization flow, so that consent is asked EVERY time an AI client asks to act
+  # as a person (the default explicit-consent flow remembers a consent for four weeks and is
+  # shared with other providers). A remembered consent would let a link with a victim's
+  # loopback port deliver a code silently.
+  - id: shadow-mcp-consent-stage
+    model: authentik_stages_consent.consentstage
+    state: present
+    identifiers:
+      name: shadow-mcp-authorization-consent
+    attrs:
+      mode: always_require
+
+  - id: shadow-mcp-authorization-flow
+    model: authentik_flows.flow
+    state: present
+    identifiers:
+      slug: shadow-mcp-authorization
+    attrs:
+      name: Authorize an AI client
+      title: An AI client asks to act as you
+      designation: authorization
+      authentication: require_authenticated
+
+  - model: authentik_flows.flowstagebinding
+    state: present
+    identifiers:
+      target: !KeyOf shadow-mcp-authorization-flow
+      stage: !KeyOf shadow-mcp-consent-stage
+      order: 10
+
+  - id: shadow-mcp-provider
+    model: authentik_providers_oauth2.oauth2provider
+    state: present
+    identifiers:
+      name: Shadow MCP
+    attrs:
+      client_type: confidential
+      client_id: !Env MCP_OIDC_CLIENT_ID
+      client_secret: !Env MCP_OIDC_CLIENT_SECRET
+      grant_types:
+        - authorization_code
+        - refresh_token
+      # Explicit consent every time: the person sees that an agent asks to act as them.
+      authorization_flow: !KeyOf shadow-mcp-authorization-flow
+      invalidation_flow: !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
+      redirect_uris:
+        # Claude's hosted connectors (claude.ai web, Desktop, mobile).
+        - matching_mode: strict
+          redirect_uri_type: authorization
+          url: https://claude.ai/api/mcp/auth_callback
+        - matching_mode: strict
+          redirect_uri_type: authorization
+          url: https://claude.com/api/mcp/auth_callback
+        # Local clients on the person's own machine, such as Claude Code
+        # (http://localhost:<port>/callback; the port can be pinned with --callback-port) and
+        # MCP Inspector (/oauth/callback). A loopback redirect never leaves the machine, and
+        # the PKCE policy below ties the code to the client that asked for it.
+        - matching_mode: regex
+          redirect_uri_type: authorization
+          url: ^http://(localhost|127\.0\.0\.1):[0-9]+/(oauth/)?callback$
+      property_mappings:
+        - !Find [authentik_providers_oauth2.scopemapping, [scope_name, openid]]
+        - !Find [authentik_providers_oauth2.scopemapping, [scope_name, profile]]
+        - !Find [authentik_providers_oauth2.scopemapping, [scope_name, offline_access]]
+      signing_key: !Find [authentik_crypto.certificatekeypair, [name, authentik Self-signed Certificate]]
+      sub_mode: hashed_user_id
+      issuer_mode: per_provider
+
+  - id: shadow-mcp-application
+    model: authentik_core.application
+    state: present
+    identifiers:
+      slug: shadow-mcp
+    attrs:
+      name: Shadow MCP
+      provider: !KeyOf shadow-mcp-provider
+      policy_engine_mode: any
+      meta_launch_url: blank://blank
+
+  - model: authentik_policies.policybinding
+    state: present
+    identifiers:
+      policy: !KeyOf shadow-require-pkce
+      target: !KeyOf shadow-mcp-application
+      order: 0
+    attrs:
+      enabled: true
+      negate: false
+      timeout: 30
+      failure_result: false

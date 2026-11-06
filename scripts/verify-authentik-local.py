@@ -14,7 +14,11 @@ the local CA (.local/app-tls/ca.crt):
 * a seeded development user must pass a second factor: a sign-in with the password
   alone does not finish; with the TOTP code it does;
 * the authorization-code flow with PKCE for the web client returns a code, and the
-  token endpoint answers with an ID token whose email is verified (`email_verified`).
+  token endpoint answers with an ID token whose email is verified (`email_verified`);
+* the MCP provider (ADR-0023): declared settings and redirect URIs, discovery and JWKS,
+  explicit consent, a pre-registered client's authorization code with PKCE yielding an
+  access token whose audience is the MCP client id and whose issuer is the MCP issuer
+  (not the web issuer), a refresh grant, and refusal of an unregistered redirect URI.
 
 Development credentials only; the values come from the environment with the same
 defaults as `.env.example`.
@@ -42,6 +46,10 @@ ROOT = Path(__file__).resolve().parent.parent
 BASE = os.getenv("AUTHENTIK_BASE_URL", "https://id.app.localhost").rstrip("/")
 TOKEN = os.getenv("AUTHENTIK_BOOTSTRAP_TOKEN", "local-bootstrap-token-change-me")
 PASSWORD = os.getenv("AUTHENTIK_DEV_USER_PASSWORD", "shadow_dev_password")
+MCP_CLIENT_ID = os.getenv("MCP_OIDC_CLIENT_ID", "shadow-mcp-local")
+MCP_CLIENT_SECRET = os.getenv("MCP_OIDC_CLIENT_SECRET", "replace-with-a-random-mcp-secret")
+# A loopback callback of a local client (Claude Code pins its port with --callback-port).
+MCP_LOOPBACK_REDIRECT = "http://localhost:33418/callback"
 CLIENT_ID = os.getenv("LOCAL_OIDC_CLIENT_ID", "shadow-local")
 CLIENT_SECRET = os.getenv("LOCAL_OIDC_CLIENT_SECRET", "replace-with-a-random-oidc-secret")
 REDIRECT_URI = os.getenv("LOCAL_OIDC_REDIRECT_URI", "https://app.localhost/api/v1/auth/callback")
@@ -61,11 +69,13 @@ def opener() -> urllib.request.OpenerDirector:
     # rejects in strict mode; the chain and the hostname are still verified.
     context.verify_flags &= ~ssl.VERIFY_X509_STRICT
     jar = http.cookiejar.CookieJar()
-    return urllib.request.build_opener(
+    built = urllib.request.build_opener(
         urllib.request.HTTPCookieProcessor(jar),
         urllib.request.HTTPSHandler(context=context),
         NoRedirect(),
     )
+    built._jar_cookies = lambda: list(jar)  # type: ignore[attr-defined]
+    return built
 
 
 def call(
@@ -77,7 +87,11 @@ def call(
     headers: dict[str, str] | None = None,
 ) -> tuple[int, dict[str, str], bytes]:
     body = None
-    all_headers = dict(headers or {})
+    # Authentik's CSRF check on HTTPS wants a Referer and its own CSRF cookie echoed in a header.
+    all_headers = {"Referer": f"{BASE}/"} | dict(headers or {})
+    for cookie in getattr(client, "_jar_cookies", lambda: [])():
+        if cookie.name == "authentik_csrf":
+            all_headers.setdefault("X-authentik-CSRF", cookie.value)
     if data is not None:
         body = json.dumps(data).encode()
         all_headers["Content-Type"] = "application/json"
@@ -302,6 +316,131 @@ def enroll(invitation: str, username: str, email: str, password: str) -> None:
     check(scope_mapping_email(mapping["pk"], user["pk"]).get("email_verified") is False, "a changed address is no longer reported as verified")
 
 
+def jwt_claims(token: str) -> dict[str, Any]:
+    return json.loads(base64.urlsafe_b64decode(token.split(".")[1] + "=="))
+
+
+def verify_mcp(signed_in: urllib.request.OpenerDirector, web_issuer: str) -> None:
+    """The dedicated MCP provider (ADR-0023), exercised as a pre-registered client would."""
+    providers = {p["client_id"]: p for p in api("providers/oauth2/")["results"]}
+    mcp = providers.get(MCP_CLIENT_ID)
+    check(mcp is not None, "MCP provider exists")
+    assert mcp is not None
+    check(mcp["client_type"] == "confidential" and mcp["sub_mode"] == "hashed_user_id" and mcp["issuer_mode"] == "per_provider", "MCP provider is confidential, hashed_user_id, per_provider")
+    check(sorted(mcp["grant_types"]) == ["authorization_code", "refresh_token"], "only the authorization code and refresh token grants")
+    uris = {(u["matching_mode"], u["url"]) for u in mcp["redirect_uris"]}
+    check(("strict", "https://claude.ai/api/mcp/auth_callback") in uris and ("strict", "https://claude.com/api/mcp/auth_callback") in uris, "strict redirect URIs for claude.ai and claude.com")
+    check(sum(1 for mode, _ in uris if mode == "regex") == 1 and len(uris) == 3, "one loopback pattern and no other redirect URI")
+    check("shadow-mcp" in {a["slug"] for a in api("core/applications/?superuser_full_list=true")["results"]}, "application shadow-mcp exists")
+
+    status, _, body = call(opener(), f"{BASE}/application/o/shadow-mcp/.well-known/openid-configuration")
+    check(status == 200, "MCP discovery answers 200")
+    discovery = json.loads(body)
+    mcp_issuer = f"{BASE}/application/o/shadow-mcp/"
+    check(discovery["issuer"] == mcp_issuer and mcp_issuer != web_issuer, "the MCP issuer differs from the web issuer")
+    check("registration_endpoint" not in discovery, "dynamic client registration is not offered")
+    status, _, _ = call(opener(), discovery["jwks_uri"])
+    check(status == 200, "MCP JWKS is served")
+    status, _, _ = call(opener(), f"{BASE}/.well-known/oauth-authorization-server/application/o/shadow-mcp/")
+    check(status == 200, "RFC 8414 authorization server metadata is served for the MCP issuer")
+
+    verifier = secrets.token_urlsafe(48)
+    challenge_value = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
+
+    def authorize_query(redirect_uri: str) -> str:
+        return urllib.parse.urlencode(
+            {
+                "client_id": MCP_CLIENT_ID,
+                "response_type": "code",
+                "scope": "openid profile offline_access",
+                "redirect_uri": redirect_uri,
+                "state": secrets.token_urlsafe(16),
+                "code_challenge": challenge_value,
+                "code_challenge_method": "S256",
+            }
+        )
+
+    # An unregistered redirect URI is refused outright (HTTP 400, no redirect), including the
+    # cases a loose pattern would let through; the loopback URI gets a redirect (control).
+    for bad in (
+        "https://evil.example/callback",
+        "https://claude.ai/api/mcp/auth_callback/extra",
+        "https://claude.ai/api/mcp/auth_callback?x=1",
+        "http://localhost:33418/other",
+        "http://localhost:33418/callback/",
+        "http://localhost:33418/callback?x=1",
+        "http://localhost:abc/callback",
+        "https://localhost:33418/callback",
+        "http://evil.localhost.example:33418/callback",
+        "http://localhost:1@evil.example/callback",
+    ):
+        status, headers, _ = call(signed_in, f"{BASE}/application/o/authorize/?{authorize_query(bad)}")
+        check(status == 400 and "Location" not in headers, f"unregistered redirect URI is refused with 400: {bad}")
+    status, headers, _ = call(signed_in, f"{BASE}/application/o/authorize/?{authorize_query(MCP_LOOPBACK_REDIRECT)}")
+    check(status in (301, 302), "the registered loopback redirect URI is accepted (control)")
+
+    # PKCE with S256 is required: no challenge and the plain method are refused.
+    base_query = {"client_id": MCP_CLIENT_ID, "response_type": "code", "scope": "openid profile offline_access", "redirect_uri": MCP_LOOPBACK_REDIRECT, "state": "s"}
+    for label, extra in (("no code_challenge", {}), ("the plain method", {"code_challenge": "x" * 43, "code_challenge_method": "plain"})):
+        status, headers, body = call(signed_in, f"{BASE}/application/o/authorize/?{urllib.parse.urlencode(base_query | extra)}")
+        location = headers.get("Location", "")
+        denied = status >= 400 or ("explicit-consent" not in location and "shadow-mcp-authorization" not in location and "code=" not in location)
+        check(denied and "code=" not in location, f"authorization without PKCE S256 is refused ({label})")
+
+    # Explicit consent, then the code at the loopback redirect (the regex pattern).
+    query = authorize_query(MCP_LOOPBACK_REDIRECT)
+    status, headers, _ = call(signed_in, f"{BASE}/application/o/authorize/?{query}")
+    check(status in (301, 302) and "shadow-mcp-authorization" in headers["Location"], "authorization goes through the MCP authorization flow with its own consent")
+    flow_slug = urllib.parse.urlsplit(headers["Location"]).path.rstrip("/").split("/")[-1]
+    url = executor(signed_in, flow_slug, query)
+    current = challenge(signed_in, url)
+    check(current.get("component") == "ak-stage-consent", "the consent stage is shown")
+    current = challenge(signed_in, url, {"component": "ak-stage-consent", "token": current["token"]})
+    check(current.get("component") == "xak-flow-redirect" and current["to"].startswith(MCP_LOOPBACK_REDIRECT + "?"), "consent redirects to the loopback callback with a code")
+    code = urllib.parse.parse_qs(urllib.parse.urlsplit(current["to"]).query)["code"][0]
+    auth = {"Authorization": "Basic " + base64.b64encode(f"{MCP_CLIENT_ID}:{MCP_CLIENT_SECRET}".encode()).decode()}
+    status, _, body = call(
+        opener(),
+        discovery["token_endpoint"],
+        form={"grant_type": "authorization_code", "code": code, "redirect_uri": MCP_LOOPBACK_REDIRECT, "code_verifier": verifier},
+        headers=auth,
+    )
+    check(status == 200, "token endpoint accepts the pre-registered client's code, PKCE verifier and secret")
+    tokens = json.loads(body)
+    access = jwt_claims(tokens["access_token"])
+    check(access["aud"] == MCP_CLIENT_ID, "access token audience is the MCP client id")
+    check(access["iss"] == mcp_issuer and access["iss"] != web_issuer, "access token issuer is the MCP issuer, not the web issuer")
+    check(bool(tokens.get("refresh_token")), "a refresh token is issued (offline_access)")
+    status, _, body = call(opener(), discovery["token_endpoint"], form={"grant_type": "refresh_token", "refresh_token": tokens["refresh_token"]}, headers=auth)
+    check(status == 200 and json.loads(body).get("access_token"), "the refresh grant works")
+    rotated = json.loads(body)
+    check(rotated.get("refresh_token") not in (None, tokens["refresh_token"]), "the refresh token is rotated")
+    status, _, _ = call(opener(), discovery["token_endpoint"], form={"grant_type": "refresh_token", "refresh_token": tokens["refresh_token"]}, headers=auth)
+    check(status == 400, "the old refresh token is refused after rotation")
+    status, _, _ = call(opener(), discovery["token_endpoint"], form={"grant_type": "authorization_code", "code": code, "redirect_uri": MCP_LOOPBACK_REDIRECT, "code_verifier": verifier}, headers=auth)
+    check(status == 400, "an authorization code cannot be used twice")
+    wrong = {"Authorization": "Basic " + base64.b64encode(f"{MCP_CLIENT_ID}:wrong-secret".encode()).decode()}
+    status, _, body = call(opener(), discovery["token_endpoint"], form={"grant_type": "refresh_token", "refresh_token": rotated["refresh_token"]}, headers=wrong)
+    check(status in (400, 401) and json.loads(body).get("error") == "invalid_client", "a wrong client secret is refused as invalid_client")
+
+    # A code is bound to its PKCE challenge: without the verifier, or with another, it is refused.
+    for label, verifier_value in (("without a verifier", None), ("with a wrong verifier", secrets.token_urlsafe(48))):
+        fresh_verifier = secrets.token_urlsafe(48)
+        fresh_challenge = base64.urlsafe_b64encode(hashlib.sha256(fresh_verifier.encode()).digest()).rstrip(b"=").decode()
+        fresh_query = urllib.parse.urlencode(base_query | {"code_challenge": fresh_challenge, "code_challenge_method": "S256"})
+        status, headers, _ = call(signed_in, f"{BASE}/application/o/authorize/?{fresh_query}")
+        flow = urllib.parse.urlsplit(headers["Location"]).path.rstrip("/").split("/")[-1]
+        furl = executor(signed_in, flow, fresh_query)
+        step = challenge(signed_in, furl)
+        step = challenge(signed_in, furl, {"component": "ak-stage-consent", "token": step["token"]})
+        fresh_code = urllib.parse.parse_qs(urllib.parse.urlsplit(step["to"]).query)["code"][0]
+        form = {"grant_type": "authorization_code", "code": fresh_code, "redirect_uri": MCP_LOOPBACK_REDIRECT}
+        if verifier_value is not None:
+            form["code_verifier"] = verifier_value
+        status, _, _ = call(opener(), discovery["token_endpoint"], form=form, headers=auth)
+        check(status == 400, f"a code is refused {label}")
+
+
 def main() -> None:
     client = opener()
 
@@ -318,9 +457,10 @@ def main() -> None:
     web = providers.get(CLIENT_ID)
     check(web is not None, "web provider exists")
     assert web is not None
+    check(web["grant_types"] == ["authorization_code"], "web provider allows only the authorization code grant")
     check(web["client_type"] == "confidential" and web["sub_mode"] == "hashed_user_id" and web["issuer_mode"] == "per_provider", "web provider is confidential, hashed_user_id, per_provider")
     check([u["url"] for u in web["redirect_uris"] if u["redirect_uri_type"] == "authorization"] == [REDIRECT_URI], "exact authorization redirect URI only")
-    check({a["slug"] for a in api("core/applications/")["results"]} >= {"shadow"}, "application shadow exists")
+    check({a["slug"] for a in api("core/applications/?superuser_full_list=true")["results"]} >= {"shadow"}, "application shadow exists")
 
     # 3. Strong authentication: the password alone does not sign in.
     first = opener()
@@ -368,6 +508,8 @@ def main() -> None:
     claims = json.loads(base64.urlsafe_b64decode(tokens["id_token"].split(".")[1] + "=="))
     check(claims["iss"] == discovery["issuer"] and claims["aud"] == CLIENT_ID, "ID token issuer and audience")
     check(claims["email"] == "admin@example.local" and claims["email_verified"] is True, "ID token carries the verified email")
+    check(claims["aud"] != MCP_CLIENT_ID and jwt_claims(tokens["access_token"])["aud"] != MCP_CLIENT_ID, "web provider tokens do not carry the MCP audience (the MCP verifier refuses them)")
+    verify_mcp(second, discovery["issuer"])
     if "--enrollment" in sys.argv:
         verify_enrollment()
     print("Authentik local setup verified.")

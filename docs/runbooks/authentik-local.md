@@ -106,8 +106,49 @@ runs twice in a row.
 
 ## 6. MCP provider
 
-The provider "Shadow MCP" for AI clients is described here once it exists
-(ticket `authentik-sign-in/02`).
+Authentik signs AI clients in through a dedicated provider, "Shadow MCP" (ADR-0023;
+`authentik/blueprints/shadow-mcp-application.yaml`, application slug `shadow-mcp`). It is a
+confidential, pre-registered client: the person who connects an AI tool is given the
+client id and secret. The backend does not use it yet (token verification arrives in step
+3b of the SaaS plan); until then MCP clients keep using today's OAuth server.
+
+| Setting | Meaning |
+| --- | --- |
+| `MCP_OIDC_CLIENT_ID` | The client id. It is the audience of every access token this provider issues. |
+| `MCP_OIDC_CLIENT_SECRET` | A long random secret, shared by all companies (it does not separate them; membership does). Never commit it; production keeps it in the protected env file. |
+| `MCP_OIDC_ISSUER` | `https://<identity host>/application/o/shadow-mcp/`, read by the backend in step 3b. |
+
+The provider allows only the authorization code and refresh token grants, requires PKCE
+with S256 (an expression policy refuses an authorization request without it, because the
+secret is shared and PKCE is what ties a code to the client that asked), asks for consent
+every time in its own authorization flow (Authentik's default flow remembers a consent for
+four weeks), uses `hashed_user_id` subjects, and accepts exactly these redirect
+URIs: `https://claude.ai/api/mcp/auth_callback`, `https://claude.com/api/mcp/auth_callback`
+(strict) and a loopback pattern `http://localhost:<port>/callback` or
+`/oauth/callback` (also `127.0.0.1`) for local clients. Dynamic client registration is not
+offered. To allow another client, add its redirect URL to the blueprint (strict for a remote
+client, never a wildcard) and run `make authentik-apply`. To change the secret, change
+`MCP_OIDC_CLIENT_SECRET` and apply; everyone who connected must enter the new value, and
+tokens already issued work until they expire.
+
+Connect a client by hand:
+
+- Claude Code: `claude mcp add --transport http --client-id "$MCP_OIDC_CLIENT_ID"
+  --client-secret --callback-port 33418 shadow https://app.localhost/api/mcp`, then
+  `/mcp` to sign in. Pin `--callback-port`; the redirect is `http://localhost:<port>/callback`.
+- claude.ai custom connector: enter the client id and secret under Advanced settings; the
+  callback `https://claude.ai/api/mcp/auth_callback` is registered.
+
+Both need the MCP endpoint to name this provider as its authorization server, which it does
+from step 3b of the SaaS plan: `/api/mcp` still advertises Shadow's own OAuth server today.
+Before that, point a client at a stub protected resource whose metadata names
+`https://id.app.localhost/application/o/shadow-mcp/`.
+
+`make authentik-verify` exercises the provider as a pre-registered client would (consent every
+time, loopback code with PKCE, a code refused without or with a wrong verifier, no PKCE or the
+plain method refused, access and refresh token with rotation, audience and issuer, refusal of
+unregistered redirect URIs with HTTP 400, a wrong secret refused). Signing in with a real MCP client is manual QA
+(`docs/operations/qa/AI-MCP-QA-CHECKLIST.md`).
 
 ## 7. Operator cautions
 

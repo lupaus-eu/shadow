@@ -251,8 +251,7 @@ services:
     networks:
       - local
 
-  # Applies the blueprints (flows, the web application, brand, development users; the MCP
-  # application with ticket authentik-sign-in/02).
+  # Applies the blueprints (flows, the web and MCP applications, brand, development users).
   authentik-config-init:
     image: *authentik_image
     entrypoint: ["/bin/sh", "/config/configure.sh"]
