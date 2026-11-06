@@ -6,7 +6,11 @@ export type ConnectionType = { id: string; key: string; name: string; style: str
 export type AllowedConnection = { connection_type_id: string; source_node_type_id: string; target_node_type_id: string };
 export type GraphNode = { id: string; node_type_id: string; name: string; description: string | null; x: number; y: number; version: number };
 export type GraphConnection = { id: string; connection_type_id: string; source_node_id: string; target_node_id: string; version: number };
-export type Graph = { model: ModelSummary; node_types: NodeType[]; connection_types: ConnectionType[]; allowed_connections: AllowedConnection[]; nodes: GraphNode[]; connections: GraphConnection[] };
+export type ModelVersion = { id: string; name: string; description: string | null; is_baseline: boolean; base_version_id: string | null; version: number };
+export type NodeChange = { node_id: string; name: string; fields: string[] };
+export type ConnectionChange = { connection_id: string; connection_type_id: string; source: string; target: string };
+export type VersionChanges = { version: ModelVersion; base: ModelVersion | null; added_nodes: NodeChange[]; removed_nodes: NodeChange[]; changed_nodes: NodeChange[]; added_connections: ConnectionChange[]; removed_connections: ConnectionChange[] };
+export type Graph = { model: ModelSummary; version: ModelVersion; versions: ModelVersion[]; node_types: NodeType[]; connection_types: ConnectionType[]; allowed_connections: AllowedConnection[]; nodes: GraphNode[]; connections: GraphConnection[] };
 
 /** A write was refused because the row changed since it was read (HTTP 409 with `latest_version`). */
 export class StaleVersionError extends Error {}
@@ -45,11 +49,24 @@ export async function deleteModel(organizationId: string, model: ModelSummary): 
   await call(`${modelsUrl(organizationId)}/${model.id}?expected_version=${model.version}`, { method: "DELETE" });
 }
 
-export async function loadGraph(organizationId: string, modelId: string, signal?: AbortSignal): Promise<Graph> {
-  return (await call(`${modelsUrl(organizationId)}/${modelId}`, { signal })).json();
+export async function loadGraph(organizationId: string, modelId: string, versionId?: string | null, signal?: AbortSignal): Promise<Graph> {
+  const query = versionId ? `?version_id=${versionId}` : "";
+  return (await call(`${modelsUrl(organizationId)}/${modelId}${query}`, { signal })).json();
 }
 
-export async function createNode(organizationId: string, modelId: string, input: { node_type_id: string; name: string; x: number; y: number }): Promise<GraphNode> {
+export async function createVersion(organizationId: string, modelId: string, name: string, baseVersionId: string | null): Promise<ModelVersion> {
+  return (await call(`${modelsUrl(organizationId)}/${modelId}/versions`, { method: "POST", ...json({ name, base_version_id: baseVersionId }) })).json();
+}
+
+export async function deleteVersion(organizationId: string, modelId: string, version: ModelVersion): Promise<void> {
+  await call(`${modelsUrl(organizationId)}/${modelId}/versions/${version.id}?expected_version=${version.version}`, { method: "DELETE" });
+}
+
+export async function loadVersionChanges(organizationId: string, modelId: string, versionId: string): Promise<VersionChanges> {
+  return (await call(`${modelsUrl(organizationId)}/${modelId}/versions/${versionId}/changes`)).json();
+}
+
+export async function createNode(organizationId: string, modelId: string, input: { node_type_id: string; name: string; x: number; y: number; version_id?: string }): Promise<GraphNode> {
   return (await call(`${modelsUrl(organizationId)}/${modelId}/nodes`, { method: "POST", ...json(input) })).json();
 }
 

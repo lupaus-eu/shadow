@@ -4,6 +4,7 @@ from typing import Any
 from uuid import UUID
 
 from sqlalchemy import (
+    Boolean,
     DateTime,
     Float,
     ForeignKey,
@@ -553,11 +554,28 @@ class AllowedConnection(Base):
     target_node_type_id: Mapped[UUID] = mapped_column(Uuid)
 
 
+class ModelVersion(Base):
+    """The baseline of a Model or a version forked from another version; each holds a full graph."""
+
+    __tablename__ = "model_versions"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    organization_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    model_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    description: Mapped[str | None] = mapped_column(Text)
+    is_baseline: Mapped[bool] = mapped_column(Boolean, server_default="false")
+    base_version_id: Mapped[UUID | None] = mapped_column(Uuid)
+    version: Mapped[int] = mapped_column(Integer, server_default="1")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class Node(Base):
     __tablename__ = "nodes"
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     organization_id: Mapped[UUID] = mapped_column(Uuid, index=True)
     model_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    version_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    origin_node_id: Mapped[UUID | None] = mapped_column(Uuid)
     node_type_id: Mapped[UUID] = mapped_column(Uuid)
     name: Mapped[str] = mapped_column(String(120))
     description: Mapped[str | None] = mapped_column(Text)
@@ -572,6 +590,7 @@ class Connection(Base):
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     organization_id: Mapped[UUID] = mapped_column(Uuid, index=True)
     model_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    version_id: Mapped[UUID] = mapped_column(Uuid, index=True)
     connection_type_id: Mapped[UUID] = mapped_column(Uuid)
     source_node_id: Mapped[UUID] = mapped_column(Uuid)
     target_node_id: Mapped[UUID] = mapped_column(Uuid)

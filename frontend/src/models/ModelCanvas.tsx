@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useParams } from "react-router";
+import { Link, useParams, useSearchParams } from "react-router";
 
 import { usePageTitle } from "../shell/AppShell";
 import { modelsHref } from "../shell/nav";
 import { useOrganization } from "../shell/organization-outlet";
-import { Alert, Button, Field, Select, TextArea, TextInput } from "../ui";
+import { Alert, Button, Field, Select, TextArea, TextInput, useConfirm } from "../ui";
 import {
-  createConnection, createNode, deleteConnection, deleteNode, loadGraph, RuleError, StaleVersionError, updateNode,
-  type Graph, type GraphConnection, type GraphNode,
+  createConnection, createNode, createVersion, deleteConnection, deleteNode, deleteVersion, loadGraph, loadVersionChanges, RuleError, StaleVersionError, updateNode,
+  type Graph, type GraphConnection, type GraphNode, type VersionChanges,
 } from "./client";
 import { modelMessages } from "./messages";
 
@@ -32,6 +32,10 @@ function edgePoint(node: GraphNode, to: { x: number; y: number }) {
 export function ModelCanvas() {
   const { workspace, locale } = useOrganization();
   const { modelId = "" } = useParams();
+  const [search, setSearch] = useSearchParams();
+  const versionId = search.get("version");
+  const confirm = useConfirm();
+  const [changes, setChanges] = useState<VersionChanges | null>(null);
   const text = modelMessages(locale);
   const organizationId = workspace.organization.id;
   const writable = workspace.subscription.writable;
@@ -45,8 +49,13 @@ export function ModelCanvas() {
   usePageTitle(graph?.model.name ?? text.title);
 
   const reload = useCallback(async () => {
-    try { setGraph(await loadGraph(organizationId, modelId)); setFailed(false); } catch { setFailed(true); }
-  }, [organizationId, modelId]);
+    try {
+      const loaded = await loadGraph(organizationId, modelId, versionId);
+      setGraph(loaded);
+      setFailed(false);
+      setChanges(loaded.version.is_baseline ? null : await loadVersionChanges(organizationId, modelId, loaded.version.id));
+    } catch { setFailed(true); }
+  }, [organizationId, modelId, versionId]);
   useEffect(() => { void reload(); }, [reload]);
 
   const nodes = graph?.nodes ?? [];
@@ -94,7 +103,7 @@ export function ModelCanvas() {
     if (!node || !moved) return;
     // The server holds the version from before the move: reload gives the fresh row afterwards.
     void act(async () => {
-      const original = (await loadGraph(organizationId, modelId)).nodes.find((item) => item.id === node.id);
+      const original = (await loadGraph(organizationId, modelId, versionId)).nodes.find((item) => item.id === node.id);
       if (original) await updateNode(organizationId, modelId, original, { x: Math.round(node.x), y: Math.round(node.y) });
     });
   }
@@ -107,6 +116,24 @@ export function ModelCanvas() {
     void act(() => createConnection(organizationId, modelId, { connection_type_id: connecting.connectionTypeId, source_node_id: source.id, target_node_id: node.id }), text.notAllowed);
   }
 
+  const selectVersion = (id: string | null) => { setSelected(null); setConnecting(null); setSearch(id ? { version: id } : {}); };
+  async function fork() {
+    const name = window.prompt(text.versionName, "");
+    if (!name?.trim() || !graph) return;
+    setNotice(null);
+    try { selectVersion((await createVersion(organizationId, modelId, name.trim(), graph.version.id)).id); } catch (cause) {
+      setNotice(cause instanceof RuleError ? text.versionDuplicate : text.failed);
+    }
+  }
+  async function removeVersion() {
+    if (!graph || graph.version.is_baseline) return;
+    if (!(await confirm({ title: text.deleteVersionConfirm(graph.version.name), confirmLabel: text.deleteVersion, destructive: true }))) return;
+    setNotice(null);
+    try { await deleteVersion(organizationId, modelId, graph.version); selectVersion(null); } catch (cause) {
+      setNotice(cause instanceof RuleError ? text.versionHasForks : text.failed);
+    }
+  }
+
   if (failed) return <Alert tone="danger" role="alert">{text.failed}</Alert>;
   if (!graph) return <p role="status" className="text-ink-muted">{text.loading}</p>;
 
@@ -114,6 +141,11 @@ export function ModelCanvas() {
     <div className="flex flex-col gap-4">
       <Link className="inline-flex w-fit text-[13px] text-ink-muted" to={modelsHref(organizationId)}>{text.back}</Link>
       <h1 className="m-0 text-xl font-semibold">{graph.model.name}</h1>
+      <div className="flex flex-wrap items-end gap-3">
+        <Field label={text.version} className="w-56">{(control) => <Select {...control} value={graph.version.id} onChange={(event) => selectVersion(graph.versions.find((item) => item.id === event.target.value)?.is_baseline ? null : event.target.value)}>{graph.versions.map((item) => <option key={item.id} value={item.id}>{item.is_baseline ? text.baseline : item.name}</option>)}</Select>}</Field>
+        {writable ? <Button onClick={() => void fork()}>{text.newVersion}</Button> : null}
+        {writable && !graph.version.is_baseline ? <Button variant="ghost-danger" onClick={() => void removeVersion()}>{text.deleteVersion}</Button> : null}
+      </div>
       {!writable ? <Alert tone="warning">{text.readOnly}</Alert> : null}
       {notice ? <Alert tone="danger" role="alert">{notice}</Alert> : null}
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
@@ -152,7 +184,7 @@ export function ModelCanvas() {
           </svg>
         </div>
         <aside className="flex flex-col gap-4">
-          {writable ? <AddNode graph={graph} onAdd={(input) => act(() => createNode(organizationId, modelId, input))} text={text} count={nodes.length} /> : null}
+          {writable ? <AddNode graph={graph} onAdd={(input) => act(() => createNode(organizationId, modelId, { ...input, version_id: graph.version.id }))} text={text} count={nodes.length} /> : null}
           {selectedNode ? (
             <NodePanel key={`${selectedNode.id}-${selectedNode.version}`} graph={graph} node={selectedNode} writable={writable} connecting={connecting !== null} text={text}
               onSave={(changes) => act(() => updateNode(organizationId, modelId, selectedNode, changes))}
@@ -164,6 +196,7 @@ export function ModelCanvas() {
               onDelete={() => { setSelected(null); void act(() => deleteConnection(organizationId, modelId, selectedConnection)); }} />
           ) : <p className="m-0 text-[13px] text-ink-muted">{text.noSelection}</p>}
           {connecting ? <Alert tone="info" role="status">{text.connectHint}</Alert> : null}
+          {changes ? <ChangesPanel changes={changes} text={text} /> : null}
         </aside>
       </div>
     </div>
@@ -217,6 +250,26 @@ function ConnectionPanel({ connection, writable, byId, connectionTypes, text, on
       <h2 className="m-0 text-[14px] font-semibold">{connectionTypes.get(connection.connection_type_id)?.name}</h2>
       <p className="m-0 text-[13px]">{byId.get(connection.source_node_id)?.name} → {byId.get(connection.target_node_id)?.name}</p>
       {writable ? <Button variant="ghost-danger" onClick={onDelete}>{text.deleteConnection}</Button> : null}
+    </div>
+  );
+}
+
+function ChangesPanel({ changes, text }: { changes: VersionChanges; text: Text }) {
+  const groups: Array<[string, string[]]> = [
+    [text.addedNodes, changes.added_nodes.map((item) => item.name)],
+    [text.removedNodes, changes.removed_nodes.map((item) => item.name)],
+    [text.changedNodes, changes.changed_nodes.map((item) => `${item.name} (${item.fields.join(", ")})`)],
+    [text.addedConnections, changes.added_connections.map((item) => `${item.source} → ${item.target}`)],
+    [text.removedConnections, changes.removed_connections.map((item) => `${item.source} → ${item.target}`)],
+  ];
+  const visible = groups.filter(([, items]) => items.length > 0);
+  return (
+    <div className="flex flex-col gap-2 rounded-[var(--radius-card)] border border-line bg-surface p-4">
+      <h2 className="m-0 text-[14px] font-semibold">{text.changes}</h2>
+      {changes.base ? <p className="m-0 text-xs text-ink-muted">{text.forkedFrom(changes.base.is_baseline ? text.baseline : changes.base.name)}</p> : null}
+      {visible.length === 0 ? <p className="m-0 text-[13px] text-ink-muted">{text.noChanges}</p> : visible.map(([title, items]) => (
+        <div key={title}><p className="m-0 text-xs font-semibold">{title}</p><ul className="m-0 list-disc pl-5 text-[13px]">{items.map((item, index) => <li key={index}>{item}</li>)}</ul></div>
+      ))}
     </div>
   );
 }
