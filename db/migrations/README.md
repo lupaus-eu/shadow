@@ -101,6 +101,7 @@ The current ordered migration chain is:
 021_create_application_role.sql
 022_create_audit_events.sql
 023_create_background_queue.sql
+024_create_notifications.sql
 ```
 
 Jokaisella yllä olevalla tiedostolla on vastaava `.down.sql`-tiedosto.

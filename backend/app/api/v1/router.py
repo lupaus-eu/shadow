@@ -4,6 +4,7 @@ from app.api.v1.ai_change_sets.router import router as ai_change_sets_router
 from app.api.v1.auth.router import router as auth_router
 from app.api.v1.customers.router import router as customers_router
 from app.api.v1.mcp_oauth.connections_router import router as ai_connections_router
+from app.api.v1.notifications.router import router as notifications_router
 from app.api.v1.org_states.router import router as org_states_router
 from app.api.v1.org_twin_structure.router import router as org_twin_structure_router
 from app.api.v1.organisations.router import router as organisations_router
@@ -14,6 +15,7 @@ router = APIRouter(prefix="/api/v1")
 router.include_router(auth_router)
 router.include_router(customers_router)
 router.include_router(users_router)
+router.include_router(notifications_router)
 router.include_router(organisations_router)
 router.include_router(predictions_router)
 router.include_router(org_states_router)

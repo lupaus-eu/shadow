@@ -49,4 +49,39 @@ Compose profile `worker` and no deploy command starts it until the production
 runtime adopts it (SaaS plan step 086A). The `health-check` subcommand verifies
 the database connection.
 
+## Email and notifications (ticket 04)
+
+Transactional email goes through the outbox: a feature enqueues a message in
+its own transaction, and the worker sends it, retrying with backoff up to three
+attempts (a permanent failure, such as a rejected address, fails at once) and
+recording only the error type, or a content-free message of the delivery
+errors. Delivery is at-least-once: if the send succeeds but its completion
+cannot be recorded, the message is sent again after the claim timeout; the
+provider does not deduplicate. Finished outbox rows hold the recipient's
+address and the text, so the daily cleanup deletes them after
+`OUTBOX_RETENTION_DAYS`. `EMAIL_BACKEND`
+selects the sender: `scaleway` (Scaleway Transactional Email, production; the
+worker refuses to start without its settings), `smtp` (a local catcher,
+Mailpit in development, no TLS or login) or `log` (records only that a message
+was sent). The Scaleway client uses the Python standard library, so no HTTP
+dependency is added; Yearclock's `httpx` client would have needed `httpx2`
+promoted from a development dependency. A recipient's address, the subject and
+the body are never logged.
+
+In-app notifications are a generic mechanism: a `notifications` row says that
+something changed for one person, with a type and parameters, and the text is
+built when it is read. `notify_many` writes them (and queues the optional
+email) in the caller's transaction, never notifies the actor, replaces an
+unread notification with the same dedupe key, and limits email per recipient
+per day (mandatory notices excepted). Feature code defines its own types and
+registers an email renderer per type. Preferences, per-type settings, the
+locale of the text and tenant membership checks arrive with the first types and
+the tenant routes. The API shows a person only their own notifications
+(`/api/v1/notifications`), and a daily job deletes notifications older than
+`NOTIFICATION_RETENTION_DAYS`.
+
+Scaleway Transactional Email becomes a processor of recipients' email
+addresses and notification text; `docs/gdpr/` records it when the production
+runtime adopts the worker.
+
 Part of ADR-016's platform foundation.

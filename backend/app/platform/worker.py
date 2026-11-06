@@ -18,7 +18,7 @@ from datetime import UTC, datetime, timedelta
 from time import sleep
 from types import FrameType
 
-from sqlalchemy import text
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.database import (
@@ -27,9 +27,103 @@ from app.core.database import (
     get_session_factory,
     transaction_session,
 )
+from app.platform.email_delivery import (
+    EmailDeliveryError,
+    EmailMessage,
+    TransactionalEmailSender,
+    sender_from_environment,
+)
 from app.platform.jobs import run_one_background_job, run_schedulers
+from app.platform.models import OutboxMessage
+from app.platform.notifications import EMAIL_TOPIC, register_notification_jobs
+from app.platform.work_queue import (
+    claim_next_outbox_message,
+    complete_queue_record,
+    fail_queue_record,
+    retry_queue_record,
+)
 
 LOGGER = logging.getLogger("shadow.worker")
+MAX_EMAIL_ATTEMPTS = 3
+EMAIL_TOPICS = (EMAIL_TOPIC,)
+
+
+def deliver_one_email(
+    session_factory: sessionmaker[Session], sender: TransactionalEmailSender
+) -> bool:
+    """Send one queued email; False when none is due.
+
+    A failed send is retried with backoff up to three attempts, then marked
+    failed. The error is recorded without the message content.
+    """
+    for topic in EMAIL_TOPICS:
+        if _deliver_one(session_factory, sender, topic):
+            return True
+    return False
+
+
+def _deliver_one(
+    session_factory: sessionmaker[Session], sender: TransactionalEmailSender, topic: str
+) -> bool:
+    with transaction_session(session_factory, RequestContext()) as session:
+        message = claim_next_outbox_message(session, topic=topic)
+        if message is None:
+            return False
+        message_id, payload = message.id, dict(message.payload)
+        attempts, key = message.attempts, message.idempotency_key
+    try:
+        recipient, subject, text_body = (
+            payload.get("to"),
+            payload.get("subject"),
+            payload.get("text"),
+        )
+        if not (
+            isinstance(recipient, str)
+            and isinstance(subject, str)
+            and isinstance(text_body, str)
+        ):
+            raise EmailDeliveryError("invalid email payload", permanent=True)
+        provider_id = sender.send(EmailMessage(recipient, subject, text_body, key))
+    except Exception as error:  # noqa: BLE001 - every failure must be recorded
+        LOGGER.warning(
+            "email %s failed on attempt %d: %s",
+            message_id,
+            attempts,
+            type(error).__name__,
+        )
+        permanent = isinstance(error, EmailDeliveryError) and error.permanent
+        # Only our own delivery errors carry a content-free message.
+        summary = (
+            f"{type(error).__name__}: {error}"
+            if isinstance(error, EmailDeliveryError)
+            else type(error).__name__
+        )[:500]
+        with transaction_session(session_factory, RequestContext()) as session:
+            record = session.get(OutboxMessage, message_id, with_for_update=True)
+            if (
+                record is not None
+                and record.status == "processing"
+                and record.attempts == attempts
+            ):
+                if permanent or attempts >= MAX_EMAIL_ATTEMPTS:
+                    fail_queue_record(record, error=summary)
+                else:
+                    retry_queue_record(
+                        record,
+                        error=summary,
+                        available_time=func.now() + timedelta(minutes=2**attempts),
+                    )
+        return True
+    with transaction_session(session_factory, RequestContext()) as session:
+        record = session.get(OutboxMessage, message_id, with_for_update=True)
+        if (
+            record is not None
+            and record.status == "processing"
+            and record.attempts == attempts
+        ):
+            record.provider_message_id = provider_id
+            complete_queue_record(record)
+    return True
 
 
 class Worker:
@@ -37,11 +131,13 @@ class Worker:
         self,
         session_factory: sessionmaker[Session],
         *,
+        sender: TransactionalEmailSender | None = None,
         schedule_interval: timedelta = timedelta(hours=1),
         idle_sleep_seconds: float = 1.0,
         error_sleep_seconds: float = 5.0,
     ) -> None:
         self._session_factory = session_factory
+        self._sender = sender
         self._schedule_interval = schedule_interval
         self._idle_sleep_seconds = idle_sleep_seconds
         self._error_sleep_seconds = error_sleep_seconds
@@ -60,6 +156,10 @@ class Worker:
         if now >= self._next_schedule:
             run_schedulers(self._session_factory, now)
             self._next_schedule = now + self._schedule_interval
+        if self._sender is not None and deliver_one_email(
+            self._session_factory, self._sender
+        ):
+            worked = True
         if run_one_background_job(self._session_factory):
             worked = True
         return worked
@@ -116,8 +216,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         if arguments.command == "health-check":
             return 0 if worker_is_healthy(session_factory) else 1
+        register_notification_jobs()
         worker = Worker(
             session_factory,
+            sender=sender_from_environment(),
             schedule_interval=timedelta(seconds=_schedule_interval_seconds()),
         )
         signal.signal(signal.SIGTERM, worker.request_stop)

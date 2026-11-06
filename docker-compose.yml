@@ -158,6 +158,16 @@ services:
       - .:/workspace
     command: ["-tsvg", "-o", "generated", "db-physical-schema.puml"]
 
+  # Catches the worker's development email (ADR-019); nothing leaves the host.
+  mailpit:
+    image: docker.io/axllent/mailpit:v1.33.0@sha256:9b3a463be15354c0f0eba91697d80e3e0d8a5623ef0e627cacc836bc17fd5231
+    ports:
+      - "127.0.0.1:${MAILPIT_UI_PORT:-8025}:8025"
+    restart: unless-stopped
+    networks:
+      local:
+        ipv4_address: 172.28.59.8
+
   worker:
     build:
       context: .
@@ -170,8 +180,19 @@ services:
       DATABASE_MAX_OVERFLOW: ${DATABASE_MAX_OVERFLOW:-10}
       WORKER_SCHEDULE_INTERVAL_SECONDS: ${WORKER_SCHEDULE_INTERVAL_SECONDS:-3600}
       QUEUE_CLAIM_TIMEOUT_SECONDS: ${QUEUE_CLAIM_TIMEOUT_SECONDS:-900}
+      NOTIFICATION_RETENTION_DAYS: ${NOTIFICATION_RETENTION_DAYS:-90}
+      OUTBOX_RETENTION_DAYS: ${OUTBOX_RETENTION_DAYS:-7}
+      NOTIFICATION_EMAILS_PER_DAY: ${NOTIFICATION_EMAILS_PER_DAY:-10}
+      # Development mail goes to Mailpit (web UI at http://localhost:8025).
+      EMAIL_BACKEND: smtp
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
+      SCW_TEM_DEFAULT_SENDER_EMAIL: shadow@app.localhost
+      SCW_TEM_DEFAULT_SENDER_NAME: Shadow (local)
     depends_on:
       database:
+        condition: service_started
+      mailpit:
         condition: service_started
     healthcheck:
       test: ["CMD", "uv", "run", "python", "-m", "app.platform.worker", "health-check"]

@@ -906,8 +906,10 @@ temporary directory removed after the child is reaped.
 ADR-019 adds a second, generic worker, `python -m app.platform.worker`: it runs
 registered handlers for the durable `background_jobs` queue (idempotent
 enqueue, `FOR UPDATE SKIP LOCKED` claims, backoff retries, stale-claim recovery)
-and registered schedulers on an interval, and later delivers the
-`outbox_messages` email queue. It is separate from the prediction worker, which
+and registered schedulers on an interval, and delivers the
+`outbox_messages` email queue through the configured sender (Scaleway
+Transactional Email in production, Mailpit locally). It also deletes old
+in-app notifications (`/api/v1/notifications` shows a person their own). It is separate from the prediction worker, which
 keeps its advisory lock and is unchanged. In production it is defined behind the
 Compose profile `worker` and is not started yet.
 

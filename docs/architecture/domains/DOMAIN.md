@@ -26,6 +26,7 @@ docs/architecture/domains/DOCUMENT.md
 docs/architecture/domains/AI.md
 docs/architecture/domains/FORECASTING.md
 docs/architecture/domains/USERS.md
+docs/architecture/domains/PLATFORM.md
 docs/architecture/domains/ORGANISATIONS.md
 docs/architecture/domains/ORG_STATES.md
 docs/architecture/domains/ORG_TWIN_STRUCTURE.md

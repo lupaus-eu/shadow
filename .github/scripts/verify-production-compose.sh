@@ -224,6 +224,15 @@ assert worker["environment"] == {
     "DATABASE_MAX_OVERFLOW": "10",
     "WORKER_SCHEDULE_INTERVAL_SECONDS": "3600",
     "QUEUE_CLAIM_TIMEOUT_SECONDS": "900",
+    "NOTIFICATION_RETENTION_DAYS": "90",
+    "OUTBOX_RETENTION_DAYS": "7",
+    "NOTIFICATION_EMAILS_PER_DAY": "10",
+    "EMAIL_BACKEND": "scaleway",
+    "SCW_SECRET_KEY": "",
+    "SCW_DEFAULT_PROJECT_ID": "",
+    "SCW_TEM_DEFAULT_SENDER_EMAIL": "",
+    "SCW_TEM_DEFAULT_SENDER_NAME": "Shadow",
+    "SCW_TEM_REGION": "fr-par",
 }
 assert worker["networks"] == {"data": None}
 assert worker["healthcheck"]["test"] == ["CMD", "python", "-m", "app.platform.worker", "health-check"]

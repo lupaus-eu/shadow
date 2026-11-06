@@ -206,6 +206,8 @@ rendered `docker compose config` output into evidence.
 | `BACKEND_IMAGE`, `FRONTEND_IMAGE` | Never in the env file: `deploy/bin/*` passes the frozen image IDs from the release record |
 | `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | Private PostgreSQL 18 initialization; use a URL-safe password such as `openssl rand -hex 32` |
 | `DATABASE_URL` | Secret `postgresql://USER:PASSWORD@database:5432/DB`, shared by API/migration/worker and the backup runner |
+| `EMAIL_BACKEND`, `SCW_SECRET_KEY`, `SCW_DEFAULT_PROJECT_ID`, `SCW_TEM_DEFAULT_SENDER_EMAIL`, `SCW_TEM_DEFAULT_SENDER_NAME`, `SCW_TEM_REGION` | Platform worker email (ADR-019): production uses `scaleway` and the worker refuses to start without the key, project and sender; `SCW_SECRET_KEY` is a secret in the protected env file. Not active until the runtime adopts the worker |
+| `NOTIFICATION_RETENTION_DAYS`, `OUTBOX_RETENTION_DAYS`, `NOTIFICATION_EMAILS_PER_DAY` | Notification retention (default 90), retention of finished outbox emails that hold addresses and text (default 7), and the daily email limit per recipient (default 10, soft) |
 | `WORKER_SCHEDULE_INTERVAL_SECONDS`, `QUEUE_CLAIM_TIMEOUT_SECONDS` | Optional platform worker settings (defaults 3600 and 900); the worker is not started in production until the runtime adopts it |
 | `DATABASE_POOL_SIZE`, `DATABASE_MAX_OVERFLOW` | Optional connection pool of each backend or worker process (defaults 5 and 10, SQLAlchemy's own defaults) |
 | `OIDC_DISCOVERY_URL`, `OIDC_ISSUER` | Exact tenant-specific HTTPS metadata/issuer |

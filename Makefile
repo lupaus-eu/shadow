@@ -113,7 +113,7 @@ dev-up:
 	$(COMPOSE_LOCAL) up -d database; \
 	$(MIGRATE); \
 	$(SEED); \
-	$(COMPOSE_LOCAL) up -d prediction-worker worker backend frontend local-caddy
+	$(COMPOSE_LOCAL) up -d prediction-worker mailpit worker backend frontend local-caddy
 
 dev-down:
 	$(COMPOSE_LOCAL) down
