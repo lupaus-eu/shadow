@@ -1,0 +1,209 @@
+{
+ "node_types": [
+  {
+   "key": "person",
+   "name": "Person",
+   "color": "#FECDC2",
+   "shape": "rectangle"
+  },
+  {
+   "key": "team",
+   "name": "Team",
+   "color": "#FEC294",
+   "shape": "rectangle"
+  },
+  {
+   "key": "product",
+   "name": "Product",
+   "color": "#FDDB96",
+   "shape": "rectangle"
+  },
+  {
+   "key": "goal",
+   "name": "Goal",
+   "color": "#d7d94d",
+   "shape": "rectangle"
+  },
+  {
+   "key": "business_object",
+   "name": "Business object",
+   "color": "#FFD240",
+   "shape": "rectangle"
+  },
+  {
+   "key": "contract",
+   "name": "Contract",
+   "color": "#BFE5A4",
+   "shape": "rectangle"
+  },
+  {
+   "key": "app_service",
+   "name": "App service",
+   "color": "#B7D9E6",
+   "shape": "rectangle"
+  },
+  {
+   "key": "app_component",
+   "name": "App component",
+   "color": "#B8CBFF",
+   "shape": "rectangle"
+  },
+  {
+   "key": "journey",
+   "name": "Journey",
+   "color": "#CFC6F5",
+   "shape": "rectangle"
+  },
+  {
+   "key": "brand",
+   "name": "Brand",
+   "color": "#FCC9FB",
+   "shape": "rectangle"
+  },
+  {
+   "key": "metric",
+   "name": "Metric",
+   "color": "#F4A9BA",
+   "shape": "rectangle"
+  }
+ ],
+ "connection_types": [
+  {
+   "key": "features_in",
+   "name": "Features in",
+   "style": "solid",
+   "source_end": "none",
+   "target_end": "arrow",
+   "allowed": [
+    [
+     "product",
+     "journey"
+    ]
+   ]
+  },
+  {
+   "key": "is_composed_of",
+   "name": "Is composed of",
+   "style": "solid",
+   "source_end": "none",
+   "target_end": "arrow",
+   "allowed": [
+    [
+     "product",
+     "app_service"
+    ],
+    [
+     "product",
+     "contract"
+    ],
+    [
+     "product",
+     "business_object"
+    ],
+    [
+     "goal",
+     "goal"
+    ],
+    [
+     "team",
+     "team"
+    ]
+   ]
+  },
+  {
+   "key": "association",
+   "name": "Association",
+   "style": "solid",
+   "source_end": "none",
+   "target_end": "none",
+   "allowed": [
+    [
+     "business_object",
+     "business_object"
+    ]
+   ]
+  },
+  {
+   "key": "realizes",
+   "name": "Realizes",
+   "style": "solid",
+   "source_end": "none",
+   "target_end": "arrow",
+   "allowed": [
+    [
+     "app_component",
+     "app_service"
+    ]
+   ]
+  },
+  {
+   "key": "embodies",
+   "name": "Embodies",
+   "style": "solid",
+   "source_end": "none",
+   "target_end": "arrow",
+   "allowed": [
+    [
+     "product",
+     "brand"
+    ]
+   ]
+  },
+  {
+   "key": "has",
+   "name": "Has",
+   "style": "solid",
+   "source_end": "none",
+   "target_end": "arrow",
+   "allowed": [
+    [
+     "goal",
+     "metric"
+    ],
+    [
+     "team",
+     "goal"
+    ]
+   ]
+  },
+  {
+   "key": "is_assigned_to",
+   "name": "Is assigned to",
+   "style": "solid",
+   "source_end": "none",
+   "target_end": "arrow",
+   "allowed": [
+    [
+     "person",
+     "team"
+    ]
+   ]
+  },
+  {
+   "key": "offers",
+   "name": "Offers",
+   "style": "solid",
+   "source_end": "none",
+   "target_end": "arrow",
+   "allowed": [
+    [
+     "team",
+     "product"
+    ]
+   ]
+  },
+  {
+   "key": "uses",
+   "name": "Uses",
+   "style": "solid",
+   "source_end": "none",
+   "target_end": "arrow",
+   "allowed": [
+    [
+     "team",
+     "product"
+    ]
+   ]
+  }
+ ]
+}

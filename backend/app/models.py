@@ -5,6 +5,7 @@ from uuid import UUID
 
 from sqlalchemy import (
     DateTime,
+    Float,
     ForeignKey,
     ForeignKeyConstraint,
     Integer,
@@ -503,3 +504,76 @@ class NotificationPreference(Base):
     summary_yearclock_ids: Mapped[list[UUID] | None] = mapped_column(ARRAY(Uuid))
     summary_sent_on: Mapped[date | None] = mapped_column()
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class TwinModel(Base):
+    """A digital twin of one organisation, owned by an Organization (the paying account)."""
+
+    __tablename__ = "models"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    organization_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    description: Mapped[str | None] = mapped_column(Text)
+    version: Mapped[int] = mapped_column(Integer, server_default="1")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class NodeType(Base):
+    __tablename__ = "node_types"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    organization_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    model_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    key: Mapped[str] = mapped_column(String(60))
+    name: Mapped[str] = mapped_column(String(80))
+    color: Mapped[str] = mapped_column(String(7))
+    shape: Mapped[str] = mapped_column(String(20), server_default="rectangle")
+    version: Mapped[int] = mapped_column(Integer, server_default="1")
+
+
+class ConnectionType(Base):
+    __tablename__ = "connection_types"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    organization_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    model_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    key: Mapped[str] = mapped_column(String(60))
+    name: Mapped[str] = mapped_column(String(80))
+    style: Mapped[str] = mapped_column(String(20), server_default="solid")
+    source_end: Mapped[str] = mapped_column(String(20), server_default="none")
+    target_end: Mapped[str] = mapped_column(String(20), server_default="arrow")
+    version: Mapped[int] = mapped_column(Integer, server_default="1")
+
+
+class AllowedConnection(Base):
+    __tablename__ = "allowed_connections"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    organization_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    model_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    connection_type_id: Mapped[UUID] = mapped_column(Uuid)
+    source_node_type_id: Mapped[UUID] = mapped_column(Uuid)
+    target_node_type_id: Mapped[UUID] = mapped_column(Uuid)
+
+
+class Node(Base):
+    __tablename__ = "nodes"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    organization_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    model_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    node_type_id: Mapped[UUID] = mapped_column(Uuid)
+    name: Mapped[str] = mapped_column(String(120))
+    description: Mapped[str | None] = mapped_column(Text)
+    x: Mapped[float] = mapped_column(Float, server_default="0")
+    y: Mapped[float] = mapped_column(Float, server_default="0")
+    version: Mapped[int] = mapped_column(Integer, server_default="1")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Connection(Base):
+    __tablename__ = "connections"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    organization_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    model_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    connection_type_id: Mapped[UUID] = mapped_column(Uuid)
+    source_node_id: Mapped[UUID] = mapped_column(Uuid)
+    target_node_id: Mapped[UUID] = mapped_column(Uuid)
+    version: Mapped[int] = mapped_column(Integer, server_default="1")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
