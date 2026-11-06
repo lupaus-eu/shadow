@@ -29,4 +29,24 @@ table exists; row-level security limits reads to the tenant with the tenant
 routes. Existing mutations do not write audit events yet; each feature adds
 them where it changes the action.
 
+## Worker, job queue and outbox (ticket 03)
+
+A second process, `python -m app.platform.worker`, runs background work. The
+prediction worker (ADR-012) stays separate and unchanged. Work is queued in
+PostgreSQL (`background_jobs`, and `outbox_messages` for email): enqueueing is
+idempotent through a unique key, rows are claimed with `FOR UPDATE SKIP LOCKED`
+so several workers never take the same row, a failed job is retried with
+bounded exponential backoff up to five attempts, and a claim that is never
+finished (a crashed worker) becomes claimable again after
+`QUEUE_CLAIM_TIMEOUT_SECONDS`; Yearclock has no such recovery. A running
+handler holds a row lock, so only a crashed worker's row is taken over, and a
+worker that lost its claim changes nothing. Idempotency keys are unique per
+tenant. Each job runs in
+its own transaction as `shadow_app` under the job's tenant context. Features
+register a handler per job type and, for timed work, a scheduler; the worker
+holds no feature logic itself. In production the service is defined behind the
+Compose profile `worker` and no deploy command starts it until the production
+runtime adopts it (SaaS plan step 086A). The `health-check` subcommand verifies
+the database connection.
+
 Part of ADR-016's platform foundation.

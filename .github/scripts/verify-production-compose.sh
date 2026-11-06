@@ -105,7 +105,11 @@ assert ipaddress.ip_address(caddy_ip) not in ipaddress.ip_network(edge["ip_range
 
 worker = services["prediction-worker"]
 assert worker["command"] == ["python", "-m", "app.api.v1.predictions.worker"]
-assert worker["environment"] == {"DATABASE_URL": "postgresql://shadow:password@database:5432/shadow"}
+assert worker["environment"] == {
+    "DATABASE_URL": "postgresql://shadow:password@database:5432/shadow",
+    "DATABASE_POOL_SIZE": "5",
+    "DATABASE_MAX_OVERFLOW": "10",
+}
 assert worker["networks"] == {"data": None}
 assert worker["healthcheck"]["test"] == ["CMD", "python", "-m", "app.api.v1.predictions.worker", "health-check"]
 assert {key: worker["healthcheck"][key] for key in ("interval", "timeout", "retries", "start_period")} == {
@@ -163,6 +167,9 @@ for volume in cleanup["volumes"]:
     if volume["target"] != "/var/run/docker.sock":
         assert volume["read_only"] is True, volume["target"]
 
+# ADR-019: the platform worker is defined but stays behind the "worker" profile
+# until the production runtime adopts it, so no deploy tooling starts it yet.
+assert "worker" not in services
 assert set(model["volumes"]) == {"postgres_data", "caddy_data"}
 text = json.dumps(model).lower()
 for retired in ("coolify", "traefik", "authentik", "caddy_trusted_proxy"):
@@ -197,6 +204,41 @@ environment = json.load(sys.stdin)["services"]["backend"]["environment"]
 assert environment["MCP_ENABLED"] == "true"
 assert environment["MCP_CHANGE_SET_REVIEW_ENABLED"] == "true"
 assert environment["MCP_OAUTH_MAX_CLIENTS"] == "20000"
+'
+
+# The platform worker (profile "worker"): same image and hardening as the
+# prediction worker, its own entry point, and no ports or secrets beyond the
+# database URL. It is absent from the default render checked above.
+env -i PATH="${PATH}" "${compose_env[@]}" \
+  docker compose --env-file /dev/null --file docker-compose.production.yml \
+  --profile worker config --format json | python3 -c '
+import json, sys
+services = json.load(sys.stdin)["services"]
+worker = services["worker"]
+assert worker["profiles"] == ["worker"]
+assert worker["image"] == "sha256:" + "1" * 64 and worker["pull_policy"] == "never"
+assert worker["command"] == ["python", "-m", "app.platform.worker"]
+assert worker["environment"] == {
+    "DATABASE_URL": "postgresql://shadow:password@database:5432/shadow",
+    "DATABASE_POOL_SIZE": "5",
+    "DATABASE_MAX_OVERFLOW": "10",
+    "WORKER_SCHEDULE_INTERVAL_SECONDS": "3600",
+    "QUEUE_CLAIM_TIMEOUT_SECONDS": "900",
+}
+assert worker["networks"] == {"data": None}
+assert worker["healthcheck"]["test"] == ["CMD", "python", "-m", "app.platform.worker", "health-check"]
+assert worker["read_only"] is True and worker["cap_drop"] == ["ALL"]
+assert worker["security_opt"] == ["no-new-privileges:true"] and worker.get("privileged", False) is False
+assert worker["labels"] == {"eu.lupaus.shadow.retain": "true"}
+assert [volume["target"] for volume in worker.get("volumes", [])] == []
+assert worker["tmpfs"] == ["/tmp:size=16m"], worker.get("tmpfs")
+assert {key: worker["healthcheck"][key] for key in ("interval", "timeout", "retries", "start_period")} == {
+    "interval": "10s", "timeout": "10s", "retries": 5, "start_period": "30s",
+}
+assert worker["stop_grace_period"] == "20s"
+assert worker["restart"] == "unless-stopped" and worker["init"] is True
+assert worker["depends_on"]["migration"]["condition"] == "service_completed_successfully"
+assert not worker.get("ports")
 '
 
 echo "Production Compose requires every release, database, auth and scheduler setting and preserves private ports, hardening, isolation and migration gates; MCP stays off unless the env file switches it on."

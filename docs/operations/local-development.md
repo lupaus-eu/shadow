@@ -36,7 +36,12 @@ make local-verify
 
 `make dev-up` starts the application database, applies pending migrations and
 the idempotent development seed, then starts the backend, one prediction worker,
-Vite and local Caddy. The development wrapper keeps its two local Users in the
+the platform `worker` (background jobs and the email outbox, ADR-019), Vite and
+local Caddy. The platform worker needs only `DATABASE_URL`; check it with
+`docker compose … exec worker uv run python -m app.platform.worker health-check`
+(exit code 0 when the database is reachable). Optional settings:
+`WORKER_SCHEDULE_INTERVAL_SECONDS` (default 3600) and `QUEUE_CLAIM_TIMEOUT_SECONDS`
+(default 900, after which an unfinished claim is taken again). The development wrapper keeps its two local Users in the
 same transaction while invoking the shared metamodel-only SQL/JSON used by
 `python -m app.seed_reference_data`; never use that full wrapper in production.
 It never runs a reset, `down -v`, volume deletion or provider mutation. The

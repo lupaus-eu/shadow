@@ -162,6 +162,40 @@ services:
     restart: unless-stopped
     stop_grace_period: 10s
 
+  # ADR-019: background jobs and the email outbox. Defined but behind the
+  # "worker" profile: no deploy tooling starts it until the production runtime
+  # adopts it (step 086A of the SaaS plan).
+  worker:
+    <<: [*hardening, *backend-image]
+    profiles: [worker]
+    command: ["python", "-m", "app.platform.worker"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL for the private database}
+      DATABASE_POOL_SIZE: ${DATABASE_POOL_SIZE:-5}
+      DATABASE_MAX_OVERFLOW: ${DATABASE_MAX_OVERFLOW:-10}
+      WORKER_SCHEDULE_INTERVAL_SECONDS: ${WORKER_SCHEDULE_INTERVAL_SECONDS:-3600}
+      QUEUE_CLAIM_TIMEOUT_SECONDS: ${QUEUE_CLAIM_TIMEOUT_SECONDS:-900}
+    tmpfs:
+      - /tmp:size=16m
+    networks: [data]
+    depends_on:
+      database:
+        condition: service_healthy
+        required: true
+      migration:
+        condition: service_completed_successfully
+        required: true
+    healthcheck:
+      test: ["CMD", "python", "-m", "app.platform.worker", "health-check"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    init: true
+    labels: *retain
+    restart: unless-stopped
+    stop_grace_period: 20s
+
   frontend:
     <<: *hardening
     image: ${FRONTEND_IMAGE:?Set FRONTEND_IMAGE to the frozen release frontend image ID}

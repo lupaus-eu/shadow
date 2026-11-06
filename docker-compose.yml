@@ -158,6 +158,38 @@ services:
       - .:/workspace
     command: ["-tsvg", "-o", "generated", "db-physical-schema.puml"]
 
+  worker:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      target: dev
+    command: ["uv", "run", "python", "-m", "app.platform.worker"]
+    environment:
+      DATABASE_URL: postgresql://${DATABASE_USER:-shadow}:${DATABASE_PASSWORD:-shadow_dev_password}@database:5432/${DATABASE_NAME:-shadow}
+      DATABASE_POOL_SIZE: ${DATABASE_POOL_SIZE:-5}
+      DATABASE_MAX_OVERFLOW: ${DATABASE_MAX_OVERFLOW:-10}
+      WORKER_SCHEDULE_INTERVAL_SECONDS: ${WORKER_SCHEDULE_INTERVAL_SECONDS:-3600}
+      QUEUE_CLAIM_TIMEOUT_SECONDS: ${QUEUE_CLAIM_TIMEOUT_SECONDS:-900}
+    depends_on:
+      database:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "uv", "run", "python", "-m", "app.platform.worker", "health-check"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 10s
+    volumes:
+      - ./backend:/app
+      - backend_uv_cache:/root/.cache/uv
+      - backend_venv:/app/.venv
+    networks:
+      local:
+        ipv4_address: 172.28.59.7
+
 volumes:
   # Retained declarations avoid any volume deletion during the Authentik retirement.
   authentik_data:

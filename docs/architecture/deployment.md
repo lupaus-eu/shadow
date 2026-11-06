@@ -206,6 +206,7 @@ rendered `docker compose config` output into evidence.
 | `BACKEND_IMAGE`, `FRONTEND_IMAGE` | Never in the env file: `deploy/bin/*` passes the frozen image IDs from the release record |
 | `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | Private PostgreSQL 18 initialization; use a URL-safe password such as `openssl rand -hex 32` |
 | `DATABASE_URL` | Secret `postgresql://USER:PASSWORD@database:5432/DB`, shared by API/migration/worker and the backup runner |
+| `WORKER_SCHEDULE_INTERVAL_SECONDS`, `QUEUE_CLAIM_TIMEOUT_SECONDS` | Optional platform worker settings (defaults 3600 and 900); the worker is not started in production until the runtime adopts it |
 | `DATABASE_POOL_SIZE`, `DATABASE_MAX_OVERFLOW` | Optional connection pool of each backend or worker process (defaults 5 and 10, SQLAlchemy's own defaults) |
 | `OIDC_DISCOVERY_URL`, `OIDC_ISSUER` | Exact tenant-specific HTTPS metadata/issuer |
 | `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` | Shared confidential app ID, production's own secret |
@@ -502,6 +503,7 @@ Docker, reruns cloud-init or changes swap.
 | `frontend` (Caddy) | frozen frontend image ID | `edge` (fixed `172.30.59.2`), publishes TCP 80/443 | `shadow_caddy_data` at `/data` | `unless-stopped` |
 | `backend` | frozen backend image ID | `edge` (ingress, Entra egress) + `data` | none | `unless-stopped` |
 | `prediction-worker` | same backend image ID | `data` only | none | `unless-stopped` |
+| `worker` (profile `worker`, not started by any deploy command yet) | same backend image ID | `data` only | none | `unless-stopped` |
 | `migration` (one-shot) | same backend image ID | `data` only | none | `no` |
 | `database` | `postgres:18.6@sha256:…` | `data` only | `shadow_postgres_data` | `unless-stopped` |
 | `ofelia` (profile `scheduler`) | `mcuadros/ofelia:0.3.22@sha256:…` | `network_mode: none` | none | `unless-stopped` |

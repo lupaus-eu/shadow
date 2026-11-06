@@ -16,7 +16,7 @@
 | `scripts/` | Developer scripts: local TLS, the AI review record validator, and `scratch-status.py` |
 | `.github/` | CI (`workflows/ci.yml`), the manual production delivery workflow, and its verification scripts |
 | `.claude-plugin/` | The repository plugin marketplace for the Shadow Claude Code plugin |
-| `docker-compose.yml`, `docker-compose.production.yml` | Local and production Compose stacks |
+| `docker-compose.yml`, `docker-compose.production.yml` | Local and production Compose stacks (the platform `worker` runs locally; in production it sits behind the `worker` profile until adopted) |
 | `CONTEXT.md` | Canonical business vocabulary |
 | `FEATURE_WORKFLOW.md` | Specification and delivery workflow |
 | `.scratch/` | Local, unversioned PRDs, designs, and tickets (README and templates are versioned) |

@@ -903,6 +903,14 @@ calculation child process; it adds no service, queue or worker. ADR-014 runs
 each child in its own process group, stopped as a whole, with a private
 temporary directory removed after the child is reaped.
 
+ADR-019 adds a second, generic worker, `python -m app.platform.worker`: it runs
+registered handlers for the durable `background_jobs` queue (idempotent
+enqueue, `FOR UPDATE SKIP LOCKED` claims, backoff retries, stale-claim recovery)
+and registered schedulers on an interval, and later delivers the
+`outbox_messages` email queue. It is separate from the prediction worker, which
+keeps its advisory lock and is unchanged. In production it is defined behind the
+Compose profile `worker` and is not started yet.
+
 ADR-015's accepted AI via MCP design adds no background execution: MCP tools,
 change-set dry-run and apply are short synchronous requests, and expired OAuth
 rows are cleaned up lazily without a scheduler.

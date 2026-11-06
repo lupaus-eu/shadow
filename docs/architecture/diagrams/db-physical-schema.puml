@@ -371,6 +371,37 @@ entity "audit_events" as audit_events {
   change_summary : JSONB
 }
 
+entity "background_jobs" as background_jobs {
+  * id : UUID
+  --
+  tenant_id : UUID
+  job_type : TEXT
+  payload : JSONB
+  idempotency_key : TEXT
+  status : TEXT
+  attempts : INTEGER
+  available_time : TIMESTAMPTZ
+  created_time : TIMESTAMPTZ
+  claimed_time : TIMESTAMPTZ
+  last_error : TEXT
+}
+
+entity "outbox_messages" as outbox_messages {
+  * id : UUID
+  --
+  tenant_id : UUID
+  topic : TEXT
+  payload : JSONB
+  idempotency_key : TEXT
+  status : TEXT
+  attempts : INTEGER
+  available_time : TIMESTAMPTZ
+  created_time : TIMESTAMPTZ
+  claimed_time : TIMESTAMPTZ
+  last_error : TEXT
+  provider_message_id : TEXT
+}
+
 entity "ai_change_sets" as ai_change_sets {
   * change_set_id : BIGINT
   --
