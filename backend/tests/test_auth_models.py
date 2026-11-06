@@ -106,7 +106,10 @@ def test_session_model_exposes_only_hashed_identifier_and_timeout_state(
     columns = set(AuthSession.__table__.columns.keys())
     assert "session_id_hash" in columns
     assert "session_id" not in columns
-    assert not {"access_token", "refresh_token", "id_token", "client_secret"} & columns
+    # ADR-017 keeps the ID token (and only it) for id_token_hint at sign-out; no
+    # access or refresh token and no secret is ever stored with a session.
+    assert not {"access_token", "refresh_token", "client_secret"} & columns
+    assert "id_token" in columns
 
 
 def test_hash_columns_reject_non_sha256_lengths(session: Session) -> None:

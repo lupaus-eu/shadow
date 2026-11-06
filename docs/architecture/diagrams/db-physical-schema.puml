@@ -48,6 +48,7 @@ entity "auth_sessions" as auth_sessions {
   --
   user_id : BIGINT
   csrf_token : TEXT
+  id_token : TEXT
   created_time : TIMESTAMPTZ
   last_activity_time : TIMESTAMPTZ
   absolute_expires_time : TIMESTAMPTZ

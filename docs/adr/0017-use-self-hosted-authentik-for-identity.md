@@ -83,6 +83,15 @@ around it change.
   Compose project.
 - Production still requires its own steps (identity host DNS, Authentik in the
   production Compose, backups); they belong to steps 086A to 087B.
+- **No production release between the backend switch and the cutover.** From ticket
+  `authentik-sign-in/03` the backend accepts only Authentik issuers and requires a verified
+  email, so a release built from `main` fails to start with today's Entra configuration.
+  Production stays on the last Entra release (`v0.2.0` line) until Authentik runs in
+  production (steps 086A to 087B); the human does not tag a release from `main` before
+  then.
+- The ID token of a sign-in is kept with its session for `id_token_hint` and is deleted with
+  it. Authentik logs the request line of the sign-out, which carries that token (email,
+  name); a POST-based sign-out would avoid it and is a recorded follow-up.
 - Rejected: keeping Entra next to Authentik (two identity providers to link and
   test, no gain), a shared Authentik with Yearclock (couples the two products'
   upgrades, outages and invitation policy), and a hosted identity service (a

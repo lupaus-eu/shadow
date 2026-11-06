@@ -460,6 +460,7 @@ def main() -> None:
     check(web["grant_types"] == ["authorization_code"], "web provider allows only the authorization code grant")
     check(web["client_type"] == "confidential" and web["sub_mode"] == "hashed_user_id" and web["issuer_mode"] == "per_provider", "web provider is confidential, hashed_user_id, per_provider")
     check([u["url"] for u in web["redirect_uris"] if u["redirect_uri_type"] == "authorization"] == [REDIRECT_URI], "exact authorization redirect URI only")
+    check({u["url"] for u in web["redirect_uris"] if u["redirect_uri_type"] == "logout"} == {os.getenv("FRONTEND_URL", "https://app.localhost"), os.getenv("FRONTEND_URL", "https://app.localhost") + "/login"}, "exact post-logout redirect URIs only")
     check({a["slug"] for a in api("core/applications/?superuser_full_list=true")["results"]} >= {"shadow"}, "application shadow exists")
 
     # 3. Strong authentication: the password alone does not sign in.

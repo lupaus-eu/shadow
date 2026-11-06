@@ -1,3 +1,8 @@
+> **Release block (ADR-017):** until Authentik runs in production (SaaS plan steps 086A to
+> 087B) do not tag a release from `main`. Since ticket `authentik-sign-in/03` the backend
+> accepts only Authentik issuers and requires a verified email; with the current Entra
+> configuration it would not start.
+
 # Production Runbook: UpCloud Docker Host
 
 This is the integrated operator runbook for Shadow on the existing UpCloud

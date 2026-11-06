@@ -206,6 +206,8 @@ class AuthSession(Base):
         ForeignKey("users.user_id", ondelete="CASCADE"),
     )
     csrf_token: Mapped[str] = mapped_column(Text)
+    # The ID token of the sign-in, kept only for id_token_hint at logout (ADR-017).
+    id_token: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_time: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

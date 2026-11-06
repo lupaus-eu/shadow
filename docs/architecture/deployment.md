@@ -180,7 +180,8 @@ enterprise-app assignments and callbacks are shared, not environment-isolated.
 Ensure designated local testers and production users can use that enterprise app.
 
 Request only `openid profile email`; make no Graph calls and do not require an
-`email_verified` claim (`OIDC_REQUIRE_VERIFIED_EMAIL=false`). Missing email still
+`email_verified` claim (`OIDC_REQUIRE_VERIFIED_EMAIL=false`; historical, ADR-017 requires
+it: `true`). Missing email still
 blocks first linking. Retain validated tenant issuer, PKCE, state/nonce/browser
 binding, guarded first linking to a pre-provisioned User, permanent exact
 `(issuer, subject)`, database roles, sessions, revocation, CSRF/Origin and audit
@@ -211,7 +212,7 @@ rendered `docker compose config` output into evidence.
 | `NOTIFICATION_RETENTION_DAYS`, `OUTBOX_RETENTION_DAYS`, `NOTIFICATION_EMAILS_PER_DAY` | Notification retention (default 90), retention of finished outbox emails that hold addresses and text (default 7), and the daily email limit per recipient (default 10, soft) |
 | `WORKER_SCHEDULE_INTERVAL_SECONDS`, `QUEUE_CLAIM_TIMEOUT_SECONDS` | Optional platform worker settings (defaults 3600 and 900); the worker is not started in production until the runtime adopts it |
 | `DATABASE_POOL_SIZE`, `DATABASE_MAX_OVERFLOW` | Optional connection pool of each backend or worker process (defaults 5 and 10, SQLAlchemy's own defaults) |
-| `OIDC_DISCOVERY_URL`, `OIDC_ISSUER` | Exact tenant-specific HTTPS metadata/issuer |
+| `OIDC_DISCOVERY_URL`, `OIDC_ISSUER` | The Authentik per-provider issuer `https://<identity host>/application/o/shadow/` and its discovery URL (ADR-017); the backend refuses anything else. `OIDC_INTERNAL_BASE_URL` (optional) is the private Docker address of Authentik: plain http only for a single-label service name |
 | `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` | Shared confidential app ID, production's own secret |
 | `PUBLIC_ORIGIN` | `https://shadow.lupaus.eu`, exact canonical application Host |
 | `DOCKER_SOCKET_GID` | Group ID of the host `/var/run/docker.sock` for Ofelia and the cleanup runner only |

@@ -275,6 +275,7 @@ def create_session(
     *,
     user: User,
     presented_session_id: str | None,
+    id_token: str | None = None,
 ) -> NewSession:
     now = datetime.now(UTC)
     session.execute(
@@ -297,6 +298,7 @@ def create_session(
         session_id_hash=_sha256(raw_session_id),
         user_id=user.user_id,
         csrf_token=secrets.token_urlsafe(32),
+        id_token=id_token or None,
         created_time=now,
         last_activity_time=now,
         absolute_expires_time=now

@@ -34,14 +34,18 @@ services:
       DATABASE_POOL_SIZE: ${DATABASE_POOL_SIZE:-5}
       DATABASE_MAX_OVERFLOW: ${DATABASE_MAX_OVERFLOW:-10}
       APP_ENV: development
-      OIDC_DISCOVERY_URL: ${OIDC_DISCOVERY_URL:?Run scripts/setup-local-entra.sh and load .env.entra.local}
-      OIDC_ISSUER: ${OIDC_ISSUER:?Run scripts/setup-local-entra.sh and load .env.entra.local}
-      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:?Run scripts/setup-local-entra.sh and load .env.entra.local}
-      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:?Run scripts/setup-local-entra.sh and load .env.entra.local}
+      # Sign-in through the local Authentik (ADR-017). The issuer is fixed by design; the
+      # backend reaches Authentik inside the Docker network (OIDC_INTERNAL_BASE_URL) while
+      # browsers use https://id.app.localhost. The client is the one the blueprint registers.
+      OIDC_DISCOVERY_URL: https://id.app.localhost/application/o/shadow/.well-known/openid-configuration
+      OIDC_ISSUER: https://id.app.localhost/application/o/shadow/
+      OIDC_INTERNAL_BASE_URL: http://authentik-server:9000
+      OIDC_CLIENT_ID: ${LOCAL_OIDC_CLIENT_ID:-shadow-local}
+      OIDC_CLIENT_SECRET: ${LOCAL_OIDC_CLIENT_SECRET:-replace-with-a-random-oidc-secret}
       OIDC_SCOPES: openid profile email
       OIDC_CALLBACK_PATH: /api/v1/auth/callback
       OIDC_ALLOWED_SIGNING_ALGORITHMS: RS256
-      OIDC_REQUIRE_VERIFIED_EMAIL: "false"
+      OIDC_REQUIRE_VERIFIED_EMAIL: "true"
       PUBLIC_ORIGIN: https://app.localhost
       APP_ALLOWED_ORIGIN: https://app.localhost
       TRUSTED_CADDY_PEER_CIDRS: 172.28.59.2/32
@@ -72,6 +76,11 @@ services:
     depends_on:
       database:
         condition: service_started
+      # The backend discovers the provider at startup, so Authentik must be configured.
+      authentik-server:
+        condition: service_healthy
+      authentik-config-init:
+        condition: service_completed_successfully
     volumes:
       - ./backend:/app
       - backend_uv_cache:/root/.cache/uv

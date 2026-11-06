@@ -2340,3 +2340,37 @@ def test_application_role_migration_repairs_a_preexisting_role(
         "SELECT NOT rolbypassrls AND NOT rolcanlogin AND NOT rolsuper "
         "FROM pg_roles WHERE rolname = 'shadow_app'",
     )
+
+
+def test_auth_session_id_token_column_is_optional_nonblank_and_reversible(
+    migration_database_url: str,
+) -> None:
+    execute_command(UpCommand(), database_url=migration_database_url)
+    with psycopg.connect(migration_database_url) as connection:
+        user_id = connection.execute(
+            "INSERT INTO users (name, role, email) "
+            "VALUES ('Session Tester', 'consultant', 'session@example.test') "
+            "RETURNING user_id"
+        ).fetchone()
+        assert user_id is not None
+        insert = (
+            "INSERT INTO auth_sessions (session_id_hash, user_id, csrf_token, "
+            "id_token, created_time, last_activity_time, absolute_expires_time) "
+            "VALUES (%s, %s, 'csrf', %s, now(), now(), now() + interval '1 hour')"
+        )
+        connection.execute(insert, (b"a" * 32, user_id[0], None))
+        connection.execute(insert, (b"b" * 32, user_id[0], "header.payload.signature"))
+        connection.commit()
+        with pytest.raises(psycopg.errors.CheckViolation):
+            connection.execute(insert, (b"c" * 32, user_id[0], "   "))
+        connection.rollback()
+        connection.execute("DELETE FROM auth_sessions")
+        connection.commit()
+
+    _roll_back_after_020(migration_database_url)
+    assert not _scalar(
+        migration_database_url,
+        "SELECT EXISTS (SELECT 1 FROM information_schema.columns "
+        "WHERE table_schema = current_schema() AND table_name = 'auth_sessions' "
+        "AND column_name = 'id_token')",
+    )

@@ -22,6 +22,10 @@ entries:
       name: shadow-require-pkce
     attrs:
       expression: |
+        # Only authorization requests carry these keys; other requests that Authentik checks
+        # against the application (for example end-session, i.e. sign-out) pass.
+        if "oauth_code_challenge_method" not in context:
+            return True
         return (
             context.get("oauth_code_challenge_method") == "S256"
             and bool(context.get("oauth_code_challenge"))

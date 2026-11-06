@@ -368,6 +368,8 @@ and permissive credentialed CORS are forbidden.
 
 ## Initial Authorization
 
+> [ADR-017](0017-use-self-hosted-authentik-for-identity.md) replaces the direct Microsoft Entra sign-in described in this ADR with self-hosted Authentik (the guarded email linking, sessions and CSRF stay).
+>
 > [ADR-016](0016-introduce-tenants-memberships-and-rls.md) replaces this section with tenants, memberships and row-level security.
 
 FastAPI is the trusted authorization boundary. Frontend visibility checks are

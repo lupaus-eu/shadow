@@ -17,6 +17,8 @@ ORIGIN_HOST_LABEL = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$
 LEGACY_IPV4_LABEL = re.compile(r"^(?:0[xX][0-9A-Fa-f]+|[0-9]+)$")
 LOCAL_CADDY_PEER_CIDRS = (ip_network("172.28.59.2/32"),)
 # ADR-015: loopback redirect URI allowlist entries carry a literal "{port}".
+# ADR-017: an Authentik per-provider issuer.
+AUTHENTIK_ISSUER_PATH = re.compile(r"/application/o/[a-z0-9][a-z0-9-]*/")
 MCP_LOOPBACK_REDIRECT_ENTRY = re.compile(
     r"^http://(?P<host>127\.0\.0\.1|\[::1\]|localhost):\{port\}"
     r"(?P<path>/[^?#{}\s\\%]*)$"
@@ -60,8 +62,16 @@ class Settings(StrictBaseModel):
     oidc_allowed_signing_algorithms: tuple[str, ...] = Field(
         default=("RS256",), alias="OIDC_ALLOWED_SIGNING_ALGORITHMS"
     )
+    # ADR-017: Authentik records the verified email address, so Shadow requires it.
     oidc_require_verified_email: bool = Field(
-        default=False, alias="OIDC_REQUIRE_VERIFIED_EMAIL"
+        default=True, alias="OIDC_REQUIRE_VERIFIED_EMAIL"
+    )
+    # Inside Docker the backend reaches Authentik at this plain-HTTP address for the
+    # discovery document, the token endpoint and the keys; the issuer and the
+    # browser-facing endpoints keep the public address. Empty or unset: use the public
+    # addresses directly.
+    oidc_internal_base_url: str | None = Field(
+        default=None, alias="OIDC_INTERNAL_BASE_URL"
     )
     public_origin: str = Field(default="http://testserver", alias="PUBLIC_ORIGIN")
     allowed_origin: str = Field(default="http://testserver", alias="APP_ALLOWED_ORIGIN")
@@ -172,6 +182,11 @@ class Settings(StrictBaseModel):
             return value
         separator = "," if "," in value else " "
         return tuple(item.strip() for item in value.split(separator) if item.strip())
+
+    @field_validator("oidc_internal_base_url", mode="before")
+    @classmethod
+    def _blank_internal_base_url_is_unset(cls, value: object) -> object:
+        return None if isinstance(value, str) and not value.strip() else value
 
     @field_validator("trusted_caddy_peer_cidrs", mode="before")
     @classmethod
@@ -312,37 +327,67 @@ class Settings(StrictBaseModel):
             parsed = urlsplit(value)
             if (
                 parsed.scheme != "https"
-                or parsed.hostname != "login.microsoftonline.com"
-                or parsed.port is not None
+                or not parsed.hostname
                 or parsed.username is not None
                 or parsed.password is not None
                 or parsed.query
                 or parsed.fragment
             ):
-                raise ValueError(f"{name} must use the exact direct Entra HTTPS origin")
-            path_parts = [part for part in parsed.path.split("/") if part]
-            if not path_parts or path_parts[0].lower() in {
-                "common",
-                "organizations",
-                "consumers",
-            }:
-                raise ValueError(f"{name} must use a tenant-specific Entra authority")
+                raise ValueError(
+                    f"{name} must be an https URL without credentials, query "
+                    "or fragment"
+                )
         issuer = urlsplit(self.oidc_issuer)
         discovery = urlsplit(self.oidc_discovery_url)
-        issuer_parts = [part for part in issuer.path.split("/") if part]
-        if (
-            len(issuer_parts) != 2
-            or issuer_parts[1] != "v2.0"
-            or issuer.path != f"/{issuer_parts[0]}/v2.0"
-        ):
-            raise ValueError("OIDC_ISSUER must contain an exact tenant and /v2.0")
-        expected_discovery_path = (
-            f"/{issuer_parts[0]}/v2.0/.well-known/openid-configuration"
-        )
-        if discovery.path != expected_discovery_path:
+        if not AUTHENTIK_ISSUER_PATH.fullmatch(issuer.path):
             raise ValueError(
-                "OIDC_DISCOVERY_URL must match the exact tenant-specific issuer"
+                "OIDC_ISSUER must be an Authentik per-provider issuer ending in "
+                "/application/o/<slug>/"
             )
+        if (discovery.scheme, discovery.netloc, discovery.path) != (
+            issuer.scheme,
+            issuer.netloc,
+            f"{issuer.path}.well-known/openid-configuration",
+        ):
+            raise ValueError("OIDC_DISCOVERY_URL must match the OIDC_ISSUER")
+        public = urlsplit(self.public_origin)
+        if (issuer.scheme, issuer.netloc) == (public.scheme, public.netloc):
+            raise ValueError(
+                "OIDC_ISSUER must not be on the application's own origin"
+            )
+        if (
+            self.app_environment == "development"
+            and issuer.netloc != "id.app.localhost"
+        ):
+            raise ValueError(
+                "Development OIDC_ISSUER must be on https://id.app.localhost"
+            )
+        if self.app_environment == "production" and issuer.port is not None:
+            raise ValueError("Production OIDC_ISSUER must not include an explicit port")
+        if self.oidc_internal_base_url:
+            internal = urlsplit(self.oidc_internal_base_url)
+            if (
+                internal.scheme not in {"http", "https"}
+                or not internal.hostname
+                or internal.path not in {"", "/"}
+                or internal.username is not None
+                or internal.password is not None
+                or internal.query
+                or internal.fragment
+            ):
+                raise ValueError(
+                    "OIDC_INTERNAL_BASE_URL must be an http(s) origin without a path"
+                )
+            if (
+                self.app_environment == "production"
+                and internal.scheme == "http"
+                and "." in internal.hostname
+            ):
+                raise ValueError(
+                    "Production OIDC_INTERNAL_BASE_URL over http must name a "
+                    "private Docker service (a single-label host), not a dotted "
+                    "address"
+                )
 
     @property
     def public_host(self) -> str:
@@ -383,6 +428,7 @@ def get_settings() -> Settings:
         "OIDC_CALLBACK_PATH",
         "OIDC_ALLOWED_SIGNING_ALGORITHMS",
         "OIDC_REQUIRE_VERIFIED_EMAIL",
+        "OIDC_INTERNAL_BASE_URL",
         "PUBLIC_ORIGIN",
         "APP_ALLOWED_ORIGIN",
         "TRUSTED_CADDY_PEER_CIDRS",

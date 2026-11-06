@@ -104,6 +104,12 @@ MAILPIT_URL=http://localhost:8025 python3 scripts/verify-authentik-local.py --en
 TOTP codes cannot be reused, so the script waits for the next 30-second step when it
 runs twice in a row.
 
+With the whole stack up, `make sign-in-verify` signs a seeded user in to Shadow through
+Authentik (login redirect, password and TOTP, code to the callback, session linked to the
+seeded account), signs out (both sessions end and the browser returns to `/login`), and
+checks that a person whose address is no longer verified, and a verified person Shadow does
+not know, are refused without a session.
+
 ## 6. MCP provider
 
 Authentik signs AI clients in through a dedicated provider, "Shadow MCP" (ADR-0023;

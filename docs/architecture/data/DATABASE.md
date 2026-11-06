@@ -102,6 +102,7 @@ db/migrations/021_create_application_role.sql
 db/migrations/022_create_audit_events.sql
 db/migrations/023_create_background_queue.sql
 db/migrations/024_create_notifications.sql
+db/migrations/025_add_auth_session_id_token.sql
 ```
 
 | Table | Purpose | Notes |
@@ -109,7 +110,7 @@ db/migrations/024_create_notifications.sql
 | `users` | Application users | Required email; active emails are case-insensitively unique. `role` is `consultant` or `admin`. |
 | `user_identities` | Durable provider-neutral identities | Exact `(issuer, subject)` binds to one User; one identity per User and issuer. |
 | `oidc_login_transactions` | Browser-bound OIDC flow state | SHA-256 state/browser hashes, nonce, PKCE, return path and ten-minute expiry; no provider tokens. |
-| `auth_sessions` | Opaque application sessions | SHA-256 session-id hash, User, CSRF token, activity and absolute-expiry timestamps. |
+| `auth_sessions` | Opaque application sessions | SHA-256 session-id hash, User, CSRF token, activity and absolute-expiry timestamps, and the nullable `id_token` of the sign-in (migration 025, ADR-017): kept only to send `id_token_hint` at sign-out so that the Authentik session ends too, never returned or logged, stored in plain text (a signed token with email and name, so it is also in backups) and deleted with the session. |
 | `organisations` | Organisation records | Uses `organisation_key` for stable external/import identity. Active names are case-insensitively unique. |
 | `scenarios` | Scenario versions within an organisation | References source scenario and optional initial org state. |
 | `org_states` | Scenario-specific organisation state snapshots | `name` is the human-readable state display name; `target_date` is required and enforced as `NOT NULL`; soft-deleted with parent scenario in normal application flows. |

@@ -1,55 +1,63 @@
 @startuml
-title Shadow - Direct Entra Login (local and production implemented; first production rollout F, v0.1.0)
+title Shadow - Login through Authentik (ADR-017)
 
 actor Browser
 participant "Application ingress\nCaddy / same-origin API" as Caddy
 participant "FastAPI" as API
-participant "Microsoft Entra ID\nDirect in both environments" as Provider
+participant "Identity ingress\nCaddy id host" as IdCaddy
+participant "Authentik\nOIDC provider 'Shadow'" as Provider
 database PostgreSQL as DB
 
 note over Provider
-  One shared single-tenant confidential registration; separate dev/prod secrets.
-  Exact tenant issuer; openid profile email; no Graph calls.
-  No email_verified claim requirement; missing email prevents first linking.
-  Registration permissions, consent, assignments and callbacks are shared.
+  Own Authentik instance, pinned version, own logical database.
+  Confidential web client; authorization code with S256 PKCE (a policy requires it).
+  Enrollment by invitation; email verified; passkey or TOTP always required.
+  email_verified is true only while the address equals the verified address.
 end note
 
 note over Browser, Caddy
-  Development: https://app.localhost -> local Caddy -> HTTP API / Vite.
-  Production: https://shadow.lupaus.eu -> Caddy TLS / React -> HTTP API.
-  Entra Web callback is /api/v1/auth/callback at each exact origin.
-  Post-logout return is /login at each origin; no Authentik or Traefik.
-  Local Caddy/direct Entra and the production runtime are implemented; Coolify adapter removed.
+  Development: https://app.localhost and https://id.app.localhost (local Caddy).
+  Production: https://shadow.lupaus.eu and https://id.shadow.lupaus.eu (step 086A).
+  The backend reaches Authentik inside the Docker network (OIDC_INTERNAL_BASE_URL),
+  sending the public Host and scheme; Authentik trusts them only from the backend.
 end note
 
 Browser -> Caddy : GET /api/v1/auth/login?return_to=/workspace
 Caddy -> API : Fixed Host/proto and trusted client IP
 API -> DB : Store hashed state + browser binding, nonce, PKCE
-API --> Browser : 302 provider authorization URL\nHttpOnly pre-auth cookie
-Browser -> Provider : Authorization Code + PKCE login
-Provider --> Browser : Redirect with code + state
+API --> Browser : 302 Authentik authorization URL\nHttpOnly pre-auth cookie
+Browser -> IdCaddy : Authorization request
+IdCaddy -> Provider : Proxied
+Provider --> Browser : Sign-in flow: passkey, or password + second factor
+Provider --> Browser : Redirect with code + state to the exact callback
 Browser -> Caddy : GET /api/v1/auth/callback?code=...&state=...
 note right of Caddy
   Access log replaces code, state,
-  error, error_description and
-  session_state values with
-  REDACTED.
+  error and error_description with REDACTED.
 end note
 Caddy -> API : Callback with fixed proxy headers
 API -> DB : Atomically consume browser-bound transaction
-API -> Provider : Redeem code with confidential client + verifier
+API -> Provider : Redeem code with confidential client + verifier\n(internal address, public Host)
 Provider --> API : Token response
-API -> API : Validate signature, exact issuer, audience, nonce and claims
+API -> API : Validate signature, exact issuer, audience, nonce and claims;\nrequire email_verified
 note right of DB
-  Login never creates Users.
-  Existing issuer/subject bindings are not rewritten.
-  Each environment has an independent database.
+  Login never creates Users (accounts for new people come with tenants).
+  A verified email links the identity to a pre-provisioned User once;
+  an unknown or unverified person gets the generic failure and no session.
 end note
-API -> DB : Guarded first-link to pre-provisioned User, or exact (issuer, subject)\nCreate hashed opaque application session
+API -> DB : Guarded first-link, or exact (issuer, subject)\nCreate hashed opaque application session\nKeep the ID token only for sign-out
 API --> Browser : 303 clean local path\nSecure HttpOnly SameSite=Strict cookie
 Browser -> Caddy : GET SPA and /api with session cookie
 Caddy -> API : Same-origin /api request
 API -> DB : Reload active User and session
 API --> Browser : Application data only; no provider token
+
+== Sign-out ==
+Browser -> API : POST /api/v1/auth/logout (Origin + CSRF)
+API -> DB : Delete the session
+API --> Browser : logoutUrl with id_token_hint and the exact return address
+Browser -> IdCaddy : end-session
+IdCaddy -> Provider : Invalidation flow ends the Authentik session
+Provider --> Browser : Redirect to https://app.localhost/login
 
 @enduml

@@ -102,6 +102,7 @@ The current ordered migration chain is:
 022_create_audit_events.sql
 023_create_background_queue.sql
 024_create_notifications.sql
+025_add_auth_session_id_token.sql
 ```
 
 Jokaisella yllä olevalla tiedostolla on vastaava `.down.sql`-tiedosto.

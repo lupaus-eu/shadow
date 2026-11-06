@@ -37,8 +37,10 @@ class FakeProvider:
             subject="subject-1",
             email="user@example.com",
             name="Provider Name",
+            id_token="fake.id.token",
         )
         self.exchange_error = False
+        self.logout_hints: list[str | None] = []
 
     def initialize(self) -> None:
         return None
@@ -55,7 +57,8 @@ class FakeProvider:
             raise OidcProviderError("fake provider failure")
         return self.claims
 
-    def logout_url(self) -> str | None:
+    def logout_url(self, *, id_token_hint: str | None = None) -> str | None:
+        self.logout_hints.append(id_token_hint)
         return (
             "https://issuer.test/logout?client_id=test-client&"
             "post_logout_redirect_uri=http%3A%2F%2Ftestserver%2Flogin"
@@ -427,6 +430,59 @@ def test_logout_requires_exact_origin_and_csrf(
         assert client.get("/api/v1/auth/session").status_code == 401
 
 
+def test_the_id_token_is_kept_with_the_session_and_sent_as_the_logout_hint(
+    client: TestClient,
+    provider: FakeProvider,
+    session_factory: sessionmaker[Session],
+) -> None:
+    _login(client)
+    with session_factory() as session:
+        stored = session.scalars(select(AuthSession.id_token)).one()
+    assert stored == "fake.id.token"
+    csrf_token = client.get("/api/v1/auth/session").json()["csrfToken"]
+
+    response = client.post(
+        "/api/v1/auth/logout",
+        headers={"Origin": "http://testserver", "X-CSRF-Token": csrf_token},
+    )
+
+    assert response.status_code == 200
+    assert provider.logout_hints == ["fake.id.token"]
+    with session_factory() as session:
+        assert session.scalars(select(AuthSession.id_token)).all() == []
+
+
+def test_a_session_without_an_id_token_logs_out_without_a_hint(
+    client: TestClient,
+    provider: FakeProvider,
+    session_factory: sessionmaker[Session],
+) -> None:
+    provider.claims = NormalizedClaims(
+        issuer="https://issuer.test",
+        subject="subject-1",
+        email="user@example.com",
+        name="Provider Name",
+    )
+    _login(client)
+    csrf_token = client.get("/api/v1/auth/session").json()["csrfToken"]
+
+    response = client.post(
+        "/api/v1/auth/logout",
+        headers={"Origin": "http://testserver", "X-CSRF-Token": csrf_token},
+    )
+
+    assert response.status_code == 200
+    assert provider.logout_hints == [None]
+
+
+def test_the_id_token_is_never_returned_by_the_session_endpoint(
+    client: TestClient,
+) -> None:
+    _login(client)
+    body = client.get("/api/v1/auth/session").text
+    assert "fake.id.token" not in body
+
+
 def test_rejected_unsafe_request_does_not_extend_session_activity(
     client: TestClient,
     session_factory: sessionmaker[Session],
@@ -517,7 +573,7 @@ def test_access_log_filter_removes_complete_callback_query() -> None:
         (
             "192.0.2.1",
             "GET",
-            "/api/v1/auth/callback?code=secret&session_state=secret-session"
+            "/api/v1/auth/callback?code=secret&id_token_hint=secret-session"
             "&state=state&email=user@example.com",
             "1.1",
             303,
@@ -536,18 +592,16 @@ def test_access_log_filter_removes_complete_callback_query() -> None:
     ("path", "expected"),
     [
         (
-            "/api/v1/auth/login?session_state=SECRETSESSION&visible=kept",
-            "/api/v1/auth/login?session_state=REDACTED&visible=kept",
+            "/api/v1/auth/login?id_token_hint=SECRETTOKEN&visible=kept",
+            "/api/v1/auth/login?id_token_hint=REDACTED&visible=kept",
         ),
         (
-            "/login?visible=kept&SESSION_STATE=SECRETSESSION",
-            "/login?visible=kept&SESSION_STATE=REDACTED",
+            "/login?visible=kept&ID_TOKEN_HINT=SECRETTOKEN",
+            "/login?visible=kept&ID_TOKEN_HINT=REDACTED",
         ),
     ],
 )
-def test_access_log_filter_redacts_entra_session_state(
-    path: str, expected: str
-) -> None:
+def test_access_log_filter_redacts_the_id_token_hint(path: str, expected: str) -> None:
     record = logging.LogRecord(
         "uvicorn.access",
         logging.INFO,

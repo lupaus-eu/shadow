@@ -90,7 +90,7 @@ assert backend["environment"]["PUBLIC_ORIGIN"] == "https://app.example.test"
 assert backend["environment"]["APP_ALLOWED_ORIGIN"] == "https://app.example.test"
 assert backend["environment"]["SESSION_COOKIE_SECURE"] == "true"
 assert backend["environment"]["OIDC_SCOPES"] == "openid profile email"
-assert backend["environment"]["OIDC_REQUIRE_VERIFIED_EMAIL"] == "false"
+assert backend["environment"]["OIDC_REQUIRE_VERIFIED_EMAIL"] == "true"
 # ADR-015: MCP and its change-set review stay off unless the protected env
 # file switches them on (TASK-069P); the client cap defaults to 10000.
 assert backend["environment"]["MCP_ENABLED"] == "false"

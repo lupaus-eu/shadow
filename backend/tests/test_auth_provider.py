@@ -1,6 +1,7 @@
 # pyright: reportPrivateUsage=false
 
 import hmac
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 from urllib.parse import parse_qs, urlsplit
@@ -183,7 +184,7 @@ def test_unconfigured_symmetric_algorithm_is_rejected() -> None:
         provider._validate_id_token(token, "expected-nonce")
 
 
-def test_verified_email_policy_is_configuration_only() -> None:
+def test_verified_email_is_required_unless_configuration_turns_it_off() -> None:
     claims = {
         "iss": "https://issuer.test",
         "sub": "subject",
@@ -191,15 +192,21 @@ def test_verified_email_policy_is_configuration_only() -> None:
         "email_verified": False,
     }
 
+    # ADR-017: Authentik records the verified address, so the default requires it.
+    assert _provider({"keys": [{}]})._normalize_claims(claims).email is None
     assert (
-        _provider({"keys": [{}]})._normalize_claims(claims).email == "user@example.com"
-    )
-    assert (
-        _provider({"keys": [{}]}, OIDC_REQUIRE_VERIFIED_EMAIL=True)
+        _provider({"keys": [{}]}, OIDC_REQUIRE_VERIFIED_EMAIL=False)
         ._normalize_claims(claims)
         .email
-        is None
+        == "user@example.com"
     )
+    verified = {**claims, "email_verified": True}
+    assert (
+        _provider({"keys": [{}]})._normalize_claims(verified).email
+        == "user@example.com"
+    )
+    missing = {k: v for k, v in claims.items() if k != "email_verified"}
+    assert _provider({"keys": [{}]})._normalize_claims(missing).email is None
 
 
 def test_discovery_issuer_must_equal_independently_configured_issuer(
@@ -325,9 +332,15 @@ def test_authorization_request_uses_fixed_callback_nonce_and_s256_pkce() -> None
 
     logout_url = provider.logout_url()
     assert logout_url is not None
-    logout_query = parse_qs(urlsplit(logout_url).query)
-    assert logout_query == {
+    # Without the session's ID token Authentik would answer a redirect target with 400,
+    # so only the client is named (Authentik shows its own sign-out page).
+    assert parse_qs(urlsplit(logout_url).query) == {"client_id": ["test-client"]}
+
+    hinted = provider.logout_url(id_token_hint="the.id.token")
+    assert hinted is not None
+    assert parse_qs(urlsplit(hinted).query) == {
         "client_id": ["test-client"],
+        "id_token_hint": ["the.id.token"],
         "post_logout_redirect_uri": ["http://testserver/login"],
     }
 
@@ -362,3 +375,145 @@ def test_jwks_is_refreshed_once_for_normal_signing_key_rotation(
 
     assert claims["sub"] == "subject-1"
     assert fetches == 1
+
+
+LOCAL_ISSUER = "https://id.app.localhost/application/o/shadow/"
+INTERNAL = "http://authentik-server:9000"
+
+
+def _internal_settings() -> Settings:
+    return Settings.model_validate(
+        {
+            "OIDC_ISSUER": LOCAL_ISSUER,
+            "OIDC_DISCOVERY_URL": f"{LOCAL_ISSUER}.well-known/openid-configuration",
+            "OIDC_INTERNAL_BASE_URL": INTERNAL,
+        }
+    )
+
+
+def _local_document() -> dict[str, object]:
+    return {
+        "issuer": LOCAL_ISSUER,
+        "authorization_endpoint": "https://id.app.localhost/application/o/authorize/",
+        "token_endpoint": "https://id.app.localhost/application/o/token/",
+        "jwks_uri": f"{LOCAL_ISSUER}jwks/",
+        "end_session_endpoint": f"{LOCAL_ISSUER}end-session/",
+    }
+
+
+def test_internal_base_url_routes_server_calls_inside_the_network(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    requests: list[httpx.Request] = []
+    http_client = httpx.Client
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.path.endswith("openid-configuration"):
+            return httpx.Response(200, json=_local_document())
+        return httpx.Response(200, json={"keys": [{"kid": "k"}]})
+
+    def client(**_: object) -> httpx.Client:
+        return http_client(transport=httpx.MockTransport(handler))
+
+    monkeypatch.setattr(provider_module.httpx, "Client", client)
+    provider = AuthlibOidcProvider(_internal_settings())
+
+    provider.initialize()
+    provider._get_jwks()
+
+    assert [str(r.url) for r in requests] == [
+        f"{INTERNAL}/application/o/shadow/.well-known/openid-configuration",
+        f"{INTERNAL}/application/o/shadow/jwks/",
+    ]
+    for request in requests:
+        # Authentik derives the issuer and endpoint URLs from Host and scheme.
+        assert request.headers["host"] == "id.app.localhost"
+        assert request.headers["x-forwarded-proto"] == "https"
+    # The browser-facing URLs stay public.
+    metadata = provider._metadata
+    assert metadata is not None
+    assert metadata.authorization_endpoint.startswith("https://id.app.localhost/")
+    assert metadata.end_session_endpoint == f"{LOCAL_ISSUER}end-session/"
+
+
+def test_internal_base_url_refuses_metadata_on_another_origin() -> None:
+    provider = AuthlibOidcProvider(_internal_settings())
+    with pytest.raises(OidcProviderError, match="unexpected origin"):
+        provider._internal_url("https://elsewhere.test/application/o/shadow/jwks/")
+
+
+def test_without_an_internal_base_url_public_urls_are_used_as_they_are() -> None:
+    provider = AuthlibOidcProvider(Settings())
+    assert (
+        provider._internal_url("https://issuer.test/jwks") == "https://issuer.test/jwks"
+    )
+    assert provider._internal_request_headers() == {}
+
+
+def test_code_exchange_uses_the_internal_token_endpoint_and_returns_the_id_token(
+    signing_material: tuple[bytes, dict[str, object]],
+) -> None:
+    private_key, jwks = signing_material
+    settings = _internal_settings()
+    provider = AuthlibOidcProvider(settings)
+    provider._jwks = jwks
+    provider._metadata = OidcMetadata(
+        issuer=LOCAL_ISSUER,
+        authorization_endpoint="https://id.app.localhost/application/o/authorize/",
+        token_endpoint="https://id.app.localhost/application/o/token/",
+        jwks_uri=f"{LOCAL_ISSUER}jwks/",
+        end_session_endpoint=f"{LOCAL_ISSUER}end-session/",
+    )
+    id_token = _token(
+        private_key,
+        overrides={"iss": LOCAL_ISSUER, "aud": settings.oidc_client_id},
+    )
+    calls: list[dict[str, Any]] = []
+
+    class FakeClient:
+        is_closed = False
+
+        def fetch_token(self, url: str, **kwargs: Any) -> dict[str, Any]:
+            calls.append({"url": url, **kwargs})
+            return {"id_token": id_token, "access_token": "unused"}
+
+        def close(self) -> None:
+            self.is_closed = True
+
+    provider._client = lambda: FakeClient()  # type: ignore[method-assign]
+
+    claims = provider.exchange_code(
+        code="the-code", nonce="expected-nonce", pkce_verifier="v" * 64
+    )
+
+    assert calls[0]["url"] == f"{INTERNAL}/application/o/token/"
+    assert calls[0]["headers"] == {
+        "Host": "id.app.localhost",
+        "X-Forwarded-Proto": "https",
+    }
+    assert calls[0]["code_verifier"] == "v" * 64
+    assert claims.id_token == id_token
+    assert claims.subject == "subject-1" and claims.email == "user@example.com"
+
+
+def _serving(document: dict[str, object]) -> Callable[[str], dict[str, object]]:
+    def serve(_url: str) -> dict[str, object]:
+        return document
+
+    return serve
+
+
+@pytest.mark.parametrize(
+    "field",
+    ["authorization_endpoint", "token_endpoint", "jwks_uri", "end_session_endpoint"],
+)
+def test_every_provider_endpoint_must_be_on_the_issuer_origin(
+    field: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    provider = AuthlibOidcProvider(_internal_settings())
+    document = _local_document()
+    document[field] = f"https://elsewhere.test/{field}"
+    monkeypatch.setattr(provider, "_get_json", _serving(document))
+    with pytest.raises(OidcProviderError, match="issuer's origin"):
+        provider.initialize()

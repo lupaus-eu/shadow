@@ -3,7 +3,7 @@ import warnings
 from dataclasses import dataclass
 from threading import Lock
 from typing import Any, Protocol, cast
-from urllib.parse import urlencode, urlsplit
+from urllib.parse import urlencode, urlsplit, urlunsplit
 
 import httpx
 from authlib.common.errors import AuthlibBaseError
@@ -39,6 +39,9 @@ class NormalizedClaims:
     subject: str
     email: str | None
     name: str | None
+    # The validated ID token, kept with the session only to send id_token_hint when the
+    # person signs out (OIDC RP-initiated logout); never logged or returned.
+    id_token: str | None = None
 
 
 class OidcProvider(Protocol):
@@ -60,7 +63,7 @@ class OidcProvider(Protocol):
         pkce_verifier: str,
     ) -> NormalizedClaims: ...
 
-    def logout_url(self) -> str | None: ...
+    def logout_url(self, *, id_token_hint: str | None = None) -> str | None: ...
 
 
 class AuthlibOidcProvider:
@@ -109,17 +112,25 @@ class AuthlibOidcProvider:
         client = self._client()
         try:
             token = client.fetch_token(
-                metadata.token_endpoint,
+                self._internal_url(metadata.token_endpoint),
                 code=code,
                 redirect_uri=self._settings.callback_url,
                 code_verifier=pkce_verifier,
+                headers=self._internal_request_headers(),
             )
             client.close()
             id_token = token.get("id_token")
             if not isinstance(id_token, str) or not id_token:
                 raise OidcProviderError("Provider omitted ID token")
             claims = self._validate_id_token(id_token, nonce)
-            return self._normalize_claims(claims)
+            normalized = self._normalize_claims(claims)
+            return NormalizedClaims(
+                issuer=normalized.issuer,
+                subject=normalized.subject,
+                email=normalized.email,
+                name=normalized.name,
+                id_token=id_token,
+            )
         except OidcProviderError:
             raise
         except (
@@ -135,16 +146,18 @@ class AuthlibOidcProvider:
             if not client.is_closed:
                 client.close()
 
-    def logout_url(self) -> str | None:
+    def logout_url(self, *, id_token_hint: str | None = None) -> str | None:
         metadata = self._metadata
         if metadata is None or metadata.end_session_endpoint is None:
             return None
-        query = urlencode(
-            {
-                "client_id": self._settings.oidc_client_id,
-                "post_logout_redirect_uri": self._settings.post_logout_url,
-            }
-        )
+        # Authentik accepts post_logout_redirect_uri only together with the session's ID
+        # token as id_token_hint; without one, the person lands on Authentik's own
+        # sign-out page instead of a 400.
+        parameters = {"client_id": self._settings.oidc_client_id}
+        if id_token_hint:
+            parameters["id_token_hint"] = id_token_hint
+            parameters["post_logout_redirect_uri"] = self._settings.post_logout_url
+        query = urlencode(parameters)
         separator = "&" if "?" in metadata.end_session_endpoint else "?"
         return f"{metadata.end_session_endpoint}{separator}{query}"
 
@@ -182,6 +195,22 @@ class AuthlibOidcProvider:
                     document.get("end_session_endpoint")
                 ),
             )
+            # Authentik serves every endpoint from the issuer's origin; the client
+            # secret and the authorization code go to the token endpoint, and the ID
+            # token to the end-session endpoint, so none may point elsewhere.
+            issuer_origin = urlsplit(self._settings.oidc_issuer)
+            elsewhere = [
+                name
+                for name, value in (
+                    ("authorization_endpoint", metadata.authorization_endpoint),
+                    ("token_endpoint", metadata.token_endpoint),
+                    ("jwks_uri", metadata.jwks_uri),
+                    ("end_session_endpoint", metadata.end_session_endpoint),
+                )
+                if value is not None
+                and (urlsplit(value).scheme, urlsplit(value).netloc)
+                != (issuer_origin.scheme, issuer_origin.netloc)
+            ]
             if self._settings.app_environment == "production":
                 endpoints = {
                     "authorization_endpoint": metadata.authorization_endpoint,
@@ -199,6 +228,11 @@ class AuthlibOidcProvider:
                         "Production provider endpoints must use HTTPS: "
                         + ", ".join(insecure)
                     )
+            if elsewhere:
+                raise OidcProviderError(
+                    "Provider endpoints must be on the issuer's origin: "
+                    + ", ".join(elsewhere)
+                )
             advertised = document.get("id_token_signing_alg_values_supported")
             if isinstance(advertised, list) and not set(
                 self._settings.oidc_allowed_signing_algorithms
@@ -218,10 +252,50 @@ class AuthlibOidcProvider:
             self._jwks = document
         return self._jwks
 
+    def _internal_url(self, url: str) -> str:
+        """The address the backend itself uses for a provider URL.
+
+        Without OIDC_INTERNAL_BASE_URL the public URL is used as it is. With it, only a
+        URL on the issuer's own origin is rewritten, to the internal origin; a metadata
+        URL on any other origin is refused.
+        """
+        base = self._settings.oidc_internal_base_url
+        if not base:
+            return url
+        issuer = urlsplit(self._settings.oidc_issuer)
+        target = urlsplit(url)
+        if (target.scheme, target.netloc) != (issuer.scheme, issuer.netloc):
+            raise OidcProviderError("Provider metadata referenced an unexpected origin")
+        internal = urlsplit(base)
+        return urlunsplit(
+            (
+                internal.scheme,
+                internal.netloc,
+                target.path,
+                target.query,
+                target.fragment,
+            )
+        )
+
+    def _internal_request_headers(self) -> dict[str, str]:
+        if not self._settings.oidc_internal_base_url:
+            return {}
+        # Authentik builds the issuer and the endpoint URLs from the request's Host and
+        # scheme, and the internal call is plain HTTP: say the public ones (Authentik
+        # trusts these headers only from the backend's address).
+        issuer = urlsplit(self._settings.oidc_issuer)
+        return {"Host": issuer.netloc, "X-Forwarded-Proto": issuer.scheme}
+
     def _get_json(self, url: str) -> dict[str, Any]:
         try:
             with httpx.Client(timeout=10.0, follow_redirects=False) as client:
-                response = client.get(url, headers={"Accept": "application/json"})
+                response = client.get(
+                    self._internal_url(url),
+                    headers={
+                        "Accept": "application/json",
+                        **self._internal_request_headers(),
+                    },
+                )
                 response.raise_for_status()
                 value = response.json()
         except Exception as exc:

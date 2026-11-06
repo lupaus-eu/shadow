@@ -283,6 +283,12 @@ If a concept changes meaning, lifecycle or ownership, update concept, domain, da
 
 # Authentication
 
+> Identity is provided by self-hosted Authentik since ADR-017 (the backend discovers it through
+> `OIDC_INTERNAL_BASE_URL`, requires `email_verified`, and ends the Authentik session at
+> sign-out with `id_token_hint`; see [the login sequence](diagrams/generated/sequence-oidc-login.svg)).
+> The Microsoft Entra descriptions below are historical and are removed by ticket
+> `authentik-sign-in/05`.
+
 Status: backend OIDC and application-session boundary implemented
 
 FastAPI is a confidential OIDC relying party. ADR-013 selects direct

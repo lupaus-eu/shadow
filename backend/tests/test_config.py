@@ -135,33 +135,135 @@ def test_oidc_scopes_are_limited_to_identity_claims(scopes: str) -> None:
         Settings.model_validate({"OIDC_SCOPES": scopes})
 
 
+LOCAL_ISSUER = "https://id.app.localhost/application/o/shadow/"
+LOCAL_DISCOVERY = f"{LOCAL_ISSUER}.well-known/openid-configuration"
+
+
+def _development_settings(**overrides: object) -> Settings:
+    values: dict[str, object] = {
+        "APP_ENV": "development",
+        "PUBLIC_ORIGIN": "https://app.localhost",
+        "APP_ALLOWED_ORIGIN": "https://app.localhost",
+        "SESSION_COOKIE_SECURE": True,
+        "TRUSTED_CADDY_PEER_CIDRS": "172.28.59.2/32",
+        "OIDC_ISSUER": LOCAL_ISSUER,
+        "OIDC_DISCOVERY_URL": LOCAL_DISCOVERY,
+    }
+    values.update(overrides)
+    return Settings.model_validate(values)
+
+
+def test_the_local_authentik_configuration_is_accepted() -> None:
+    _development_settings().validate_auth_configuration()
+    _development_settings(
+        OIDC_INTERNAL_BASE_URL="http://authentik-server:9000"
+    ).validate_auth_configuration()
+    _development_settings(OIDC_INTERNAL_BASE_URL="  ").validate_auth_configuration()
+
+
+def test_verified_email_is_required_by_default() -> None:
+    assert Settings().oidc_require_verified_email is True
+
+
 @pytest.mark.parametrize(
-    ("name", "value"),
+    ("overrides", "message"),
     [
-        ("OIDC_ISSUER", "https://login.microsoftonline.com/common/v2.0"),
+        ({"OIDC_ISSUER": "http://id.app.localhost/application/o/shadow/"}, "https URL"),
         (
-            "OIDC_DISCOVERY_URL",
-            "https://login.microsoftonline.com/organizations/v2.0/"
-            ".well-known/openid-configuration",
+            {"OIDC_ISSUER": "https://user:pw@id.app.localhost/application/o/shadow/"},
+            "https URL",
+        ),
+        ({"OIDC_ISSUER": f"{LOCAL_ISSUER}?x=1"}, "https URL"),
+        ({"OIDC_ISSUER": f"{LOCAL_ISSUER}#x"}, "https URL"),
+        (
+            {"OIDC_ISSUER": "https://id.app.localhost/application/o/shadow"},
+            "per-provider issuer",
+        ),
+        ({"OIDC_ISSUER": "https://id.app.localhost/"}, "per-provider issuer"),
+        (
+            {"OIDC_ISSUER": "https://id.app.localhost/application/o/Sha dow/"},
+            "per-provider issuer",
+        ),
+        (
+            {"OIDC_ISSUER": "https://login.microsoftonline.com/tenant-id/v2.0"},
+            "per-provider issuer",
+        ),
+        (
+            {
+                "OIDC_DISCOVERY_URL": "https://id.app.localhost/application/o/other/.well-known/openid-configuration"
+            },
+            "must match",
+        ),
+        (
+            {
+                "OIDC_DISCOVERY_URL": "https://other.localhost/application/o/shadow/.well-known/openid-configuration"
+            },
+            "must match",
+        ),
+        ({"OIDC_DISCOVERY_URL": f"{LOCAL_ISSUER}openid-configuration"}, "must match"),
+        (
+            {
+                "OIDC_ISSUER": "https://app.localhost/application/o/shadow/",
+                "OIDC_DISCOVERY_URL": "https://app.localhost/application/o/shadow/.well-known/openid-configuration",
+            },
+            "own origin",
+        ),
+        (
+            {
+                "OIDC_ISSUER": "https://elsewhere.test/application/o/shadow/",
+                "OIDC_DISCOVERY_URL": "https://elsewhere.test/application/o/shadow/.well-known/openid-configuration",
+            },
+            "https://id.app.localhost",
+        ),
+        (
+            {"OIDC_INTERNAL_BASE_URL": "http://authentik-server:9000/path"},
+            "without a path",
+        ),
+        ({"OIDC_INTERNAL_BASE_URL": "ftp://authentik-server:9000"}, "without a path"),
+        (
+            {"OIDC_INTERNAL_BASE_URL": "http://user:pw@authentik-server:9000"},
+            "without a path",
         ),
     ],
 )
-def test_generic_entra_authority_is_rejected(name: str, value: str) -> None:
+def test_unsafe_oidc_provider_settings_are_rejected(
+    overrides: dict[str, object], message: str
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        _development_settings(**overrides).validate_auth_configuration()
+
+
+def test_production_issuer_must_not_use_an_explicit_port() -> None:
+    issuer = "https://id.shadow.example:8443/application/o/shadow/"
     settings = Settings.model_validate(
         {
-            "APP_ENV": "development",
-            "PUBLIC_ORIGIN": "https://app.localhost",
-            "APP_ALLOWED_ORIGIN": "https://app.localhost",
+            "APP_ENV": "production",
+            "PUBLIC_ORIGIN": "https://app.example.test",
+            "APP_ALLOWED_ORIGIN": "https://app.example.test",
             "SESSION_COOKIE_SECURE": True,
-            "TRUSTED_CADDY_PEER_CIDRS": "172.28.59.2/32",
-            "OIDC_ISSUER": "https://login.microsoftonline.com/tenant-id/v2.0",
-            "OIDC_DISCOVERY_URL": "https://login.microsoftonline.com/tenant-id/v2.0/.well-known/openid-configuration",
-            name: value,
+            "TRUSTED_CADDY_PEER_CIDRS": "172.30.0.0/24",
+            "OIDC_ISSUER": issuer,
+            "OIDC_DISCOVERY_URL": f"{issuer}.well-known/openid-configuration",
         }
     )
-
-    with pytest.raises(ValueError, match="tenant-specific"):
+    with pytest.raises(ValueError, match="explicit port"):
         settings.validate_auth_configuration()
+
+
+def test_a_production_authentik_issuer_is_accepted() -> None:
+    issuer = "https://id.shadow.example/application/o/shadow/"
+    Settings.model_validate(
+        {
+            "APP_ENV": "production",
+            "PUBLIC_ORIGIN": "https://app.example.test",
+            "APP_ALLOWED_ORIGIN": "https://app.example.test",
+            "SESSION_COOKIE_SECURE": True,
+            "TRUSTED_CADDY_PEER_CIDRS": "172.30.0.0/24",
+            "OIDC_ISSUER": issuer,
+            "OIDC_DISCOVERY_URL": f"{issuer}.well-known/openid-configuration",
+            "OIDC_INTERNAL_BASE_URL": "http://authentik-server:9000",
+        }
+    ).validate_auth_configuration()
 
 
 def test_development_requires_local_https_caddy_boundary() -> None:
@@ -176,56 +278,6 @@ def test_development_requires_local_https_caddy_boundary() -> None:
     )
 
     with pytest.raises(ValueError, match="https://app.localhost"):
-        settings.validate_auth_configuration()
-
-
-def test_development_requires_exact_direct_entra_discovery() -> None:
-    settings = Settings.model_validate(
-        {
-            "APP_ENV": "development",
-            "PUBLIC_ORIGIN": "https://app.localhost",
-            "APP_ALLOWED_ORIGIN": "https://app.localhost",
-            "SESSION_COOKIE_SECURE": True,
-            "TRUSTED_CADDY_PEER_CIDRS": "172.28.59.2/32",
-            "OIDC_ISSUER": "https://login.microsoftonline.com/tenant-id/v2.0",
-            "OIDC_DISCOVERY_URL": "https://login.microsoftonline.com/other/v2.0/.well-known/openid-configuration",
-        }
-    )
-
-    with pytest.raises(ValueError, match="must match"):
-        settings.validate_auth_configuration()
-
-
-@pytest.mark.parametrize(
-    "name,value",
-    [
-        (
-            "OIDC_DISCOVERY_URL",
-            "https://provider.example.test/tenant-id/v2.0/.well-known/openid-configuration",
-        ),
-        (
-            "OIDC_ISSUER",
-            "https://login.microsoftonline.com:444/tenant-id/v2.0",
-        ),
-    ],
-)
-def test_development_rejects_noncanonical_entra_origins(
-    name: str, value: str
-) -> None:
-    settings = Settings.model_validate(
-        {
-            "APP_ENV": "development",
-            "PUBLIC_ORIGIN": "https://app.localhost",
-            "APP_ALLOWED_ORIGIN": "https://app.localhost",
-            "SESSION_COOKIE_SECURE": True,
-            "TRUSTED_CADDY_PEER_CIDRS": "172.28.59.2/32",
-            "OIDC_ISSUER": "https://login.microsoftonline.com/tenant-id/v2.0",
-            "OIDC_DISCOVERY_URL": "https://login.microsoftonline.com/tenant-id/v2.0/.well-known/openid-configuration",
-            name: value,
-        }
-    )
-
-    with pytest.raises(ValueError, match="exact direct Entra HTTPS origin"):
         settings.validate_auth_configuration()
 
 
@@ -380,3 +432,27 @@ def test_mcp_token_lifetimes_cannot_outlive_the_grant(
 ) -> None:
     with pytest.raises(ValidationError):
         Settings.model_validate(overrides)
+
+
+def test_production_internal_base_url_over_http_must_be_a_docker_service_name() -> None:
+    issuer = "https://id.shadow.example/application/o/shadow/"
+    common: dict[str, object] = {
+        "APP_ENV": "production",
+        "PUBLIC_ORIGIN": "https://app.example.test",
+        "APP_ALLOWED_ORIGIN": "https://app.example.test",
+        "SESSION_COOKIE_SECURE": True,
+        "TRUSTED_CADDY_PEER_CIDRS": "172.30.0.0/24",
+        "OIDC_ISSUER": issuer,
+        "OIDC_DISCOVERY_URL": f"{issuer}.well-known/openid-configuration",
+    }
+    with pytest.raises(ValueError, match="private Docker service"):
+        Settings.model_validate(
+            common | {"OIDC_INTERNAL_BASE_URL": "http://10.0.0.5:9000"}
+        ).validate_auth_configuration()
+    with pytest.raises(ValueError, match="private Docker service"):
+        Settings.model_validate(
+            common | {"OIDC_INTERNAL_BASE_URL": "http://authentik.example.test"}
+        ).validate_auth_configuration()
+    Settings.model_validate(
+        common | {"OIDC_INTERNAL_BASE_URL": "https://authentik.example.test"}
+    ).validate_auth_configuration()

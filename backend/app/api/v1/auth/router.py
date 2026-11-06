@@ -110,6 +110,7 @@ def callback(
             settings,
             user=user,
             presented_session_id=request.cookies.get(settings.session_cookie_name),
+            id_token=claims.id_token,
         )
         new_raw_session_id = created.raw_session_id
         target = consumed.return_to
@@ -163,6 +164,8 @@ def logout(
     provider: ProviderDependency,
     active: UnsafeRequestDependency,
 ) -> LogoutResponse:
+    # Read before the row is deleted: the hint ends Authentik's session as well.
+    id_token_hint = active.auth_session.id_token
     delete_session(session, active)
     response.delete_cookie(
         settings.session_cookie_name,
@@ -171,7 +174,7 @@ def logout(
         samesite="strict",
         path="/",
     )
-    return LogoutResponse(logoutUrl=provider.logout_url())
+    return LogoutResponse(logoutUrl=provider.logout_url(id_token_hint=id_token_hint))
 
 
 def _enforce_rate_limit(request: Request, bucket: str, limit: int) -> None:

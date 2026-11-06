@@ -17,6 +17,10 @@ entries:
       name: shadow-require-pkce
     attrs:
       expression: |
+        # Only authorization requests carry these keys; other requests that Authentik checks
+        # against the application (for example end-session, i.e. sign-out) pass.
+        if "oauth_code_challenge_method" not in context:
+            return True
         return (
             context.get("oauth_code_challenge_method") == "S256"
             and bool(context.get("oauth_code_challenge"))
@@ -52,7 +56,9 @@ entries:
       grant_types:
         - authorization_code
       authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
-      invalidation_flow: !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
+      # Signing out of Shadow ends the Authentik session too (the provider invalidation flow
+      # of the same name is empty and would leave the single sign-on session open).
+      invalidation_flow: !Find [authentik_flows.flow, [slug, default-invalidation-flow]]
       redirect_uris:
         - matching_mode: strict
           redirect_uri_type: authorization
@@ -62,7 +68,7 @@ entries:
           url: !Env FRONTEND_URL
         - matching_mode: strict
           redirect_uri_type: logout
-          url: !Format ["%s/platform", !Env FRONTEND_URL]
+          url: !Format ["%s/login", !Env FRONTEND_URL]
       property_mappings:
         - !Find [authentik_providers_oauth2.scopemapping, [scope_name, openid]]
         - !Find [authentik_providers_oauth2.scopemapping, [scope_name, profile]]
