@@ -32,6 +32,32 @@ Lue nämä yhdessä tietokantamallin kanssa:
 
 ---
 
+# Application Database Role
+
+Migration 021 (ADR-016) creates the cluster-wide role `shadow_app`
+(`NOLOGIN NOBYPASSRLS NOINHERIT`) and grants it `SELECT`, `INSERT`, `UPDATE`,
+`DELETE` on the tables and `USAGE`, `SELECT` on the sequences of the migrated
+schema, now and by default privileges for later tables. The migrating login
+role is granted membership so that it can `SET ROLE shadow_app`.
+
+Platform code opens its transactions with
+`app.core.database.transaction_session`, which runs `SET LOCAL ROLE shadow_app`
+and sets the transaction-local settings `app.current_user_id`,
+`app.current_tenant_id`, `app.current_support_access_id`,
+`app.current_invitation_token_hash` and `app.worker_scope` from a
+`RequestContext`. The role has no DDL rights. There are no row-level security
+policies yet; they follow with the tenant routes (ADR-016, step 080G). The
+existing routes keep `get_db_session` and the login role until they are moved
+to tenant routes. The down migration revokes the grants and keeps the role,
+because it is shared by every schema in the cluster. Migration 021 enforces
+the role attributes even when the role already exists, and withholds
+`schema_migrations`. Row-level security policies must read the context with
+`NULLIF(current_setting('app.current_tenant_id', true), '')::uuid`, because an
+unset value is stored as an empty string. The migrating login role needs the
+right to grant membership in `shadow_app` (the image superuser has it).
+
+---
+
 # Physical Schema Ownership
 
 Domain-omistajuus täsmennetään erillisissä domain- ja concept-dokumenteissa, kun Shadowin tuotemalli tarkentuu.
@@ -71,6 +97,7 @@ db/migrations/017_create_mcp_oauth_schema.sql
 db/migrations/018_create_ai_change_sets.sql
 db/migrations/019_add_ai_change_set_review_channel.sql
 db/migrations/020_alter_mcp_oauth_single_resource.sql
+db/migrations/021_create_application_role.sql
 ```
 
 | Table | Purpose | Notes |

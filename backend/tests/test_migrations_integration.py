@@ -58,6 +58,15 @@ def _scalar(database_url: str, query: str) -> object:
     return row[0]
 
 
+def _roll_back_after_020(database_url: str) -> None:
+    """Undo the platform-foundation migrations (021 and later), newest first."""
+    for migration in reversed(discover_migrations()):
+        if migration.version > 20:
+            execute_command(
+                DownCommand(migration.down_name), database_url=database_url
+            )
+
+
 def _rollback_to_version_four(database_url: str) -> None:
     for migration in reversed(discover_migrations()[4:]):
         execute_command(DownCommand(migration.down_name), database_url=database_url)
@@ -160,6 +169,8 @@ def test_rejects_non_latest_and_unapplied_down_migrations(
             DownCommand("007_create_contacts.down.sql"),
             database_url=migration_database_url,
         )
+
+    _roll_back_after_020(migration_database_url)
 
     execute_command(
         DownCommand("020_alter_mcp_oauth_single_resource.down.sql"),
@@ -639,6 +650,8 @@ def test_prediction_interval_migration_resets_development_rows_and_constraints(
                     ),
                 )
 
+    _roll_back_after_020(migration_database_url)
+
     execute_command(
         DownCommand("020_alter_mcp_oauth_single_resource.down.sql"),
         database_url=migration_database_url,
@@ -737,6 +750,8 @@ def test_prophet_result_kind_migration_up_and_down(
             )
         connection.commit()
 
+    _roll_back_after_020(migration_database_url)
+
     execute_command(
         DownCommand("020_alter_mcp_oauth_single_resource.down.sql"),
         database_url=migration_database_url,
@@ -827,6 +842,8 @@ def test_prediction_observation_source_migration_replaces_schema(
                     'allCurrentReality', DATE '2025-01-01', DATE '2025-02-01')
                 """
             )
+
+    _roll_back_after_020(migration_database_url)
 
     execute_command(
         DownCommand("020_alter_mcp_oauth_single_resource.down.sql"),
@@ -971,6 +988,8 @@ def test_prediction_request_migration_preserves_versions_and_enforces_lifecycle(
                 "now(), now(), %s, %s)",
                 (other[0], user[0], version[0]),
             )
+
+    _roll_back_after_020(migration_database_url)
 
     execute_command(
         DownCommand("020_alter_mcp_oauth_single_resource.down.sql"),
@@ -1161,6 +1180,8 @@ def test_timeserie_name_and_short_name_indexes_enforce_active_scope(
         )
         connection.commit()
 
+    _roll_back_after_020(migration_database_url)
+
     execute_command(
         DownCommand("020_alter_mcp_oauth_single_resource.down.sql"),
         database_url=migration_database_url,
@@ -1321,6 +1342,8 @@ def test_mcp_oauth_migration_down_fully_reverses_up(
         )
         == 4
     )
+
+    _roll_back_after_020(migration_database_url)
 
     execute_command(
         DownCommand("020_alter_mcp_oauth_single_resource.down.sql"),
@@ -1579,6 +1602,8 @@ def test_ai_change_sets_migration_down_fully_reverses_up(
         )
         == 2
     )
+
+    _roll_back_after_020(migration_database_url)
 
     execute_command(
         DownCommand("020_alter_mcp_oauth_single_resource.down.sql"),
@@ -2085,10 +2110,9 @@ def test_mcp_single_resource_migration_deletes_legacy_grants_and_keeps_audit(
 
     execute_command(UpCommand(), database_url=migration_database_url)
 
-    assert (
-        _scalar(migration_database_url, "SELECT max(version) FROM schema_migrations")
-        == 20
-    )
+    assert _scalar(
+        migration_database_url, "SELECT max(version) FROM schema_migrations"
+    ) == max(migration.version for migration in discover_migrations())
     _assert_mcp_oauth_rows_deleted_and_change_set_kept(
         migration_database_url, user_id, change_set_id, "client-1,client-2"
     )
@@ -2200,6 +2224,8 @@ def test_mcp_single_resource_migration_down_restores_the_017_checks(
         )
         connection.commit()
 
+    _roll_back_after_020(migration_database_url)
+
     execute_command(
         DownCommand("020_alter_mcp_oauth_single_resource.down.sql"),
         database_url=migration_database_url,
@@ -2251,3 +2277,65 @@ def test_mcp_single_resource_migration_down_restores_the_017_checks(
     execute_command(UpCommand(), database_url=migration_database_url)
     assert _mcp_scope_checks(migration_database_url).keys() == MCP_SCOPE_CHECKS
     assert _scalar(migration_database_url, "SELECT count(*) FROM mcp_oauth_grants") == 0
+
+
+def _shadow_app_privilege_count(database_url: str) -> int:
+    return int(
+        _scalar(
+            database_url,
+            "SELECT (SELECT count(*) FROM pg_default_acl a "
+            "JOIN pg_namespace n ON n.oid = a.defaclnamespace "
+            "WHERE n.nspname = current_schema() "
+            "AND a.defaclacl::text LIKE '%shadow_app=%') "
+            "+ (SELECT count(*) FROM information_schema.role_table_grants "
+            "WHERE grantee = 'shadow_app' AND table_schema = current_schema()) "
+            "+ (SELECT count(*) FROM pg_namespace n "
+            "WHERE n.nspname = current_schema() "
+            "AND has_schema_privilege('shadow_app', n.oid, 'USAGE')::int > 0)",
+        )
+    )
+
+
+def test_application_role_migration_up_down_up_and_grants(
+    migration_database_url: str,
+) -> None:
+    execute_command(UpCommand(), database_url=migration_database_url)
+    assert _scalar(
+        migration_database_url,
+        "SELECT has_table_privilege('shadow_app', 'users', 'SELECT')",
+    )
+    assert not _scalar(
+        migration_database_url,
+        "SELECT has_table_privilege('shadow_app', 'schema_migrations', 'UPDATE')",
+    )
+    assert _shadow_app_privilege_count(migration_database_url) > 0
+
+    _roll_back_after_020(migration_database_url)
+    assert _shadow_app_privilege_count(migration_database_url) == 0
+    assert not _scalar(
+        migration_database_url,
+        "SELECT has_table_privilege('shadow_app', 'users', 'SELECT')",
+    )
+
+    execute_command(UpCommand(), database_url=migration_database_url)
+    assert _scalar(
+        migration_database_url,
+        "SELECT has_table_privilege('shadow_app', 'users', 'SELECT')",
+    )
+
+
+def test_application_role_migration_repairs_a_preexisting_role(
+    migration_database_url: str,
+) -> None:
+    execute_command(UpCommand(), database_url=migration_database_url)
+    _roll_back_after_020(migration_database_url)
+    with psycopg.connect(migration_database_url, autocommit=True) as connection:
+        connection.execute("ALTER ROLE shadow_app BYPASSRLS NOINHERIT")
+
+    execute_command(UpCommand(), database_url=migration_database_url)
+
+    assert _scalar(
+        migration_database_url,
+        "SELECT NOT rolbypassrls AND NOT rolcanlogin AND NOT rolsuper "
+        "FROM pg_roles WHERE rolname = 'shadow_app'",
+    )

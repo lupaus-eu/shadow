@@ -213,6 +213,10 @@ Backend vastaa:
 
 Status: decided in ADR-001
 
+Application code that acts for a person or tenant runs its transactions under
+the role `shadow_app` with a per-transaction request context (ADR-016, see
+`data/DATABASE.md`); existing routes migrate to it with the tenant routes.
+
 Tietokanta:
 
 - PostgreSQL

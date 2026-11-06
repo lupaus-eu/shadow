@@ -206,6 +206,7 @@ rendered `docker compose config` output into evidence.
 | `BACKEND_IMAGE`, `FRONTEND_IMAGE` | Never in the env file: `deploy/bin/*` passes the frozen image IDs from the release record |
 | `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | Private PostgreSQL 18 initialization; use a URL-safe password such as `openssl rand -hex 32` |
 | `DATABASE_URL` | Secret `postgresql://USER:PASSWORD@database:5432/DB`, shared by API/migration/worker and the backup runner |
+| `DATABASE_POOL_SIZE`, `DATABASE_MAX_OVERFLOW` | Optional connection pool of each backend or worker process (defaults 5 and 10, SQLAlchemy's own defaults) |
 | `OIDC_DISCOVERY_URL`, `OIDC_ISSUER` | Exact tenant-specific HTTPS metadata/issuer |
 | `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` | Shared confidential app ID, production's own secret |
 | `PUBLIC_ORIGIN` | `https://shadow.lupaus.eu`, exact canonical application Host |

@@ -25,6 +25,8 @@ services:
     command: ["/app/docker-entrypoint-dev.sh"]
     environment:
       DATABASE_URL: postgresql://${DATABASE_USER:-shadow}:${DATABASE_PASSWORD:-shadow_dev_password}@database:5432/${DATABASE_NAME:-shadow}
+      DATABASE_POOL_SIZE: ${DATABASE_POOL_SIZE:-5}
+      DATABASE_MAX_OVERFLOW: ${DATABASE_MAX_OVERFLOW:-10}
       APP_ENV: development
       OIDC_DISCOVERY_URL: ${OIDC_DISCOVERY_URL:?Run scripts/setup-local-entra.sh and load .env.entra.local}
       OIDC_ISSUER: ${OIDC_ISSUER:?Run scripts/setup-local-entra.sh and load .env.entra.local}
@@ -80,6 +82,8 @@ services:
     command: ["uv", "run", "python", "-m", "app.api.v1.predictions.worker"]
     environment:
       DATABASE_URL: postgresql://${DATABASE_USER:-shadow}:${DATABASE_PASSWORD:-shadow_dev_password}@database:5432/${DATABASE_NAME:-shadow}
+      DATABASE_POOL_SIZE: ${DATABASE_POOL_SIZE:-5}
+      DATABASE_MAX_OVERFLOW: ${DATABASE_MAX_OVERFLOW:-10}
     depends_on:
       database:
         condition: service_started

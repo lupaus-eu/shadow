@@ -69,6 +69,8 @@ services:
     <<: [*hardening, *backend-image]
     environment:
       DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL for the private database}
+      DATABASE_POOL_SIZE: ${DATABASE_POOL_SIZE:-5}
+      DATABASE_MAX_OVERFLOW: ${DATABASE_MAX_OVERFLOW:-10}
       APP_ENV: production
       OIDC_DISCOVERY_URL: ${OIDC_DISCOVERY_URL:?Set the tenant-specific OIDC discovery URL}
       OIDC_ISSUER: ${OIDC_ISSUER:?Set the exact expected OIDC issuer}
@@ -132,6 +134,8 @@ services:
     command: ["python", "-m", "app.api.v1.predictions.worker"]
     environment:
       DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL for the private database}
+      DATABASE_POOL_SIZE: ${DATABASE_POOL_SIZE:-5}
+      DATABASE_MAX_OVERFLOW: ${DATABASE_MAX_OVERFLOW:-10}
     # Each calculation child keeps CmdStan output (about 1 MB per Prophet
     # target at the 10,000-observation limit) in a private /tmp directory until
     # it is reaped (ADR-014, TASK-061B).
