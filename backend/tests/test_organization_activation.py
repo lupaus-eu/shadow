@@ -39,7 +39,7 @@ class FakeOIDCClient:
         redirect_uri: str,
     ) -> OIDCIdentity:
         return OIDCIdentity(
-            issuer="https://identity.example/application/o/yearclock/",
+            issuer="https://identity.example/application/o/shadow/",
             subject="organization-owner",
             email="owner@example.com",
             email_verified=True,
@@ -253,8 +253,6 @@ def test_verified_paid_event_activates_once_and_creates_localized_content(
     active = status_response.json()
     assert active["status"] == "active"
     assert active["initial_seats"] == 3
-    assert active["initial_content"]["yearclock_name"] == "Vuosikello"
-    assert active["initial_content"]["lane_name"] == "Yleinen"
     assert active["initial_content"]["owner_user_account_id"]
     assert after_membership_removal.status_code == 404
 

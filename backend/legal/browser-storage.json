@@ -2,12 +2,12 @@
   "_note": "Every cookie and web-storage key Yearclock sets. Tests (frontend/tests/unit/browser-storage.test.ts and backend/tests/test_browser_storage.py) fail when the code and this list differ. Update the browser storage notice (backend/legal/storage.*.md) in the same change. All entries are strictly necessary or the person's own preferences; no analytics or advertising storage is used.",
   "cookies": [
     {
-      "name": "yearclock_session",
+      "name": "shadow_session",
       "purpose": "Keeps the person signed in (an opaque session identifier; HttpOnly, SameSite=Lax, Secure in production).",
       "lifetime": "Up to 8 hours (AUTH_SESSION_MAX_AGE_SECONDS); removed at sign-out."
     },
     {
-      "name": "yearclock_oidc_flow",
+      "name": "shadow_oidc_flow",
       "purpose": "Protects the sign-in round trip to the identity provider against forgery (HttpOnly, SameSite=Lax, limited to the sign-in callback path).",
       "lifetime": "10 minutes; removed when the sign-in completes."
     }

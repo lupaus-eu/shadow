@@ -326,159 +326,18 @@ class OrganizationMembership(Base):
     )
 
 
-class Yearclock(Base):
-    __tablename__ = "yearclocks"
-    __table_args__ = (
-        UniqueConstraint(
-            "organization_id",
-            "id",
-            name="uq_yearclocks_organization_id_id",
-        ),
-    )
-
-    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
-    organization_id: Mapped[UUID] = mapped_column(
-        Uuid,
-        ForeignKey("organizations.id", ondelete="CASCADE"),
-        index=True,
-    )
-    name: Mapped[str] = mapped_column(String(200))
-    display_order: Mapped[int] = mapped_column(Integer, server_default="0")
-    version: Mapped[int] = mapped_column(Integer, server_default="1")
-    # Month (1–12) the planning year begins; sets the default Planning Window (Yearclock V2).
-    start_month: Mapped[int] = mapped_column(SmallInteger, default=1, server_default="1")
-    show_week_ring: Mapped[bool] = mapped_column(default=False, server_default="false")
-    show_quarter_ring: Mapped[bool] = mapped_column(default=False, server_default="false")
-    # Organization-wide Access: none, viewer, or editor for every member, including future ones (Yearclock V2).
-    organization_access: Mapped[str] = mapped_column(String(10), default="none", server_default="none")
-    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-    )
 
 
-class Lane(Base):
-    __tablename__ = "lanes"
-    __table_args__ = (
-        ForeignKeyConstraint(
-            ["organization_id", "yearclock_id"],
-            ["yearclocks.organization_id", "yearclocks.id"],
-            ondelete="CASCADE",
-            name="fk_lanes_yearclock_organization",
-        ),
-    )
-
-    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
-    organization_id: Mapped[UUID] = mapped_column(
-        Uuid,
-        ForeignKey("organizations.id", ondelete="CASCADE"),
-        index=True,
-    )
-    yearclock_id: Mapped[UUID] = mapped_column(
-        Uuid,
-        index=True,
-    )
-    name: Mapped[str] = mapped_column(String(200))
-    display_order: Mapped[int] = mapped_column(Integer, server_default="0")
-    version: Mapped[int] = mapped_column(Integer, server_default="1")
-    # Light background tint from the Label palette, and "normal" or "tall" (Yearclock V2).
-    tint: Mapped[str | None] = mapped_column(String(7))
-    height: Mapped[str] = mapped_column(String(10), default="normal", server_default="normal")
-    # A Linked Lane shows this Source Lane of another Yearclock, live and read only (Yearclock V2).
-    source_lane_id: Mapped[UUID | None] = mapped_column(Uuid, ForeignKey("lanes.id", ondelete="CASCADE"), index=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-    )
 
 
-class YearclockAccessGrant(Base):
-    __tablename__ = "yearclock_access_grants"
-    __table_args__ = (UniqueConstraint("yearclock_id", "user_account_id", name="uq_yearclock_access_grant"),)
-    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
-    organization_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
-    yearclock_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("yearclocks.id", ondelete="CASCADE"), index=True)
-    user_account_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("user_accounts.id", ondelete="CASCADE"), index=True)
-    role: Mapped[str] = mapped_column(String(20))
-    version: Mapped[int] = mapped_column(Integer, server_default="1")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
-class Event(Base):
-    __tablename__ = "events"
-    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
-    organization_id: Mapped[UUID] = mapped_column(
-        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), index=True
-    )
-    yearclock_id: Mapped[UUID] = mapped_column(
-        Uuid, ForeignKey("yearclocks.id", ondelete="CASCADE"), index=True
-    )
-    lane_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("lanes.id", ondelete="RESTRICT"))
-    category_id: Mapped[UUID | None] = mapped_column(Uuid, ForeignKey("categories.id", ondelete="SET NULL"))
-    title: Mapped[str] = mapped_column(String(200))
-    description: Mapped[str | None] = mapped_column(Text)
-    location: Mapped[str | None] = mapped_column(String(200))
-    links: Mapped[list[dict[str, str]]] = mapped_column(JSONB, server_default="[]")
-    description_format: Mapped[str] = mapped_column(String(10), server_default="plain")
-    starts_at: Mapped[time | None] = mapped_column(Time)
-    ends_at: Mapped[time | None] = mapped_column(Time)
-    starts_on: Mapped[date] = mapped_column(index=True)
-    ends_on: Mapped[date | None] = mapped_column(index=True)
-    version: Mapped[int] = mapped_column(Integer, server_default="1")
-    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
-class EventSeries(Base):
-    __tablename__ = "event_series"
-    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
-    organization_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
-    yearclock_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("yearclocks.id", ondelete="CASCADE"), index=True)
-    lane_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("lanes.id", ondelete="RESTRICT"))
-    category_id: Mapped[UUID | None] = mapped_column(Uuid, ForeignKey("categories.id", ondelete="SET NULL"))
-    title: Mapped[str] = mapped_column(String(200))
-    description: Mapped[str | None] = mapped_column(Text)
-    location: Mapped[str | None] = mapped_column(String(200))
-    links: Mapped[list[dict[str, str]]] = mapped_column(JSONB, server_default="[]")
-    description_format: Mapped[str] = mapped_column(String(10), server_default="plain")
-    starts_at: Mapped[time | None] = mapped_column(Time)
-    ends_at: Mapped[time | None] = mapped_column(Time)
-    starts_on: Mapped[date] = mapped_column()
-    frequency: Mapped[str] = mapped_column(String(10))
-    interval: Mapped[int] = mapped_column(Integer, server_default="1")
-    until: Mapped[date | None] = mapped_column()
-    occurrence_count: Mapped[int | None] = mapped_column(Integer)
-    last_day: Mapped[bool] = mapped_column(server_default="false")
-    effective_from: Mapped[date] = mapped_column()
-    version: Mapped[int] = mapped_column(Integer, server_default="1")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
-class SeriesOccurrence(Base):
-    __tablename__ = "series_occurrences"
-    __table_args__ = (UniqueConstraint("series_id", "series_date", name="uq_series_occurrences_series_date"),)
-    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
-    series_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("event_series.id", ondelete="CASCADE"), index=True)
-    organization_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
-    series_date: Mapped[date] = mapped_column()
-    event_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("events.id", ondelete="CASCADE"), unique=True)
-    skipped: Mapped[bool] = mapped_column(server_default="false")
-    overrides: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default="{}")
 
 
-class Category(Base):
-    __tablename__ = "categories"
-    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
-    organization_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
-    # NULL marks an Organization Category shared by every Yearclock (Yearclock V2).
-    yearclock_id: Mapped[UUID | None] = mapped_column(Uuid, ForeignKey("yearclocks.id", ondelete="CASCADE"), index=True)
-    name: Mapped[str] = mapped_column(String(120))
-    color: Mapped[str | None] = mapped_column(String(7))
-    display_order: Mapped[int] = mapped_column(Integer, server_default="0")
-    version: Mapped[int] = mapped_column(Integer, server_default="1")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class StripeWebhookEvent(Base):
@@ -568,106 +427,22 @@ class BackgroundJob(Base):
     last_error: Mapped[str | None] = mapped_column(Text)
 
 
-class YearclockVisit(Base):
-    """The last time one member opened one Yearclock (recently opened list)."""
-
-    __tablename__ = "yearclock_visits"
-    membership_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("organization_memberships.id", ondelete="CASCADE"), primary_key=True)
-    yearclock_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("yearclocks.id", ondelete="CASCADE"), primary_key=True)
-    organization_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("organizations.id", ondelete="CASCADE"))
-    user_account_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("user_accounts.id", ondelete="CASCADE"))
-    visited_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    # The visit before the latest one: changes by others after it are new to the user (Yearclock V2).
-    previous_visited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
-class Label(Base):
-    """An Organization-wide name and color that classifies Events (Yearclock V2)."""
-
-    __tablename__ = "labels"
-    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
-    organization_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
-    name: Mapped[str] = mapped_column(String(60))
-    color: Mapped[str] = mapped_column(String(7))
-    version: Mapped[int] = mapped_column(Integer, server_default="1")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
-class EventLabel(Base):
-    """One Label on one Event (Yearclock V2)."""
-
-    __tablename__ = "event_labels"
-    event_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("events.id", ondelete="CASCADE"), primary_key=True)
-    label_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("labels.id", ondelete="CASCADE"), primary_key=True)
-    organization_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("organizations.id", ondelete="CASCADE"))
 
 
-class SeriesLabel(Base):
-    """One Label on one Series segment; its Occurrences inherit it (Yearclock V2)."""
-
-    __tablename__ = "series_labels"
-    series_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("event_series.id", ondelete="CASCADE"), primary_key=True)
-    label_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("labels.id", ondelete="CASCADE"), primary_key=True)
-    organization_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("organizations.id", ondelete="CASCADE"))
 
 
-class EventRevision(Base):
-    """The state of an Event after one change (Yearclock V2 Event Revision); customer content, not audit data."""
-
-    __tablename__ = "event_revisions"
-    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
-    organization_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("organizations.id", ondelete="CASCADE"))
-    yearclock_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("yearclocks.id", ondelete="CASCADE"))
-    event_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("events.id", ondelete="CASCADE"))
-    series_id: Mapped[UUID | None] = mapped_column(Uuid)
-    kind: Mapped[str] = mapped_column(String(20))
-    reason: Mapped[str] = mapped_column(String(30))
-    reason_detail: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, server_default="{}")
-    actor_account_id: Mapped[UUID | None] = mapped_column(Uuid)
-    actor_kind: Mapped[str] = mapped_column(String(10))
-    snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB)
-    changed_fields: Mapped[list[str]] = mapped_column(ARRAY(String(20)), default=list, server_default="{}")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
-class Group(Base):
-    """A flat, named set of members that can receive Yearclock access (Yearclock V2). Takes no seat."""
-
-    __tablename__ = "member_groups"
-    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
-    organization_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
-    name: Mapped[str] = mapped_column(String(80))
-    version: Mapped[int] = mapped_column(Integer, server_default="1")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
-class GroupMember(Base):
-    __tablename__ = "member_group_members"
-    group_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("member_groups.id", ondelete="CASCADE"), primary_key=True)
-    membership_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("organization_memberships.id", ondelete="CASCADE"), primary_key=True)
-    organization_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("organizations.id", ondelete="CASCADE"))
 
 
-class YearclockGroupGrant(Base):
-    """A Group's Editor or Viewer access to one Yearclock (Yearclock V2)."""
-
-    __tablename__ = "yearclock_group_grants"
-    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
-    organization_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("organizations.id", ondelete="CASCADE"))
-    yearclock_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("yearclocks.id", ondelete="CASCADE"), index=True)
-    group_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("member_groups.id", ondelete="CASCADE"), index=True)
-    role: Mapped[str] = mapped_column(String(10))
-    version: Mapped[int] = mapped_column(Integer, server_default="1")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
-class InvitationGroup(Base):
-    """A Group an invited person joins on acceptance (Yearclock V2)."""
-
-    __tablename__ = "invitation_groups"
-    invitation_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("organization_invitations.id", ondelete="CASCADE"), primary_key=True)
-    group_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("member_groups.id", ondelete="CASCADE"), primary_key=True)
-    organization_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("organizations.id", ondelete="CASCADE"))
 
 
 

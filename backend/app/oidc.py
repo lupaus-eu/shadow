@@ -22,9 +22,9 @@ class OIDCClientSettings:
         return cls(
             issuer=os.getenv(
                 "OIDC_ISSUER",
-                "http://localhost:8190/application/o/yearclock/",
+                "http://localhost:8190/application/o/shadow/",
             ),
-            client_id=os.getenv("OIDC_CLIENT_ID", "yearclock-local"),
+            client_id=os.getenv("OIDC_CLIENT_ID", "shadow-local"),
             client_secret=os.getenv(
                 "OIDC_CLIENT_SECRET",
                 "replace-with-a-random-local-secret",

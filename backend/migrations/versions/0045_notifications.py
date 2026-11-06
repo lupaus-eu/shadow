@@ -28,7 +28,7 @@ ELEVATED = "(current_setting('app.notification_write', true) = '1' OR current_se
 
 
 def _policies(table: str, owner_column: str) -> None:
-    op.execute(f"GRANT SELECT, INSERT, UPDATE, DELETE ON {table} TO yearclock_app")
+    op.execute(f"GRANT SELECT, INSERT, UPDATE, DELETE ON {table} TO shadow_app")
     op.execute(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY")
     op.execute(f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY")
     own = f"organization_id = {ORGANIZATION} AND ({owner_column} = {USER} OR {ELEVATED})"

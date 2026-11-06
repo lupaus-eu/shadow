@@ -17,7 +17,6 @@ from app.invitations import (
     create_invitation,
     expire_pending_invitations,
     hash_invitation_token,
-    invitation_groups,
     resend_invitation,
     revoke_invitation,
 )
@@ -28,8 +27,6 @@ from app.subscription_access import require_organization_mutation_access
 class InvitationRequest(BaseModel):
     email: str = Field(min_length=3, max_length=320)
     role: OrganizationRole = OrganizationRole.MEMBER
-    # Groups the person joins on acceptance (Yearclock V2).
-    group_ids: list[UUID] = []
 
 
 BULK_LIMIT = 50
@@ -38,7 +35,6 @@ BULK_LIMIT = 50
 class BulkInvitationRequest(BaseModel):
     emails: list[str] = Field(min_length=1, max_length=BULK_LIMIT)
     role: OrganizationRole = OrganizationRole.MEMBER
-    group_ids: list[UUID] = []
     dry_run: bool = True
 
 
@@ -112,7 +108,7 @@ def create_invitation_router(*, session_factory: sessionmaker[Session], authenti
                 membership is None or membership.role != OrganizationRole.OWNER.value
             ):
                 raise HTTPException(status_code=403, detail="only an Owner can invite another Owner")
-            created = create_invitation(session, organization=organization, invited_by=authenticated_user.account.id, email=email, role=body.role.value, now=clock(), frontend_url=frontend_url, request_id=_request_id(request), group_ids=body.group_ids)
+            created = create_invitation(session, organization=organization, invited_by=authenticated_user.account.id, email=email, role=body.role.value, now=clock(), frontend_url=frontend_url, request_id=_request_id(request))
             return _response(created.invitation)
 
     @router.post("/api/v1/organizations/{organization_id}/invitations/bulk", response_model=BulkInvitationResponse)
@@ -122,7 +118,6 @@ def create_invitation_router(*, session_factory: sessionmaker[Session], authenti
             membership = session.scalar(select(OrganizationMembership).where(OrganizationMembership.organization_id == organization_id, OrganizationMembership.user_account_id == authenticated_user.account.id))
             if body.role == OrganizationRole.OWNER and (membership is None or membership.role != OrganizationRole.OWNER.value):
                 raise HTTPException(status_code=403, detail="only an Owner can invite another Owner")
-            invitation_groups(session, organization_id, body.group_ids)
             now = clock()
             expire_pending_invitations(session, organization=organization, now=now, request_id=_request_id(request))
             members = set(session.scalars(select(func.lower(UserAccount.email)).join(OrganizationMembership, OrganizationMembership.user_account_id == UserAccount.id).where(OrganizationMembership.organization_id == organization_id)).all())
@@ -146,7 +141,7 @@ def create_invitation_router(*, session_factory: sessionmaker[Session], authenti
             if seats_needed:
                 raise HTTPException(status_code=409, detail={"reason": "seats_needed", "seats_needed": seats_needed})
             for email in invite:
-                create_invitation(session, organization=organization, invited_by=authenticated_user.account.id, email=email, role=body.role.value, now=now, frontend_url=frontend_url, request_id=_request_id(request), group_ids=body.group_ids)
+                create_invitation(session, organization=organization, invited_by=authenticated_user.account.id, email=email, role=body.role.value, now=now, frontend_url=frontend_url, request_id=_request_id(request))
             return BulkInvitationResponse(invite=invite, skipped=skipped, seats_needed=0, created=len(invite))
 
     @router.post("/api/v1/organizations/{organization_id}/invitations/{invitation_id}/resend", response_model=InvitationResponse)

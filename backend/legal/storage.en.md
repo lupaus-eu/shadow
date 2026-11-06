@@ -15,8 +15,8 @@ This list is kept equal to the code by automated tests (`backend/legal/browser-s
 
 | Name | Purpose | Lifetime |
 | --- | --- | --- |
-| `yearclock_session` | Keeps you signed in (an opaque session identifier). | Up to 8 hours; removed when you sign out. |
-| `yearclock_oidc_flow` | Protects the sign-in round trip against forgery. | 10 minutes; removed when sign-in completes. |
+| `shadow_session` | Keeps you signed in (an opaque session identifier). | Up to 8 hours; removed when you sign out. |
+| `shadow_oidc_flow` | Protects the sign-in round trip against forgery. | 10 minutes; removed when sign-in completes. |
 
 ## Settings kept in your browser
 

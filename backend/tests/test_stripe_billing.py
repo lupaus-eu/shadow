@@ -35,7 +35,7 @@ def test_subscription_checkout_uses_the_configured_monthly_seat_price() -> None:
             secret_key="sk_test_contract",
             webhook_secret="whsec_contract",
             monthly_seat_price_id="price_eur_30_monthly",
-            frontend_url="https://yearclock.example",
+            frontend_url="https://shadow.example",
         ),
         client=http_client,
     )
@@ -110,7 +110,7 @@ def test_seat_increase_uses_matching_preview_and_payment_gated_update() -> None:
             secret_key="sk_test_contract",
             webhook_secret="whsec_contract",
             monthly_seat_price_id="price_eur_30_monthly",
-            frontend_url="https://yearclock.example",
+            frontend_url="https://shadow.example",
         ),
         client=httpx.Client(
             base_url="https://api.stripe.com",
@@ -187,7 +187,7 @@ def test_seat_decrease_uses_a_non_prorated_renewal_schedule() -> None:
             secret_key="sk_test_contract",
             webhook_secret="whsec_contract",
             monthly_seat_price_id="price_eur_30_monthly",
-            frontend_url="https://yearclock.example",
+            frontend_url="https://shadow.example",
         ),
         client=httpx.Client(
             base_url="https://api.stripe.com",

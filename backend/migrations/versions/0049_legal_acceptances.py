@@ -36,7 +36,7 @@ def upgrade() -> None:
         sa.UniqueConstraint("organization_id", "document_key", "version", name="uq_legal_acceptances_version"),
     )
     op.create_index("ix_legal_acceptances_organization_id", "legal_acceptances", ["organization_id"])
-    op.execute("GRANT SELECT, INSERT ON legal_acceptances TO yearclock_app")
+    op.execute("GRANT SELECT, INSERT ON legal_acceptances TO shadow_app")
     op.execute("ALTER TABLE legal_acceptances ENABLE ROW LEVEL SECURITY")
     op.execute("ALTER TABLE legal_acceptances FORCE ROW LEVEL SECURITY")
     op.execute(f"CREATE POLICY legal_acceptances_policy ON legal_acceptances USING (organization_id = {CURRENT_ORGANIZATION}) WITH CHECK (organization_id = {CURRENT_ORGANIZATION})")
@@ -48,7 +48,7 @@ def upgrade() -> None:
         sa.Column("version", sa.Integer(), primary_key=True),
         sa.Column("announced_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
     )
-    op.execute("GRANT SELECT, INSERT ON legal_announcements TO yearclock_app")
+    op.execute("GRANT SELECT, INSERT ON legal_announcements TO shadow_app")
 
 
 def downgrade() -> None:

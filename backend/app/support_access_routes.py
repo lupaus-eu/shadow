@@ -18,20 +18,14 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.limits import require_event_capacity
 from app.audit import AuditEventDraft, record_audit_event
 from app.auth import AuthenticatedUser
 from app.auth_routes import AuthenticatedUserDependency
 from app.database import RequestContext, apply_request_context, transaction_session
-from app.event_labels import event_label_ids, resolve_labels, set_event_labels
-from app.event_routes import EventRequest, EventResponse, _category, _event, _lane, _response
 from app.notifications import SUPPORT_ACCESS_ENDED, SUPPORT_ACCESS_REQUESTED, notify_managers
-from app.event_content import links_json
-from app.models import Category, Event, Label, Lane, Organization, OrganizationMembership, OrganizationStatus, SeriesOccurrence, SupportAccessRequest, UserAccount, Yearclock
-from app.planning_window import planning_window
+from app.models import Organization, OrganizationMembership, OrganizationStatus, SupportAccessRequest, UserAccount
 from app.platform_routes import SUPPORT_AGENT, require_role
 from app.subscription_access import require_organization_mutation_access
-from app.time_zone import organization_today
 
 MAX_SUPPORT_HOURS = 24
 
@@ -72,26 +66,6 @@ class SupportResponse(BaseModel):
     created_at: datetime
     decided_at: datetime | None
     expires_at: datetime | None
-
-
-class SupportLane(BaseModel):
-    id: UUID
-    name: str
-    position: int
-
-
-class SupportCategory(BaseModel):
-    id: UUID
-    name: str
-    color: str | None
-
-
-class SupportYearclock(BaseModel):
-    id: UUID
-    name: str
-    lanes: list[SupportLane]
-    categories: list[SupportCategory]
-    labels: list[SupportCategory] = []
 
 
 def create_support_access_router(*, session_factory: sessionmaker, authenticated_user_dependency: AuthenticatedUserDependency) -> APIRouter:
@@ -179,70 +153,6 @@ def create_platform_support_access_router(*, session_factory: sessionmaker, plat
             items = session.scalars(select(SupportAccessRequest).where(SupportAccessRequest.requested_by_user_account_id == user.account.id).order_by(SupportAccessRequest.created_at.desc())).all()
             return [_support_response(session, item) for item in items]
 
-    @router.get("/{request_id}/yearclocks", response_model=list[SupportYearclock])
-    def yearclocks(request_id: UUID, request: Request, user: AuthenticatedUser = Depends(platform_user_dependency)) -> list[SupportYearclock]:
-        with _support_session(session_factory, request_id, user, write=False) as (session, grant):
-            clocks = session.scalars(select(Yearclock).where(Yearclock.organization_id == grant.organization_id, Yearclock.deleted_at.is_(None)).order_by(Yearclock.display_order, Yearclock.id)).all()
-            labels = [SupportCategory(id=item.id, name=item.name, color=item.color) for item in session.scalars(select(Label).where(Label.organization_id == grant.organization_id).order_by(func.lower(Label.name))).all()]
-            result = [
-                SupportYearclock(
-                    id=clock.id,
-                    name=clock.name,
-                    lanes=[SupportLane(id=lane.id, name=lane.name, position=lane.display_order) for lane in session.scalars(select(Lane).where(Lane.yearclock_id == clock.id).order_by(Lane.display_order, Lane.id)).all()],
-                    categories=[SupportCategory(id=item.id, name=item.name, color=item.color) for item in session.scalars(select(Category).where(or_(Category.yearclock_id == clock.id, Category.yearclock_id.is_(None))).order_by(Category.yearclock_id.is_not(None), Category.display_order, Category.id)).all()],
-                    labels=labels,
-                )
-                for clock in clocks
-            ]
-            _audit(session, request, "support_access.content_read", grant.organization_id, {"resource": "yearclocks"}, target_type="organization")
-            return result
-
-    @router.get("/{request_id}/yearclocks/{yearclock_id}/events", response_model=list[EventResponse])
-    def events(request_id: UUID, yearclock_id: UUID, request: Request, window_start: date | None = None, user: AuthenticatedUser = Depends(platform_user_dependency)) -> list[EventResponse]:
-        with _support_session(session_factory, request_id, user, write=False) as (session, grant):
-            _yearclock(session, grant.organization_id, yearclock_id)
-            organization = session.get(Organization, grant.organization_id)
-            start, end = planning_window(window_start, today=organization_today(organization.time_zone))
-            items = session.scalars(select(Event).where(Event.yearclock_id == yearclock_id, Event.deleted_at.is_(None), Event.starts_on <= end, func.coalesce(Event.ends_on, Event.starts_on) >= start).order_by(Event.starts_on, Event.id)).all()
-            occurrences = {item.event_id: item for item in session.scalars(select(SeriesOccurrence).where(SeriesOccurrence.event_id.in_([event.id for event in items]))).all()}
-            _audit(session, request, "support_access.content_read", yearclock_id, {"resource": "events"}, target_type="yearclock")
-            labels = event_label_ids(session, [item.id for item in items])
-            return [_response(item, occurrences.get(item.id), labels.get(item.id, [])) for item in items if not (occurrences.get(item.id) and occurrences[item.id].skipped)]
-
-    @router.post("/{request_id}/yearclocks/{yearclock_id}/events", response_model=EventResponse, status_code=201)
-    def create_event(request_id: UUID, yearclock_id: UUID, body: EventRequest, request: Request, user: AuthenticatedUser = Depends(platform_user_dependency)) -> EventResponse:
-        with _support_session(session_factory, request_id, user, write=True) as (session, grant):
-            _yearclock(session, grant.organization_id, yearclock_id)
-            _lane(session, grant.organization_id, yearclock_id, body.lane_id)
-            _category(session, yearclock_id, body.category_id)
-            labels = resolve_labels(session, grant.organization_id, body.label_ids or [])
-            require_event_capacity(session, yearclock_id)
-            event = Event(id=uuid4(), organization_id=grant.organization_id, yearclock_id=yearclock_id, lane_id=body.lane_id, category_id=body.category_id, title=body.title, description=body.description, description_format=body.description_format or "plain", location=body.location, links=links_json(body.links), starts_at=body.starts_at, ends_at=body.ends_at, starts_on=body.starts_on, ends_on=body.ends_on, version=1)
-            session.add(event)
-            set_event_labels(session, event, labels)
-            _audit(session, request, "event.created", event.id, {"title": event.title, "labels": [label.name for label in labels]}, target_type="event")
-            return _response(event)
-
-    @router.patch("/{request_id}/yearclocks/{yearclock_id}/events/{event_id}", response_model=EventResponse)
-    def update_event(request_id: UUID, yearclock_id: UUID, event_id: UUID, body: EventRequest, request: Request, user: AuthenticatedUser = Depends(platform_user_dependency)) -> EventResponse:
-        with _support_session(session_factory, request_id, user, write=True) as (session, grant):
-            _yearclock(session, grant.organization_id, yearclock_id)
-            event = _event(session, yearclock_id, event_id)
-            if session.scalar(select(SeriesOccurrence.id).where(SeriesOccurrence.event_id == event.id)) is not None:
-                raise HTTPException(status_code=409, detail={"reason": "recurring_occurrence", "message": "Support Access edits single Events only"})
-            if body.expected_version != event.version:
-                raise HTTPException(status_code=409, detail={"latest_version": event.version})
-            _lane(session, grant.organization_id, yearclock_id, body.lane_id)
-            _category(session, yearclock_id, body.category_id)
-            label_changes = set_event_labels(session, event, resolve_labels(session, grant.organization_id, body.label_ids)) if body.label_ids is not None else {}
-            for name in ("lane_id", "category_id", "title", "description", "location", "starts_at", "ends_at", "starts_on", "ends_on"):
-                setattr(event, name, getattr(body, name))
-            event.links = links_json(body.links)
-            if body.description_format: event.description_format = body.description_format
-            event.version += 1
-            _audit(session, request, "event.updated", event.id, {"title": event.title, **{key: value for key, value in label_changes.items() if value}}, target_type="event")
-            return _response(event)
-
     return router
 
 
@@ -305,13 +215,6 @@ def _locked(session: Session, organization_id: UUID, request_id: UUID) -> Suppor
     if item is None:
         raise HTTPException(status_code=404, detail="Support request not found")
     return item
-
-
-def _yearclock(session: Session, organization_id: UUID, yearclock_id: UUID) -> Yearclock:
-    clock = session.scalar(select(Yearclock).where(Yearclock.id == yearclock_id, Yearclock.organization_id == organization_id, Yearclock.deleted_at.is_(None)))
-    if clock is None:
-        raise HTTPException(status_code=404, detail="Yearclock not found")
-    return clock
 
 
 def _support_response(session: Session, item: SupportAccessRequest) -> SupportResponse:

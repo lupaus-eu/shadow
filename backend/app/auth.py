@@ -61,8 +61,8 @@ class OIDCClient(Protocol):
 
 @dataclass(frozen=True)
 class AuthSettings:
-    session_cookie_name: str = "yearclock_session"
-    flow_cookie_name: str = "yearclock_oidc_flow"
+    session_cookie_name: str = "shadow_session"
+    flow_cookie_name: str = "shadow_oidc_flow"
     cookie_secure: bool = False
     session_max_age: timedelta = timedelta(hours=8)
     login_attempt_max_age: timedelta = timedelta(minutes=10)

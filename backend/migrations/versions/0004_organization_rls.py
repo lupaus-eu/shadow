@@ -29,40 +29,40 @@ def upgrade() -> None:
         DO $$
         BEGIN
             IF NOT EXISTS (
-                SELECT 1 FROM pg_roles WHERE rolname = 'yearclock_app'
+                SELECT 1 FROM pg_roles WHERE rolname = 'shadow_app'
             ) THEN
-                EXECUTE 'CREATE ROLE yearclock_app NOLOGIN NOSUPERUSER NOBYPASSRLS';
+                EXECUTE 'CREATE ROLE shadow_app NOLOGIN NOSUPERUSER NOBYPASSRLS';
             END IF;
         END
         $$;
         """
     )
-    op.execute("GRANT yearclock_app TO CURRENT_USER")
-    op.execute("GRANT USAGE ON SCHEMA public TO yearclock_app")
+    op.execute("GRANT shadow_app TO CURRENT_USER")
+    op.execute("GRANT USAGE ON SCHEMA public TO shadow_app")
     op.execute(
         """
         REVOKE ALL PRIVILEGES
         ON ALL TABLES IN SCHEMA public
-        FROM yearclock_app
+        FROM shadow_app
         """
     )
     op.execute(
         """
         REVOKE ALL PRIVILEGES
         ON ALL SEQUENCES IN SCHEMA public
-        FROM yearclock_app
+        FROM shadow_app
         """
     )
     op.execute(
         """
         ALTER DEFAULT PRIVILEGES IN SCHEMA public
-        REVOKE ALL ON TABLES FROM yearclock_app
+        REVOKE ALL ON TABLES FROM shadow_app
         """
     )
     op.execute(
         """
         ALTER DEFAULT PRIVILEGES IN SCHEMA public
-        REVOKE ALL ON SEQUENCES FROM yearclock_app
+        REVOKE ALL ON SEQUENCES FROM shadow_app
         """
     )
     table_privileges = {
@@ -81,7 +81,7 @@ def upgrade() -> None:
     }
     for table_name, privileges in table_privileges.items():
         op.execute(
-            f"GRANT {privileges} ON TABLE {table_name} TO yearclock_app"
+            f"GRANT {privileges} ON TABLE {table_name} TO shadow_app"
         )
 
     for table_name in (

@@ -7,7 +7,7 @@ from uuid import UUID
 from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 
-APPLICATION_DATABASE_ROLE = "yearclock_app"
+APPLICATION_DATABASE_ROLE = "shadow_app"
 
 
 @dataclass(frozen=True)
@@ -30,11 +30,7 @@ def create_database_engine(database_url: str) -> Engine:
 
 
 def create_session_factory(engine: Engine) -> sessionmaker[Session]:
-    factory = sessionmaker(bind=engine, expire_on_commit=False)
-    from app.revisions import install_revision_hooks  # imported late: revisions depend on the models
-
-    install_revision_hooks(factory)
-    return factory
+    return sessionmaker(bind=engine, expire_on_commit=False)
 
 
 def apply_request_context(session: Session, request_context: RequestContext) -> None:

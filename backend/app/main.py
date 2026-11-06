@@ -40,32 +40,17 @@ from app.organization_context_routes import create_organization_context_router
 from app.organization_routes import create_organization_router
 from app.invitation_routes import create_invitation_router
 from app.membership_routes import create_membership_router
-from app.yearclock_routes import create_yearclock_router
-from app.yearclock_access_routes import create_yearclock_access_router
-from app.event_routes import create_event_router
-from app.export_routes import create_export_router
-from app.data_transfer import create_data_transfer_router
-from app.import_routes import create_import_router
 from app.notification_routes import create_notification_router
 from app.subscription_routes import create_subscription_router
-from app.organization_export import create_organization_export_router
-from app.category_routes import create_category_router, create_organization_category_router
-from app.series_routes import create_series_router
-from app.occurrence_routes import create_occurrence_router
 from app.audit_routes import create_audit_router
 from app.platform_routes import create_platform_router
-from app.label_routes import create_label_router
-from app.search_routes import create_search_router
-from app.history_routes import create_history_router
-from app.group_routes import create_group_router
-from app.access_overview_routes import create_access_overview_router
 from app.monitoring_routes import AuthentikProbe, create_monitoring_router
 from app.support_access_routes import create_platform_support_access_router, create_support_access_router
 from app.organization_deletion_routes import create_organization_deletion_router
 from app.seat_capacity_routes import create_seat_capacity_router
 from app.billing_routes import create_billing_router
 
-PROJECT_NAME = os.getenv("PROJECT_NAME", "Yearclock")
+PROJECT_NAME = os.getenv("PROJECT_NAME", "Shadow")
 FRONTEND_ORIGINS = [
     origin.strip()
     for origin in os.getenv(
@@ -76,7 +61,7 @@ FRONTEND_ORIGINS = [
 ]
 DEFAULT_DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql+psycopg://yearclock:yearclock@localhost:8132/yearclock",
+    "postgresql+psycopg://shadow:shadow@localhost:8132/shadow",
 )
 
 
@@ -226,23 +211,7 @@ def create_app(
             authenticated_user_dependency=authenticated_user_dependency,
         )
     )
-    application.include_router(create_yearclock_router(session_factory=application.state.session_factory, authenticated_user_dependency=authenticated_user_dependency))
-    application.include_router(create_yearclock_access_router(session_factory=application.state.session_factory, authenticated_user_dependency=authenticated_user_dependency))
-    application.include_router(create_event_router(session_factory=application.state.session_factory, authenticated_user_dependency=authenticated_user_dependency))
-    application.include_router(create_export_router(session_factory=application.state.session_factory, authenticated_user_dependency=authenticated_user_dependency))
-    application.include_router(create_import_router(session_factory=application.state.session_factory, authenticated_user_dependency=authenticated_user_dependency))
-    application.include_router(create_data_transfer_router(session_factory=application.state.session_factory, authenticated_user_dependency=authenticated_user_dependency))
     application.include_router(create_notification_router(session_factory=application.state.session_factory, authenticated_user_dependency=authenticated_user_dependency))
-    application.include_router(create_organization_export_router(session_factory=application.state.session_factory, authenticated_user_dependency=authenticated_user_dependency))
-    application.include_router(create_category_router(session_factory=application.state.session_factory, authenticated_user_dependency=authenticated_user_dependency))
-    application.include_router(create_organization_category_router(session_factory=application.state.session_factory, authenticated_user_dependency=authenticated_user_dependency))
-    application.include_router(create_search_router(session_factory=application.state.session_factory, authenticated_user_dependency=authenticated_user_dependency))
-    application.include_router(create_history_router(session_factory=application.state.session_factory, authenticated_user_dependency=authenticated_user_dependency))
-    application.include_router(create_group_router(session_factory=application.state.session_factory, authenticated_user_dependency=authenticated_user_dependency))
-    application.include_router(create_access_overview_router(session_factory=application.state.session_factory, authenticated_user_dependency=authenticated_user_dependency))
-    application.include_router(create_label_router(session_factory=application.state.session_factory, authenticated_user_dependency=authenticated_user_dependency))
-    application.include_router(create_series_router(session_factory=application.state.session_factory, authenticated_user_dependency=authenticated_user_dependency))
-    application.include_router(create_occurrence_router(session_factory=application.state.session_factory, authenticated_user_dependency=authenticated_user_dependency))
     application.include_router(create_audit_router(session_factory=application.state.session_factory, authenticated_user_dependency=authenticated_user_dependency))
     application.include_router(create_platform_router(session_factory=application.state.session_factory, platform_user_dependency=platform_user_dependency, oidc_client=resolved_oidc_client, settings=resolved_auth_settings, clock=clock))
     application.include_router(create_support_access_router(session_factory=application.state.session_factory, authenticated_user_dependency=authenticated_user_dependency))

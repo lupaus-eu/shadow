@@ -33,7 +33,7 @@ def upgrade() -> None:
         sa.CheckConstraint("role IN ('editor', 'viewer')", name="ck_yearclock_group_grants_role"),
         sa.UniqueConstraint("yearclock_id", "group_id", name="uq_yearclock_group_grants"),
     )
-    op.execute("GRANT SELECT, INSERT, UPDATE, DELETE ON yearclock_group_grants TO yearclock_app")
+    op.execute("GRANT SELECT, INSERT, UPDATE, DELETE ON yearclock_group_grants TO shadow_app")
     op.execute("ALTER TABLE yearclock_group_grants ENABLE ROW LEVEL SECURITY")
     op.execute("ALTER TABLE yearclock_group_grants FORCE ROW LEVEL SECURITY")
     op.execute(f"CREATE POLICY yearclock_group_grants_policy ON yearclock_group_grants USING (organization_id = {CURRENT_ORGANIZATION}) WITH CHECK (organization_id = {CURRENT_ORGANIZATION})")

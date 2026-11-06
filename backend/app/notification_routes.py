@@ -1,4 +1,4 @@
-"""The notification inbox (Yearclock V2 P8, ADR-0031).
+"""The notification inbox (Shadow V2 P8, ADR-0031).
 
 Every Organization member reads and marks only their own notifications; the
 row-level policy also keeps other people's rows out of reach. The API sends
@@ -7,7 +7,7 @@ language.
 """
 from contextlib import contextmanager
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -20,7 +20,6 @@ from app.auth_routes import AuthenticatedUserDependency
 from app.database import RequestContext, apply_request_context, transaction_session
 from app.models import Notification, NotificationPreference, OrganizationMembership, OrganizationRole
 from app.notifications import SETTINGS, channel_enabled
-from app.yearclock_reading import readable_yearclock_ids
 
 PAGE_SIZE = 20
 
@@ -53,14 +52,8 @@ class SettingItem(BaseModel):
     email: bool
 
 
-class SummaryChoice(BaseModel):
-    frequency: Literal["off", "daily", "weekly"]
-    yearclock_ids: list[UUID] | None = None
-
-
 class SettingsResponse(BaseModel):
     items: list[SettingItem]
-    summary: SummaryChoice
 
 
 class ChannelChoice(BaseModel):
@@ -70,7 +63,6 @@ class ChannelChoice(BaseModel):
 
 class SettingsRequest(BaseModel):
     settings: dict[str, ChannelChoice] = {}
-    summary: SummaryChoice | None = None
 
 
 @contextmanager
@@ -131,8 +123,7 @@ def create_notification_router(*, session_factory: sessionmaker[Session], authen
         role = session.scalar(select(OrganizationMembership.role).where(OrganizationMembership.organization_id == organization_id, OrganizationMembership.user_account_id == user.account.id))
         manager = role in {OrganizationRole.OWNER.value, OrganizationRole.ADMIN.value}
         preference = session.get(NotificationPreference, (organization_id, user.account.id))
-        summary = SummaryChoice(frequency=preference.summary_frequency if preference else "off", yearclock_ids=preference.summary_yearclock_ids if preference else None)
-        return SettingsResponse(summary=summary, items=[SettingItem(key=key, audience=info.audience, in_app=channel_enabled(preference, key, "in_app"), email=channel_enabled(preference, key, "email")) for key, info in SETTINGS.items() if info.audience == "everyone" or manager])
+        return SettingsResponse(items=[SettingItem(key=key, audience=info.audience, in_app=channel_enabled(preference, key, "in_app"), email=channel_enabled(preference, key, "email")) for key, info in SETTINGS.items() if info.audience == "everyone" or manager])
 
     @router.get("/{organization_id}/notification-settings", response_model=SettingsResponse)
     def read_settings(organization_id: UUID, user: AuthenticatedUser = Depends(authenticated_user_dependency)) -> SettingsResponse:
@@ -151,13 +142,6 @@ def create_notification_router(*, session_factory: sessionmaker[Session], authen
                 preference = NotificationPreference(organization_id=organization_id, user_id=user.account.id, settings={})
                 session.add(preference)
             preference.settings = {**(preference.settings or {}), **{key: choice.model_dump() for key, choice in body.settings.items()}}
-            if body.summary is not None:
-                chosen = None if body.summary.yearclock_ids is None else list(dict.fromkeys(body.summary.yearclock_ids))
-                if chosen is not None and not set(chosen) <= readable_yearclock_ids(session, organization_id, user.account.id):
-                    raise HTTPException(status_code=422, detail="a chosen Yearclock cannot be read")
-                if (preference.summary_frequency, preference.summary_yearclock_ids) != (body.summary.frequency, chosen):
-                    preference.summary_sent_on = None
-                preference.summary_frequency, preference.summary_yearclock_ids = body.summary.frequency, chosen
             preference.updated_at = func.now()
             session.flush()
             return _settings(session, organization_id, user)

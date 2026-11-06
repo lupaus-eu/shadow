@@ -55,7 +55,7 @@ def upgrade() -> None:
         FROM events e LEFT JOIN series_occurrences o ON o.event_id = e.id
         """
     )
-    op.execute("GRANT SELECT, INSERT, DELETE ON event_revisions TO yearclock_app")
+    op.execute("GRANT SELECT, INSERT, DELETE ON event_revisions TO shadow_app")
     op.execute("ALTER TABLE event_revisions ENABLE ROW LEVEL SECURITY")
     op.execute("ALTER TABLE event_revisions FORCE ROW LEVEL SECURITY")
     op.execute(f"CREATE POLICY event_revisions_policy ON event_revisions USING (organization_id = {CURRENT_ORGANIZATION}) WITH CHECK (organization_id = {CURRENT_ORGANIZATION})")

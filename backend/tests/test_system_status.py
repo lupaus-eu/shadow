@@ -36,7 +36,7 @@ class SystemStatusOIDCClient:
         redirect_uri: str,
     ) -> OIDCIdentity:
         return OIDCIdentity(
-            issuer="https://identity.example/application/o/yearclock/",
+            issuer="https://identity.example/application/o/shadow/",
             subject="system-status-user",
             email="status@example.com",
             email_verified=True,

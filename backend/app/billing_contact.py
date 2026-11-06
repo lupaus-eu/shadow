@@ -1,8 +1,8 @@
-"""The billing contact of an Organization (Yearclock V2 P14, ADR-0032): masking and the notice to the old address."""
+"""The billing contact of an Organization (Shadow V2 P14, ADR-0032): masking and the notice to the old address."""
 
 NOTICE = {
-    "en": ("The billing email of {organization} was changed", "The billing email of {organization} on Yearclock was changed to {masked} by an Owner.\n\nIf you did not expect this, contact Yearclock support."),
-    "fi": ("Organisaation {organization} laskutussähköposti vaihdettiin", "Organisaation {organization} laskutussähköposti Yearclockissa vaihdettiin osoitteeseen {masked} omistajan toimesta.\n\nJos et odottanut tätä, ota yhteyttä Yearclockin tukeen."),
+    "en": ("The billing email of {organization} was changed", "The billing email of {organization} on Shadow was changed to {masked} by an Owner.\n\nIf you did not expect this, contact Shadow support."),
+    "fi": ("Organisaation {organization} laskutussähköposti vaihdettiin", "Organisaation {organization} laskutussähköposti Shadowissa vaihdettiin osoitteeseen {masked} omistajan toimesta.\n\nJos et odottanut tätä, ota yhteyttä Shadowin tukeen."),
 }
 
 

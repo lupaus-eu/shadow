@@ -10,13 +10,11 @@ from app.audit import AuditEventDraft, record_audit_event
 from app.billing import StripeEvent
 from app.database import RequestContext, apply_request_context
 from app.models import (
-    Lane,
     Organization,
     OrganizationMembership,
     OrganizationRole,
     OrganizationStatus,
     StripeWebhookEvent,
-    Yearclock,
 )
 from app.seat_capacity import apply_seat_event
 from app.subscription_access import SUBSCRIPTION_OUTCOMES, apply_subscription_event, resume_subscription
@@ -33,10 +31,6 @@ PROCESSED_STRIPE_OUTCOMES = {
 @dataclass(frozen=True)
 class InitialContent:
     owner_user_account_id: UUID
-    yearclock_id: UUID
-    yearclock_name: str
-    lane_id: UUID
-    lane_name: str
 
 
 def create_pending_organization(
@@ -136,26 +130,9 @@ def initial_content(
             OrganizationMembership.role == OrganizationRole.OWNER.value,
         )
     )
-    yearclock = session.scalar(
-        select(Yearclock).where(Yearclock.organization_id == organization.id)
-    )
-    if membership is None or yearclock is None:
-        raise RuntimeError("active organization is missing initial content")
-    lane = session.scalar(
-        select(Lane).where(
-            Lane.organization_id == organization.id,
-            Lane.yearclock_id == yearclock.id,
-        )
-    )
-    if lane is None:
-        raise RuntimeError("active organization is missing its General Lane")
-    return InitialContent(
-        owner_user_account_id=membership.user_account_id,
-        yearclock_id=yearclock.id,
-        yearclock_name=yearclock.name,
-        lane_id=lane.id,
-        lane_name=lane.name,
-    )
+    if membership is None:
+        raise RuntimeError("active organization is missing its Owner")
+    return InitialContent(owner_user_account_id=membership.user_account_id)
 
 
 @dataclass(frozen=True)
@@ -279,22 +256,8 @@ def _activate_organization(
         user_account_id=organization.created_by_user_account_id,
         role=OrganizationRole.OWNER.value,
     )
-    yearclock = Yearclock(
-        id=uuid4(),
-        organization_id=organization.id,
-        name="Vuosikello" if organization.default_locale == "fi" else "Yearclock",
-        display_order=0,
-    )
-    session.add_all([membership, yearclock])
+    session.add(membership)
     session.flush()
-    lane = Lane(
-        id=uuid4(),
-        organization_id=organization.id,
-        yearclock_id=yearclock.id,
-        name="Yleinen" if organization.default_locale == "fi" else "General",
-        display_order=0,
-    )
-    session.add(lane)
     record_audit_event(
         session,
         AuditEventDraft(

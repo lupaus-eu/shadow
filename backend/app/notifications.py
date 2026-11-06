@@ -1,4 +1,4 @@
-"""Notifications (Yearclock V2 P8, ADR-0031).
+"""Notifications (Shadow V2 P8, ADR-0031).
 
 A notification says that something changed for one person, never what an Event
 says. It is written in the transaction of the action that causes it. Its text
@@ -17,10 +17,9 @@ from sqlalchemy import and_, delete, func, literal_column, select, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
-from app.access import group_scope, yearclock_roles
 from app.database import RequestContext, apply_request_context
 from app.limits import Ceiling
-from app.models import BackgroundJob, Notification, NotificationPreference, Organization, OrganizationMembership, OrganizationRole, OutboxMessage, UserAccount, Yearclock
+from app.models import BackgroundJob, Notification, NotificationPreference, Organization, OrganizationMembership, OrganizationRole, OutboxMessage, UserAccount
 
 RETENTION_DAYS = Ceiling("notification_retention_days", "NOTIFICATION_RETENTION_DAYS", 90)
 CLEANUP_JOB = "notifications.cleanup"
@@ -114,7 +113,7 @@ def notify_many(session: Session, organization_id: UUID, drafts: Iterable[Notifi
             return 0
         rows = [{"id": uuid4(), "organization_id": organization_id, "recipient_user_id": draft.recipient_id, "type": draft.type, "params": draft.params, "dedupe_key": draft.dedupe_key} for draft in kept]
         statement = insert(Notification).values(rows)
-        # A newer unread notice for the same Yearclock replaces the older one but keeps where the change began.
+        # A newer unread notice for the same Shadow replaces the older one but keeps where the change began.
         statement = statement.on_conflict_do_update(
             index_elements=[Notification.recipient_user_id, Notification.organization_id, Notification.dedupe_key],
             index_where=and_(Notification.read_at.is_(None), Notification.dedupe_key.is_not(None)),
@@ -161,34 +160,6 @@ def managers_of(session: Session, organization_id: UUID) -> list[UUID]:
 
 def notify_managers(session: Session, organization_id: UUID, notification_type: str, params: dict[str, Any], *, actor_id: UUID | None = None) -> int:
     return notify_many(session, organization_id, [NotificationDraft(user_id, notification_type, params) for user_id in managers_of(session, organization_id)], actor_id=actor_id)
-
-
-def _access_params(yearclock_id: UUID, name: str, before: str | None, after: str | None) -> dict[str, Any]:
-    return {"yearclock_id": str(yearclock_id), "yearclock_name": name, "from_role": before or "none", "to_role": after or "none"}
-
-
-class AccessWatch:
-    """Remember effective roles before a change of access; ``finish`` tells each person whose role on a Yearclock changed (never the actor)."""
-
-    def __init__(self, session: Session, organization_id: UUID, *, actor_id: UUID | None, yearclock_ids: Iterable[UUID], user_ids: Iterable[UUID] | None = None) -> None:
-        self.session, self.organization_id, self.actor_id = session, organization_id, actor_id
-        self.yearclock_ids = list(yearclock_ids)
-        self.user_ids = None if user_ids is None else list(user_ids)
-        self.before = yearclock_roles(session, organization_id, self.yearclock_ids, self.user_ids) if self.yearclock_ids else {}
-
-    def finish(self) -> int:
-        self.session.flush()
-        after = yearclock_roles(self.session, self.organization_id, self.yearclock_ids, self.user_ids) if self.yearclock_ids else {}
-        changed = {key for key in self.before.keys() | after.keys() if self.before.get(key) != after.get(key)}
-        if not changed:
-            return 0
-        names = dict(self.session.execute(select(Yearclock.id, Yearclock.name).where(Yearclock.id.in_({yearclock_id for _, yearclock_id in changed}))).all())
-        drafts = [
-            NotificationDraft(user_id, ACCESS_CHANGED, _access_params(yearclock_id, names.get(yearclock_id, ""), self.before.get(key), after.get(key)), f"access:{yearclock_id}")
-            for key in sorted(changed, key=str)
-            for user_id, yearclock_id in [key]
-        ]
-        return notify_many(self.session, self.organization_id, drafts, actor_id=self.actor_id)
 
 
 def membership_user(session: Session, membership_id: UUID) -> UUID | None:

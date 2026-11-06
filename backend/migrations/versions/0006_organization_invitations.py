@@ -40,7 +40,7 @@ def upgrade() -> None:
     op.create_index("ix_organization_invitations_organization_id", "organization_invitations", ["organization_id"])
     op.create_index("ix_organization_invitations_invited_by_user_account_id", "organization_invitations", ["invited_by_user_account_id"])
     op.add_column("outbox_messages", sa.Column("provider_message_id", sa.String(length=255), nullable=True))
-    op.execute("GRANT SELECT, INSERT, UPDATE ON TABLE organization_invitations TO yearclock_app")
+    op.execute("GRANT SELECT, INSERT, UPDATE ON TABLE organization_invitations TO shadow_app")
     op.execute("ALTER TABLE organization_invitations ENABLE ROW LEVEL SECURITY")
     op.execute("ALTER TABLE organization_invitations FORCE ROW LEVEL SECURITY")
     op.execute(f"""CREATE POLICY organization_invitations_select ON organization_invitations FOR SELECT USING (organization_id = {CURRENT_ORGANIZATION} OR ({CURRENT_ORGANIZATION} IS NULL AND (email = (SELECT email FROM user_accounts WHERE id = {CURRENT_USER}) OR token_hash = {CURRENT_INVITATION_TOKEN_HASH})))""")

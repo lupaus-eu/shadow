@@ -26,7 +26,7 @@ def upgrade() -> None:
         sa.Column("group_id", sa.Uuid(), sa.ForeignKey("member_groups.id", ondelete="CASCADE"), primary_key=True),
         sa.Column("organization_id", sa.Uuid(), sa.ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False),
     )
-    op.execute("GRANT SELECT, INSERT, UPDATE, DELETE ON invitation_groups TO yearclock_app")
+    op.execute("GRANT SELECT, INSERT, UPDATE, DELETE ON invitation_groups TO shadow_app")
     op.execute("ALTER TABLE invitation_groups ENABLE ROW LEVEL SECURITY")
     op.execute("ALTER TABLE invitation_groups FORCE ROW LEVEL SECURITY")
     op.execute(f"CREATE POLICY invitation_groups_policy ON invitation_groups USING (organization_id = {CURRENT_ORGANIZATION}) WITH CHECK (organization_id = {CURRENT_ORGANIZATION})")

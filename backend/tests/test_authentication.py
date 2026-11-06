@@ -53,7 +53,7 @@ class FakeOIDCClient:
             "redirect_uri": redirect_uri,
         }
         return OIDCIdentity(
-            issuer="https://identity.example/application/o/yearclock/",
+            issuer="https://identity.example/application/o/shadow/",
             subject=self.subject,
             email=self.email,
             email_verified=self.email_verified,
@@ -64,7 +64,7 @@ class FakeOIDCClient:
 
     def end_session_url(self, *, post_logout_redirect_uri: str, id_token_hint: str | None = None) -> str:
         return (
-            "https://identity.example/application/o/yearclock/end-session/"
+            "https://identity.example/application/o/shadow/end-session/"
             f"?post_logout_redirect_uri={post_logout_redirect_uri}&id_token_hint={id_token_hint}"
         )
 
@@ -102,7 +102,7 @@ def test_oidc_callback_creates_a_customer_profile_and_session(
     oidc_client = FakeOIDCClient()
     application = create_app(database_url=database_url, oidc_client=oidc_client)
 
-    with TestClient(application, base_url="http://yearclock.test") as client:
+    with TestClient(application, base_url="http://shadow.test") as client:
         login_response = client.get(
             "/api/v1/auth/login",
             params={"return_to": "/app"},
@@ -120,7 +120,7 @@ def test_oidc_callback_creates_a_customer_profile_and_session(
     assert login_response.status_code == 307
     assert oidc_client.authorization_request is not None
     assert oidc_client.authorization_request["redirect_uri"] == (
-        "http://yearclock.test/api/v1/auth/callback"
+        "http://shadow.test/api/v1/auth/callback"
     )
     assert oidc_client.authorization_request["code_challenge"]
     assert callback_response.status_code == 303
@@ -183,7 +183,7 @@ def test_expired_and_logged_out_sessions_are_rejected(database_url: str) -> None
 
     assert logout_response.status_code == 303
     assert logout_response.headers["location"].startswith(
-        "https://identity.example/application/o/yearclock/end-session/"
+        "https://identity.example/application/o/shadow/end-session/"
     )
     assert "id_token_hint=id-token-for-" in logout_response.headers["location"]
     with application.state.database_engine.connect() as connection:
@@ -237,7 +237,7 @@ def test_platform_identity_cannot_enter_the_customer_account_class(
         session.add(
             UserAccount(
                 id=uuid4(),
-                oidc_issuer="https://identity.example/application/o/yearclock/",
+                oidc_issuer="https://identity.example/application/o/shadow/",
                 oidc_subject=oidc_client.subject,
                 account_class=AccountClass.PLATFORM.value,
                 email="operator@example.com",

@@ -68,23 +68,20 @@ def test_admins_see_lifecycle_and_health_without_content(database_url: str) -> N
     with TestClient(customer) as client:
         login(client)
         organization_id = active_org(client, verifier)
-        clock = client.get(f"/api/v1/organizations/{organization_id}").json()["yearclocks"][0]
-        client.post(f"/api/v1/organizations/{organization_id}/yearclocks/{clock['id']}/events", json={"title": "Confidential board plan", "lane_id": clock["lanes"][0]["id"], "starts_on": "2026-05-01"})
     admin = _platform_app(database_url, "ops-lifecycle", "platform_admin")
     agent = _platform_app(database_url, "ops-agent-only", "support_agent")
     with TestClient(admin) as client:
         platform_login(client)
         listed = client.get("/api/v1/platform/organizations").json()
         health = client.get("/api/v1/platform/health").json()
-        content = client.get(f"/api/v1/organizations/{organization_id}/yearclocks/{clock['id']}/events")
+        content = client.get(f"/api/v1/organizations/{organization_id}/memberships")
     with TestClient(agent) as client:
         platform_login(client)
         agent_organizations = client.get("/api/v1/platform/organizations").status_code
         agent_health = client.get("/api/v1/platform/health").status_code
     row = next(item for item in listed if item["id"] == organization_id)
     assert row["status"] == "active" and row["subscription"]["state"] == "active"
-    assert row["members"] == 1 and row["yearclocks"] == 1 and row["purchased_seats"] == 2
-    assert "Confidential board plan" not in repr(listed) and "Confidential board plan" not in repr(health)
+    assert row["members"] == 1 and row["purchased_seats"] == 2
     assert health["database"] == "ready" and health["organizations"]["active"] >= 1
     assert content.status_code == 403
     assert agent_organizations == 403 and agent_health == 200

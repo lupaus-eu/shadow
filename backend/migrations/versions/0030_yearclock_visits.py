@@ -33,7 +33,7 @@ def upgrade() -> None:
         sa.Column("visited_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
     )
     op.create_index("ix_yearclock_visits_user_recent", "yearclock_visits", ["organization_id", "user_account_id", "visited_at"])
-    op.execute("GRANT SELECT, INSERT, UPDATE, DELETE ON yearclock_visits TO yearclock_app")
+    op.execute("GRANT SELECT, INSERT, UPDATE, DELETE ON yearclock_visits TO shadow_app")
     op.execute("ALTER TABLE yearclock_visits ENABLE ROW LEVEL SECURITY")
     op.execute("ALTER TABLE yearclock_visits FORCE ROW LEVEL SECURITY")
     own = f"organization_id = {CURRENT_ORGANIZATION} AND user_account_id = {CURRENT_USER}"

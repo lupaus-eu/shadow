@@ -9,15 +9,15 @@ from app.oidc import AuthentikOIDCClient, OIDCClientSettings
 
 
 def test_authentik_client_uses_pkce_and_validates_the_id_token() -> None:
-    issuer = "http://localhost:8190/application/o/yearclock/"
+    issuer = "http://localhost:8190/application/o/shadow/"
     private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     public_jwk = json.loads(jwt.algorithms.RSAAlgorithm.to_jwk(private_key.public_key()))
-    public_jwk.update({"kid": "yearclock-key", "use": "sig", "alg": "RS256"})
+    public_jwk.update({"kid": "shadow-key", "use": "sig", "alg": "RS256"})
     id_token = jwt.encode(
         {
             "iss": issuer,
             "sub": "authentik-user-123",
-            "aud": "yearclock-client",
+            "aud": "shadow-client",
             "exp": 2_000_000_000,
             "iat": 1_700_000_000,
             "nonce": "expected-nonce",
@@ -27,7 +27,7 @@ def test_authentik_client_uses_pkce_and_validates_the_id_token() -> None:
         },
         private_key,
         algorithm="RS256",
-        headers={"kid": "yearclock-key"},
+        headers={"kid": "shadow-key"},
     )
 
     def oidc_provider(request: httpx.Request) -> httpx.Response:
@@ -44,10 +44,10 @@ def test_authentik_client_uses_pkce_and_validates_the_id_token() -> None:
                     ),
                     "token_endpoint": "http://localhost:8190/application/o/token/",
                     "jwks_uri": (
-                        "http://localhost:8190/application/o/yearclock/jwks/"
+                        "http://localhost:8190/application/o/shadow/jwks/"
                     ),
                     "end_session_endpoint": (
-                        "http://localhost:8190/application/o/yearclock/end-session/"
+                        "http://localhost:8190/application/o/shadow/end-session/"
                     ),
                 },
             )
@@ -62,7 +62,7 @@ def test_authentik_client_uses_pkce_and_validates_the_id_token() -> None:
     client = AuthentikOIDCClient(
         OIDCClientSettings(
             issuer=issuer,
-            client_id="yearclock-client",
+            client_id="shadow-client",
             client_secret="client-secret",
             internal_base_url="http://authentik-server:9000",
         ),
@@ -92,13 +92,13 @@ def test_authentik_client_uses_pkce_and_validates_the_id_token() -> None:
     assert identity.display_name == "Alex Example"
     assert identity.id_token
     logout_query = parse_qs(urlparse(client.end_session_url(post_logout_redirect_uri="http://localhost:8173", id_token_hint=identity.id_token)).query)
-    assert logout_query == {"client_id": ["yearclock-client"], "id_token_hint": [identity.id_token], "post_logout_redirect_uri": ["http://localhost:8173"]}
+    assert logout_query == {"client_id": ["shadow-client"], "id_token_hint": [identity.id_token], "post_logout_redirect_uri": ["http://localhost:8173"]}
     without_hint = parse_qs(urlparse(client.end_session_url(post_logout_redirect_uri="http://localhost:8173")).query)
-    assert without_hint == {"client_id": ["yearclock-client"]}
+    assert without_hint == {"client_id": ["shadow-client"]}
 
 
 def test_internal_discovery_tells_authentik_the_public_https_scheme() -> None:
-    issuer = "https://identity.example.com/application/o/yearclock/"
+    issuer = "https://identity.example.com/application/o/shadow/"
     seen: dict[str, str] = {}
 
     def oidc_provider(request: httpx.Request) -> httpx.Response:
@@ -114,7 +114,7 @@ def test_internal_discovery_tells_authentik_the_public_https_scheme() -> None:
     client = AuthentikOIDCClient(
         OIDCClientSettings(
             issuer=issuer,
-            client_id="yearclock-client",
+            client_id="shadow-client",
             client_secret="client-secret",
             internal_base_url="http://authentik-server:9000",
         ),
@@ -122,7 +122,7 @@ def test_internal_discovery_tells_authentik_the_public_https_scheme() -> None:
     )
 
     url = client.authorization_url(
-        state="s", nonce="n", code_challenge="c", redirect_uri="https://yearclock.example.com/api/v1/auth/callback"
+        state="s", nonce="n", code_challenge="c", redirect_uri="https://shadow.example.com/api/v1/auth/callback"
     )
 
     assert seen["host"] == "identity.example.com"

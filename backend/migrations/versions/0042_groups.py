@@ -21,7 +21,7 @@ CURRENT_ORGANIZATION = "NULLIF(current_setting('app.current_organization_id', tr
 
 
 def _policies(table: str) -> None:
-    op.execute(f"GRANT SELECT, INSERT, UPDATE, DELETE ON {table} TO yearclock_app")
+    op.execute(f"GRANT SELECT, INSERT, UPDATE, DELETE ON {table} TO shadow_app")
     op.execute(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY")
     op.execute(f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY")
     op.execute(f"CREATE POLICY {table}_policy ON {table} USING (organization_id = {CURRENT_ORGANIZATION}) WITH CHECK (organization_id = {CURRENT_ORGANIZATION})")

@@ -30,34 +30,40 @@ def _post(client: TestClient, verifier: Verifier, event: StripeEvent) -> dict:
     return client.post("/api/v1/billing/stripe/webhook", content=b"{}", headers={"Stripe-Signature": "test"}).json()
 
 
+PROBES = iter(range(1000))
+
+
+def _probe() -> dict:
+    """A write that the subscription state gates: a new invitation."""
+    return {"email": f"probe-{next(PROBES)}@example.com", "role": "member"}
+
+
 def test_grace_read_only_and_recovery_follow_verified_payment_events(database_url: str) -> None:
     verifier, stripe = Verifier(), PortalStripe()
     application = create_app(database_url=database_url, oidc_client=OIDC("billing-owner", "billing-owner@example.com"), stripe_billing=stripe, stripe_webhook_verifier=verifier, clock=lambda: NOW)
     with TestClient(application) as client:
         login(client)
-        organization_id = active_org(client, verifier)
+        organization_id = active_org(client, verifier, seats=8)
         orgs = f"/api/v1/organizations/{organization_id}"
-        clock = client.get(orgs).json()["yearclocks"][0]
-        events_path = f"{orgs}/yearclocks/{clock['id']}/events"
-        body = {"title": "Plan", "lane_id": clock["lanes"][0]["id"], "starts_on": "2026-05-01"}
+        events_path = f"{orgs}/invitations"
         now = datetime.now(UTC)
 
         failed = _post(client, verifier, _event(organization_id, "invoice.payment_failed", "evt_renewal_failed", now - timedelta(days=2), billing_reason="subscription_cycle"))
         grace = client.get(orgs).json()["subscription"]
-        during_grace = client.post(events_path, json=body).status_code
+        during_grace = client.post(events_path, json=_probe()).status_code
 
         with application.state.database_engine.begin() as connection:
             connection.execute(text("UPDATE organizations SET grace_expires_at = now() - interval '1 minute' WHERE id = :id"), {"id": organization_id})
         expired = client.get(orgs).json()["subscription"]
-        read_only_write = client.post(events_path, json=body).status_code
-        read_only_read = client.get(events_path).status_code
+        read_only_write = client.post(events_path, json=_probe()).status_code
+        read_only_read = client.get(f"{orgs}/memberships").status_code
         portal = client.post(f"{orgs}/billing/portal")
 
         stale_paid = _post(client, verifier, _event(organization_id, "invoice.paid", "evt_old_paid", now - timedelta(days=3)))
         paid = _post(client, verifier, _event(organization_id, "invoice.paid", "evt_renewal_paid", now - timedelta(days=1)))
         duplicate = _post(client, verifier, _event(organization_id, "invoice.paid", "evt_renewal_paid", now - timedelta(days=1)))
         recovered = client.get(orgs).json()["subscription"]
-        after_recovery = client.post(events_path, json=body).status_code
+        after_recovery = client.post(events_path, json=_probe()).status_code
     assert failed["outcome"] == "subscription_grace_started"
     assert grace["state"] == "grace" and grace["writable"] is True
     assert datetime.fromisoformat(grace["grace_expires_at"]) - (now - timedelta(days=2)) == timedelta(days=7)
@@ -81,24 +87,21 @@ def test_cancellation_is_scheduled_reversible_and_never_deletes_content(database
     application = create_app(database_url=database_url, oidc_client=OIDC("cancel-owner", "cancel-owner@example.com"), stripe_billing=stripe, stripe_webhook_verifier=verifier, clock=lambda: NOW)
     with TestClient(application) as client:
         login(client)
-        organization_id = active_org(client, verifier)
+        organization_id = active_org(client, verifier, seats=8)
         orgs = f"/api/v1/organizations/{organization_id}"
-        clock = client.get(orgs).json()["yearclocks"][0]
-        events_path = f"{orgs}/yearclocks/{clock['id']}/events"
-        client.post(events_path, json={"title": "Keep me", "lane_id": clock["lanes"][0]["id"], "starts_on": "2026-05-01"})
+        events_path = f"{orgs}/invitations"
         now = datetime.now(UTC)
         period_end = now + timedelta(days=20)
         scheduled = _post(client, verifier, _event(organization_id, "customer.subscription.updated", "evt_cancel", now - timedelta(hours=3), cancel_at_period_end=True, current_period_end=period_end, subscription_status="active"))
         while_scheduled = client.get(orgs).json()["subscription"]
-        write_while_scheduled = client.post(events_path, json={"title": "Still writable", "lane_id": clock["lanes"][0]["id"], "starts_on": "2026-05-02"}).status_code
+        write_while_scheduled = client.post(events_path, json=_probe()).status_code
         reversed_event = _post(client, verifier, _event(organization_id, "customer.subscription.updated", "evt_uncancel", now - timedelta(hours=2), cancel_at_period_end=False, current_period_end=period_end, subscription_status="active"))
         after_reversal = client.get(orgs).json()["subscription"]
         _post(client, verifier, _event(organization_id, "customer.subscription.updated", "evt_cancel_again", now - timedelta(hours=1), cancel_at_period_end=True, current_period_end=period_end, subscription_status="active"))
         ended = _post(client, verifier, _event(organization_id, "customer.subscription.deleted", "evt_ended", now, subscription_status="canceled"))
         late_update = _post(client, verifier, _event(organization_id, "customer.subscription.updated", "evt_late", now - timedelta(minutes=30), cancel_at_period_end=True, subscription_status="active"))
         after_end = client.get(orgs)
-        titles = [item["title"] for item in client.get(f"{events_path}?window_start=2026-01-01").json()]
-        write_after_end = client.post(events_path, json={"title": "Blocked", "lane_id": clock["lanes"][0]["id"], "starts_on": "2026-05-03"}).status_code
+        write_after_end = client.post(events_path, json=_probe()).status_code
         portal_after_end = client.post(f"{orgs}/billing/portal").status_code
     assert scheduled["outcome"] == "subscription_updated"
     assert while_scheduled["cancel_at_period_end"] is True and while_scheduled["state"] == "active"
@@ -108,7 +111,6 @@ def test_cancellation_is_scheduled_reversible_and_never_deletes_content(database
     assert ended["outcome"] == "subscription_canceled"
     assert late_update["outcome"] == "ignored_stale"
     assert after_end.status_code == 200 and after_end.json()["subscription"]["state"] == "read_only"
-    assert titles == ["Keep me", "Still writable"]
     assert write_after_end == 403
     assert portal_after_end == 200
 
@@ -131,7 +133,7 @@ def test_seat_invoices_do_not_change_renewal_state(database_url: str) -> None:
     application = create_app(database_url=database_url, oidc_client=OIDC("seat-invoice", "seat-invoice@example.com"), stripe_billing=PortalStripe(), stripe_webhook_verifier=verifier, clock=lambda: NOW)
     with TestClient(application) as client:
         login(client)
-        organization_id = active_org(client, verifier)
+        organization_id = active_org(client, verifier, seats=8)
         outcome = _post(client, verifier, _event(organization_id, "invoice.payment_failed", "evt_seat_invoice", datetime.now(UTC), billing_reason="subscription_update"))
         state = client.get(f"/api/v1/organizations/{organization_id}").json()["subscription"]["state"]
     assert outcome["outcome"] == "ignored"

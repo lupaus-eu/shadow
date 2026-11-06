@@ -1,4 +1,4 @@
-"""Cancel, undo, subscribe again, and the billing contact (Yearclock V2, P14)."""
+"""Cancel, undo, subscribe again, and the billing contact (Shadow V2, P14)."""
 from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException
@@ -203,31 +203,6 @@ def test_the_seat_count_must_cover_the_current_members_and_only_owners_may_ask(d
     assert world.owner.post(f"{world.org}/billing/resubscribe", json={"seats": 3}).status_code == 200
     assert admin.post(f"{world.org}/billing/resubscribe", json={"seats": 5}).status_code == 403
     assert world.owner.post(f"{world.org}/billing/resubscribe", json={"seats": 0}).status_code == 422
-
-
-def test_payment_confirmation_reactivates_the_organization_with_its_content(database_url, stack) -> None:
-    stripe = ManageStripe()
-    world = World(stack, database_url, "sub-resub-done", stripe=stripe)
-    admin, _, _ = world.person("admin", role="admin")
-    lane = world.clock["lanes"][0]["id"]
-    assert world.owner.post(f"{world.base}/events", json={"title": "Kept", "lane_id": lane, "starts_on": "2026-10-01"}).status_code == 201
-    old = f"sub_{world.organization_id}"
-    assert world.owner.post(f"{world.org}/billing/cancel").status_code == 200
-    ended(world)
-    assert world.owner.post(f"{world.base}/events", json={"title": "Blocked", "lane_id": lane, "starts_on": "2026-10-02"}).status_code == 403
-    assert world.owner.post(f"{world.org}/billing/resubscribe", json={"seats": 5}).status_code == 200
-    assert completed(world, "cs_resub_1") == "subscription_resumed"
-    state = subscription(world)
-    assert state["state"] == "active" and state["ended"] is False and state["cancel_at_period_end"] is False
-    assert world.owner.post(f"{world.base}/events", json={"title": "Writable again", "lane_id": lane, "starts_on": "2026-10-03"}).status_code == 201
-    assert [item["title"] for item in world.owner.get(f"{world.base}/events", params={"window_start": "2026-09-01"}).json()] == ["Kept", "Writable again"]
-    assert world.owner.get(f"{world.org}/billing/seats").json()["purchased"] == 5
-    with world.application.state.database_engine.begin() as connection:
-        row = connection.execute(text("SELECT stripe_subscription_id, previous_subscription_ids, resubscribe_checkout_session_id FROM organizations WHERE id = :id"), {"id": world.organization_id}).one()
-    assert row.stripe_subscription_id == f"sub_new_{world.subject}" and row.previous_subscription_ids == [old] and row.resubscribe_checkout_session_id is None
-    assert any(item["action"] == "organization.subscription_changed" and item["change_summary"].get("outcome") == "subscription_resumed" for item in audit(world))
-    assert len(world.notices(admin, "subscription_resumed")) == 1
-    assert completed(world, "cs_resub_1", event_id="evt_resub_again") == "ignored"  # nothing left to resume
 
 
 def test_late_events_of_the_old_subscription_and_other_sessions_change_nothing(database_url, stack) -> None:

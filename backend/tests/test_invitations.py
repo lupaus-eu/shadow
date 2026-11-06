@@ -19,7 +19,7 @@ class OIDC:
         return f"https://identity.example/authorize?state={kwargs['state']}"
 
     def exchange_code(self, **kwargs) -> OIDCIdentity:
-        return OIDCIdentity("https://identity.example/application/o/yearclock/", self.subject, self.email, True, self.subject, 2_000_000_000)
+        return OIDCIdentity("https://identity.example/application/o/shadow/", self.subject, self.email, True, self.subject, 2_000_000_000)
 
     def end_session_url(self, **kwargs) -> str:
         return kwargs["post_logout_redirect_uri"]

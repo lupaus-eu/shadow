@@ -1,4 +1,4 @@
-"""Ownership Transfer and leaving as the last Owner (Yearclock V2, P14 ticket 03)."""
+"""Ownership Transfer and leaving as the last Owner (Shadow V2, P14 ticket 03)."""
 from datetime import UTC, datetime
 
 from sqlalchemy import text

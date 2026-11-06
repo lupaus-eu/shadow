@@ -12,9 +12,6 @@ from app.audit import AuditEventDraft, record_audit_event
 from app.database import RequestContext, apply_request_context
 from app.notifications import notify_invitation_accepted
 from app.models import (
-    Group,
-    GroupMember,
-    InvitationGroup,
     InvitationStatus,
     Organization,
     OrganizationInvitation,
@@ -42,7 +39,6 @@ def create_invitation(
     now: datetime,
     frontend_url: str,
     request_id: str,
-    group_ids: list[UUID] | None = None,
 ) -> CreatedInvitation:
     expire_pending_invitations(
         session, organization=organization, now=now, request_id=request_id
@@ -64,11 +60,8 @@ def create_invitation(
     organization.reserved_seats += 1
     session.add(invitation)
     session.flush()
-    groups = invitation_groups(session, organization.id, group_ids or [])
-    for group in groups:
-        session.add(InvitationGroup(invitation_id=invitation.id, group_id=group.id, organization_id=organization.id))
     _enqueue(session, invitation, token, organization, frontend_url)
-    record_audit_event(session, AuditEventDraft(action="organization.invitation_created", target_type="organization_invitation", target_id=invitation.id, request_id=request_id, change_summary={"email": invitation.email, "role": invitation.role, "expires_at": invitation.expires_at.isoformat(), **({"groups": [group.name for group in groups]} if groups else {})}))
+    record_audit_event(session, AuditEventDraft(action="organization.invitation_created", target_type="organization_invitation", target_id=invitation.id, request_id=request_id, change_summary={"email": invitation.email, "role": invitation.role, "expires_at": invitation.expires_at.isoformat()}))
     return CreatedInvitation(invitation, token)
 
 
@@ -84,8 +77,6 @@ def resend_invitation(session: Session, *, invitation: OrganizationInvitation, o
     replacement = OrganizationInvitation(id=uuid4(), organization_id=organization.id, invited_by_user_account_id=invitation.invited_by_user_account_id, email=invitation.email, role=invitation.role, token_hash=hash_invitation_token(token), status=InvitationStatus.PENDING.value, expires_at=now + INVITATION_LIFETIME, accepted_by_user_account_id=None, accepted_at=None)
     session.add(replacement)
     session.flush()
-    for group_id in session.scalars(select(InvitationGroup.group_id).where(InvitationGroup.invitation_id == invitation.id)).all():
-        session.add(InvitationGroup(invitation_id=replacement.id, group_id=group_id, organization_id=organization.id))
     _enqueue(session, replacement, token, organization, frontend_url)
     record_audit_event(session, AuditEventDraft(action="organization.invitation_resent", target_type="organization_invitation", target_id=replacement.id, request_id=request_id, change_summary={"superseded_invitation_id": str(invitation.id), "email": replacement.email}))
     return CreatedInvitation(replacement, token)
@@ -144,9 +135,6 @@ def accept_invitation(
     membership = OrganizationMembership(id=uuid4(), organization_id=organization.id, user_account_id=user_account_id, role=invitation.role)
     session.add(membership)
     session.flush()
-    # Groups chosen at invitation; a Group deleted since then has cascaded away.
-    for group_id in session.scalars(select(InvitationGroup.group_id).where(InvitationGroup.invitation_id == invitation.id)).all():
-        session.add(GroupMember(group_id=group_id, membership_id=membership.id, organization_id=organization.id))
     invitation.status = InvitationStatus.ACCEPTED.value
     invitation.version += 1
     invitation.accepted_by_user_account_id = user_account_id
@@ -155,15 +143,6 @@ def accept_invitation(
     notify_invitation_accepted(session, organization.id, inviter_id=invitation.invited_by_user_account_id, accepted_by=user_account_id, role=invitation.role)
     record_audit_event(session, AuditEventDraft(action="organization.invitation_accepted", target_type="organization_invitation", target_id=invitation.id, request_id=request_id, change_summary={"role": invitation.role}))
     return invitation
-
-
-def invitation_groups(session: Session, organization_id: UUID, group_ids: list[UUID]) -> list[Group]:
-    """The chosen Groups, refused when any is not a Group of this Organization."""
-    wanted = list(dict.fromkeys(group_ids))
-    groups = session.scalars(select(Group).where(Group.organization_id == organization_id, Group.id.in_(wanted))).all() if wanted else []
-    if len(groups) != len(wanted):
-        raise HTTPException(status_code=422, detail="Group not found in this Organization")
-    return list(groups)
 
 
 def expire_pending_invitations(
@@ -191,8 +170,8 @@ def expire_pending_invitations(
 
 
 INVITATION_EMAIL = {
-    "en": ("Invitation to {organization}", "You have been invited to {organization} on Yearclock.\n\nAccept your invitation: {url}\n\nThe invitation expires in seven days.\n\nPrivacy notice: {privacy_url}\nYearclock is a service of Lupaus Palvelut Oy."),
-    "fi": ("Kutsu organisaatioon {organization}", "Sinut on kutsuttu organisaatioon {organization} Yearclockissa.\n\nHyväksy kutsu: {url}\n\nKutsu vanhenee seitsemässä päivässä.\n\nTietosuojaseloste: {privacy_url}\nYearclock on Lupaus Palvelut Oy:n palvelu."),
+    "en": ("Invitation to {organization}", "You have been invited to {organization} on Shadow.\n\nAccept your invitation: {url}\n\nThe invitation expires in seven days.\n\nPrivacy notice: {privacy_url}\nShadow is a service of Lupaus Palvelut Oy."),
+    "fi": ("Kutsu organisaatioon {organization}", "Sinut on kutsuttu organisaatioon {organization} Shadowissa.\n\nHyväksy kutsu: {url}\n\nKutsu vanhenee seitsemässä päivässä.\n\nTietosuojaseloste: {privacy_url}\nShadow on Lupaus Palvelut Oy:n palvelu."),
 }
 
 

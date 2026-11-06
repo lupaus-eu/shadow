@@ -21,7 +21,7 @@ CURRENT_ORGANIZATION = "NULLIF(current_setting('app.current_organization_id', tr
 
 
 def upgrade() -> None:
-    op.execute("GRANT SELECT ON audit_events TO yearclock_app")
+    op.execute("GRANT SELECT ON audit_events TO shadow_app")
     op.execute("ALTER TABLE audit_events ENABLE ROW LEVEL SECURITY")
     op.execute("ALTER TABLE audit_events FORCE ROW LEVEL SECURITY")
     op.execute(f"CREATE POLICY audit_events_select ON audit_events FOR SELECT USING (organization_id = {CURRENT_ORGANIZATION})")
@@ -35,4 +35,4 @@ def downgrade() -> None:
     op.execute("DROP POLICY audit_events_select ON audit_events")
     op.execute("ALTER TABLE audit_events NO FORCE ROW LEVEL SECURITY")
     op.execute("ALTER TABLE audit_events DISABLE ROW LEVEL SECURITY")
-    op.execute("REVOKE SELECT ON audit_events FROM yearclock_app")
+    op.execute("REVOKE SELECT ON audit_events FROM shadow_app")

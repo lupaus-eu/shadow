@@ -77,7 +77,7 @@ def require_organization_mutation_access(session: Session, organization_id, *, n
 
 
 def resume_subscription(session: Session, *, organization: Organization, event: StripeEvent, now: datetime, request_id: str) -> str:
-    """Take a new subscription for an Organization whose subscription has ended (Yearclock V2 P14, ADR-0032).
+    """Take a new subscription for an Organization whose subscription has ended (Shadow V2 P14, ADR-0032).
 
     Only the confirmed payment of the Checkout session this Organization started counts. The old subscription id
     is kept, so its late events are ignored, and the content was never touched.

@@ -11,7 +11,7 @@ from app.auth import AuthenticatedUser
 from app.auth_routes import AuthenticatedUserDependency
 from app.database import RequestContext, apply_request_context, transaction_session
 from app.notifications import notify_role_change
-from app.models import OrganizationMembership, OrganizationRole, UserAccount, YearclockAccessGrant
+from app.models import OrganizationMembership, OrganizationRole, UserAccount
 from app.subscription_access import require_organization_mutation_access
 
 
@@ -84,8 +84,6 @@ def create_membership_router(*, session_factory: sessionmaker[Session], authenti
                 raise HTTPException(status_code=409, detail="an Organization must retain an Owner")
             if expected_version != target.version:
                 raise HTTPException(status_code=409, detail={"latest_version": target.version})
-            for grant in session.scalars(select(YearclockAccessGrant).where(YearclockAccessGrant.organization_id == organization_id, YearclockAccessGrant.user_account_id == target.user_account_id)).all():
-                session.delete(grant)
             session.delete(target)
             _audit(session, request, "organization.membership_left" if leaving else "organization.membership_removed", target, {})
 
@@ -113,8 +111,6 @@ def create_membership_router(*, session_factory: sessionmaker[Session], authenti
                     raise HTTPException(status_code=409, detail={"reason": "successor_required"})
                 successor = _transfer(session, organization_id, actor, body.successor_membership_id, keep_owner=False, expected_version=None)
                 _audit(session, request, "organization.ownership_transferred", successor, {"kept_owner": False, "from": str(actor.id), "leaving": True})
-            for grant in session.scalars(select(YearclockAccessGrant).where(YearclockAccessGrant.organization_id == organization_id, YearclockAccessGrant.user_account_id == actor.user_account_id)).all():
-                session.delete(grant)
             session.delete(actor)
             _audit(session, request, "organization.membership_left", actor, {})
 

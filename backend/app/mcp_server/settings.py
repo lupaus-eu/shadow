@@ -14,12 +14,12 @@ class McpSettings:
     # The public address of the MCP endpoint; also the resource identifier in the metadata.
     resource_url: str = "http://localhost:8100/api/mcp"
     # The dedicated Authentik provider: its issuer, and its client id, which is the audience.
-    issuer: str = "http://localhost:8190/application/o/yearclock-mcp/"
-    client_id: str = "yearclock-mcp-local"
+    issuer: str = "http://localhost:8190/application/o/shadow-mcp/"
+    client_id: str = "shadow-mcp-local"
     # Shown to Owners and Admins on the connection page; never used to verify tokens.
     client_secret: str = ""
     # The issuer under which accounts are stored (OIDC_ISSUER); the MCP issuer is an alias of it.
-    canonical_issuer: str = "http://localhost:8190/application/o/yearclock/"
+    canonical_issuer: str = "http://localhost:8190/application/o/shadow/"
     internal_base_url: str | None = None
 
     @classmethod

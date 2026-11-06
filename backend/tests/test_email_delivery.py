@@ -13,7 +13,7 @@ def test_scaleway_tem_settings_use_the_shared_scaleway_contract(monkeypatch) -> 
     monkeypatch.setenv("SCW_SECRET_KEY", "secret-key")
     monkeypatch.setenv("SCW_DEFAULT_PROJECT_ID", "project-id")
     monkeypatch.setenv("SCW_TEM_DEFAULT_SENDER_EMAIL", "notifications@example.com")
-    monkeypatch.setenv("SCW_TEM_DEFAULT_SENDER_NAME", "Yearclock")
+    monkeypatch.setenv("SCW_TEM_DEFAULT_SENDER_NAME", "Shadow")
     monkeypatch.setenv("SCW_TEM_REGION", "fr-par")
     monkeypatch.setenv(
         "SCW_TEM_API_BASE_URL",
@@ -24,7 +24,7 @@ def test_scaleway_tem_settings_use_the_shared_scaleway_contract(monkeypatch) -> 
         secret_key="secret-key",
         project_id="project-id",
         sender_email="notifications@example.com",
-        sender_name="Yearclock",
+        sender_name="Shadow",
         region="fr-par",
         api_base_url="https://tem.example.test/custom-tem-regions",
     )
@@ -46,7 +46,7 @@ def test_scaleway_tem_client_uses_the_configured_endpoint_and_response_shape() -
             secret_key="secret-key",
             project_id="project-id",
             sender_email="notifications@example.com",
-            sender_name="Yearclock",
+            sender_name="Shadow",
             region="fr-par",
             api_base_url="https://tem.example.test/custom-tem-regions",
         ),
@@ -62,9 +62,9 @@ def test_scaleway_tem_client_uses_the_configured_endpoint_and_response_shape() -
     assert request_log[0].headers["X-Auth-Token"] == "secret-key"
     assert json.loads(request_log[0].content) == {
         "project_id": "project-id",
-        "from": {"email": "notifications@example.com", "name": "Yearclock"},
+        "from": {"email": "notifications@example.com", "name": "Shadow"},
         "to": [{"email": "person@example.com"}],
         "subject": "Invitation",
         "text": "Accept it",
-        "additional_headers": [{"key": "Message-ID", "value": "<invite-1@yearclock>"}],
+        "additional_headers": [{"key": "Message-ID", "value": "<invite-1@shadow>"}],
     }

@@ -20,15 +20,11 @@ def test_owners_and_admins_browse_scoped_paginated_activity(database_url: str) -
         admin_app, _ = join(owner_app, owner, organization_id, subject="activity-admin", email="activity-admin@example.com", role="admin")
         member_app, _ = join(owner_app, owner, organization_id, subject="activity-member", email="activity-member@example.com")
         orgs = f"/api/v1/organizations/{organization_id}"
-        clock = owner.get(orgs).json()["yearclocks"][0]
-        for index in range(3):
-            owner.post(f"{orgs}/yearclocks/{clock['id']}/events", json={"title": f"Event {index}", "lane_id": clock["lanes"][0]["id"], "starts_on": "2026-05-01"})
         first_page = owner.get(f"{orgs}/audit-events?limit=2").json()
         second_page = owner.get(f"{orgs}/audit-events?limit=2&offset={first_page['next_offset']}").json()
-        events_only = owner.get(f"{orgs}/audit-events?prefix=event").json()["items"]
+        events_only = owner.get(f"{orgs}/audit-events?prefix=organization").json()["items"]
         exact = owner.get(f"{orgs}/audit-events?action=organization.invitation_accepted").json()["items"]
         bad_prefix = owner.get(f"{orgs}/audit-events?prefix=event%25").status_code
-        viewing = owner.get(f"{orgs}/yearclocks/{clock['id']}/events")
         after_viewing = owner.get(f"{orgs}/audit-events?limit=100").json()["items"]
     with TestClient(admin_app) as admin:
         login(admin)
@@ -46,14 +42,12 @@ def test_owners_and_admins_browse_scoped_paginated_activity(database_url: str) -
     assert len(first_page["items"]) == 2 and first_page["next_offset"] == 2
     assert first_page["items"][0]["occurred_at"] >= first_page["items"][1]["occurred_at"]
     assert {item["id"] for item in first_page["items"]}.isdisjoint({item["id"] for item in second_page["items"]})
-    assert [item["action"] for item in events_only] == ["event.created"] * 3
-    assert events_only[0]["actor"] == "activity-owner@example.com"
+    assert events_only and all(item["action"].startswith("organization") for item in events_only)
     assert {item["actor"] for item in exact} == {"activity-admin@example.com", "activity-member@example.com"}
     assert bad_prefix == 422
-    assert viewing.status_code == 200
-    assert not any(item["action"].startswith(("event.read", "yearclock.viewed")) for item in after_viewing)
+    assert not any(item["action"].startswith(("membership.read", "organization.viewed")) for item in after_viewing)
     assert admin_view == 200 and member_view == 403 and cross == 404
-    assert organization_id not in own_only and clock["id"] not in own_only
+    assert organization_id not in own_only
 
 
 def test_audit_summaries_hold_no_secrets_and_no_update_route_exists(database_url: str) -> None:
@@ -62,7 +56,7 @@ def test_audit_summaries_hold_no_secrets_and_no_update_route_exists(database_url
     with TestClient(owner_app) as owner:
         login(owner)
         organization_id = active_org(owner, verifier)
-        session_token = owner.cookies.get("yearclock_session")
+        session_token = owner.cookies.get("shadow_session")
         invitation = owner.post(f"/api/v1/organizations/{organization_id}/invitations", json={"email": "secret-invitee@example.com"}).json()
         token = invitation_token(owner_app.state.database_engine, invitation["id"])
         items = owner.get(f"/api/v1/organizations/{organization_id}/audit-events?limit=100").json()["items"]
@@ -86,14 +80,14 @@ def test_audit_is_written_only_with_a_committed_change(database_url: str) -> Non
         login(client)
         organization_id = active_org(client, verifier)
         orgs = f"/api/v1/organizations/{organization_id}"
-        clock = client.get(orgs).json()["yearclocks"][0]
+        membership = client.get(f"{orgs}/memberships").json()[0]
         before = count(organization_id)
-        stale = client.patch(f"{orgs}/yearclocks/{clock['id']}", json={"name": "Stale", "expected_version": 99})
+        stale = client.patch(f"{orgs}/memberships/{membership['id']}", json={"role": "admin", "expected_version": 99})
         after_stale = count(organization_id)
-        renamed = client.patch(f"{orgs}/yearclocks/{clock['id']}", json={"name": "Renamed", "expected_version": clock["version"]})
-        after_rename = count(organization_id)
+        invited = client.post(f"{orgs}/invitations", json={"email": "atomic-invitee@example.com", "role": "member"})
+        after_invite = count(organization_id)
     assert stale.status_code == 409 and after_stale == before
-    assert renamed.status_code == 200 and after_rename == before + 1
+    assert invited.status_code == 201 and after_invite == before + 1
 
     with pytest.raises(RuntimeError), transaction_session(factory, RequestContext(user_account_id=uuid4(), organization_id=UUID(organization_id))) as session:
         record_audit_event(session, AuditEventDraft(action="rolled.back", target_type="system", target_id=uuid4(), request_id="rollback"))

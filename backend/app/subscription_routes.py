@@ -1,4 +1,4 @@
-"""Owner actions on the subscription (Yearclock V2 P14, ADR-0032).
+"""Owner actions on the subscription (Shadow V2 P14, ADR-0032).
 
 Cancellation is always at the end of the paid period and can be undone until
 then. Stripe is called first; when it fails nothing changes locally. When it

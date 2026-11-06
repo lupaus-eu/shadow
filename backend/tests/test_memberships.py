@@ -124,16 +124,3 @@ def test_admin_manages_other_admins_but_not_owners(database_url: str) -> None:
     assert removed.status_code == 204
 
 
-def test_removing_a_member_drops_their_yearclock_grants(database_url: str) -> None:
-    verifier = Verifier()
-    owner_app = create_app(database_url=database_url, oidc_client=OIDC("grants-owner", "grants-owner@example.com"), stripe_billing=Stripe(), stripe_webhook_verifier=verifier, clock=lambda: NOW)
-    with TestClient(owner_app) as owner:
-        login(owner)
-        organization_id = active_org(owner, verifier)
-        _member_app, member_id = join(owner_app, owner, organization_id, subject="grants-member", email="grants-member@example.com")
-        yearclock_id = owner.get(f"/api/v1/organizations/{organization_id}").json()["yearclocks"][0]["id"]
-        assert owner.put(f"/api/v1/organizations/{organization_id}/yearclocks/{yearclock_id}/access", json={"user_account_id": member_id, "role": "editor"}).status_code == 200
-        membership = _membership_of(owner, organization_id, member_id)
-        assert owner.delete(f"/api/v1/organizations/{organization_id}/memberships/{membership['id']}?expected_version={membership['version']}").status_code == 204
-        grants = owner.get(f"/api/v1/organizations/{organization_id}/yearclocks/{yearclock_id}/access").json()
-    assert grants == []

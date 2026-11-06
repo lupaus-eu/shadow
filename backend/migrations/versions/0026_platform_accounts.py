@@ -35,7 +35,7 @@ def upgrade() -> None:
         sa.CheckConstraint("roles <@ ARRAY['platform_admin', 'support_agent']::varchar[] AND cardinality(roles) > 0", name="ck_platform_enrollments_roles"),
     )
     op.create_index("ix_platform_enrollments_email", "platform_enrollments", ["email"])
-    op.execute("GRANT SELECT, INSERT, UPDATE ON platform_enrollments TO yearclock_app")
+    op.execute("GRANT SELECT, INSERT, UPDATE ON platform_enrollments TO shadow_app")
 
 
 def downgrade() -> None:

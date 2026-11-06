@@ -33,7 +33,7 @@ def upgrade() -> None:
         sa.CheckConstraint("length(btrim(name)) > 0", name="ck_labels_name"),
     )
     op.execute("CREATE UNIQUE INDEX uq_labels_organization_name ON labels (organization_id, lower(name))")
-    op.execute("GRANT SELECT, INSERT, UPDATE, DELETE ON labels TO yearclock_app")
+    op.execute("GRANT SELECT, INSERT, UPDATE, DELETE ON labels TO shadow_app")
     op.execute("ALTER TABLE labels ENABLE ROW LEVEL SECURITY")
     op.execute("ALTER TABLE labels FORCE ROW LEVEL SECURITY")
     op.execute(f"CREATE POLICY labels_policy ON labels USING (organization_id = {CURRENT_ORGANIZATION}) WITH CHECK (organization_id = {CURRENT_ORGANIZATION})")

@@ -13,7 +13,7 @@ from app.models import AccountClass, UserAccount
 
 
 class NotSignedUp(Exception):
-    """The token's subject has no customer account in Yearclock."""
+    """The token's subject has no customer account in Shadow."""
 
 
 def customer_account(session: Session, settings: McpSettings, subject: str) -> UserAccount:

@@ -74,9 +74,9 @@ def upgrade() -> None:
         $$
         """
     )
-    op.execute("GRANT UPDATE (change_summary) ON audit_events TO yearclock_app")
+    op.execute("GRANT UPDATE (change_summary) ON audit_events TO shadow_app")
     for table in PURGE_ONLY_DELETE:
-        op.execute(f"GRANT DELETE ON {table} TO yearclock_app")
+        op.execute(f"GRANT DELETE ON {table} TO shadow_app")
         op.execute(f"CREATE POLICY {table}_purge ON {table} FOR DELETE USING (organization_id = {CURRENT_ORGANIZATION} AND {PURGE_SCOPE})")
     op.execute(f"CREATE POLICY audit_events_purge_scrub ON audit_events FOR UPDATE USING (organization_id = {CURRENT_ORGANIZATION} AND {PURGE_SCOPE}) WITH CHECK (organization_id = {CURRENT_ORGANIZATION} AND {PURGE_SCOPE})")
 
@@ -84,9 +84,9 @@ def upgrade() -> None:
 def downgrade() -> None:
     for table in PURGE_ONLY_DELETE:
         op.execute(f"DROP POLICY {table}_purge ON {table}")
-        op.execute(f"REVOKE DELETE ON {table} FROM yearclock_app")
+        op.execute(f"REVOKE DELETE ON {table} FROM shadow_app")
     op.execute("DROP POLICY audit_events_purge_scrub ON audit_events")
-    op.execute("REVOKE UPDATE (change_summary) ON audit_events FROM yearclock_app")
+    op.execute("REVOKE UPDATE (change_summary) ON audit_events FROM shadow_app")
     op.execute(
         """
         CREATE OR REPLACE FUNCTION reject_audit_event_mutation()

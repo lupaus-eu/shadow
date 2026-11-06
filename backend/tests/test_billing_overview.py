@@ -1,4 +1,4 @@
-"""The next charge and the payments an Owner sees (Yearclock V2 billing overview)."""
+"""The next charge and the payments an Owner sees (Shadow V2 billing overview)."""
 from datetime import UTC, datetime
 from urllib.parse import parse_qs
 
@@ -91,7 +91,7 @@ def test_only_owners_can_read_the_overview(database_url, stack) -> None:
 
 def _client(handler) -> StripeBillingClient:
     return StripeBillingClient(
-        StripeSettings(secret_key="sk_test", webhook_secret="whsec", monthly_seat_price_id="price_1", frontend_url="https://yearclock.example"),
+        StripeSettings(secret_key="sk_test", webhook_secret="whsec", monthly_seat_price_id="price_1", frontend_url="https://shadow.example"),
         client=httpx.Client(base_url="https://api.stripe.com", transport=httpx.MockTransport(handler)),
     )
 

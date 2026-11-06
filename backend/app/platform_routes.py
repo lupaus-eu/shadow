@@ -15,7 +15,7 @@ from app.audit import AuditEventDraft, record_audit_event
 from app.auth import AuthenticatedUser, AuthSettings, Clock, OIDCClient, revoke_session
 from app.auth_routes import AuthenticatedUserDependency
 from app.database import RequestContext, apply_request_context, transaction_session
-from app.models import BackgroundJob, Organization, OrganizationMembership, OutboxMessage, PlatformRole, QueueStatus, StripeWebhookEvent, Yearclock
+from app.models import BackgroundJob, Organization, OrganizationMembership, OutboxMessage, PlatformRole, QueueStatus, StripeWebhookEvent
 from app.subscription_access import subscription_view
 
 PLATFORM_ADMIN, SUPPORT_AGENT = "platform_admin", "support_agent"
@@ -46,7 +46,6 @@ class PlatformOrganization(BaseModel):
     subscription: PlatformSubscription
     purchased_seats: int
     members: int
-    yearclocks: int
     activated_at: datetime | None
     deletion_requested_at: datetime | None
     mcp_enabled: bool = True
@@ -120,12 +119,11 @@ def create_platform_router(*, session_factory: sessionmaker, platform_user_depen
             for organization in organizations:
                 apply_request_context(session, RequestContext(user_account_id=user.account.id, organization_id=organization.id, worker_scope="enumerate"))
                 members = session.scalar(select(func.count()).select_from(OrganizationMembership).where(OrganizationMembership.organization_id == organization.id)) or 0
-                yearclocks = session.scalar(select(func.count()).select_from(Yearclock).where(Yearclock.organization_id == organization.id, Yearclock.deleted_at.is_(None))) or 0
                 result.append(PlatformOrganization(
                     id=organization.id, name=organization.name, status=organization.status,
                     subscription_access_state=organization.subscription_access_state,
                     subscription=PlatformSubscription(**asdict(subscription_view(organization))),
-                    purchased_seats=organization.purchased_seats, members=members, yearclocks=yearclocks,
+                    purchased_seats=organization.purchased_seats, members=members,
                     activated_at=organization.activated_at, deletion_requested_at=organization.deletion_requested_at,
                     mcp_enabled=organization.mcp_enabled, mcp_platform_blocked=organization.mcp_platform_blocked,
                 ))
@@ -144,12 +142,11 @@ def create_platform_router(*, session_factory: sessionmaker, platform_user_depen
                 organization.mcp_platform_blocked = body.blocked
                 record_audit_event(session, AuditEventDraft(action="platform.mcp_blocked" if body.blocked else "platform.mcp_unblocked", target_type="organization", target_id=organization_id, request_id=(request.headers.get("X-Request-ID") or str(uuid4()))[:120], change_summary={}))
             members = session.scalar(select(func.count()).select_from(OrganizationMembership).where(OrganizationMembership.organization_id == organization_id)) or 0
-            yearclocks = session.scalar(select(func.count()).select_from(Yearclock).where(Yearclock.organization_id == organization_id, Yearclock.deleted_at.is_(None))) or 0
             return PlatformOrganization(
                 id=organization.id, name=organization.name, status=organization.status,
                 subscription_access_state=organization.subscription_access_state,
                 subscription=PlatformSubscription(**asdict(subscription_view(organization))),
-                purchased_seats=organization.purchased_seats, members=members, yearclocks=yearclocks,
+                purchased_seats=organization.purchased_seats, members=members,
                 activated_at=organization.activated_at, deletion_requested_at=organization.deletion_requested_at,
                 mcp_enabled=organization.mcp_enabled, mcp_platform_blocked=organization.mcp_platform_blocked,
             )

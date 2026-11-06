@@ -150,7 +150,7 @@ def upgrade() -> None:
         """
         GRANT SELECT, INSERT, UPDATE
         ON TABLE organization_seat_changes, organization_seat_previews
-        TO yearclock_app
+        TO shadow_app
         """
     )
     for table_name in (

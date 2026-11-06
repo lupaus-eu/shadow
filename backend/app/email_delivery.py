@@ -32,7 +32,7 @@ class ScalewayEmailSettings:
             secret_key=os.getenv("SCW_SECRET_KEY", ""),
             project_id=os.getenv("SCW_DEFAULT_PROJECT_ID", ""),
             sender_email=os.getenv("SCW_TEM_DEFAULT_SENDER_EMAIL", ""),
-            sender_name=os.getenv("SCW_TEM_DEFAULT_SENDER_NAME", "Yearclock"),
+            sender_name=os.getenv("SCW_TEM_DEFAULT_SENDER_NAME", "Shadow"),
             region=os.getenv("SCW_TEM_REGION", "fr-par"),
             api_base_url=os.getenv(
                 "SCW_TEM_API_BASE_URL",
@@ -62,7 +62,7 @@ class ScalewayTransactionalEmailClient:
                 "subject": message.subject,
                 "text": message.text,
                 "additional_headers": [
-                    {"key": "Message-ID", "value": f"<{message.idempotency_key}@yearclock>"}
+                    {"key": "Message-ID", "value": f"<{message.idempotency_key}@shadow>"}
                 ],
             },
         )

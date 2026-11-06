@@ -70,10 +70,6 @@ class OrganizationSignupRequest(BaseModel):
 
 class InitialContentResponse(BaseModel):
     owner_user_account_id: UUID
-    yearclock_id: UUID
-    yearclock_name: str
-    lane_id: UUID
-    lane_name: str
 
 
 class OrganizationSignupResponse(BaseModel):
@@ -242,10 +238,6 @@ def _response(
         initial_content=(
             InitialContentResponse(
                 owner_user_account_id=content.owner_user_account_id,
-                yearclock_id=content.yearclock_id,
-                yearclock_name=content.yearclock_name,
-                lane_id=content.lane_id,
-                lane_name=content.lane_name,
             )
             if content
             else None

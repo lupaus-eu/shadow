@@ -9,7 +9,7 @@ from app.work_queue import claim_next_outbox_message, complete_queue_record, fai
 MAX_EMAIL_ATTEMPTS = 3
 
 
-EMAIL_TOPICS = ("organization.invitation", "notification", "summary", "billing.contact_changed")
+EMAIL_TOPICS = ("organization.invitation", "notification", "billing.contact_changed")
 
 
 def deliver_one_email(session_factory, sender: TransactionalEmailSender) -> bool:
@@ -56,8 +56,7 @@ def _deliver_one(session_factory, sender: TransactionalEmailSender, topic: str) 
 
 def main() -> None:
     import os
-    from app.jobs import run_one_background_job, schedule_notification_cleanup_jobs, schedule_organization_purge_jobs, schedule_purge_jobs, schedule_recurrence_jobs
-    from app.summary import schedule_summary_jobs
+    from app.jobs import run_one_background_job, schedule_notification_cleanup_jobs, schedule_organization_purge_jobs, schedule_purge_jobs
     from app.legal_announcements import schedule_legal_announcements
     from app.legal_documents import LegalLibrary
     from app.support_access_routes import expire_support_access
@@ -75,10 +74,8 @@ def main() -> None:
             expire_support_access(session_factory, now=now)
             next_expiry_sweep = now + timedelta(minutes=1)
         if now >= next_schedule:
-            schedule_recurrence_jobs(session_factory, today=now.date())
             schedule_purge_jobs(session_factory, today=now.date())
             schedule_notification_cleanup_jobs(session_factory, today=now.date())
-            schedule_summary_jobs(session_factory, now=now)
             schedule_organization_purge_jobs(session_factory, now=now)
             schedule_legal_announcements(session_factory, legal_library, now=now)
             next_schedule = now + schedule_interval

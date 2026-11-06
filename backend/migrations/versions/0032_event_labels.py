@@ -27,7 +27,7 @@ def upgrade() -> None:
         sa.Column("organization_id", sa.Uuid(), sa.ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False),
     )
     op.create_index("ix_event_labels_label_id", "event_labels", ["label_id"])
-    op.execute("GRANT SELECT, INSERT, UPDATE, DELETE ON event_labels TO yearclock_app")
+    op.execute("GRANT SELECT, INSERT, UPDATE, DELETE ON event_labels TO shadow_app")
     op.execute("ALTER TABLE event_labels ENABLE ROW LEVEL SECURITY")
     op.execute("ALTER TABLE event_labels FORCE ROW LEVEL SECURITY")
     op.execute(f"CREATE POLICY event_labels_policy ON event_labels USING (organization_id = {CURRENT_ORGANIZATION}) WITH CHECK (organization_id = {CURRENT_ORGANIZATION})")

@@ -1,4 +1,4 @@
-"""The email form of a notification (Yearclock V2 P8, ADR-0031): short, no tracking, a link to the inbox and one to the settings."""
+"""The email form of a notification (Shadow V2 P8, ADR-0031): short, no tracking, a link to the inbox and one to the settings."""
 from typing import Any
 
 ROLE_NAMES = {
@@ -7,10 +7,6 @@ ROLE_NAMES = {
 }
 SENTENCES: dict[str, dict[str, Any]] = {
     "en": {
-        "access_edit": "You can now edit {yearclock}.",
-        "access_view": "You can now view {yearclock}.",
-        "access_view_only": "Your access to {yearclock} changed to view only.",
-        "access_lost": "You no longer have access to {yearclock}.",
         "role_changed": "Your role in the Organization changed from {from_role} to {to_role}.",
         "invitation_accepted": "{name} accepted your invitation as {role}.",
         "owner_gained": "{name} is now an Owner.",
@@ -29,19 +25,15 @@ SENTENCES: dict[str, dict[str, Any]] = {
         "subject": "{organization}: {sentence}",
         "open": "Open your notifications:",
         "settings": "Choose which notifications you get by email:",
-        "footer": "You get this email because of a change in {organization} on Yearclock.",
+        "footer": "You get this email because of a change in {organization} on Shadow.",
         "privacy": "Privacy notice:",
-        "maker": "Yearclock is a service of Lupaus Palvelut Oy.",
+        "maker": "Shadow is a service of Lupaus Palvelut Oy.",
         "legal_published": "A new version of the {document} is published and takes effect on {date}.{action}",
         "legal_action_required": " An Owner of the Organization needs to accept it in Organization settings.",
         "legal_action_notice": " This is a notice of the change.",
         "legal_notice": "You have 30 days from this message to object to the change by writing to {contact}. Read the document at {url}",
     },
     "fi": {
-        "access_edit": "Voit nyt muokata vuosikelloa {yearclock}.",
-        "access_view": "Voit nyt katsoa vuosikelloa {yearclock}.",
-        "access_view_only": "Pääsysi vuosikelloon {yearclock} muuttui vain katseluksi.",
-        "access_lost": "Sinulla ei ole enää pääsyä vuosikelloon {yearclock}.",
         "role_changed": "Roolisi organisaatiossa muuttui: {from_role} → {to_role}.",
         "invitation_accepted": "{name} hyväksyi kutsusi roolilla {role}.",
         "owner_gained": "{name} on nyt omistaja.",
@@ -60,9 +52,9 @@ SENTENCES: dict[str, dict[str, Any]] = {
         "subject": "{organization}: {sentence}",
         "open": "Avaa ilmoituksesi:",
         "settings": "Valitse, mistä ilmoituksista saat sähköpostia:",
-        "footer": "Saat tämän viestin, koska organisaatiossa {organization} tapahtui muutos Yearclockissa.",
+        "footer": "Saat tämän viestin, koska organisaatiossa {organization} tapahtui muutos Shadowissa.",
         "privacy": "Tietosuojaseloste:",
-        "maker": "Yearclock on Lupaus Palvelut Oy:n palvelu.",
+        "maker": "Shadow on Lupaus Palvelut Oy:n palvelu.",
         "legal_published": "Asiakirjasta {document} on julkaistu uusi versio, joka tulee voimaan {date}.{action}",
         "legal_action_required": " Organisaation omistajan on hyväksyttävä se Organisaation asetuksissa.",
         "legal_action_notice": " Tämä on ilmoitus muutoksesta.",
@@ -80,14 +72,6 @@ DOCUMENT_NAMES = {
 def sentence(notification_type: str, params: dict[str, Any], locale: str) -> str:
     text = SENTENCES[locale]
     role = lambda value: ROLE_NAMES[locale].get(str(value), str(value))  # noqa: E731
-    name = str(params.get("yearclock_name", ""))
-    if notification_type == "access_changed":
-        to_role, from_role = params.get("to_role"), params.get("from_role")
-        if to_role == "editor":
-            return text["access_edit"].format(yearclock=name)
-        if to_role == "viewer":
-            return (text["access_view_only"] if from_role == "editor" else text["access_view"]).format(yearclock=name)
-        return text["access_lost"].format(yearclock=name)
     if notification_type == "role_changed":
         return text["role_changed"].format(from_role=role(params.get("from_role")), to_role=role(params.get("to_role")))
     if notification_type == "invitation_accepted":

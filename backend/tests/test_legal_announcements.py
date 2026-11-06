@@ -66,7 +66,7 @@ def test_an_organization_that_accepted_the_version_is_not_told(database_url, sta
 
 
 def test_the_email_is_sent_even_when_the_person_turned_email_off_and_states_the_period(database_url, stack, monkeypatch) -> None:
-    monkeypatch.setenv("LEGAL_CONTACT_EMAIL", "legal@yearclock.example")
+    monkeypatch.setenv("LEGAL_CONTACT_EMAIL", "legal@shadow.example")
     world = World(stack, database_url, "legal-mandatory")
     owner_id = world.owner.get("/api/v1/auth/session").json()["user_account"]["id"]
     off = '{"legal": {"in_app": false, "email": false}}'
@@ -78,7 +78,7 @@ def test_the_email_is_sent_even_when_the_person_turned_email_off_and_states_the_
     run_jobs(world)
     [mail] = [item for item in emails(world) if "sub-processors" in item["payload"]["text"]]
     body = mail["payload"]["text"]
-    assert "30 days" in body and "legal@yearclock.example" in body and "/legal/subprocessors" in body
+    assert "30 days" in body and "legal@shadow.example" in body and "/legal/subprocessors" in body
     assert "is published and takes effect on 2026-12-01" in body
     assert len(mine(world, world.owner)) == 1
 
@@ -92,10 +92,10 @@ def test_the_job_is_registered_with_the_worker() -> None:
 def test_the_email_text_is_in_the_recipients_language(monkeypatch) -> None:
     from app.notification_email import render
 
-    monkeypatch.setenv("LEGAL_CONTACT_EMAIL", "legal@yearclock.example")
+    monkeypatch.setenv("LEGAL_CONTACT_EMAIL", "legal@shadow.example")
     params = {"document_key": "dpa", "version": 2, "effective_from": "2027-01-15", "acceptance": "required"}
     subject, body = render("legal_document_published", params, locale="fi", organization_name="Northwind", inbox_url="https://x/i", settings_url="https://x/s")
     assert "tietojenkäsittelysopimuksesta" in subject and "2027-01-15" in subject
-    assert "30 päivää" in body and "legal@yearclock.example" in body and "/legal/dpa" in body
+    assert "30 päivää" in body and "legal@shadow.example" in body and "/legal/dpa" in body
     _, english = render("legal_document_published", params, locale="en", organization_name="Northwind", inbox_url="https://x/i", settings_url="https://x/s")
     assert "data processing agreement" in english and "needs to accept it" in english

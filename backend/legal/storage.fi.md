@@ -15,8 +15,8 @@ Automaattiset testit pitävät tämän luettelon samana kuin koodi (`backend/leg
 
 | Nimi | Tarkoitus | Kesto |
 | --- | --- | --- |
-| `yearclock_session` | Pitää sinut kirjautuneena (satunnainen istuntotunniste). | Enintään 8 tuntia; poistetaan uloskirjautuessa. |
-| `yearclock_oidc_flow` | Suojaa kirjautumisen edestakaista kulkua väärennykseltä. | 10 minuuttia; poistetaan, kun kirjautuminen valmistuu. |
+| `shadow_session` | Pitää sinut kirjautuneena (satunnainen istuntotunniste). | Enintään 8 tuntia; poistetaan uloskirjautuessa. |
+| `shadow_oidc_flow` | Suojaa kirjautumisen edestakaista kulkua väärennykseltä. | 10 minuuttia; poistetaan, kun kirjautuminen valmistuu. |
 
 ## Selaimeesi tallennetut asetukset
 

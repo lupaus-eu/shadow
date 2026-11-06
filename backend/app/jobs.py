@@ -13,12 +13,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.database import RequestContext, transaction_session
-from app.models import BackgroundJob, EventSeries, Organization, OrganizationStatus
+from app.models import BackgroundJob, Organization, OrganizationStatus
 from app.lifecycle import organization_deletion_window, purge_deleted_content, purge_organization
 from app.legal_announcements import ANNOUNCE_JOB, announce_document
 from app.notifications import CLEANUP_JOB, cleanup_notifications
-from app.summary import SUMMARY_JOB, send_summaries
-from app.recurrence import materialization_horizon, materialize_series
 from app.work_queue import (
     BackgroundJobDraft,
     claim_next_background_job,
@@ -29,7 +27,6 @@ from app.work_queue import (
 )
 
 MAX_JOB_ATTEMPTS = 5
-RECURRENCE_JOB = "recurrence.materialize"
 
 JobHandler = Callable[[Session, BackgroundJob, datetime], None]
 
@@ -39,36 +36,10 @@ def retry_delay(attempts: int) -> timedelta:
     return timedelta(minutes=min(2 ** max(attempts - 1, 0), 60))
 
 
-def materialize_organization(session: Session, job: BackgroundJob, now: datetime) -> None:
-    organization = session.get(Organization, job.organization_id)
-    if organization is None:
-        return
-    through = materialization_horizon(organization.time_zone, now=now)
-    for series in session.scalars(select(EventSeries).where(EventSeries.organization_id == organization.id)).all():
-        materialize_series(session, series, through=through)
-
-
 PURGE_JOB = "content.purge"
 ORGANIZATION_PURGE_JOB = "organization.purge"
 
-HANDLERS: dict[str, JobHandler] = {RECURRENCE_JOB: materialize_organization, PURGE_JOB: purge_deleted_content, ORGANIZATION_PURGE_JOB: purge_organization, CLEANUP_JOB: cleanup_notifications, SUMMARY_JOB: send_summaries, ANNOUNCE_JOB: announce_document}
-
-
-def schedule_recurrence_jobs(session_factory: sessionmaker[Session], *, today: date) -> int:
-    """Enqueue one materialization job per active Organization with a Series, once per day."""
-    with transaction_session(session_factory, RequestContext(worker_scope="enumerate")) as session:
-        organization_ids = session.scalars(
-            select(Organization.id)
-            .where(Organization.status == OrganizationStatus.ACTIVE.value)
-            .where(Organization.id.in_(select(EventSeries.organization_id)))
-        ).all()
-    for organization_id in organization_ids:
-        with transaction_session(session_factory, RequestContext(organization_id=organization_id)) as session:
-            enqueue_background_job(
-                session,
-                BackgroundJobDraft(job_type=RECURRENCE_JOB, payload={}, idempotency_key=f"{RECURRENCE_JOB}:{organization_id}:{today.isoformat()}"),
-            )
-    return len(organization_ids)
+HANDLERS: dict[str, JobHandler] = {PURGE_JOB: purge_deleted_content, ORGANIZATION_PURGE_JOB: purge_organization, CLEANUP_JOB: cleanup_notifications, ANNOUNCE_JOB: announce_document}
 
 
 def schedule_purge_jobs(session_factory: sessionmaker[Session], *, today: date) -> int:

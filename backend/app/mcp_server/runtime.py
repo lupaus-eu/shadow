@@ -69,6 +69,6 @@ class ToolRuntime:
                     require_mcp_enabled(self.session_factory, user, organization_id)
                 return plain(function(user, **arguments))
             except NotSignedUp:
-                raise ToolError("This sign-in has no Yearclock account. Sign in to the Yearclock web application once first.") from None
+                raise ToolError("This sign-in has no Shadow account. Sign in to the Shadow web application once first.") from None
             except HTTPException as error:
                 raise ToolError(_message(error)) from None
