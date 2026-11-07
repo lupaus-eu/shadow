@@ -73,6 +73,80 @@ class DiffResponse(BaseModel):
     removed_connections: list[ConnectionChange]
 
 
+class MergeRequest(BaseModel):
+    expected_version: int = Field(ge=1)
+
+
+class MergeResponse(BaseModel):
+    base: VersionResponse
+    added_nodes: int
+    removed_nodes: int
+    changed_nodes: int
+    added_connections: int
+    removed_connections: int
+    skipped_connections: int
+
+
+def merge_version(session: Session, version: ModelVersion) -> MergeResponse:
+    """Apply the changes of ``version`` to the version it was forked from.
+
+    Removed nodes and connections are deleted from the base, changed nodes copy their name,
+    description and type, and added nodes and connections are created there. Afterwards the
+    version's added nodes point at their new twins, so the version shows no changes against the
+    base. Metrics are not merged. A node the base lost since the fork comes back as added.
+    """
+    diff = diff_of(session, version)
+    if diff.base is None:
+        raise HTTPException(status_code=422, detail="the baseline has nothing to merge into")
+    base_id = diff.base.id
+    removed_connections = [session.get(Connection, item.connection_id) for item in diff.removed_connections]
+    for connection in removed_connections:
+        if connection is not None:
+            session.delete(connection)
+    session.flush()
+    for item in diff.removed_nodes:
+        if (node := session.get(Node, item.node_id)) is not None:
+            session.delete(node)
+    session.flush()
+    mapping: dict[UUID, UUID] = {}  # a node of this version -> its node in the base
+    for node in session.scalars(select(Node).where(Node.version_id == version.id)).all():
+        if node.origin_node_id is not None:
+            mapping[node.id] = node.origin_node_id
+    for item in diff.changed_nodes:
+        node = session.get(Node, item.node_id)
+        target = session.get(Node, node.origin_node_id) if node and node.origin_node_id else None
+        if node is not None and target is not None:
+            target.name, target.description, target.node_type_id = node.name, node.description, node.node_type_id
+            target.version += 1
+    for item in diff.added_nodes:
+        node = session.get(Node, item.node_id)
+        twin = Node(id=uuid4(), organization_id=node.organization_id, model_id=node.model_id, version_id=base_id, node_type_id=node.node_type_id, name=node.name, description=node.description, x=node.x, y=node.y, version=1)
+        session.add(twin)
+        session.flush()
+        mapping[node.id] = twin.id
+        node.origin_node_id = twin.id
+    skipped = 0
+    for item in diff.added_connections:
+        connection = session.get(Connection, item.connection_id)
+        source, target = mapping.get(connection.source_node_id), mapping.get(connection.target_node_id)
+        duplicate = source and target and session.scalar(select(Connection.id).where(Connection.connection_type_id == connection.connection_type_id, Connection.source_node_id == source, Connection.target_node_id == target))
+        if not source or not target or duplicate:
+            skipped += 1
+            continue
+        session.add(Connection(id=uuid4(), organization_id=connection.organization_id, model_id=connection.model_id, version_id=base_id, connection_type_id=connection.connection_type_id, source_node_id=source, target_node_id=target, version=1))
+    session.flush()
+    base = session.get(ModelVersion, base_id)
+    return MergeResponse(
+        base=VersionResponse.model_validate(base, from_attributes=True),
+        added_nodes=len(diff.added_nodes),
+        removed_nodes=len(diff.removed_nodes),
+        changed_nodes=len(diff.changed_nodes),
+        added_connections=len(diff.added_connections) - skipped,
+        removed_connections=sum(1 for connection in removed_connections if connection is not None),
+        skipped_connections=skipped,
+    )
+
+
 def fork_version(session: Session, base: ModelVersion, name: str, description: str | None) -> ModelVersion:
     """Copy ``base``'s graph into a new version that records where each node came from."""
     fork = ModelVersion(id=uuid4(), organization_id=base.organization_id, model_id=base.model_id, name=name, description=description, is_baseline=False, base_version_id=base.id, version=1)
@@ -180,6 +254,20 @@ def create_version_router(*, session_factory: sessionmaker[Session], authenticat
         with _member_session(session_factory, organization_id, user) as (session, _membership):
             _model(session, organization_id, model_id)
             return diff_of(session, version_of(session, organization_id, model_id, version_id))
+
+    @router.post("/{organization_id}/models/{model_id}/versions/{version_id}/merge", response_model=MergeResponse)
+    def merge(organization_id: UUID, model_id: UUID, version_id: UUID, body: MergeRequest, request: Request, user: AuthenticatedUser = Depends(authenticated_user_dependency)) -> MergeResponse:
+        with _manager_session(session_factory, organization_id, user) as session:
+            _model(session, organization_id, model_id)
+            version = version_of(session, organization_id, model_id, version_id, lock=True)
+            _stale(version.version, body.expected_version)
+            if version.base_version_id is None:
+                raise HTTPException(status_code=422, detail="the baseline has nothing to merge into")
+            session.execute(select(ModelVersion.id).where(ModelVersion.id == version.base_version_id).with_for_update())
+            result = merge_version(session, version)
+            version.version += 1
+            _audit(session, request, "version.merged", "model_version", version.id, {"version": version.name, "into": result.base.name, "added_nodes": result.added_nodes, "removed_nodes": result.removed_nodes, "changed_nodes": result.changed_nodes})
+            return result
 
     return router
 

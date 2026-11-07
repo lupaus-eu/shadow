@@ -73,3 +73,29 @@ def test_baseline_rules_and_deleting_versions(database_url: str, stack: ExitStac
     assert owner.delete(f"{path}/versions/{second['id']}", params={"expected_version": 2}).status_code == 204
     assert owner.delete(f"{path}/versions/{first['id']}", params={"expected_version": 1}).status_code == 204
     assert [v["name"] for v in owner.get(f"{path}/versions").json()] == ["Baseline"]
+
+
+def test_a_version_merges_into_its_base_and_then_shows_no_changes(database_url: str, stack: ExitStack) -> None:
+    _, owner, _, base = _tenant(stack, database_url, "versions-merge")
+    model_id = owner.post(f"{base}/models", json={"name": "Twin"}).json()["id"]
+    path = f"{base}/models/{model_id}"
+    types = _types(_graph(owner, base, model_id))
+    app = owner.post(f"{path}/nodes", json={"node_type_id": types["product"], "name": "App"}).json()
+    old = owner.post(f"{path}/nodes", json={"node_type_id": types["journey"], "name": "Onboarding"}).json()
+    owner.post(f"{path}/connections", json={"connection_type_id": types["c:features_in"], "source_node_id": app["id"], "target_node_id": old["id"]})
+    version = owner.post(f"{path}/versions", json={"name": "Plan"}).json()
+    forked = {n["name"]: n for n in owner.get(path, params={"version_id": version["id"]}).json()["nodes"]}
+    owner.patch(f"{path}/nodes/{forked['App']['id']}", json={"expected_version": 1, "name": "App 2"})
+    owner.delete(f"{path}/nodes/{forked['Onboarding']['id']}", params={"expected_version": 1})
+    new = owner.post(f"{path}/nodes", json={"version_id": version["id"], "node_type_id": types["journey"], "name": "Checkout"}).json()
+    owner.post(f"{path}/connections", json={"connection_type_id": types["c:features_in"], "source_node_id": forked["App"]["id"], "target_node_id": new["id"]})
+    merged = owner.post(f"{path}/versions/{version['id']}/merge", json={"expected_version": version["version"]})
+    assert merged.status_code == 200
+    assert {k: v for k, v in merged.json().items() if k != "base"} == {"added_nodes": 1, "removed_nodes": 1, "changed_nodes": 1, "added_connections": 1, "removed_connections": 1, "skipped_connections": 0}
+    graph = _graph(owner, base, model_id)
+    assert sorted(n["name"] for n in graph["nodes"]) == ["App 2", "Checkout"] and len(graph["connections"]) == 1
+    changes = owner.get(f"{path}/versions/{version['id']}/changes").json()
+    assert not any(changes[key] for key in ("added_nodes", "removed_nodes", "changed_nodes", "added_connections", "removed_connections"))
+    # a stale request and the baseline are refused; members cannot merge
+    assert owner.post(f"{path}/versions/{version['id']}/merge", json={"expected_version": version["version"]}).status_code == 409
+    assert owner.post(f"{path}/versions/{graph['version']['id']}/merge", json={"expected_version": 1}).status_code == 422

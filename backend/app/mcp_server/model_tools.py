@@ -17,11 +17,11 @@ from pydantic import BaseModel, ValidationError
 
 from app.analysis_routes import create_analysis_router
 from app.mcp_server.runtime import ToolRuntime
-from app.mcp_server.tools import READ_ONLY, UNTRUSTED, WRITES
+from app.mcp_server.tools import DELETES, READ_ONLY, UNTRUSTED, WRITES
 from app.metric_routes import MetricRequest, ValuesRequest, create_metric_router
 from app.model_routes import ConnectionRequest, ModelRequest, NodeRequest, create_model_router
 from app.simulation_routes import SimulationRequest, create_simulation_router
-from app.version_routes import VersionRequest, create_version_router
+from app.version_routes import MergeRequest, VersionRequest, create_version_router
 
 REQUEST = SimpleNamespace(headers={})  # the audit entry takes only a request id from it
 
@@ -141,3 +141,8 @@ def register_model_tools(server: MCPServer, runtime: ToolRuntime) -> None:
     async def generate_analysis(organization_id: UUID, model_id: UUID, simulation_id: UUID, compare_to: UUID | None = None) -> dict:
         """Generate the findings and action proposals of a simulation. Decisions already taken on proposals are kept."""
         return await write(organization_id, analysis["generate"], model_id=model_id, simulation_id=simulation_id, compare_to=compare_to)
+
+    @server.tool(title="Merge a version into its base", annotations=DELETES)
+    async def merge_version(organization_id: UUID, model_id: UUID, version_id: UUID, expected_version: int) -> dict:
+        """Apply a version's changes (see get_version_changes) to the version it was forked from, usually the baseline. This edits the base and cannot be undone; metrics are not merged. Owner or Admin only. expected_version is the version's current `version` number."""
+        return await write(organization_id, versions["merge"], model_id=model_id, version_id=version_id, body=_body(MergeRequest, {"expected_version": expected_version}))

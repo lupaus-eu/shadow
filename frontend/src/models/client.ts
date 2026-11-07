@@ -202,3 +202,9 @@ export async function disallowConnection(organizationId: string, modelId: string
 export async function generateAiAnalysis(organizationId: string, modelId: string, simulationId: string, compareTo: string | null, language: string): Promise<Analysis> {
   return (await call(`${modelsUrl(organizationId)}/${modelId}/simulations/${simulationId}/analysis/ai`, { method: "POST", ...json({ language, compare_to: compareTo }) })).json();
 }
+
+export type MergeResult = { base: ModelVersion; added_nodes: number; removed_nodes: number; changed_nodes: number; added_connections: number; removed_connections: number; skipped_connections: number };
+
+export async function mergeVersion(organizationId: string, modelId: string, version: ModelVersion): Promise<MergeResult> {
+  return (await call(`${modelsUrl(organizationId)}/${modelId}/versions/${version.id}/merge`, { method: "POST", ...json({ expected_version: version.version }) })).json();
+}
