@@ -1,12 +1,12 @@
 # C4 model (LikeC4)
 
-The Yearclock architecture as a [LikeC4](https://likec4.dev) model, following
+The Shadow architecture as a [LikeC4](https://likec4.dev) model, following
 the C4 levels.
 
 | File | Contents |
 | --- | --- |
 | `specification.c4` | Element kinds (person, software system, external system, container, SPA, database, component), tags, and deployment node kinds |
-| `model.c4` | People, the Yearclock and Authentik systems with their containers and components, external systems, and all relationships |
+| `model.c4` | People, the Shadow and Authentik systems with their containers and components, external systems, and all relationships |
 | `deployment.c4` | The local Docker Compose stack and the production Compose host |
 | `views.c4` | The views listed below |
 
@@ -14,13 +14,13 @@ the C4 levels.
 
 | Level | View | Shows |
 | --- | --- | --- |
-| 1 · System context | `index` | Owners and Admins, Members, Platform Operators, Yearclock, Authentik, Stripe, Scaleway |
-| 2 · Containers | `containers` | Edge proxy, web application, API, background worker, migration job, Yearclock database, and the systems around them |
-| 2 · Containers | `identity` | Authentik's server, worker, and database next to Yearclock |
-| 3 · Components | `webAppComponents` | Sign-in shell, Organization workspace, planner, operator console, API clients, localization |
-| 3 · Components | `apiComponents` | Authentication, Organizations, billing, the access rule, Groups, structure, Events and recurrence, classification and search, history, Support Access, audit, persistence |
+| 1 · System context | `index` | Owners and Admins, Members, Platform Operators, Shadow, Authentik, Stripe, Scaleway, Anthropic, AI agents |
+| 2 · Containers | `containers` | Edge proxy, web application, API, background worker, migration job, Shadow database, and the systems around them |
+| 2 · Containers | `identity` | Authentik's server, worker, and database next to Shadow |
+| 3 · Components | `webAppComponents` | Sign-in shell, Organization workspace, Model workspace, operator console, API clients, localization |
+| 3 · Components | `apiComponents` | Authentication, Organizations, billing, the access rule, models and versions, metrics, forecasts and simulations, analysis, import and export, MCP, Support Access, audit, persistence |
 | 3 · Components | `workerComponents` | Scheduler, job runner, email delivery |
-| Dynamic | `signIn`, `invitation`, `billingWebhook`, `eventChange` | Key flows step by step |
+| Dynamic | `signIn`, `invitation`, `billingWebhook`, `versionMerge`, `aiAnalysis` | Key flows step by step |
 | Deployment | `localDeployment`, `productionDeployment` | Where each container runs |
 
 C4 level 4 (code) is not modelled. The source and the database model

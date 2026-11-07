@@ -1,4 +1,4 @@
-// Element and relationship kinds for the Yearclock C4 model (LikeC4).
+// Element and relationship kinds for the Shadow C4 model (LikeC4).
 specification {
   element person {
     style {

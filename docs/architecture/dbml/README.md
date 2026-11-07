@@ -1,6 +1,6 @@
 # Database model (DBML)
 
-[`yearclock.dbml`](yearclock.dbml) describes the Yearclock PostgreSQL schema
+[`shadow.dbml`](shadow.dbml) describes the Shadow PostgreSQL schema
 in [DBML](https://dbml.dbdiagram.io). Open it in dbdiagram.io, dbdocs, or any
 DBML viewer.
 
@@ -12,8 +12,8 @@ DBML viewer.
 - Foreign keys with their `ON DELETE` actions.
 - Check constraints, and each table's row-level security policies, as table
   notes. DBML has no syntax for RLS.
-- Table groups by domain: identity, organization, billing, Yearclock
-  structure, content, classification, Groups, and operations.
+- Table groups by domain: identity, organization, billing, legal, model graph, metamodel,
+  metrics, simulation and analysis, notifications, and operations.
 
 The Authentik database is separate (ADR-0011) and is not modelled here.
 
@@ -33,15 +33,6 @@ The Authentik database is separate (ADR-0011) and is not modelled here.
   in `backend/`.
 - **Validation:** `make models` also checks that the DBML parses, with the
   pinned `@dbml/cli@10.2.0`.
-
-## Diagram layout
-
-[`yearclock.dbdiagram`](yearclock.dbdiagram) stores the table positions and
-view settings of the DBML VS Code extension. It is arranged by hand, never
-generated, and only affects how the diagram looks.
-
-- Commit it whenever the layout changes.
-- New tables appear in a default position until someone arranges them.
 
 Narrative and decisions about the schema stay in
 [`../database.md`](../database.md).

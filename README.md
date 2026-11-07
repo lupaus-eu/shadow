@@ -6,11 +6,13 @@ through MCP. It is built on the Yearclock platform base: Organizations, membersh
 roles, invitations, Authentik sign-in, row-level security, audit, queues and the worker,
 notifications, billing, legal documents, the platform console and the MCP interface.
 
-**Status:** the platform base runs (`docker compose up`); the Shadow features are being
-ported one at a time from the previous implementation in `legacy/` (tag
-`pre-yearclock-base` holds the last state before the switch). Some documents under
-`docs/` and `CONTEXT.md` still describe the Yearclock product and are being replaced
-feature by feature.
+**Status:** the platform base and the Shadow features run (`docker compose up`): models with
+a graph and an editable metamodel, versions with change lists and merge, metrics with formulas,
+CSV and Excel import and export, forecasts (linear, seasonal, Holt, Prophet) and simulations,
+analysis with optional AI summaries (needs `ANTHROPIC_API_KEY`), and MCP tools for all of it.
+The previous implementation is kept in `legacy/` (tag `pre-yearclock-base`). Some operational
+and end-user documents under `docs/` still describe the Yearclock product.
+The architecture is in `docs/architecture/` (C4 model in LikeC4, database in DBML).
 
 ## Quick Start
 

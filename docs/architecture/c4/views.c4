@@ -4,22 +4,23 @@ views {
 
   view index {
     title '1 · System context'
-    description 'Yearclock, its users, and the systems it depends on.'
+    description 'Shadow, its users, and the systems it depends on.'
     include
       organizationAdmin,
       organizationMember,
       platformOperator,
-      yearclock,
+      shadow,
       authentik,
       stripe,
       scaleway,
+      anthropic,
       aiAgent
     autoLayout TopBottom
   }
 
-  view containers of yearclock {
+  view containers of shadow {
     title '2 · Containers'
-    description 'The deployable parts of Yearclock and their connections.'
+    description 'The deployable parts of Shadow and their connections.'
     include
       *,
       organizationAdmin,
@@ -28,33 +29,34 @@ views {
       authentik,
       stripe,
       scaleway,
+      anthropic,
       aiAgent
     autoLayout TopBottom
   }
 
   view identity of authentik {
     title '2 · Containers: Authentik'
-    description 'The self-hosted identity system alongside Yearclock.'
-    include *, yearclock.api, yearclock.edge, scaleway
+    description 'The self-hosted identity system alongside Shadow.'
+    include *, shadow.api, shadow.edge, scaleway
     autoLayout LeftRight
   }
 
-  view webAppComponents of yearclock.webApp {
+  view webAppComponents of shadow.webApp {
     title '3 · Components: web application'
     include *
     autoLayout TopBottom
   }
 
-  view apiComponents of yearclock.api {
+  view apiComponents of shadow.api {
     title '3 · Components: API'
-    description 'Every Yearclock access check goes through the Access rule component.'
+    description 'Every feature component authorizes through the Access rule component.'
     include *
-    exclude yearclock.webApp -> yearclock.api.*
-    include yearclock.webApp
+    exclude shadow.webApp -> shadow.api.*
+    include shadow.webApp
     autoLayout TopBottom
   }
 
-  view workerComponents of yearclock.worker {
+  view workerComponents of shadow.worker {
     title '3 · Components: background worker'
     include *
     autoLayout LeftRight
@@ -63,47 +65,54 @@ views {
   dynamic view signIn {
     title 'Flow · Sign in'
     description 'OIDC authorization code flow; Authentik enforces passkeys or MFA (ADR-0004).'
-    organizationMember -> yearclock.webApp 'opens Yearclock'
-    yearclock.webApp -> yearclock.api.authentication 'starts sign-in'
+    organizationMember -> shadow.webApp 'opens Shadow'
+    shadow.webApp -> shadow.api.authentication 'starts sign-in'
     organizationMember -> authentik 'authenticates with a passkey or password and MFA'
-    yearclock.webApp -> yearclock.api.authentication 'returns with the authorization code'
-    yearclock.api.authentication -> authentik 'exchanges the code, verifies the ID token'
-    yearclock.api.authentication -> yearclock.api.persistence 'creates the server-side session'
+    shadow.webApp -> shadow.api.authentication 'returns with the authorization code'
+    shadow.api.authentication -> authentik 'exchanges the code, verifies the ID token'
+    shadow.api.authentication -> shadow.api.persistence 'creates the server-side session'
     autoLayout LeftRight
   }
 
   dynamic view invitation {
     title 'Flow · Invite and join'
-    organizationAdmin -> yearclock.webApp 'invites people (single or bulk, with Groups)'
-    yearclock.webApp -> yearclock.api.organizations 'POST invitations'
-    yearclock.api.organizations -> yearclock.api.billing 'checks seats'
-    yearclock.api.organizations -> yearclock.api.persistence 'stores the Invitation and outbox message'
-    yearclock.worker.emailDelivery -> yearclock.database 'claims the outbox message'
-    yearclock.worker.emailDelivery -> scaleway 'sends the email'
+    organizationAdmin -> shadow.webApp 'invites people (single or bulk)'
+    shadow.webApp -> shadow.api.organizations 'POST invitations'
+    shadow.api.organizations -> shadow.api.billing 'checks seats'
+    shadow.api.organizations -> shadow.api.persistence 'stores the Invitation and outbox message'
+    shadow.worker.emailDelivery -> shadow.database 'claims the outbox message'
+    shadow.worker.emailDelivery -> scaleway 'sends the email'
     scaleway -> organizationMember 'delivers the Invitation'
-    organizationMember -> yearclock.webApp 'accepts after signing in'
-    yearclock.api.organizations -> yearclock.api.groups 'joins the chosen Groups'
+    organizationMember -> shadow.webApp 'accepts after signing in'
     autoLayout LeftRight
   }
 
   dynamic view billingWebhook {
     title 'Flow · Subscription change'
     organizationAdmin -> stripe 'changes the plan or pays'
-    stripe -> yearclock.api.billing 'sends a signed webhook'
-    yearclock.api.billing -> yearclock.api.persistence 'projects subscription state and seats'
-    yearclock.api.billing -> yearclock.api.audit 'records the change'
+    stripe -> shadow.api.billing 'sends a signed webhook'
+    shadow.api.billing -> shadow.api.persistence 'projects subscription state and seats'
+    shadow.api.billing -> shadow.api.audit 'records the change'
     autoLayout LeftRight
   }
 
-  dynamic view eventChange {
-    title 'Flow · Change an Event'
-    organizationMember -> yearclock.webApp.planner 'edits an Event'
-    yearclock.webApp.planner -> yearclock.webApp.apiClients 'PATCH with expected_version'
-    yearclock.webApp.apiClients -> yearclock.api.content 'updates the Event'
-    yearclock.api.content -> yearclock.api.accessRule 'checks Editor access'
-    yearclock.api.content -> yearclock.api.history 'writes an Event Revision'
-    yearclock.api.content -> yearclock.api.audit 'records event.updated'
-    yearclock.webApp.planner -> yearclock.webApp.apiClients 'other viewers poll changes and see a notice'
+  dynamic view versionMerge {
+    title 'Flow · Merge a version into its base'
+    organizationAdmin -> shadow.webApp.modelWorkspace 'confirms Merge into base'
+    shadow.webApp.modelWorkspace -> shadow.webApp.apiClients 'POST merge with expected_version'
+    shadow.webApp.apiClients -> shadow.api.models 'applies the change list to the base'
+    shadow.api.models -> shadow.api.accessRule 'requires Owner or Admin'
+    shadow.api.models -> shadow.api.audit 'records version.merged'
+    autoLayout LeftRight
+  }
+
+  dynamic view aiAnalysis {
+    title 'Flow · AI analysis of a simulation'
+    organizationMember -> shadow.webApp.modelWorkspace 'presses Analyse with AI'
+    shadow.webApp.modelWorkspace -> shadow.api.analysis 'POST analysis/ai'
+    shadow.api.analysis -> shadow.api.simulations 'reads the stored forecast'
+    shadow.api.analysis -> anthropic 'asks for findings (no database transaction open)'
+    shadow.api.analysis -> shadow.api.persistence 'validates the answer and stores summary and proposals'
     autoLayout LeftRight
   }
 

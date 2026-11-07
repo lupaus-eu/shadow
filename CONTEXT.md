@@ -1,143 +1,103 @@
-# Yearclock
+# Shadow
 
-The domain of visually planning recurring and predictable organizational work across a calendar year.
+The domain of modelling an organisation as a digital twin: a graph over time with metrics, forecasts, simulations, and analysis, owned by a customer Organization.
 
 ## Language
 
-**Yearclock**:
-An Organization-owned, enduring visual planning timeline containing past and future Events independently of how much time is currently displayed.
-_Avoid_: Annual Plan, year progress indicator, calendar
-
-**Planning Window**:
-The date range through which a user views a Yearclock. It covers whole consecutive months (1, 3, 6, 12, 18, or 24), starts by default at the Yearclock Start Month of the current season, and displays 12 months unless the user chooses another length. (Yearclock V2)
-
-**Yearclock Start Month**:
-The month in which a Yearclock's planning year begins, January by default. It sets the default Planning Window and the quarters; it never moves Events. (Yearclock V2)
-_Avoid_: Annual Plan, reporting period
-
-**Category**:
-An optional name and color assigned to one Event for classification and filtering across Lanes. An Event has at most one Category, which is either a Yearclock Category or an Organization Category.
-_Avoid_: Tag, Label, Lane
-
-**Yearclock Category**:
-A Category defined within one Yearclock by its Editors.
-
-**Organization Category**:
-A Category defined once by an Owner or Admin and offered, locked, in every Yearclock of the Organization. (Yearclock V2)
-
-**Label**:
-An Organization-defined name and color. An Event may carry up to ten Labels to add status, type, owner, or other classification beyond its Category. Label names are visible to every Organization User, and Labels never affect access. (Yearclock V2)
-_Avoid_: Tag, Category
-
-**Filter**:
-A personal, temporary choice of the Lanes, Categories, and Labels shown on a Yearclock. It is kept in the user's browser and never changes what others see. (Yearclock V2)
-_Avoid_: View, saved view
-
-**Display**:
-A way of drawing the Planning Window: Circle, Timeline, List, or Agenda. All displays show the same Events under the same Filters. It is a personal choice kept in the user's browser. (Yearclock V2)
-_Avoid_: View, layout
-
-**Export**:
-A file of a Yearclock's Events (Excel, CSV, or calendar `.ics`) containing only what the user may read, or a printout or image of the Yearclock. Every export is recorded in the Audit Log without content. (Yearclock V2)
-
-**Import**:
-Creating Events in a Yearclock from a spreadsheet file. It is previewed first and saved all or nothing; Lanes, Categories, and Labels must already exist, and Series are not imported. (Yearclock V2)
-
-**Organization Export**:
-A JSON file of an Organization's content (members, Groups, Yearclocks, Lanes, Categories, Labels, Events, Series, and access) that only an Owner can download, for handover. It leaves out History, the Audit Log, and billing data. (Yearclock V2)
-
-**Data transfer**:
-Exporting everything an Owner or Admin administers, across all their Organizations, as one CSV file (the Transfer file), and importing that file back. The import updates existing rows by id, creates missing ones, never deletes, is previewed first, and is saved all or nothing. It holds no people or access rights. (Yearclock V2)
-
 **Notification**:
-A short message to one Organization User about a change in their access or role, or (for Owners and Admins) about Support Access, billing, or deletion. It is shown in an in-app inbox, optionally emailed, deleted after 90 days, and never carries Event content. (Yearclock V2)
-
-**Summary**:
-An opt-in email, weekly or daily at 08:00 Organization time, listing upcoming Events from Yearclocks the person chose. It replaces per-Event reminders. (Yearclock V2)
+A short message to one Organization User about a change in their role or membership, or (for Owners and Admins) about Support Access, billing, or deletion. It is shown in an in-app inbox, optionally emailed, deleted after 90 days, and never carries model content.
 
 **Cancellation**:
-An Owner's request to end an Organization's subscription at the end of the paid period. It keeps full access until then, can be undone until then, and leaves the content intact when the Organization becomes read-only. (Yearclock V2)
+An Owner's request to end an Organization's subscription at the end of the paid period. It keeps full access until then, can be undone until then, and leaves the content intact when the Organization becomes read-only.
+
+**Model**:
+An Organization-owned digital twin of an organisation: a graph of nodes and connections that is described by a Metamodel, has Versions, and carries Metrics.
+_Avoid_: Diagram, workspace
+
+**Metamodel**:
+The node types, connection types, and allowed connections of one Model. It starts from the default metamodel and the Model's editors can change it. A type or rule that nodes or connections still use cannot be deleted. All Versions of a Model share it.
+_Avoid_: Schema, template
+
+**Node**:
+One element of the organisation in a Version of a Model (for example a team, a system, or a process), with a name, a description, and a node type.
+
+**Connection**:
+A typed, directed link between two Nodes of the same Version. The Metamodel must allow its connection type between those node types.
+_Avoid_: Edge, relation
+
+**Version**:
+A complete copy of a Model's graph and Metrics. The Baseline is the Model's current state; other Versions are forked from a base Version to explore a change. Each Node remembers its origin, so a Version can list its changes against the base.
+_Avoid_: Branch, scenario
+
+**Baseline**:
+The Version of a Model that describes the organisation as it is now and is the base of forks.
+
+**Change list**:
+The added, removed, and changed Nodes and Connections of a Version compared with its base.
+
+**Merge**:
+Applying a Version's change list to its base Version. Only an Owner or Admin may merge. Metrics are not merged, and afterwards the Version shows no changes.
+_Avoid_: Promote, publish
+
+**Metric**:
+A named measure of a Version with a unit and monthly values. An entered Metric holds its values; a derived Metric is computed from a formula over other Metrics of the same Version.
+_Avoid_: KPI, series
+
+**Formula**:
+An expression over the keys of other Metrics that defines a derived Metric. Cycles are rejected.
+
+**Forecast**:
+Predicted monthly values of a Metric by one method: linear, seasonal, Holt, or Prophet, with an uncertainty band. Each method needs a minimum history (Prophet 12 months, seasonal 24).
+
+**Simulation**:
+A stored run of Forecasts for a Version, optionally with what-if adjustments. Derived Metrics follow the adjusted values.
+_Avoid_: Scenario, projection
+
+**Analysis**:
+The Findings and Proposals derived from a Simulation by rules, optionally extended by an AI summary and AI Proposals.
+
+**Finding**:
+An observation in an Analysis, such as a Metric that falls below a threshold in the forecast.
+
+**Proposal**:
+A suggested action from an Analysis. It is open until someone accepts or dismisses it, and the decision survives a new Analysis. Rule Proposals and AI Proposals (`kind` `rule` or `ai`) are kept apart.
+_Avoid_: Recommendation, task
+
+**AI Analysis**:
+An optional Analysis step that sends metric names and forecast figures to the Anthropic API and stores the returned summary and Proposals. It exists only when `ANTHROPIC_API_KEY` is set; the Organization has no separate switch yet.
+
+**Import**:
+Reading Metric values for a Version from a CSV or Excel file, in a wide layout (months as rows, Metrics as columns) or a long layout (metric, period, value). Unknown or derived Metrics and unreadable cells are reported and skipped.
+
+**Export**:
+Writing the Metric series as CSV or Excel, or an Analysis as an Excel workbook. Cells that could run as formulas are neutralised.
+
+**Agent tool**:
+An MCP tool that lets an AI agent the person chooses read or change Models, Versions, Metrics, Simulations, and Analyses under the person's own rights and the same rules as the web application. Every change is audited as made through MCP.
 
 **Next charge**:
-The date and amount of an Organization's next regular invoice, as Stripe previews it for the current seats and any scheduled seat decrease or cancellation. Only Owners see it in the product; Yearclock stores and computes nothing. (Yearclock V2)
+The date and amount of an Organization's next regular invoice, as Stripe previews it for the current seats and any scheduled seat decrease or cancellation. Only Owners see it in the product; Shadow stores and computes nothing.
 
 **Payment history**:
-The latest invoices of an Organization's Stripe customer shown to its Owners, with a link to each in Stripe. It is a view of Stripe's data, not a Billing Record. (Yearclock V2)
+The latest invoices of an Organization's Stripe customer shown to its Owners, with a link to each in Stripe. It is a view of Stripe's data, not a Billing Record.
 
 **Legal Document**:
-One of the versioned texts Yearclock publishes in Finnish and English (terms, data processing agreement, privacy notice, browser storage notice, sub-processors, switching, security, provider information). A draft is never required; a published one has a version and an in-force date. (Yearclock V2)
+One of the versioned texts Shadow publishes in Finnish and English (terms, data processing agreement, privacy notice, browser storage notice, sub-processors, switching, security, provider information). A draft is never required; a published one has a version and an in-force date.
 
 **Acceptance**:
-The record that an Owner accepted one version of a required Legal Document for an Organization: who, when, in which language. It is made at sign-up and again for each new version, and it is kept after the Organization is purged. (Yearclock V2)
+The record that an Owner accepted one version of a required Legal Document for an Organization: who, when, in which language. It is made at sign-up and again for each new version, and it is kept after the Organization is purged.
 
 **Sub-processor**:
-A company that processes customer personal data for Yearclock on its behalf (hosting, email, payments, identity). Owners are told in advance when the list changes. (Yearclock V2)
+A company that processes customer personal data for Shadow on its behalf (hosting, email, payments, identity). Owners are told in advance when the list changes.
 
 **Resubscription**:
-Buying a new subscription for an Organization whose subscription has ended, which makes it active again with its content. (Yearclock V2)
+Buying a new subscription for an Organization whose subscription has ended, which makes it active again with its content.
 
 **Ownership Transfer**:
-Making an existing active member an Owner and, unless they keep the role, lowering the previous Owner to Admin in one action. The last Owner who leaves must name a successor. (Yearclock V2)
-
-**Time of Day**:
-An optional start and end time on an Event, read in the Organization's time zone, that adds detail to its dates without changing them. The circle keeps its day resolution. (Yearclock V2)
-
-**Location**:
-Optional free text saying where an Event happens. (Yearclock V2)
-
-**Link**:
-A titled `http(s)` address on an Event or Series; there can be up to ten, and they replace the single Event link. (Yearclock V2)
-
-**Lane**:
-A concentric visual ring within a Yearclock representing a process, responsibility, team, or focus area. Every Event belongs to one Lane, and Lanes do not define access permissions.
-_Avoid_: Category, permission group
-
-**Linked Lane**:
-A Lane of a Yearclock that shows another Yearclock's Lane, its Source Lane, live and read only. It never grants access: each viewer sees its content only with read access to the source Yearclock. (Yearclock V2)
-_Avoid_: synced ring, shared Lane
-
-**Source Lane**:
-The own Lane of a Yearclock that a Linked Lane shows. Its Events are changed only in its own Yearclock. (Yearclock V2)
-
-**Roll-up Yearclock**:
-A Yearclock that consists of Linked Lanes only, used as an overview of several Yearclocks. It is a way of using a Yearclock, not a separate kind. (Yearclock V2)
-_Avoid_: master Yearclock
-
-**Event**:
-A dated planning entry in one Lane, representing something expected to occur on a start date or across an all-day date range. It may describe future work, but it has no assignment, due-date, completion, or execution state.
-_Avoid_: Task, Plan Item, calendar item
-
-**Plan Again**:
-Copying Events one year ahead, either one Event through a prefilled form or a season's chosen Lanes and Categories at once. Series are not copied, because they continue on their own. (Yearclock V2)
-
-**Bulk Edit**:
-One all-or-nothing change (move, categorize, Labels, or delete) to up to 200 selected Events. (Yearclock V2)
-
-**Series**:
-A recurrence definition that produces related Event Occurrences according to a weekly, monthly, or yearly schedule. A change to one Occurrence leaves the Series intact, while a change from a selected Occurrence onward ends the original Series and creates a successor.
-_Avoid_: Recurring event, template
-
-**Occurrence**:
-One dated Event produced by a Series. An individually changed Occurrence is an exception: its explicitly overridden fields remain independent while its other fields continue to follow the Series.
-_Avoid_: Instance, repetition
-
-**Series Date**:
-The date generated for an Occurrence by its Series before any individual date change. It remains the Occurrence's stable position within the recurrence sequence.
-_Avoid_: Display date, modified date
-
-**Skipped Occurrence**:
-An Occurrence intentionally omitted from its Series without erasing its identity or history. It is hidden from the normal Yearclock view and may be restored.
-_Avoid_: Deleted Occurrence
-
-**Event Revision**:
-The stored state of an Event after one change, with its time, actor, and reason. It is customer content kept outside the Audit Log, is visible to everyone who may read the Yearclock, and never grants access. (Yearclock V2)
-_Avoid_: audit entry, snapshot
-
-**Previous Visit**:
-The time a user last opened a Yearclock before the current visit. Changes by others after it are marked as new to that user. (Yearclock V2)
+Making an existing active member an Owner and, unless they keep the role, lowering the previous Owner to Admin in one action. The last Owner who leaves must name a successor.
 
 **Organization**:
-A customer organization that owns its Yearclocks and controls its users' access to them.
+A customer organization that owns its Models and controls who may use them.
 _Avoid_: Tenant, account, company
 
 **User Account**:
@@ -149,33 +109,23 @@ A User Account's membership in one Organization, whatever its Organization role 
 _Avoid_: User Account, tenant user
 
 **Member**:
-The Organization role of an Organization User who is neither an Owner nor an Admin. A Member sees the Organization workspace and only the Yearclocks for which they hold a Yearclock Editor or Viewer grant; they cannot see the membership list, seats, audit activity, or Support Access requests.
+The Organization role of an Organization User who is neither an Owner nor an Admin. A Member works with the Organization's Models; they cannot see the membership list, seats, audit activity, or Support Access requests.
 _Avoid_: Organization User (for this role), basic user, guest
 
 **Organization Admin**:
-A customer-side role that can see, create, and manage every Yearclock without a Yearclock grant, grant Yearclock Editor and Viewer access, and manage Organization Users, including other Admins. When External Signals are introduced after V1, it also selects them. It cannot manage billing or seats, delete the Organization, or add, change, or remove Organization Owners. Because an Admin controls access, the Admin role is the confidentiality boundary of an Organization.
+A customer-side role that can manage Organization Users, including other Admins, merge Versions into their base, and connect agents. It cannot manage billing or seats, delete the Organization, or add, change, or remove Organization Owners.
 _Avoid_: Customer admin, tenant admin
 
 **Organization Owner**:
 An Organization User with all Organization Admin powers plus authority over ownership, billing, and Organization deletion. The User Account that creates an Organization becomes its first Owner; an Organization may have several Owners but must always have at least one, and a newly invited Owner receives authority only after accepting it.
 _Avoid_: Organization Admin, creator
 
-**Group**:
-A named set of members of one Organization that can receive Yearclock Editor or Viewer access. It takes no seat, contains no other Groups, and never overrides a stronger role. (Yearclock V2)
-_Avoid_: team, user group, department
-
-**Organization-wide Access**:
-A Yearclock setting that gives every member of its Organization, including future members, Viewer or Editor access. (Yearclock V2)
-
-**Access Source**:
-Why a member can open a Yearclock: their Organization role, a direct grant, a Group, or Organization-wide Access. The strongest applicable role wins. (Yearclock V2)
-
 **Invitation**:
 A single-use, expiring offer sent to an email address to create an Organization membership with proposed roles. It grants no access until the recipient authenticates and accepts it.
 _Avoid_: Membership, guest access
 
 **Subscription**:
-An Organization's independent, monthly prepaid per-seat entitlement to use the Yearclock service, regardless of which User Account created or currently owns the Organization.
+An Organization's independent, monthly prepaid per-seat entitlement to use the Shadow service, regardless of which User Account created or currently owns the Organization.
 _Avoid_: User plan, account subscription
 
 **Organization Seat**:
@@ -194,16 +144,8 @@ _Avoid_: Customer content, Billing Profile
 The recoverable state of an Organization after an Owner requests deletion and before the service's retention window expires. Normal access is blocked during this state, after which customer planning content is purged while required Billing Records and a minimal deletion audit record are retained.
 _Avoid_: Deleted, suspended
 
-**Yearclock Editor**:
-A customer-side role that can create, change, and remove Events, Lanes, and Categories in assigned Yearclocks. It cannot create Yearclocks or grant access to them.
-_Avoid_: Creator, contributor
-
-**Yearclock Viewer**:
-A customer-side role with read-only access to assigned Yearclocks.
-_Avoid_: Reader, read-only user
-
 **Platform Operator**:
-The SaaS operating company responsible for supporting customer Organizations and operating the Yearclock service.
+The SaaS operating company responsible for supporting customer Organizations and operating the Shadow service.
 _Avoid_: Organization admin, super user
 
 **Platform User**:
@@ -211,21 +153,13 @@ A User Account belonging to the Platform Operator and carrying platform roles in
 _Avoid_: Organization User, staff membership
 
 **Platform Admin**:
-A Platform Operator role that manages the service and customer Organizations without standing access to their Event content.
+A Platform Operator role that manages the service and customer Organizations without standing access to their model content.
 _Avoid_: Super admin, Organization Admin
 
 **Support Agent**:
-A Platform Operator role that assists customer Organizations and may access their Event content only through explicit Support Access.
+A Platform Operator role that assists customer Organizations and may access their model content only through explicit Support Access.
 _Avoid_: Platform Admin, Organization Admin
 
 **Support Access**:
-A customer-approved, scoped, time-limited, and audited grant allowing a Support Agent to access one Organization's Event content for a specific support case. It covers every Yearclock of that Organization, read-only unless write access is approved, for at most 24 hours. An Organization Owner or Admin approves it and may revoke it at any time.
+A customer-approved, scoped, time-limited, and audited grant allowing a Support Agent to access one Organization's model content for a specific support case. It is read-only unless write access is approved, for at most 24 hours. An Organization Owner or Admin approves it and may revoke it at any time.
 _Avoid_: Impersonation, backdoor access
-
-**External Signal**:
-_Not in V1 (ADR-0027)._ A sourced, read-only observation provided by the Platform Operator that an Organization Admin may select and assign to one or more Yearclocks. It remains distinct from Events, though a Yearclock Editor may link a responding Event to it.
-_Avoid_: Event, customer event, market event
-
-**Recommendation**:
-_Not in V1 (ADR-0027)._ A machine-generated proposal derived from Events and External Signals and presented to an Organization User for human judgment. It is Pending until a human marks it Accepted or Dismissed, and it never performs an action autonomously.
-_Avoid_: Automated action, External Signal, Event

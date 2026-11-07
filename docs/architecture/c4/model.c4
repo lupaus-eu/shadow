@@ -1,21 +1,21 @@
-// The Yearclock architecture as a C4 model: people, systems, containers, and components.
+// The Shadow architecture as a C4 model: people, systems, containers, and components.
 // Keep in step with docs/architecture/stack.md, docker.md, workers.md, and the ADRs.
 model {
 
   // ── People ────────────────────────────────────────────────────────────────
   organizationAdmin = person 'Owner or Administrator' {
-    description 'Runs an Organization: Yearclocks, people, Groups, sharing, billing (Owners), and Support Access approval.'
+    description 'Runs an Organization: people, Invitations, billing (Owners), agent access, and Support Access approval; also works with models.'
   }
-  organizationMember = person 'Member (Editor or Viewer)' {
-    description 'Plans on the Yearclocks they may open: Events, Series, Labels, filters, history.'
+  organizationMember = person 'Member' {
+    description 'Works with the models of the Organization: graph, versions, metrics, simulations, and analysis.'
   }
   platformOperator = person 'Platform Operator' {
     description 'Platform Admin or Support Agent. Works in the operator console; reaches customer content only through approved Support Access (ADR-0020, ADR-0021).'
   }
 
-  // ── Yearclock ─────────────────────────────────────────────────────────────
-  yearclock = softwareSystem 'Yearclock' {
-    description 'Multi-tenant SaaS for circular, continuous planning timelines (Yearclocks) owned by Organizations.'
+  // ── Shadow ─────────────────────────────────────────────────────────────
+  shadow = softwareSystem 'Shadow' {
+    description 'Multi-tenant digital-twin SaaS: Organizations own models of themselves as a graph over time, with metrics as time series, forecasts, simulations, and analysis; AI agents connect through MCP.'
 
     edge = container 'Edge proxy' {
       technology 'Caddy'
@@ -24,7 +24,7 @@ model {
 
     webApp = spa 'Web application' {
       technology 'React, TypeScript, Vite, Tailwind CSS, Radix, React Router'
-      description 'Single-page application for customers (Organization workspace, Yearclock planner) and the operator console (/platform).'
+      description 'Single-page application for customers (Organization workspace, Model workspace) and the operator console (/platform).'
 
       authShell = component 'Sign-in and shell' {
         technology 'App.tsx, SignIn, AuthenticatedShell, shell/AppShell, shell/OrganizationSidebar'
@@ -32,11 +32,11 @@ model {
       }
       organizationWorkspace = component 'Organization workspace' {
         technology 'OrganizationEntry, admin/*Page, GroupsPanel, BulkInvitations'
-        description 'Yearclock overview, People, Invitations, Groups, sharing, access overview, Classification, Seats, Activity, deletion, and the Owner and Admin page for connecting an agent with its switch (ADR-0037).'
+        description 'Models list, People, Invitations, Seats, Activity, deletion, and the Owner and Admin page for connecting an agent with its switch (ADR-0037).'
       }
-      planner = component 'Yearclock planner' {
-        technology 'YearclockPlanner, YearclockView (SVG), displays/ (timeline, list, agenda)'
-        description 'Circular view and the timeline, list, and agenda displays, Planning Window, Events and Series, filters, search, bulk edit, plan again, Linked Lanes, history, change marks and notice.'
+      modelWorkspace = component 'Model workspace' {
+        technology 'models/ModelsPage, ModelShell, ModelCanvas, TypesPage, MetricsPage, SimulationsPage, ForecastChart, AnalysisPage'
+        description 'Node canvas, Types tab for the metamodel, versions with baseline, change list and merge, metrics with formulas and CSV or Excel import and export, forecasts and simulations, analysis with the optional AI button and Excel export.'
       }
       operatorConsole = component 'Operator console' {
         technology 'PlatformConsole'
@@ -73,40 +73,36 @@ model {
         description 'Versioned legal texts from backend/legal (ADR-0041) served publicly, Owner acceptances recorded at sign-up and for new versions.'
       }
       accessRule = component 'Access rule' {
-        technology 'access, yearclock_reading, yearclock_access_routes, access_overview_routes'
-        description 'The single rule for a member\'s role on Yearclocks: Organization role, direct grants, Groups, Organization-wide Access (ADR-0007).'
+        technology 'access'
+        description 'Organization roles decide what a person may do: Members read, Editors-by-role (Owner, Admin, Member) write, Owners and Admins manage (ADR-0005, ADR-0007).'
       }
-      groups = component 'Groups' {
-        technology 'group_routes'
-        description 'Flat Groups of members that receive Yearclock access.'
+      models = component 'Models, graph and versions' {
+        technology 'model_routes, metamodel_routes, version_routes, default_metamodel.json'
+        description 'Models with nodes and connections, the per-model metamodel (node types, connection types, allowed connections; ADR-0043), versions with a baseline, change lists and merge into the base (ADR-0045), optimistic concurrency (ADR-0018).'
       }
-      structure = component 'Yearclock structure' {
-        technology 'yearclock_routes, category_routes'
-        description 'Yearclocks, layout, Lanes (own, copied, Linked), Categories, archive and recovery.'
+      metrics = component 'Metrics and formulas' {
+        technology 'metric_routes, metric_engine, formulas'
+        description 'Metrics with monthly values per version, derived metrics from formulas evaluated in dependency order.'
       }
-      content = component 'Events and recurrence' {
-        technology 'event_routes, event_content, rich_text, series_routes, occurrence_routes, recurrence, series_editing, planning_window'
-        description 'Events, Series and Occurrences with rolling materialization (ADR-0025, ADR-0026), bulk edit, plan again, and the content rules for location, links, and formatted descriptions (event_content, rich_text; ADR-0033).'
+      simulations = component 'Forecasts and simulations' {
+        technology 'simulation_routes, forecasting'
+        description 'Forecast methods linear, seasonal, Holt and Prophet (ADR-0042) with bands, what-if adjustments, and derived metrics.'
       }
-      classification = component 'Classification and search' {
-        technology 'label_routes, event_labels, search_routes'
-        description 'Organization Labels and Categories, Label assignment, accent-insensitive search.'
+      analysis = component 'Analysis' {
+        technology 'analysis, analysis_routes, ai'
+        description 'Findings and action proposals from rules, plus the optional AI analysis through the Anthropic API, run outside the database transaction (ADR-0044).'
       }
-      history = component 'History and awareness' {
-        technology 'revisions, history_routes'
-        description 'Event Revisions written by session hooks, history, version restore, changes since a time.'
-      }
-      exchange = component 'Data exchange' {
-        technology 'exchange, export_routes, import_routes, organization_export, data_transfer'
-        description 'Excel and CSV export and import of a Yearclock\'s Events: formula neutralization, strict all-or-nothing import with a preview, hourly limits counted from the Audit Log, and an audit entry per action (ADR-0030). The Owner-only Organization Export streams a JSON document (organization_export). The Data transfer exports every Organization the user owns or administers as one CSV and imports it back as an update-and-add, previewed in a rolled-back savepoint and saved all or nothing (data_transfer, ADR-0040).'
+      metricIo = component 'Import and export' {
+        technology 'metric_io, metric_io_routes'
+        description 'CSV and Excel import of metric values (wide and long layouts) and export of metrics and analyses, with formula-injection-safe cells.'
       }
       notifications = component 'Notifications' {
         technology 'notifications, notification_routes'
         description 'In-app inbox written in the transaction of its cause: effective-role comparison for access changes (access rule), role and invitation notices, per-recipient row-level security, daily cleanup (ADR-0031).'
       }
       mcp = component 'MCP interface' {
-        technology 'mcp_server/*, mcp_routes (official Python MCP SDK)'
-        description 'Streamable HTTP endpoint at /api/mcp for the person\'s own agents (ADR-0037). Verifies Authentik access tokens (audience = the MCP provider\'s client id, ADR-0038), resolves the customer account, and calls the same functions as the REST API, so the same access rules apply. Read and write tools; each change is audited as made through MCP. Two switches stop it per Organization (Owners and Admins; the operator).'
+        technology 'mcp_server/server, mcp_server/model_tools, mcp_routes (official Python MCP SDK)'
+        description 'Streamable HTTP endpoint at /api/mcp for the person\'s own agents (ADR-0037). Verifies Authentik access tokens (audience = the MCP provider\'s client id, ADR-0038), resolves the customer account, and calls the same functions as the REST API, so the same access rules apply. Organization tools plus tools for models, versions, metrics, simulations, analysis, and merging (model_tools; ADR-0046). Read and write tools; each change is audited as made through MCP. Two switches stop it per Organization (Owners and Admins; the operator).'
       }
       support = component 'Support Access and platform' {
         technology 'support_access_routes, platform_routes, platform_admin, monitoring_routes'
@@ -128,10 +124,10 @@ model {
 
       scheduler = component 'Scheduler' {
         technology 'worker, jobs'
-        description 'Enqueues daily recurrence materialization and content and Organization purge jobs; expires Support Access.'
+        description 'Enqueues daily content and notification cleanup and Organization purge jobs; expires Support Access.'
       }
       jobRunner = component 'Job runner' {
-        technology 'jobs, work_queue, recurrence, lifecycle'
+        technology 'jobs, work_queue, lifecycle'
         description 'Runs one job in its Organization\'s RLS context; marks failures after five attempts.'
       }
       emailDelivery = component 'Email delivery' {
@@ -145,9 +141,9 @@ model {
       description 'One-shot job that upgrades the schema before the API and worker roll out.'
     }
 
-    database = database 'Yearclock database' {
+    database = database 'Shadow database' {
       technology 'PostgreSQL 17'
-      description 'Organizations, memberships, Yearclocks and content, Event Revisions, Groups, audit, jobs, and outbox, with row-level security. Schema: docs/architecture/dbml/yearclock.dbml.'
+      description 'Organizations, memberships, models with nodes, connections, types and versions, metrics and values, simulations and recommendations, audit, jobs, and outbox, with row-level security. Schema: docs/architecture/dbml/shadow.dbml.'
     }
   }
 
@@ -180,17 +176,21 @@ model {
   }
   aiAgent = externalSystem 'AI agent (MCP client)' {
     #external
-    description 'An agent the person chooses (for example Claude with a custom connector). Yearclock offers the capability and asks nothing itself: confirmations and tool choices belong to the agent and its user (ADR-0037).'
+    description 'An agent the person chooses (for example Claude with a custom connector). Shadow offers the capability and asks nothing itself: confirmations and tool choices belong to the agent and its user (ADR-0037).'
+  }
+  anthropic = externalSystem 'Anthropic API' {
+    #external
+    description 'Optional model provider for AI-assisted analysis; used only when ANTHROPIC_API_KEY is set (ADR-0044).'
   }
   scaleway = externalSystem 'Scaleway Transactional Email' {
     #external
-    description 'Email delivery for Yearclock Invitations and Authentik messages (ADR-0023).'
+    description 'Email delivery for Shadow Invitations and Authentik messages (ADR-0023).'
   }
 
   // ── Relationships: people ─────────────────────────────────────────────────
-  organizationAdmin -> yearclock.webApp 'administers the Organization and plans' 'HTTPS'
-  organizationMember -> yearclock.webApp 'plans and reads Yearclocks' 'HTTPS'
-  platformOperator -> yearclock.webApp.operatorConsole 'operates the platform' 'HTTPS'
+  organizationAdmin -> shadow.webApp 'administers the Organization and works with models' 'HTTPS'
+  organizationMember -> shadow.webApp 'works with models' 'HTTPS'
+  platformOperator -> shadow.webApp.operatorConsole 'operates the platform' 'HTTPS'
   organizationAdmin -> authentik 'signs in with a passkey or password and MFA' 'HTTPS'
   organizationMember -> authentik 'signs in' 'HTTPS'
   platformOperator -> authentik 'signs in' 'HTTPS'
@@ -200,75 +200,77 @@ model {
   scaleway -> organizationMember 'delivers Invitation email' 'SMTP/email'
 
   // ── Relationships: containers ─────────────────────────────────────────────
-  yearclock.edge -> yearclock.webApp 'serves the SPA' 'HTTP'
-  yearclock.edge -> yearclock.api 'routes /api/*' 'HTTP'
-  yearclock.edge -> authentik.authentikServer 'routes the identity address' 'HTTP'
-  yearclock.webApp.apiClients -> yearclock.edge 'calls /api/v1 with the session cookie' 'HTTPS, JSON'
-  aiAgent -> yearclock.edge 'calls /api/mcp with a bearer token' 'HTTPS, MCP'
-  yearclock.edge -> yearclock.api.mcp 'routes /api/mcp and the protected-resource metadata' 'HTTP'
-  yearclock.api.mcp -> authentik.authentikServer 'fetches the signing keys to verify access tokens' 'HTTP, JWKS'
-  yearclock.api -> yearclock.database 'reads and writes in RLS-scoped transactions' 'SQL'
-  authentik.authentikServer -> yearclock.edge 'sign-in pages import the application\'s stylesheet /theme.css (loaded by the browser)' 'HTTPS'
-  yearclock.worker -> yearclock.database 'claims jobs and outbox messages' 'SQL'
-  yearclock.migrate -> yearclock.database 'upgrades the schema' 'SQL'
-  yearclock.api -> authentik.authentikServer 'exchanges authorization codes, verifies ID tokens' 'OIDC'
-  yearclock.api -> stripe 'creates Checkout and portal sessions, changes seats, reads the next charge and invoices' 'HTTPS, REST'
-  stripe -[async]-> yearclock.api 'sends signed webhook events' 'HTTPS'
-  yearclock.worker.emailDelivery -> scaleway 'sends Invitation email' 'HTTPS/SMTP'
+  shadow.edge -> shadow.webApp 'serves the SPA' 'HTTP'
+  shadow.edge -> shadow.api 'routes /api/*' 'HTTP'
+  shadow.edge -> authentik.authentikServer 'routes the identity address' 'HTTP'
+  shadow.webApp.apiClients -> shadow.edge 'calls /api/v1 with the session cookie' 'HTTPS, JSON'
+  aiAgent -> shadow.edge 'calls /api/mcp with a bearer token' 'HTTPS, MCP'
+  shadow.edge -> shadow.api.mcp 'routes /api/mcp and the protected-resource metadata' 'HTTP'
+  shadow.api.mcp -> authentik.authentikServer 'fetches the signing keys to verify access tokens' 'HTTP, JWKS'
+  shadow.api -> shadow.database 'reads and writes in RLS-scoped transactions' 'SQL'
+  authentik.authentikServer -> shadow.edge 'sign-in pages import the application\'s stylesheet /theme.css (loaded by the browser)' 'HTTPS'
+  shadow.worker -> shadow.database 'claims jobs and outbox messages' 'SQL'
+  shadow.migrate -> shadow.database 'upgrades the schema' 'SQL'
+  shadow.api -> authentik.authentikServer 'exchanges authorization codes, verifies ID tokens' 'OIDC'
+  shadow.api -> stripe 'creates Checkout and portal sessions, changes seats, reads the next charge and invoices' 'HTTPS, REST'
+  stripe -[async]-> shadow.api 'sends signed webhook events' 'HTTPS'
+  shadow.worker.emailDelivery -> scaleway 'sends Invitation email' 'HTTPS/SMTP'
   authentik.authentikServer -> authentik.authentikDatabase 'stores identity data' 'SQL'
   authentik.authentikWorker -> authentik.authentikDatabase 'runs tasks' 'SQL'
   authentik.authentikServer -> scaleway 'sends verification and recovery email' 'SMTP'
 
   // ── Relationships: web application components ─────────────────────────────
-  yearclock.webApp.authShell -> yearclock.webApp.organizationWorkspace 'routes to and frames'
-  yearclock.webApp.authShell -> yearclock.webApp.operatorConsole 'opens /platform'
-  yearclock.webApp.organizationWorkspace -> yearclock.webApp.planner 'opens a Yearclock page'
-  yearclock.webApp.authShell -> yearclock.webApp.apiClients 'checks the session'
-  yearclock.webApp.organizationWorkspace -> yearclock.webApp.apiClients 'uses'
-  yearclock.webApp.planner -> yearclock.webApp.apiClients 'uses; polls changes every minute'
-  yearclock.webApp.operatorConsole -> yearclock.webApp.apiClients 'uses'
-  yearclock.webApp.organizationWorkspace -> yearclock.webApp.localization 'reads texts'
-  yearclock.webApp.planner -> yearclock.webApp.localization 'reads texts'
+  shadow.webApp.authShell -> shadow.webApp.organizationWorkspace 'routes to and frames'
+  shadow.webApp.authShell -> shadow.webApp.operatorConsole 'opens /platform'
+  shadow.webApp.organizationWorkspace -> shadow.webApp.modelWorkspace 'opens a model page'
+  shadow.webApp.authShell -> shadow.webApp.apiClients 'checks the session'
+  shadow.webApp.organizationWorkspace -> shadow.webApp.apiClients 'uses'
+  shadow.webApp.modelWorkspace -> shadow.webApp.apiClients 'uses'
+  shadow.webApp.operatorConsole -> shadow.webApp.apiClients 'uses'
+  shadow.webApp.organizationWorkspace -> shadow.webApp.localization 'reads texts'
+  shadow.webApp.modelWorkspace -> shadow.webApp.localization 'reads texts'
 
   // ── Relationships: API components ─────────────────────────────────────────
-  yearclock.webApp -> yearclock.api.authentication 'signs in and out' 'HTTPS'
-  yearclock.webApp -> yearclock.api.organizations 'workspace, people, invitations' 'HTTPS'
-  yearclock.webApp -> yearclock.api.structure 'Yearclocks, Lanes, Categories' 'HTTPS'
-  yearclock.webApp -> yearclock.api.content 'Events and Series' 'HTTPS'
-  yearclock.webApp -> yearclock.api.history 'history and changes' 'HTTPS'
-  yearclock.webApp -> yearclock.api.exchange 'export, import, Organization Export, and Data transfer' 'HTTPS'
-  yearclock.webApp -> yearclock.api.notifications 'inbox and unread count' 'HTTPS'
-  yearclock.webApp -> yearclock.api.support 'operator console and Support Access' 'HTTPS'
-  yearclock.api.authentication -> authentik 'OIDC code exchange' 'OIDC'
-  yearclock.api.billing -> stripe 'Checkout, portal, subscription changes' 'REST'
-  stripe -[async]-> yearclock.api.billing 'webhook events' 'HTTPS'
-  yearclock.api.organizations -> yearclock.api.billing 'checks seats and read-only state'
-  yearclock.api.organizations -> yearclock.api.legalDocuments 'requires accepted documents at signup'
-  yearclock.api.organizations -> yearclock.api.groups 'joins Groups on acceptance'
-  yearclock.api.structure -> yearclock.api.accessRule 'authorizes'
-  yearclock.api.content -> yearclock.api.accessRule 'authorizes, reads Linked Lanes'
-  yearclock.api.classification -> yearclock.api.accessRule 'authorizes'
-  yearclock.api.history -> yearclock.api.accessRule 'authorizes'
-  yearclock.api.groups -> yearclock.api.accessRule 'reports Group access and impact'
-  yearclock.api.exchange -> yearclock.api.accessRule 'authorizes, reads Linked Lanes'
-  yearclock.api.notifications -> yearclock.api.accessRule 'compares effective roles before and after'
-  yearclock.api.groups -> yearclock.api.notifications 'access changes notify'
-  yearclock.api.organizations -> yearclock.api.notifications 'role and invitation notices'
-  yearclock.api.exchange -> yearclock.api.audit 'records every export and counts the hourly limit'
-  yearclock.api.content -> yearclock.api.history 'every change writes a revision (session hooks)'
-  yearclock.api.content -> yearclock.api.classification 'assigns Labels'
-  yearclock.api.support -> yearclock.api.content 'scoped support reads and writes'
-  yearclock.api.organizations -> yearclock.api.audit 'records'
-  yearclock.api.structure -> yearclock.api.audit 'records'
-  yearclock.api.content -> yearclock.api.audit 'records'
-  yearclock.api.support -> yearclock.api.audit 'records every support read and write'
-  yearclock.api.organizations -> yearclock.api.persistence 'enqueues Invitation email (outbox)'
-  yearclock.api.accessRule -> yearclock.api.persistence 'queries grants'
-  yearclock.api.persistence -> yearclock.database 'SQL with request context' 'SQLAlchemy'
+  shadow.webApp -> shadow.api.authentication 'signs in and out' 'HTTPS'
+  shadow.webApp -> shadow.api.organizations 'workspace, people, invitations' 'HTTPS'
+  shadow.webApp -> shadow.api.notifications 'inbox and unread count' 'HTTPS'
+  shadow.webApp -> shadow.api.support 'operator console and Support Access' 'HTTPS'
+  shadow.api.authentication -> authentik 'OIDC code exchange' 'OIDC'
+  shadow.api.billing -> stripe 'Checkout, portal, subscription changes' 'REST'
+  stripe -[async]-> shadow.api.billing 'webhook events' 'HTTPS'
+  shadow.api.organizations -> shadow.api.billing 'checks seats and read-only state'
+  shadow.api.organizations -> shadow.api.legalDocuments 'requires accepted documents at signup'
+  shadow.api.organizations -> shadow.api.notifications 'role and invitation notices'
+  shadow.webApp -> shadow.api.models 'models, graph, metamodel, versions' 'HTTPS'
+  shadow.webApp -> shadow.api.metrics 'metrics and values' 'HTTPS'
+  shadow.webApp -> shadow.api.simulations 'forecasts and simulations' 'HTTPS'
+  shadow.webApp -> shadow.api.analysis 'analysis and AI analysis' 'HTTPS'
+  shadow.webApp -> shadow.api.metricIo 'import and export' 'HTTPS'
+  shadow.api.models -> shadow.api.accessRule 'authorizes'
+  shadow.api.metrics -> shadow.api.accessRule 'authorizes'
+  shadow.api.simulations -> shadow.api.accessRule 'authorizes'
+  shadow.api.analysis -> shadow.api.accessRule 'authorizes'
+  shadow.api.metricIo -> shadow.api.accessRule 'authorizes'
+  shadow.api.simulations -> shadow.api.metrics 'reads history, evaluates derived metrics'
+  shadow.api.analysis -> shadow.api.simulations 'reads forecasts and findings inputs'
+  shadow.api.metricIo -> shadow.api.metrics 'writes imported values, reads series'
+  shadow.api.analysis -> anthropic 'sends metric names and forecast figures when AI analysis is enabled' 'HTTPS, REST'
+  shadow.api.mcp -> shadow.api.models 'calls the same functions'
+  shadow.api.mcp -> shadow.api.metrics 'calls the same functions'
+  shadow.api.mcp -> shadow.api.simulations 'calls the same functions'
+  shadow.api.mcp -> shadow.api.analysis 'calls the same functions'
+  shadow.api.models -> shadow.api.audit 'records'
+  shadow.api.metrics -> shadow.api.audit 'records'
+  shadow.api.simulations -> shadow.api.audit 'records'
+  shadow.api.analysis -> shadow.api.audit 'records'
+  shadow.api.organizations -> shadow.api.audit 'records'
+  shadow.api.support -> shadow.api.audit 'records every support read and write'
+  shadow.api.organizations -> shadow.api.persistence 'enqueues Invitation email (outbox)'
+  shadow.api.persistence -> shadow.database 'SQL with request context' 'SQLAlchemy'
 
   // ── Relationships: worker components ──────────────────────────────────────
-  yearclock.worker.scheduler -> yearclock.worker.jobRunner 'enqueues jobs'
-  yearclock.worker.scheduler -> yearclock.database 'enqueues and expires grants' 'SQL'
-  yearclock.worker.jobRunner -> yearclock.database 'materializes Series, purges content' 'SQL'
-  yearclock.worker.emailDelivery -> yearclock.database 'claims outbox messages' 'SQL'
+  shadow.worker.scheduler -> shadow.worker.jobRunner 'enqueues jobs'
+  shadow.worker.scheduler -> shadow.database 'enqueues and expires grants' 'SQL'
+  shadow.worker.jobRunner -> shadow.database 'purges expired data' 'SQL'
+  shadow.worker.emailDelivery -> shadow.database 'claims outbox messages' 'SQL'
 }

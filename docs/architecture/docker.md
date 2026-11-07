@@ -8,8 +8,8 @@
 - `migrate` applies Alembic migrations after PostgreSQL becomes healthy and before the backend starts.
 - `authentik-db-init` idempotently creates Authentik's separate logical database and owner.
 - `authentik-server` and `authentik-worker` run the pinned self-hosted identity provider and share no application tables or credentials.
-- `authentik-config-init` applies verified-email enrollment, MFA recovery, passkey, and mandatory second-factor policy, the Yearclock OIDC application, the Yearclock MCP application (ADR-0038), and the sign-in pages' look (ADR-0039) before the backend starts. The backend serves the MCP interface at `/api/mcp` on its existing port when `MCP_ENABLED` is true; it adds no port.
-- `worker` runs the backend image with `python -m app.worker`. It delivers Invitation email, runs recurrence, content purge, and Organization purge jobs, and expires Support Access grants.
+- `authentik-config-init` applies verified-email enrollment, MFA recovery, passkey, and mandatory second-factor policy, the Shadow OIDC application, the Shadow MCP application (ADR-0038), and the sign-in pages' look (ADR-0039) before the backend starts. The backend serves the MCP interface at `/api/mcp` on its existing port when `MCP_ENABLED` is true; it adds no port.
+- `worker` runs the backend image with `python -m app.worker`. It delivers Invitation email, runs notification cleanup and Organization purge jobs, and expires Support Access grants.
 - `caddy` uses the official `caddy:2-alpine` image. It belongs to the `edge`
   profile and starts only with `docker compose --profile edge up`.
 

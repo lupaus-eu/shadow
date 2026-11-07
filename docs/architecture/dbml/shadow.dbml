@@ -1,9 +1,26 @@
-// Yearclock PostgreSQL schema, generated from the migrated database by backend/app/dbml.py.
-// Alembic revision 0049. Do not edit by hand: run `UPDATE_DBML=1 pytest tests/test_dbml_model.py` in backend/.
+// Shadow PostgreSQL schema, generated from the migrated database by backend/app/dbml.py.
+// Alembic revision 0057. Do not edit by hand: run `UPDATE_DBML=1 pytest tests/test_dbml_model.py` in backend/.
 
-Project yearclock {
+Project shadow {
   database_type: 'PostgreSQL'
-  Note: 'Yearclock application database. Tenant tables carry organization_id and PostgreSQL row-level security (ADR-0012); see docs/architecture/database.md.'
+  Note: 'Shadow application database. Tenant tables carry organization_id and PostgreSQL row-level security (ADR-0012); see docs/architecture/database.md.'
+}
+
+Table allowed_connections {
+  id uuid [pk]
+  organization_id uuid [not null]
+  model_id uuid [not null]
+  connection_type_id uuid [not null]
+  source_node_type_id uuid [not null]
+  target_node_type_id uuid [not null]
+
+  indexes {
+    (connection_type_id, source_node_type_id, target_node_type_id) [unique]
+    model_id [name: 'ix_allowed_connections_model_id']
+    organization_id [name: 'ix_allowed_connections_organization_id']
+  }
+
+  Note: 'RLS forced: allowed_connections_live_organization (restrictive) all, allowed_connections_policy all, allowed_connections_support_delete (restrictive) delete, allowed_connections_support_insert (restrictive) insert, allowed_connections_support_select (restrictive) select, allowed_connections_support_update (restrictive) update'
 }
 
 Table audit_events {
@@ -47,164 +64,46 @@ Table background_jobs {
   Note: 'Checks: ck_background_jobs_status: status::text = ANY (ARRAY[\'pending\'::character varying, \'processing\'::character varying, \'completed\'::character varying, \'failed\'::character varying]::text[])'
 }
 
-Table categories {
+Table connection_types {
   id uuid [pk]
   organization_id uuid [not null]
-  yearclock_id uuid
-  name varchar(120) [not null]
-  color varchar(7)
-  display_order integer [not null, default: `0`]
+  model_id uuid [not null]
+  key varchar(60) [not null]
+  name varchar(80) [not null]
+  style varchar(20) [not null, default: `'solid'::character varying`]
+  source_end varchar(20) [not null, default: `'none'::character varying`]
+  target_end varchar(20) [not null, default: `'arrow'::character varying`]
+  version integer [not null, default: `1`]
+
+  indexes {
+    (id, model_id) [unique]
+    (model_id, key) [unique]
+    model_id [name: 'ix_connection_types_model_id']
+    organization_id [name: 'ix_connection_types_organization_id']
+  }
+
+  Note: 'RLS forced: connection_types_live_organization (restrictive) all, connection_types_policy all, connection_types_support_delete (restrictive) delete, connection_types_support_insert (restrictive) insert, connection_types_support_select (restrictive) select, connection_types_support_update (restrictive) update'
+}
+
+Table connections {
+  id uuid [pk]
+  organization_id uuid [not null]
+  model_id uuid [not null]
+  connection_type_id uuid [not null]
+  source_node_id uuid [not null]
+  target_node_id uuid [not null]
   version integer [not null, default: `1`]
   created_at "timestamp with time zone" [not null, default: `now()`]
+  version_id uuid [not null]
 
   indexes {
-    organization_id [name: 'ix_categories_organization_id']
-    yearclock_id [name: 'ix_categories_yearclock_id']
-    (`organization_id`, `lower(name::text)`) [unique, name: 'uq_categories_organization_name']
+    (connection_type_id, source_node_id, target_node_id) [unique]
+    model_id [name: 'ix_connections_model_id']
+    organization_id [name: 'ix_connections_organization_id']
+    version_id [name: 'ix_connections_version_id']
   }
 
-  Note: 'RLS forced: categories_live_organization (restrictive) all, categories_policy all, categories_support_delete (restrictive) delete, categories_support_insert (restrictive) insert, categories_support_select (restrictive) select, categories_support_update (restrictive) update'
-}
-
-Table event_labels {
-  event_id uuid
-  label_id uuid
-  organization_id uuid [not null]
-
-  indexes {
-    (event_id, label_id) [pk]
-    label_id [name: 'ix_event_labels_label_id']
-  }
-
-  Note: 'RLS forced: event_labels_live_organization (restrictive) all, event_labels_policy all, event_labels_support_delete (restrictive) delete, event_labels_support_insert (restrictive) insert, event_labels_support_select (restrictive) select, event_labels_support_update (restrictive) update'
-}
-
-Table event_revisions {
-  id uuid [pk]
-  organization_id uuid [not null]
-  yearclock_id uuid [not null]
-  event_id uuid [not null]
-  series_id uuid
-  kind varchar(20) [not null]
-  reason varchar(30) [not null]
-  reason_detail jsonb [not null, default: `'{}'::jsonb`]
-  actor_account_id uuid
-  actor_kind varchar(10) [not null]
-  snapshot jsonb [not null]
-  changed_fields "varchar(20)[]" [not null, default: `'{}'::character varying[]`]
-  created_at "timestamp with time zone" [not null, default: `now()`]
-
-  indexes {
-    (event_id, created_at) [name: 'ix_event_revisions_event_created']
-    (yearclock_id, created_at) [name: 'ix_event_revisions_yearclock_created']
-  }
-
-  Note: 'Checks: ck_event_revisions_actor_kind: actor_kind::text = ANY (ARRAY[\'member\'::character varying, \'support\'::character varying, \'system\'::character varying]::text[]); ck_event_revisions_kind: kind::text = ANY (ARRAY[\'created\'::character varying, \'updated\'::character varying, \'deleted\'::character varying, \'restored\'::character varying, \'version_restored\'::character varying]::text[]). RLS forced: event_revisions_live_organization (restrictive) all, event_revisions_policy all, event_revisions_support_delete (restrictive) delete, event_revisions_support_insert (restrictive) insert, event_revisions_support_select (restrictive) select'
-}
-
-Table event_series {
-  id uuid [pk]
-  organization_id uuid [not null]
-  yearclock_id uuid [not null]
-  lane_id uuid [not null]
-  category_id uuid
-  title varchar(200) [not null]
-  description text
-  starts_on date [not null]
-  frequency varchar(10) [not null]
-  interval integer [not null, default: `1`]
-  until date
-  occurrence_count integer
-  last_day boolean [not null, default: `false`]
-  created_at "timestamp with time zone" [not null, default: `now()`]
-  effective_from date [not null]
-  version integer [not null, default: `1`]
-  location varchar(200)
-  links jsonb [not null, default: `'[]'::jsonb`]
-  description_format varchar(10) [not null, default: `'plain'::character varying`]
-  starts_at "time without time zone"
-  ends_at "time without time zone"
-
-  Note: 'Checks: ck_event_series_description_format: description_format::text = ANY (ARRAY[\'plain\'::character varying, \'markdown\'::character varying]::text[]); ck_event_series_end_time_needs_start: ends_at IS NULL OR starts_at IS NOT NULL; ck_event_series_links_list: jsonb_typeof(links) = \'array\'::text. RLS forced: event_series_live_organization (restrictive) all, event_series_policy all, event_series_support_delete (restrictive) delete, event_series_support_insert (restrictive) insert, event_series_support_select (restrictive) select, event_series_support_update (restrictive) update, event_series_worker_enumerate select'
-}
-
-Table events {
-  id uuid [pk]
-  organization_id uuid [not null]
-  yearclock_id uuid [not null]
-  lane_id uuid [not null]
-  title varchar(200) [not null]
-  description text
-  starts_on date [not null]
-  ends_on date
-  version integer [not null, default: `1`]
-  created_at "timestamp with time zone" [not null, default: `now()`]
-  category_id uuid
-  deleted_at "timestamp with time zone"
-  location varchar(200)
-  links jsonb [not null, default: `'[]'::jsonb`]
-  description_format varchar(10) [not null, default: `'plain'::character varying`]
-  starts_at "time without time zone"
-  ends_at "time without time zone"
-
-  indexes {
-    deleted_at [name: 'ix_events_deleted_at']
-    ends_on [name: 'ix_events_ends_on']
-    organization_id [name: 'ix_events_organization_id']
-    starts_on [name: 'ix_events_starts_on']
-    yearclock_id [name: 'ix_events_yearclock_id']
-  }
-
-  Note: 'Checks: ck_events_date_range: ends_on IS NULL OR ends_on >= starts_on; ck_events_description_format: description_format::text = ANY (ARRAY[\'plain\'::character varying, \'markdown\'::character varying]::text[]); ck_events_end_time_needs_start: ends_at IS NULL OR starts_at IS NOT NULL; ck_events_links_list: jsonb_typeof(links) = \'array\'::text. RLS forced: events_live_organization (restrictive) all, events_policy all, events_support_delete (restrictive) delete, events_support_insert (restrictive) insert, events_support_select (restrictive) select, events_support_update (restrictive) update'
-}
-
-Table invitation_groups {
-  invitation_id uuid
-  group_id uuid
-  organization_id uuid [not null]
-
-  indexes {
-    (group_id, invitation_id) [pk]
-  }
-
-  Note: 'RLS forced: invitation_groups_live_organization (restrictive) all, invitation_groups_no_support (restrictive) all, invitation_groups_policy all'
-}
-
-Table labels {
-  id uuid [pk]
-  organization_id uuid [not null]
-  name varchar(60) [not null]
-  color varchar(7) [not null]
-  version integer [not null, default: `1`]
-  created_at "timestamp with time zone" [not null, default: `now()`]
-
-  indexes {
-    organization_id [name: 'ix_labels_organization_id']
-    (`organization_id`, `lower(name::text)`) [unique, name: 'uq_labels_organization_name']
-  }
-
-  Note: 'Checks: ck_labels_color: color::text ~ \'^#[0-9a-f]{6}$\'::text; ck_labels_name: length(btrim(name::text)) > 0. RLS forced: labels_live_organization (restrictive) all, labels_policy all, labels_support_delete (restrictive) delete, labels_support_insert (restrictive) insert, labels_support_select (restrictive) select, labels_support_update (restrictive) update'
-}
-
-Table lanes {
-  id uuid [pk]
-  organization_id uuid [not null]
-  yearclock_id uuid [not null]
-  name varchar(200) [not null]
-  display_order integer [not null, default: `0`]
-  created_at "timestamp with time zone" [not null, default: `now()`]
-  version integer [not null, default: `1`]
-  tint varchar(7)
-  height varchar(10) [not null, default: `'normal'::character varying`]
-  source_lane_id uuid
-
-  indexes {
-    organization_id [name: 'ix_lanes_organization_id']
-    source_lane_id [name: 'ix_lanes_source_lane_id']
-    yearclock_id [name: 'ix_lanes_yearclock_id']
-  }
-
-  Note: 'Checks: ck_lanes_height: height::text = ANY (ARRAY[\'normal\'::character varying, \'tall\'::character varying]::text[]); ck_lanes_not_own_source: source_lane_id IS NULL OR source_lane_id <> id; ck_lanes_tint: tint IS NULL OR tint::text ~ \'^#[0-9a-f]{6}$\'::text. RLS forced: lanes_delete delete, lanes_insert insert, lanes_live_organization (restrictive) all, lanes_select select, lanes_support_delete (restrictive) delete, lanes_support_insert (restrictive) insert, lanes_support_select (restrictive) select, lanes_support_update (restrictive) update, lanes_update update'
+  Note: 'Checks: ck_connections_no_loop: source_node_id <> target_node_id. RLS forced: connections_live_organization (restrictive) all, connections_policy all, connections_support_delete (restrictive) delete, connections_support_insert (restrictive) insert, connections_support_select (restrictive) select, connections_support_update (restrictive) update'
 }
 
 Table legal_acceptances {
@@ -236,32 +135,128 @@ Table legal_announcements {
   }
 }
 
-Table member_group_members {
-  group_id uuid
-  membership_id uuid
+Table metric_values {
+  metric_id uuid
+  period date
   organization_id uuid [not null]
+  version_id uuid [not null]
+  value "double precision" [not null]
 
   indexes {
-    (group_id, membership_id) [pk]
-    membership_id [name: 'ix_member_group_members_membership']
+    (metric_id, period) [pk]
+    organization_id [name: 'ix_metric_values_organization_id']
+    version_id [name: 'ix_metric_values_version_id']
   }
 
-  Note: 'RLS forced: member_group_members_live_organization (restrictive) all, member_group_members_no_support (restrictive) all, member_group_members_policy all'
+  Note: 'Checks: ck_metric_values_finite: value = value AND (value <> ALL (ARRAY[\'Infinity\'::double precision, \'-Infinity\'::double precision])); ck_metric_values_month_start: EXTRACT(day FROM period) = 1::numeric. RLS forced: metric_values_live_organization (restrictive) all, metric_values_policy all, metric_values_support_delete (restrictive) delete, metric_values_support_insert (restrictive) insert, metric_values_support_select (restrictive) select, metric_values_support_update (restrictive) update'
 }
 
-Table member_groups {
+Table metrics {
   id uuid [pk]
   organization_id uuid [not null]
-  name varchar(80) [not null]
+  model_id uuid [not null]
+  version_id uuid [not null]
+  node_id uuid
+  key varchar(40) [not null]
+  name varchar(120) [not null]
+  unit varchar(20)
+  formula text
   version integer [not null, default: `1`]
   created_at "timestamp with time zone" [not null, default: `now()`]
 
   indexes {
-    organization_id [name: 'ix_member_groups_organization_id']
-    (`organization_id`, `lower(name::text)`) [unique, name: 'uq_member_groups_organization_name']
+    (id, version_id) [unique]
+    (version_id, key) [unique]
+    model_id [name: 'ix_metrics_model_id']
+    organization_id [name: 'ix_metrics_organization_id']
+    version_id [name: 'ix_metrics_version_id']
   }
 
-  Note: 'Checks: ck_member_groups_name: length(btrim(name::text)) > 0. RLS forced: member_groups_live_organization (restrictive) all, member_groups_no_support (restrictive) all, member_groups_policy all'
+  Note: 'Checks: ck_metrics_key: key::text ~ \'^[a-z][a-z0-9_]{0,39}$\'::text; ck_metrics_name: length(btrim(name::text)) > 0. RLS forced: metrics_live_organization (restrictive) all, metrics_policy all, metrics_support_delete (restrictive) delete, metrics_support_insert (restrictive) insert, metrics_support_select (restrictive) select, metrics_support_update (restrictive) update'
+}
+
+Table model_versions {
+  id uuid [pk]
+  organization_id uuid [not null]
+  model_id uuid [not null]
+  name varchar(120) [not null]
+  description text
+  is_baseline boolean [not null, default: `false`]
+  base_version_id uuid
+  version integer [not null, default: `1`]
+  created_at "timestamp with time zone" [not null, default: `now()`]
+
+  indexes {
+    (id, model_id) [unique]
+    model_id [name: 'ix_model_versions_model_id']
+    organization_id [name: 'ix_model_versions_organization_id']
+    model_id [unique, name: 'uq_model_versions_baseline']
+    (`model_id`, `lower(name::text)`) [unique, name: 'uq_model_versions_name']
+  }
+
+  Note: 'Checks: ck_model_versions_name: length(btrim(name::text)) > 0. RLS forced: model_versions_live_organization (restrictive) all, model_versions_policy all, model_versions_support_delete (restrictive) delete, model_versions_support_insert (restrictive) insert, model_versions_support_select (restrictive) select, model_versions_support_update (restrictive) update'
+}
+
+Table models {
+  id uuid [pk]
+  organization_id uuid [not null]
+  name varchar(120) [not null]
+  description text
+  version integer [not null, default: `1`]
+  created_at "timestamp with time zone" [not null, default: `now()`]
+
+  indexes {
+    (id, organization_id) [unique]
+    organization_id [name: 'ix_models_organization_id']
+    (`organization_id`, `lower(name::text)`) [unique, name: 'uq_models_organization_name']
+  }
+
+  Note: 'Checks: ck_models_name: length(btrim(name::text)) > 0. RLS forced: models_live_organization (restrictive) all, models_policy all, models_support_delete (restrictive) delete, models_support_insert (restrictive) insert, models_support_select (restrictive) select, models_support_update (restrictive) update'
+}
+
+Table node_types {
+  id uuid [pk]
+  organization_id uuid [not null]
+  model_id uuid [not null]
+  key varchar(60) [not null]
+  name varchar(80) [not null]
+  color varchar(7) [not null]
+  shape varchar(20) [not null, default: `'rectangle'::character varying`]
+  version integer [not null, default: `1`]
+
+  indexes {
+    (id, model_id) [unique]
+    (model_id, key) [unique]
+    model_id [name: 'ix_node_types_model_id']
+    organization_id [name: 'ix_node_types_organization_id']
+  }
+
+  Note: 'Checks: ck_node_types_color: color::text ~ \'^#[0-9A-Fa-f]{6}$\'::text. RLS forced: node_types_live_organization (restrictive) all, node_types_policy all, node_types_support_delete (restrictive) delete, node_types_support_insert (restrictive) insert, node_types_support_select (restrictive) select, node_types_support_update (restrictive) update'
+}
+
+Table nodes {
+  id uuid [pk]
+  organization_id uuid [not null]
+  model_id uuid [not null]
+  node_type_id uuid [not null]
+  name varchar(120) [not null]
+  description text
+  x "double precision" [not null, default: `'0'::double precision`]
+  y "double precision" [not null, default: `'0'::double precision`]
+  version integer [not null, default: `1`]
+  created_at "timestamp with time zone" [not null, default: `now()`]
+  version_id uuid [not null]
+  origin_node_id uuid
+
+  indexes {
+    (id, model_id) [unique]
+    (id, version_id) [unique]
+    model_id [name: 'ix_nodes_model_id']
+    organization_id [name: 'ix_nodes_organization_id']
+    version_id [name: 'ix_nodes_version_id']
+  }
+
+  Note: 'Checks: ck_nodes_name: length(btrim(name::text)) > 0. RLS forced: nodes_live_organization (restrictive) all, nodes_policy all, nodes_support_delete (restrictive) delete, nodes_support_insert (restrictive) insert, nodes_support_select (restrictive) select, nodes_support_update (restrictive) update'
 }
 
 Table notification_preferences {
@@ -479,33 +474,69 @@ Table platform_roles {
   Note: 'Checks: ck_platform_roles_role: role::text = ANY (ARRAY[\'platform_admin\'::character varying, \'support_agent\'::character varying]::text[])'
 }
 
-Table series_labels {
-  series_id uuid
-  label_id uuid
+Table recommendations {
+  id uuid [pk]
   organization_id uuid [not null]
+  simulation_id uuid [not null]
+  kind varchar(30) [not null]
+  severity varchar(10) [not null]
+  metric_key varchar(40) [not null]
+  title varchar(200) [not null]
+  rationale text [not null]
+  status varchar(12) [not null, default: `'proposed'::character varying`]
+  version integer [not null, default: `1`]
+  created_at "timestamp with time zone" [not null, default: `now()`]
 
   indexes {
-    (label_id, series_id) [pk]
-    label_id [name: 'ix_series_labels_label_id']
+    (simulation_id, kind, metric_key) [unique]
+    organization_id [name: 'ix_recommendations_organization_id']
+    simulation_id [name: 'ix_recommendations_simulation_id']
   }
 
-  Note: 'RLS forced: series_labels_live_organization (restrictive) all, series_labels_policy all, series_labels_support_delete (restrictive) delete, series_labels_support_insert (restrictive) insert, series_labels_support_select (restrictive) select, series_labels_support_update (restrictive) update'
+  Note: 'Checks: ck_recommendations_severity: severity::text = ANY (ARRAY[\'high\'::character varying, \'medium\'::character varying, \'low\'::character varying]::text[]); ck_recommendations_status: status::text = ANY (ARRAY[\'proposed\'::character varying, \'accepted\'::character varying, \'dismissed\'::character varying]::text[]). RLS forced: recommendations_live_organization (restrictive) all, recommendations_policy all, recommendations_support_delete (restrictive) delete, recommendations_support_insert (restrictive) insert, recommendations_support_select (restrictive) select, recommendations_support_update (restrictive) update'
 }
 
-Table series_occurrences {
-  id uuid [pk]
-  series_id uuid [not null]
+Table simulation_points {
+  simulation_id uuid
+  metric_key varchar(40)
+  period date
   organization_id uuid [not null]
-  series_date date [not null]
-  event_id uuid [not null, unique]
-  skipped boolean [not null, default: `false`]
-  overrides jsonb [not null, default: `'{}'::jsonb`]
+  value "double precision" [not null]
+  lower "double precision"
+  upper "double precision"
 
   indexes {
-    (series_id, series_date) [unique]
+    (metric_key, period, simulation_id) [pk]
+    organization_id [name: 'ix_simulation_points_organization_id']
   }
 
-  Note: 'RLS forced: series_occurrences_live_organization (restrictive) all, series_occurrences_policy all, series_occurrences_support_delete (restrictive) delete, series_occurrences_support_insert (restrictive) insert, series_occurrences_support_select (restrictive) select, series_occurrences_support_update (restrictive) update'
+  Note: 'RLS forced: simulation_points_live_organization (restrictive) all, simulation_points_policy all, simulation_points_support_delete (restrictive) delete, simulation_points_support_insert (restrictive) insert, simulation_points_support_select (restrictive) select, simulation_points_support_update (restrictive) update'
+}
+
+Table simulations {
+  id uuid [pk]
+  organization_id uuid [not null]
+  model_id uuid [not null]
+  version_id uuid [not null]
+  name varchar(120) [not null]
+  method varchar(20) [not null]
+  horizon_months integer [not null]
+  adjustments jsonb [not null, default: `'[]'::jsonb`]
+  skipped jsonb [not null, default: `'{}'::jsonb`]
+  history_end date
+  created_by_user_account_id uuid
+  created_at "timestamp with time zone" [not null, default: `now()`]
+  ai_summary text
+  ai_generated_at "timestamp with time zone"
+
+  indexes {
+    (id, organization_id) [unique]
+    model_id [name: 'ix_simulations_model_id']
+    organization_id [name: 'ix_simulations_organization_id']
+    version_id [name: 'ix_simulations_version_id']
+  }
+
+  Note: 'Checks: ck_simulations_horizon: horizon_months >= 1 AND horizon_months <= 60; ck_simulations_method: method::text = ANY (ARRAY[\'linear\'::character varying, \'seasonal\'::character varying, \'holt\'::character varying, \'prophet\'::character varying]::text[]); ck_simulations_name: length(btrim(name::text)) > 0. RLS forced: simulations_live_organization (restrictive) all, simulations_policy all, simulations_support_delete (restrictive) delete, simulations_support_insert (restrictive) insert, simulations_support_select (restrictive) select, simulations_support_update (restrictive) update'
 }
 
 Table stripe_webhook_events {
@@ -570,110 +601,38 @@ Table user_sessions {
   }
 }
 
-Table yearclock_access_grants {
-  id uuid [pk]
-  organization_id uuid [not null]
-  yearclock_id uuid [not null]
-  user_account_id uuid [not null]
-  role varchar(20) [not null]
-  created_at "timestamp with time zone" [not null, default: `now()`]
-  version integer [not null, default: `1`]
-
-  indexes {
-    (yearclock_id, user_account_id) [unique]
-    organization_id [name: 'ix_yearclock_access_grants_organization_id']
-    yearclock_id [name: 'ix_yearclock_access_grants_yearclock_id']
-  }
-
-  Note: 'Checks: ck_yearclock_access_grants_role: role::text = ANY (ARRAY[\'editor\'::character varying, \'viewer\'::character varying]::text[]). RLS forced: yearclock_access_grants_live_organization (restrictive) all, yearclock_access_grants_policy all, yearclock_access_grants_support_delete (restrictive) delete, yearclock_access_grants_support_insert (restrictive) insert, yearclock_access_grants_support_select (restrictive) select, yearclock_access_grants_support_update (restrictive) update'
-}
-
-Table yearclock_group_grants {
-  id uuid [pk]
-  organization_id uuid [not null]
-  yearclock_id uuid [not null]
-  group_id uuid [not null]
-  role varchar(10) [not null]
-  version integer [not null, default: `1`]
-  created_at "timestamp with time zone" [not null, default: `now()`]
-
-  indexes {
-    (yearclock_id, group_id) [unique]
-    group_id [name: 'ix_yearclock_group_grants_group_id']
-    yearclock_id [name: 'ix_yearclock_group_grants_yearclock_id']
-  }
-
-  Note: 'Checks: ck_yearclock_group_grants_role: role::text = ANY (ARRAY[\'editor\'::character varying, \'viewer\'::character varying]::text[]). RLS forced: yearclock_group_grants_live_organization (restrictive) all, yearclock_group_grants_no_support (restrictive) all, yearclock_group_grants_policy all'
-}
-
-Table yearclock_visits {
-  membership_id uuid
-  yearclock_id uuid
-  organization_id uuid [not null]
-  user_account_id uuid [not null]
-  visited_at "timestamp with time zone" [not null, default: `now()`]
-  previous_visited_at "timestamp with time zone"
-
-  indexes {
-    (membership_id, yearclock_id) [pk]
-    (organization_id, user_account_id, visited_at) [name: 'ix_yearclock_visits_user_recent']
-  }
-
-  Note: 'RLS forced: yearclock_visits_live_organization (restrictive) all, yearclock_visits_own all'
-}
-
-Table yearclocks {
-  id uuid [pk]
-  organization_id uuid [not null]
-  name varchar(200) [not null]
-  display_order integer [not null, default: `0`]
-  created_at "timestamp with time zone" [not null, default: `now()`]
-  version integer [not null, default: `1`]
-  archived_at "timestamp with time zone"
-  deleted_at "timestamp with time zone"
-  start_month smallint [not null, default: `'1'::smallint`]
-  show_week_ring boolean [not null, default: `false`]
-  show_quarter_ring boolean [not null, default: `false`]
-  organization_access varchar(10) [not null, default: `'none'::character varying`]
-
-  indexes {
-    (organization_id, id) [unique]
-    deleted_at [name: 'ix_yearclocks_deleted_at']
-    organization_id [name: 'ix_yearclocks_organization_id']
-  }
-
-  Note: 'Checks: ck_yearclocks_organization_access: organization_access::text = ANY (ARRAY[\'none\'::character varying, \'viewer\'::character varying, \'editor\'::character varying]::text[]); ck_yearclocks_start_month: start_month >= 1 AND start_month <= 12. RLS forced: yearclocks_delete delete, yearclocks_insert insert, yearclocks_live_organization (restrictive) all, yearclocks_select select, yearclocks_support_delete (restrictive) delete, yearclocks_support_insert (restrictive) insert, yearclocks_support_select (restrictive) select, yearclocks_support_update (restrictive) update, yearclocks_update update'
-}
-
-Ref: categories.organization_id > organizations.id [delete: cascade]
-Ref: categories.yearclock_id > yearclocks.id [delete: cascade]
-Ref: event_labels.event_id > events.id [delete: cascade]
-Ref: event_labels.label_id > labels.id [delete: cascade]
-Ref: event_labels.organization_id > organizations.id [delete: cascade]
-Ref: event_revisions.event_id > events.id [delete: cascade]
-Ref: event_revisions.organization_id > organizations.id [delete: cascade]
-Ref: event_revisions.yearclock_id > yearclocks.id [delete: cascade]
-Ref: event_series.category_id > categories.id [delete: set null]
-Ref: event_series.lane_id > lanes.id [delete: restrict]
-Ref: event_series.organization_id > organizations.id [delete: cascade]
-Ref: event_series.yearclock_id > yearclocks.id [delete: cascade]
-Ref: events.category_id > categories.id [delete: set null]
-Ref: events.lane_id > lanes.id [delete: restrict]
-Ref: events.organization_id > organizations.id [delete: cascade]
-Ref: events.yearclock_id > yearclocks.id [delete: cascade]
-Ref: invitation_groups.group_id > member_groups.id [delete: cascade]
-Ref: invitation_groups.invitation_id > organization_invitations.id [delete: cascade]
-Ref: invitation_groups.organization_id > organizations.id [delete: cascade]
-Ref: labels.organization_id > organizations.id [delete: cascade]
-Ref: lanes.(organization_id, yearclock_id) > yearclocks.(organization_id, id) [delete: cascade]
-Ref: lanes.organization_id > organizations.id [delete: cascade]
-Ref: lanes.source_lane_id > lanes.id [delete: cascade]
+Ref: allowed_connections.(connection_type_id, model_id) > connection_types.(id, model_id) [delete: cascade]
+Ref: allowed_connections.(model_id, organization_id) > models.(id, organization_id) [delete: cascade]
+Ref: allowed_connections.(source_node_type_id, model_id) > node_types.(id, model_id) [delete: cascade]
+Ref: allowed_connections.(target_node_type_id, model_id) > node_types.(id, model_id) [delete: cascade]
+Ref: allowed_connections.organization_id > organizations.id [delete: cascade]
+Ref: connection_types.(model_id, organization_id) > models.(id, organization_id) [delete: cascade]
+Ref: connection_types.organization_id > organizations.id [delete: cascade]
+Ref: connections.(connection_type_id, model_id) > connection_types.(id, model_id) [delete: restrict]
+Ref: connections.(model_id, organization_id) > models.(id, organization_id) [delete: cascade]
+Ref: connections.(source_node_id, model_id) > nodes.(id, model_id) [delete: cascade]
+Ref: connections.(source_node_id, version_id) > nodes.(id, version_id) [delete: cascade]
+Ref: connections.(target_node_id, model_id) > nodes.(id, model_id) [delete: cascade]
+Ref: connections.(target_node_id, version_id) > nodes.(id, version_id) [delete: cascade]
+Ref: connections.(version_id, model_id) > model_versions.(id, model_id) [delete: cascade]
+Ref: connections.organization_id > organizations.id [delete: cascade]
 Ref: legal_acceptances.organization_id > organizations.id [delete: cascade]
 Ref: legal_acceptances.user_account_id > user_accounts.id [delete: set null]
-Ref: member_group_members.group_id > member_groups.id [delete: cascade]
-Ref: member_group_members.membership_id > organization_memberships.id [delete: cascade]
-Ref: member_group_members.organization_id > organizations.id [delete: cascade]
-Ref: member_groups.organization_id > organizations.id [delete: cascade]
+Ref: metric_values.(metric_id, version_id) > metrics.(id, version_id) [delete: cascade]
+Ref: metric_values.organization_id > organizations.id [delete: cascade]
+Ref: metrics.(model_id, organization_id) > models.(id, organization_id) [delete: cascade]
+Ref: metrics.(version_id, model_id) > model_versions.(id, model_id) [delete: cascade]
+Ref: metrics.node_id > nodes.id [delete: set null]
+Ref: metrics.organization_id > organizations.id [delete: cascade]
+Ref: model_versions.(model_id, organization_id) > models.(id, organization_id) [delete: cascade]
+Ref: model_versions.organization_id > organizations.id [delete: cascade]
+Ref: models.organization_id > organizations.id [delete: cascade]
+Ref: node_types.(model_id, organization_id) > models.(id, organization_id) [delete: cascade]
+Ref: node_types.organization_id > organizations.id [delete: cascade]
+Ref: nodes.(model_id, organization_id) > models.(id, organization_id) [delete: cascade]
+Ref: nodes.(node_type_id, model_id) > node_types.(id, model_id) [delete: restrict]
+Ref: nodes.(version_id, model_id) > model_versions.(id, model_id) [delete: cascade]
+Ref: nodes.organization_id > organizations.id [delete: cascade]
 Ref: notification_preferences.organization_id > organizations.id [delete: cascade]
 Ref: notification_preferences.user_id > user_accounts.id [delete: cascade]
 Ref: notifications.organization_id > organizations.id [delete: cascade]
@@ -688,27 +647,17 @@ Ref: organization_seat_previews.organization_id > organizations.id [delete: casc
 Ref: organizations.created_by_user_account_id > user_accounts.id
 Ref: platform_enrollments.user_account_id > user_accounts.id [delete: set null]
 Ref: platform_roles.user_account_id > user_accounts.id [delete: cascade]
-Ref: series_labels.label_id > labels.id [delete: cascade]
-Ref: series_labels.organization_id > organizations.id [delete: cascade]
-Ref: series_labels.series_id > event_series.id [delete: cascade]
-Ref: series_occurrences.event_id > events.id [delete: cascade]
-Ref: series_occurrences.organization_id > organizations.id [delete: cascade]
-Ref: series_occurrences.series_id > event_series.id [delete: cascade]
+Ref: recommendations.(simulation_id, organization_id) > simulations.(id, organization_id) [delete: cascade]
+Ref: recommendations.organization_id > organizations.id [delete: cascade]
+Ref: simulation_points.(simulation_id, organization_id) > simulations.(id, organization_id) [delete: cascade]
+Ref: simulation_points.organization_id > organizations.id [delete: cascade]
+Ref: simulations.(model_id, organization_id) > models.(id, organization_id) [delete: cascade]
+Ref: simulations.(version_id, model_id) > model_versions.(id, model_id) [delete: cascade]
+Ref: simulations.organization_id > organizations.id [delete: cascade]
 Ref: stripe_webhook_events.organization_id > organizations.id [delete: set null]
 Ref: support_access_requests.organization_id > organizations.id [delete: cascade]
 Ref: support_access_requests.requested_by_user_account_id > user_accounts.id
 Ref: user_sessions.user_account_id > user_accounts.id [delete: cascade]
-Ref: yearclock_access_grants.organization_id > organizations.id [delete: cascade]
-Ref: yearclock_access_grants.user_account_id > user_accounts.id [delete: cascade]
-Ref: yearclock_access_grants.yearclock_id > yearclocks.id [delete: cascade]
-Ref: yearclock_group_grants.group_id > member_groups.id [delete: cascade]
-Ref: yearclock_group_grants.organization_id > organizations.id [delete: cascade]
-Ref: yearclock_group_grants.yearclock_id > yearclocks.id [delete: cascade]
-Ref: yearclock_visits.membership_id > organization_memberships.id [delete: cascade]
-Ref: yearclock_visits.organization_id > organizations.id [delete: cascade]
-Ref: yearclock_visits.user_account_id > user_accounts.id [delete: cascade]
-Ref: yearclock_visits.yearclock_id > yearclocks.id [delete: cascade]
-Ref: yearclocks.organization_id > organizations.id [delete: cascade]
 
 TableGroup identity {
   user_accounts
@@ -722,7 +671,6 @@ TableGroup organization {
   organizations
   organization_memberships
   organization_invitations
-  invitation_groups
 }
 
 TableGroup billing {
@@ -736,31 +684,28 @@ TableGroup legal {
   legal_announcements
 }
 
-TableGroup yearclock_structure {
-  yearclocks
-  lanes
-  categories
-  yearclock_access_grants
-  yearclock_visits
+TableGroup model_graph {
+  models
+  model_versions
+  nodes
+  connections
 }
 
-TableGroup yearclock_content {
-  events
-  event_series
-  series_occurrences
-  event_revisions
+TableGroup metamodel {
+  node_types
+  connection_types
+  allowed_connections
 }
 
-TableGroup classification {
-  labels
-  event_labels
-  series_labels
+TableGroup metrics {
+  metrics
+  metric_values
 }
 
-TableGroup groups {
-  member_groups
-  member_group_members
-  yearclock_group_grants
+TableGroup simulation_analysis {
+  simulations
+  simulation_points
+  recommendations
 }
 
 TableGroup notifications {
