@@ -149,7 +149,7 @@ export async function deleteSimulation(organizationId: string, modelId: string, 
 export type Finding = { key: string; name: string; unit: string | null; derived: boolean; start: number | null; end: number | null; change_pct: number | null; trend: string; turns_negative: string | null; band_ratio: number | null; versus: number | null };
 export type RecommendationStatus = "proposed" | "accepted" | "dismissed";
 export type Recommendation = { id: string; kind: string; severity: "high" | "medium" | "low"; metric_key: string; title: string; rationale: string; status: RecommendationStatus; version: number };
-export type Analysis = { ai_available: boolean; ai_summary: string | null; ai_generated_at: string | null; simulation: Simulation; compared_to: Simulation | null; findings: Finding[]; recommendations: Recommendation[] };
+export type Analysis = { summary: string | null; summary_at: string | null; summary_author: string | null; simulation: Simulation; compared_to: Simulation | null; findings: Finding[]; recommendations: Recommendation[] };
 
 const analysisUrl = (organizationId: string, modelId: string, simulationId: string, compareTo: string | null) => `${modelsUrl(organizationId)}/${modelId}/simulations/${simulationId}/analysis${compareTo ? `?compare_to=${compareTo}` : ""}`;
 
@@ -197,10 +197,6 @@ export async function allowConnection(organizationId: string, modelId: string, r
 
 export async function disallowConnection(organizationId: string, modelId: string, rule: AllowedConnection): Promise<void> {
   await call(`${modelsUrl(organizationId)}/${modelId}/allowed-connections?${new URLSearchParams(rule)}`, { method: "DELETE" });
-}
-
-export async function generateAiAnalysis(organizationId: string, modelId: string, simulationId: string, compareTo: string | null, language: string): Promise<Analysis> {
-  return (await call(`${modelsUrl(organizationId)}/${modelId}/simulations/${simulationId}/analysis/ai`, { method: "POST", ...json({ language, compare_to: compareTo }) })).json();
 }
 
 export type MergeResult = { base: ModelVersion; added_nodes: number; removed_nodes: number; changed_nodes: number; added_connections: number; removed_connections: number; skipped_connections: number };

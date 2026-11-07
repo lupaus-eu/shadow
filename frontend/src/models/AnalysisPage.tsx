@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
+import { Link } from "react-router";
 
 import { useOrganization } from "../shell/organization-outlet";
 import { Alert, Badge, Button, EmptyState, Field, Select } from "../ui";
-import { decideRecommendation, exportAnalysis, generateAiAnalysis, generateAnalysis, loadAnalysis, loadSimulations, type Analysis, type Finding, type Recommendation, type RecommendationStatus, type Simulation } from "./client";
+import { decideRecommendation, exportAnalysis, generateAnalysis, loadAnalysis, loadSimulations, type Analysis, type Finding, type Recommendation, type RecommendationStatus, type Simulation } from "./client";
 import { modelMessages } from "./messages";
 import { useModel } from "./ModelShell";
 
@@ -11,7 +12,8 @@ const percent = (value: number | null) => (value === null ? "–" : `${value > 0
 
 /** `…/models/:modelId/analysis`: findings of a simulation and the actions proposed from them. */
 export function AnalysisPage() {
-  const { locale } = useOrganization();
+  const { locale, workspace } = useOrganization();
+  const canOpenAgents = workspace.membership.role === "owner" || workspace.membership.role === "admin";
   const { organizationId, modelId, version, writable } = useModel();
   const text = modelMessages(locale);
   const [runs, setRuns] = useState<Simulation[] | null>(null);
@@ -19,7 +21,6 @@ export function AnalysisPage() {
   const [compareId, setCompareId] = useState("");
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     void loadSimulations(organizationId, modelId, version.id).then((list) => { setRuns(list); setRunId(list[0]?.id ?? ""); setCompareId(""); }).catch(() => setError(text.failed));
@@ -33,11 +34,6 @@ export function AnalysisPage() {
 
   async function generate() {
     try { setAnalysis(await generateAnalysis(organizationId, modelId, runId, compareId || null)); setError(null); } catch { setError(text.failed); }
-  }
-  async function askAi() {
-    setBusy(true);
-    try { setAnalysis(await generateAiAnalysis(organizationId, modelId, runId, compareId || null, locale)); setError(null); } catch { setError(text.aiFailed); }
-    setBusy(false);
   }
   async function download() {
     try { await exportAnalysis(organizationId, modelId, runId, compareId || null); } catch { setError(text.failed); }
@@ -61,7 +57,6 @@ export function AnalysisPage() {
         <Field label={text.compareTo} className="w-64">{(control) => <Select {...control} value={compareId} onChange={(event) => setCompareId(event.target.value)}><option value="">{text.noComparison}</option>{(runs ?? []).filter((run) => run.id !== runId).map((run) => <option key={run.id} value={run.id}>{run.name}</option>)}</Select>}</Field>
         {writable && runId ? <Button variant="primary" onClick={() => void generate()}>{text.generate}</Button> : null}
         {runId ? <Button onClick={() => void download()}>{text.exportAnalysis}</Button> : null}
-        {writable && runId && analysis?.ai_available ? <Button disabled={busy} onClick={() => void askAi()}>{text.askAi}</Button> : null}
       </div>
       {error ? <Alert tone="danger" role="alert">{error}</Alert> : null}
       {analysis ? (
@@ -73,19 +68,20 @@ export function AnalysisPage() {
               <tbody>{analysis.findings.map((finding) => <FindingRow key={finding.key} finding={finding} compared={analysis.compared_to !== null} text={text} />)}</tbody>
             </table></div>
           </section>
-          {analysis.ai_summary ? (
-            <section className="flex flex-col gap-1 rounded-[var(--radius-card)] border border-line bg-surface p-4" aria-label={text.aiSummary}>
-              <h3 className="m-0 text-[14px] font-semibold">{text.aiSummary} <Badge>{text.aiBadge}</Badge></h3>
-              <p className="m-0 text-[13px]">{analysis.ai_summary}</p>
-              <p className="m-0 text-xs text-ink-muted">{text.aiNote}</p>
+          {analysis.summary ? (
+            <section className="flex flex-col gap-1 rounded-[var(--radius-card)] border border-line bg-surface p-4" aria-label={text.summary}>
+              <h3 className="m-0 text-[14px] font-semibold">{text.summary}{analysis.summary_author?.startsWith("agent:") ? <> <Badge>{text.agentBadge}</Badge></> : null}</h3>
+              <p className="m-0 whitespace-pre-line text-[13px]">{analysis.summary}</p>
+              <p className="m-0 text-xs text-ink-muted">{text.summaryWritten(analysis.summary_author, analysis.summary_at)}</p>
             </section>
           ) : null}
           <section className="flex flex-col gap-2">
             <h3 className="m-0 text-[14px] font-semibold">{text.proposals}</h3>
             {analysis.recommendations.length === 0 ? <p className="m-0 text-[13px] text-ink-muted">{text.noProposals}</p> : null}
+            <p className="m-0 text-xs text-ink-muted">{text.askAgentHint} {canOpenAgents ? <Link className="underline" to={`/organizations/${organizationId}/admin/agents`}>{text.openAgents}</Link> : null}</p>
             {analysis.recommendations.map((item) => (
               <article key={item.id} className="flex flex-col gap-2 rounded-[var(--radius-card)] border border-line bg-surface p-4" aria-label={item.title}>
-                <div className="flex flex-wrap items-center gap-2"><strong className="text-[14px]">{item.title}</strong>{item.kind === "ai" ? <Badge>{text.aiBadge}</Badge> : null}<Badge>{text.severities[item.severity]}</Badge><Badge>{text.statuses[item.status]}</Badge></div>
+                <div className="flex flex-wrap items-center gap-2"><strong className="text-[14px]">{item.title}</strong>{item.kind === "agent" ? <Badge>{text.agentBadge}</Badge> : null}<Badge>{text.severities[item.severity]}</Badge><Badge>{text.statuses[item.status]}</Badge></div>
                 <p className="m-0 text-[13px] text-ink-muted">{item.rationale}</p>
                 {writable ? (
                   <div className="flex gap-2">
