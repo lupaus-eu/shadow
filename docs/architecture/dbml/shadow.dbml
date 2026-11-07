@@ -1,5 +1,5 @@
 // Shadow PostgreSQL schema, generated from the migrated database by backend/app/dbml.py.
-// Alembic revision 0057. Do not edit by hand: run `UPDATE_DBML=1 pytest tests/test_dbml_model.py` in backend/.
+// Alembic revision 0058. Do not edit by hand: run `UPDATE_DBML=1 pytest tests/test_dbml_model.py` in backend/.
 
 Project shadow {
   database_type: 'PostgreSQL'
@@ -526,8 +526,9 @@ Table simulations {
   history_end date
   created_by_user_account_id uuid
   created_at "timestamp with time zone" [not null, default: `now()`]
-  ai_summary text
-  ai_generated_at "timestamp with time zone"
+  analysis_summary text
+  analysis_summary_at "timestamp with time zone"
+  analysis_summary_author text
 
   indexes {
     (id, organization_id) [unique]

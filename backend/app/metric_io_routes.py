@@ -111,12 +111,14 @@ def create_metric_io_router(*, session_factory: sessionmaker[Session], authentic
                 ["Horizon (months)", simulation.horizon_months],
                 ["What-if adjustments", "; ".join(f"{item['metric_key']} {item['change_pct']:+g} %" for item in simulation.adjustments) or ""],
                 ["Compared against", other.name if other else ""],
-                ["AI summary", simulation.ai_summary or ""],
+                ["Summary", simulation.analysis_summary or ""],
+                ["Summary written by", simulation.analysis_summary_author or ""],
+                ["Summary written at", simulation.analysis_summary_at.strftime("%Y-%m-%d %H:%M") if simulation.analysis_summary_at else ""],
             ]
             findings = [["Metric", "Key", "Unit", "Start", "End", "Change", "Trend", "Turns negative", "Band / value", "Versus other run"]] + [
                 [item.name, item.key, item.unit, item.start, item.end, item.change_pct, item.trend, item.turns_negative.strftime("%Y-%m") if item.turns_negative else None, item.band_ratio, item.versus] for item in analysis.findings
             ]
-            proposals = [["Severity", "Metric", "Source", "Status", "Title", "Rationale"]] + [[row.severity, row.metric_key, "AI" if row.kind == "ai" else "Rules", row.status, row.title, row.rationale] for row in stored]
+            proposals = [["Severity", "Metric", "Source", "Status", "Title", "Rationale"]] + [[row.severity, row.metric_key, "agent" if row.kind == "agent" else "rule", row.status, row.title, row.rationale] for row in stored]
             keys = [metric.key for metric in result.metrics]
             header: list[object] = ["Period"]
             for key in keys:

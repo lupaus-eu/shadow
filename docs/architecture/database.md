@@ -102,7 +102,7 @@ Migration `0049` adds `legal_acceptances` (ADR-0041): Organization, accepting Us
 Migration `0050` drops the Yearclock product tables; the platform base keeps only
 platform tables.
 
-Migrations `0051`–`0057` add the Shadow tables. Each carries `organization_id`, the
+Migrations `0051`–`0058` add the Shadow tables. Each carries `organization_id`, the
 Organization RLS policy, the live-Organization check (0028), and the Support Access
 check (0027), and cascades away with its Organization.
 
@@ -121,3 +121,4 @@ check (0027), and cascades away with its Organization.
   (open, accepted, dismissed) and a `kind` (`rule`, later `ai`).
 - `0056` lets `simulations.method` be `prophet` (ADR-0042).
 - `0057` adds `simulations.ai_summary` and `ai_generated_at` (ADR-0044).
+- `0058` renames them to `analysis_summary` and `analysis_summary_at`, adds `analysis_summary_author` (the person, or `agent:<client>`), and deletes the `recommendations` of kind `ai`. Agents write the summary and `agent` proposals through MCP (ADR-0047).

@@ -639,8 +639,9 @@ class Simulation(Base):
     adjustments: Mapped[list[Any]] = mapped_column(JSONB, server_default="[]")
     skipped: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default="{}")
     history_end: Mapped[date | None] = mapped_column(Date)
-    ai_summary: Mapped[str | None] = mapped_column(Text)
-    ai_generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    analysis_summary: Mapped[str | None] = mapped_column(Text)
+    analysis_summary_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    analysis_summary_author: Mapped[str | None] = mapped_column(Text)
     created_by_user_account_id: Mapped[UUID | None] = mapped_column(Uuid)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
