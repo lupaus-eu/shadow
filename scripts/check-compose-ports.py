@@ -28,6 +28,8 @@ ROOT = Path(__file__).resolve().parents[1]
 PROJECT_NAME = "shadow"
 PORT_RANGE = range(8100, 8200)
 PRODUCTION_FILE = "docker-compose.prod.yml"
+BASE_FILE = "docker-compose.yml"
+OVERRIDE_FILES = ("docker-compose.dev.yml",)  # layered on the base file, so resolved together with it
 DEFAULT_HOST = "127.0.0.1"
 COMPOSE_GLOBS = ("docker-compose*.yml", "docker-compose*.yaml", "compose*.yml", "compose*.yaml")
 REQUIRED_VARIABLE = re.compile(r"\$\{([A-Z0-9_]+):\?")
@@ -63,6 +65,7 @@ def _resolved_config(path: Path) -> dict:
     env.update({name: "port-check" for name in REQUIRED_VARIABLE.findall(path.read_text(encoding="utf-8"))})
     result = subprocess.run(
         ["docker", "compose", "--env-file", os.devnull, "--project-directory", str(ROOT),
+         *(["-f", str(ROOT / BASE_FILE)] if path.name in OVERRIDE_FILES else []),
          "-f", str(path), "--profile", "*", "config", "--format", "json"],
         capture_output=True, text=True, env=env, check=False,
     )

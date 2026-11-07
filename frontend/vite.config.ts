@@ -26,6 +26,8 @@ export default defineConfig({
     host: "0.0.0.0",
     port: 8173,
     strictPort: true,
+    // Set by docker-compose.dev.yml: file events do not always cross a bind mount.
+    watch: process.env.VITE_USE_POLLING === "true" ? { usePolling: true, interval: 300 } : undefined,
   },
   preview: {
     port: 8175,

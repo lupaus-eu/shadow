@@ -59,6 +59,28 @@ make down    # docker compose down (volumes are kept)
 make help    # logs, tests, port check, Stripe webhook forwarding
 ```
 
+### Live reload (`make dev`)
+
+`docker-compose.dev.yml` is layered on `docker-compose.yml` and changes only how code reaches the
+containers; it adds no service and no port, and Caddy stays behind the `edge` profile.
+
+```bash
+make dev         # docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+make dev-worker  # restart the worker after a backend change (it has no live reload)
+make dev-down    # stop; data volumes are kept
+```
+
+- `backend` runs `uvicorn --reload` on `./backend/app`, `migrations` and `legal`, bind-mounted into the
+  container, so a Python edit restarts the API within seconds. A new Alembic migration still needs
+  `docker compose run --rm migrate`.
+- `frontend` runs the Vite dev server on the bind-mounted `./frontend` with hot module replacement.
+  `node_modules` lives in a named volume (`frontend_node_modules`) so the container's Linux packages are not
+  hidden by the host folder; after changing `package.json` run `make dev` again (it rebuilds the image) and
+
+  `VITE_USE_POLLING` (default `true`) makes Vite poll for file changes because events do not always cross a
+  bind mount on macOS and Windows.
+- `scripts/check-compose-ports.py` resolves the dev file together with the base file.
+
 `make stripe-listen` forwards Stripe test-mode webhooks to the local backend
 with the Stripe CLI, using `STRIPE_SECRET_KEY` from `.env`.
 
@@ -67,7 +89,7 @@ Use `.env` for local values. Keep `.env.example` synchronized when adding requir
 ## Deployment Notes
 
 `docker-compose.yml` is the local development stack and the only one that
-builds. `docker-compose.prod.yml` is the production stack; it runs images from GHCR
+builds; `docker-compose.dev.yml` layers live reload on top of it (`make dev`). `docker-compose.prod.yml` is the production stack; it runs images from GHCR
 selected by `YEARCLOCK_TAG` (ADR-0035) and builds nothing: only `caddy` publishes ports, with the same variables
 and 81NN defaults so the port check passes; production sets
 `YEARCLOCK_EDGE_BIND_ADDRESS=0.0.0.0`, `YEARCLOCK_HTTP_PORT=80`, and

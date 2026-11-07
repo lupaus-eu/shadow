@@ -1,0 +1,33 @@
+# Local development with live reload. Use it ON TOP of docker-compose.yml:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build   (make dev)
+# It starts the same services as the local stack (never Caddy: that stays behind the `edge`
+# profile) and changes only how the code reaches the containers: the backend and the Vite dev
+# server read your working tree through bind mounts, so an edit shows up without a rebuild.
+# It adds no ports (docs/architecture/docker.md). Production is docker-compose.prod.yml.
+name: shadow
+
+services:
+  backend:
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--reload-dir", "/app/app"]
+    volumes:
+      - ./backend/app:/app/app
+      - ./backend/migrations:/app/migrations
+      - ./backend/legal:/app/legal
+
+  # The worker has no reload: after a change run `make dev-worker`.
+  worker:
+    volumes:
+      - ./backend/app:/app/app
+      - ./backend/migrations:/app/migrations
+      - ./backend/legal:/app/legal
+
+  frontend:
+    environment:
+      # File events do not always cross a bind mount on macOS and Windows; polling is reliable.
+      VITE_USE_POLLING: ${VITE_USE_POLLING:-true}
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+
+volumes:
+  frontend_node_modules:

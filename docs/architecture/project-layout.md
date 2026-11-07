@@ -6,6 +6,7 @@
 ├── CONTEXT.md
 ├── README.md
 ├── docker-compose.yml
+├── docker-compose.dev.yml
 ├── frontend/
 ├── backend/
 │   ├── app/

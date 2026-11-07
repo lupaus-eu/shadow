@@ -2,12 +2,13 @@
 # Values come from .env; see .env.example for the 8100-8199 port range.
 
 COMPOSE ?= docker compose
+COMPOSE_DEV ?= docker compose -f docker-compose.yml -f docker-compose.dev.yml
 LIKEC4 ?= npx --yes likec4@1.59.4
 DBML_CLI ?= npx --yes -p @dbml/cli@10.2.0 dbml2sql
 STRIPE_WEBHOOK_URL ?= http://localhost:8100/api/v1/billing/stripe/webhook
 STRIPE_EVENTS ?= checkout.session.completed,customer.subscription.updated,customer.subscription.deleted,customer.subscription.pending_update_applied,customer.subscription.pending_update_expired,invoice.paid,invoice.payment_failed
 
-.PHONY: help up down restart ps logs test test-backend test-frontend check-ports stripe-listen models c4 dbml
+.PHONY: dev dev-down dev-worker help up down restart ps logs test test-backend test-frontend check-ports stripe-listen models c4 dbml
 
 help: ## List the targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  %-15s %s\n", $$1, $$2}'
@@ -18,6 +19,16 @@ up: ## Build and start the local stack in the background
 
 down: ## Stop the local stack (data volumes are kept)
 	$(COMPOSE) down
+
+dev: ## Start the local stack with live reload (bind mounts; no Caddy)
+	$(COMPOSE_DEV) up -d --build
+	@echo "Shadow: http://localhost:8173  API: http://localhost:8100  Authentik: http://localhost:8190  (edits reload without a rebuild)"
+
+dev-down: ## Stop the live-reload stack (data volumes are kept)
+	$(COMPOSE_DEV) down
+
+dev-worker: ## Restart the worker after a backend change (it has no live reload)
+	$(COMPOSE_DEV) restart worker
 
 restart: down up ## Stop and start the local stack
 
