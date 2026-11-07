@@ -9,6 +9,7 @@ import { AccountProvider } from "../shell/AppShell";
 import { SignedOutLayout } from "../shell/SignedOutLayout";
 import { AnalysisPage } from "../models/AnalysisPage";
 import { MetricsPage } from "../models/MetricsPage";
+import { TypesPage } from "../models/TypesPage";
 import { ModelCanvas } from "../models/ModelCanvas";
 import { ModelShell } from "../models/ModelShell";
 import { SimulationsPage } from "../models/SimulationsPage";
@@ -43,6 +44,7 @@ export function AuthenticatedShell({
           <Route path="models" element={<ModelsPage />} />
           <Route path="models/:modelId" element={<ModelShell />}>
             <Route index element={<ModelCanvas />} />
+            <Route path="types" element={<TypesPage />} />
             <Route path="metrics" element={<MetricsPage />} />
             <Route path="simulations" element={<SimulationsPage />} />
             <Route path="analysis" element={<AnalysisPage />} />

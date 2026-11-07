@@ -74,6 +74,7 @@ export function ModelShell() {
       </div>
       <nav aria-label={model.name} className="flex flex-wrap gap-1 border-b border-line pb-2">
         {tab("", text.tabs.structure, true)}
+        {tab("/types", text.tabs.types)}
         {tab("/metrics", text.tabs.metrics)}
         {tab("/simulations", text.tabs.simulations)}
         {tab("/analysis", text.tabs.analysis)}

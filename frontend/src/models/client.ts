@@ -1,8 +1,8 @@
 import { apiBaseUrl, AuthenticationRequiredError } from "../auth-client";
 
 export type ModelSummary = { id: string; name: string; description: string | null; version: number; nodes: number };
-export type NodeType = { id: string; key: string; name: string; color: string; shape: string };
-export type ConnectionType = { id: string; key: string; name: string; style: string; source_end: string; target_end: string };
+export type NodeType = { id: string; key: string; name: string; color: string; shape: string; version: number };
+export type ConnectionType = { id: string; key: string; name: string; style: string; source_end: string; target_end: string; version: number };
 export type AllowedConnection = { connection_type_id: string; source_node_type_id: string; target_node_type_id: string };
 export type GraphNode = { id: string; node_type_id: string; name: string; description: string | null; x: number; y: number; version: number };
 export type GraphConnection = { id: string; connection_type_id: string; source_node_id: string; target_node_id: string; version: number };
@@ -163,4 +163,38 @@ export async function generateAnalysis(organizationId: string, modelId: string, 
 
 export async function decideRecommendation(organizationId: string, modelId: string, simulationId: string, recommendation: Recommendation, status: RecommendationStatus): Promise<Recommendation> {
   return (await call(`${modelsUrl(organizationId)}/${modelId}/simulations/${simulationId}/recommendations/${recommendation.id}`, { method: "PATCH", ...json({ status, expected_version: recommendation.version }) })).json();
+}
+
+const typesUrl = (organizationId: string, modelId: string, kind: "node-types" | "connection-types") => `${modelsUrl(organizationId)}/${modelId}/${kind}`;
+
+export async function createNodeType(organizationId: string, modelId: string, input: { name: string; color: string }): Promise<NodeType> {
+  return (await call(typesUrl(organizationId, modelId, "node-types"), { method: "POST", ...json(input) })).json();
+}
+
+export async function updateNodeType(organizationId: string, modelId: string, type: NodeType, changes: { name?: string; color?: string }): Promise<NodeType> {
+  return (await call(`${typesUrl(organizationId, modelId, "node-types")}/${type.id}`, { method: "PATCH", ...json({ ...changes, expected_version: type.version }) })).json();
+}
+
+export async function deleteNodeType(organizationId: string, modelId: string, type: NodeType): Promise<void> {
+  await call(`${typesUrl(organizationId, modelId, "node-types")}/${type.id}?expected_version=${type.version}`, { method: "DELETE" });
+}
+
+export async function createConnectionType(organizationId: string, modelId: string, input: { name: string; style: string; source_end: string; target_end: string }): Promise<ConnectionType> {
+  return (await call(typesUrl(organizationId, modelId, "connection-types"), { method: "POST", ...json(input) })).json();
+}
+
+export async function updateConnectionType(organizationId: string, modelId: string, type: ConnectionType, changes: { name?: string; style?: string; source_end?: string; target_end?: string }): Promise<ConnectionType> {
+  return (await call(`${typesUrl(organizationId, modelId, "connection-types")}/${type.id}`, { method: "PATCH", ...json({ ...changes, expected_version: type.version }) })).json();
+}
+
+export async function deleteConnectionType(organizationId: string, modelId: string, type: ConnectionType): Promise<void> {
+  await call(`${typesUrl(organizationId, modelId, "connection-types")}/${type.id}?expected_version=${type.version}`, { method: "DELETE" });
+}
+
+export async function allowConnection(organizationId: string, modelId: string, rule: AllowedConnection): Promise<void> {
+  await call(`${modelsUrl(organizationId)}/${modelId}/allowed-connections`, { method: "POST", ...json(rule) });
+}
+
+export async function disallowConnection(organizationId: string, modelId: string, rule: AllowedConnection): Promise<void> {
+  await call(`${modelsUrl(organizationId)}/${modelId}/allowed-connections?${new URLSearchParams(rule)}`, { method: "DELETE" });
 }

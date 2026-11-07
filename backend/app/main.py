@@ -38,6 +38,7 @@ from app.mcp_server.settings import McpSettings
 from app.oidc import AuthentikOIDCClient
 from app.organization_context_routes import create_organization_context_router
 from app.organization_routes import create_organization_router
+from app.metamodel_routes import create_metamodel_router
 from app.model_routes import create_model_router
 from app.version_routes import create_version_router
 from app.metric_routes import create_metric_router
@@ -217,6 +218,7 @@ def create_app(
         )
     )
     application.include_router(create_model_router(session_factory=application.state.session_factory, authenticated_user_dependency=authenticated_user_dependency))
+    application.include_router(create_metamodel_router(session_factory=application.state.session_factory, authenticated_user_dependency=authenticated_user_dependency))
     application.include_router(create_version_router(session_factory=application.state.session_factory, authenticated_user_dependency=authenticated_user_dependency))
     application.include_router(create_metric_router(session_factory=application.state.session_factory, authenticated_user_dependency=authenticated_user_dependency))
     application.include_router(create_simulation_router(session_factory=application.state.session_factory, authenticated_user_dependency=authenticated_user_dependency))

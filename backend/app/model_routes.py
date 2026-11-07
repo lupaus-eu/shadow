@@ -125,6 +125,7 @@ class NodeTypeResponse(BaseModel):
     name: str
     color: str
     shape: str
+    version: int
 
 
 class ConnectionTypeResponse(BaseModel):
@@ -134,6 +135,7 @@ class ConnectionTypeResponse(BaseModel):
     style: str
     source_end: str
     target_end: str
+    version: int
 
 
 class AllowedConnectionResponse(BaseModel):
