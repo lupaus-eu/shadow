@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useOrganization } from "../shell/organization-outlet";
 import { Alert, Badge, Button, EmptyState, Field, Select, TextInput, useConfirm } from "../ui";
-import { createMetric, deleteMetric, loadGraph, loadMetrics, loadSeries, RuleError, saveValues, StaleVersionError, updateMetric, type GraphNode, type Metric, type Series } from "./client";
+import { createMetric, deleteMetric, exportValues, importValues, loadGraph, loadMetrics, loadSeries, RuleError, saveValues, StaleVersionError, updateMetric, type GraphNode, type Metric, type Series } from "./client";
 import { modelMessages } from "./messages";
 import { useModel } from "./ModelShell";
 
@@ -23,6 +23,21 @@ export function MetricsPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState({ key: "", name: "" });
+  const [info, setInfo] = useState<string | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+
+  async function importFile(file: File) {
+    setError(null);
+    setInfo(null);
+    try {
+      const report = await importValues(organizationId, modelId, version.id, file);
+      setInfo([text.importDone(report.values, report.metrics), text.importSkipped(report.unknown_metrics, report.derived_metrics, report.invalid_cells)].filter(Boolean).join(" "));
+    } catch (cause) { setError(cause instanceof RuleError ? `${text.importFailed} ${cause.message}` : text.importFailed); }
+    await reload();
+  }
+  async function exportAs(format: "csv" | "xlsx") {
+    try { await exportValues(organizationId, modelId, version.id, format); } catch { setError(text.failed); }
+  }
 
   const reload = useCallback(async () => {
     try {
@@ -48,6 +63,14 @@ export function MetricsPage() {
       <aside className="flex flex-col gap-3">
         <h2 className="m-0 text-[15px] font-semibold">{text.metricsTitle}</h2>
         <p className="m-0 text-[13px] text-ink-muted">{text.metricsDescription}</p>
+        <div className="flex flex-wrap gap-2">
+          {writable ? <Button size="sm" onClick={() => fileInput.current?.click()}>{text.importValues}</Button> : null}
+          <Button size="sm" onClick={() => void exportAs("csv")}>{text.exportCsv}</Button>
+          <Button size="sm" onClick={() => void exportAs("xlsx")}>{text.exportXlsx}</Button>
+          <input ref={fileInput} type="file" hidden accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void importFile(file); }} />
+        </div>
+        {writable ? <p className="m-0 text-xs text-ink-muted">{text.importHint}</p> : null}
+        {info ? <Alert tone="info" role="status">{info}</Alert> : null}
         {metrics !== null && metrics.length === 0 ? <EmptyState title={text.noMetrics} /> : null}
         <ul className="m-0 flex list-none flex-col gap-1 p-0">
           {(metrics ?? []).map((metric) => (

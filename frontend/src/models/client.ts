@@ -208,3 +208,29 @@ export type MergeResult = { base: ModelVersion; added_nodes: number; removed_nod
 export async function mergeVersion(organizationId: string, modelId: string, version: ModelVersion): Promise<MergeResult> {
   return (await call(`${modelsUrl(organizationId)}/${modelId}/versions/${version.id}/merge`, { method: "POST", ...json({ expected_version: version.version }) })).json();
 }
+
+export type ImportReport = { metrics: number; values: number; unknown_metrics: string[]; derived_metrics: string[]; invalid_cells: number };
+
+/** Sends a CSV or Excel file as the request body; the server reports what it applied and what it skipped. */
+export async function importValues(organizationId: string, modelId: string, versionId: string, file: File): Promise<ImportReport> {
+  const response = await fetch(`${modelsUrl(organizationId)}/${modelId}/versions/${versionId}/metrics/import?filename=${encodeURIComponent(file.name)}`, { method: "POST", credentials: "include", body: file, headers: { "Content-Type": "application/octet-stream" } });
+  if (response.status === 401) throw new AuthenticationRequiredError();
+  if (response.status === 422) throw new RuleError(((await response.json().catch(() => null)) as { detail?: string } | null)?.detail ?? "rule");
+  if (!response.ok) throw new Error(`Request failed (${response.status})`);
+  return response.json();
+}
+
+async function download(url: string, fallbackName: string): Promise<void> {
+  const response = await fetch(url, { credentials: "include" });
+  if (response.status === 401) throw new AuthenticationRequiredError();
+  if (!response.ok) throw new Error(`Request failed (${response.status})`);
+  const name = /filename="([^"]+)"/.exec(response.headers.get("Content-Disposition") ?? "")?.[1] ?? fallbackName;
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(await response.blob());
+  link.download = name;
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
+export const exportValues = (organizationId: string, modelId: string, versionId: string, format: "csv" | "xlsx") => download(`${modelsUrl(organizationId)}/${modelId}/versions/${versionId}/metrics/export?format=${format}`, `metrics.${format}`);
+export const exportAnalysis = (organizationId: string, modelId: string, simulationId: string, compareTo: string | null) => download(`${modelsUrl(organizationId)}/${modelId}/simulations/${simulationId}/analysis/export${compareTo ? `?compare_to=${compareTo}` : ""}`, "analysis.xlsx");

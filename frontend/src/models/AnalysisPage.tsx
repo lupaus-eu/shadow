@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { useOrganization } from "../shell/organization-outlet";
 import { Alert, Badge, Button, EmptyState, Field, Select } from "../ui";
-import { decideRecommendation, generateAiAnalysis, generateAnalysis, loadAnalysis, loadSimulations, type Analysis, type Finding, type Recommendation, type RecommendationStatus, type Simulation } from "./client";
+import { decideRecommendation, exportAnalysis, generateAiAnalysis, generateAnalysis, loadAnalysis, loadSimulations, type Analysis, type Finding, type Recommendation, type RecommendationStatus, type Simulation } from "./client";
 import { modelMessages } from "./messages";
 import { useModel } from "./ModelShell";
 
@@ -39,6 +39,9 @@ export function AnalysisPage() {
     try { setAnalysis(await generateAiAnalysis(organizationId, modelId, runId, compareId || null, locale)); setError(null); } catch { setError(text.aiFailed); }
     setBusy(false);
   }
+  async function download() {
+    try { await exportAnalysis(organizationId, modelId, runId, compareId || null); } catch { setError(text.failed); }
+  }
   async function decide(recommendation: Recommendation, status: RecommendationStatus) {
     try {
       const updated = await decideRecommendation(organizationId, modelId, runId, recommendation, status);
@@ -57,6 +60,7 @@ export function AnalysisPage() {
         <Field label={text.chooseRun} className="w-64">{(control) => <Select {...control} value={runId} onChange={(event) => setRunId(event.target.value)}>{(runs ?? []).map((run) => <option key={run.id} value={run.id}>{run.name}</option>)}</Select>}</Field>
         <Field label={text.compareTo} className="w-64">{(control) => <Select {...control} value={compareId} onChange={(event) => setCompareId(event.target.value)}><option value="">{text.noComparison}</option>{(runs ?? []).filter((run) => run.id !== runId).map((run) => <option key={run.id} value={run.id}>{run.name}</option>)}</Select>}</Field>
         {writable && runId ? <Button variant="primary" onClick={() => void generate()}>{text.generate}</Button> : null}
+        {runId ? <Button onClick={() => void download()}>{text.exportAnalysis}</Button> : null}
         {writable && runId && analysis?.ai_available ? <Button disabled={busy} onClick={() => void askAi()}>{text.askAi}</Button> : null}
       </div>
       {error ? <Alert tone="danger" role="alert">{error}</Alert> : null}
