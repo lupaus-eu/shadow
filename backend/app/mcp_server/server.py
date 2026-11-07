@@ -11,6 +11,7 @@ from starlette.applications import Starlette
 
 from app.mcp_server.runtime import ToolRuntime
 from app.mcp_server.settings import McpSettings
+from app.mcp_server.model_tools import register_model_tools
 from app.mcp_server.tools import register_read_tools, register_write_tools
 from app.mcp_server.verifier import AuthentikTokenVerifier
 
@@ -42,6 +43,7 @@ def create_mcp_app(
     runtime = ToolRuntime(session_factory, settings)
     register_read_tools(server, runtime)
     register_write_tools(server, runtime)
+    register_model_tools(server, runtime)
     return server.streamable_http_app(
         streamable_http_path=resource.path or "/mcp",
         stateless_http=True,

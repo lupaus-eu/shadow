@@ -51,7 +51,7 @@ def rpc(client: TestClient, bearer: str | None, method: str, params: dict | None
     return client.post("/api/mcp", headers=headers, json={"jsonrpc": "2.0", "id": 1, "method": method, "params": params or {}})
 
 
-def call(client: TestClient, bearer: str, name: str, **arguments) -> tuple[bool, dict | str]:
+def call(client: TestClient, bearer: str, name: str, /, **arguments) -> tuple[bool, dict | str]:
     """(is_error, result): the structured result, or the error text."""
     response = rpc(client, bearer, "tools/call", {"name": name, "arguments": {key: str(value) if not isinstance(value, (list, dict, bool, int, type(None))) else value for key, value in arguments.items()}})
     assert response.status_code == 200, response.text
@@ -239,3 +239,33 @@ def test_the_operator_block_cannot_be_lifted_by_the_organization(database_url: s
     assert page["platform_blocked"] is True
     assert not restored_error
     assert len(audit_rows(app, organization_id, "platform.mcp_blocked")) == 1 and len(audit_rows(app, organization_id, "platform.mcp_unblocked")) == 1
+
+
+def test_agents_work_with_models_through_the_same_rules(database_url: str) -> None:
+    application, verifier = make_app(database_url, "mcp-models")
+    with TestClient(application) as owner:
+        login(owner)
+        organization_id = active_org(owner, verifier)
+        bearer = token("mcp-models")
+        names = {tool["name"] for tool in rpc(owner, bearer, "tools/list").json()["result"]["tools"]}
+        assert {"create_model", "get_model", "run_simulation", "generate_analysis", "set_metric_values"} <= names
+        _, created = call(owner, bearer, "create_model", organization_id=organization_id, name="Agent twin")
+        model_id = created["result"]["id"]
+        _, graph = call(owner, bearer, "get_model", organization_id=organization_id, model_id=model_id)
+        version_id = graph["result"]["version"]["id"]
+        types = {item["key"]: item["id"] for item in graph["result"]["node_types"]}
+        failed, message = call(owner, bearer, "create_node", organization_id=organization_id, model_id=model_id, node_type_id=types["product"], name="  ")
+        assert failed and "name" in message
+        ok, node = call(owner, bearer, "create_node", organization_id=organization_id, model_id=model_id, node_type_id=types["product"], name="App")
+        assert not ok and node["result"]["name"] == "App"
+        _, metric = call(owner, bearer, "create_metric", organization_id=organization_id, model_id=model_id, version_id=version_id, key="revenue", name="Revenue")
+        values = [{"period": f"2025-{month:02d}-01", "value": 100 + month * 10} for month in range(1, 13)]
+        assert not call(owner, bearer, "set_metric_values", organization_id=organization_id, model_id=model_id, version_id=version_id, metric_id=metric["result"]["id"], values=values)[0]
+        _, run = call(owner, bearer, "run_simulation", organization_id=organization_id, model_id=model_id, version_id=version_id, name="Plan", horizon_months=6)
+        simulation_id = run["result"]["simulation"]["id"]
+        _, analysis = call(owner, bearer, "generate_analysis", organization_id=organization_id, model_id=model_id, simulation_id=simulation_id)
+        assert analysis["result"]["findings"]
+        _, series = call(owner, bearer, "get_metric_series", organization_id=organization_id, model_id=model_id, version_id=version_id, metric_id=metric["result"]["id"])
+        assert len(series["result"]["points"]) == 12
+    audit = audit_rows(application, organization_id, "node.created")
+    assert len(audit) == 1 and audit[0]["source"] == "mcp" and audit[0]["name"] == "App"

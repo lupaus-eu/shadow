@@ -1,0 +1,143 @@
+"""Model tools for agents: models, versions, metrics, simulations and analysis.
+
+Each tool calls the same endpoint function the REST API serves, so the rules, the roles, the
+read-only subscription block and the audit entries are the REST API's own. The endpoint
+functions are taken from the routers, not copied.
+"""
+
+from collections.abc import Callable
+from types import SimpleNamespace
+from typing import Any
+from uuid import UUID
+
+from fastapi import APIRouter
+from mcp.server.mcpserver.exceptions import ToolError
+from mcp.server.mcpserver import MCPServer
+from pydantic import BaseModel, ValidationError
+
+from app.analysis_routes import create_analysis_router
+from app.mcp_server.runtime import ToolRuntime
+from app.mcp_server.tools import READ_ONLY, UNTRUSTED, WRITES
+from app.metric_routes import MetricRequest, ValuesRequest, create_metric_router
+from app.model_routes import ConnectionRequest, ModelRequest, NodeRequest, create_model_router
+from app.simulation_routes import SimulationRequest, create_simulation_router
+from app.version_routes import VersionRequest, create_version_router
+
+REQUEST = SimpleNamespace(headers={})  # the audit entry takes only a request id from it
+
+
+def _endpoints(router: APIRouter) -> dict[str, Callable[..., Any]]:
+    return {route.name: route.endpoint for route in router.routes}  # type: ignore[attr-defined]
+
+
+def _body(model: type[BaseModel], data: dict) -> BaseModel:
+    try:
+        return model.model_validate(data)
+    except ValidationError as error:
+        raise ToolError("Invalid input: " + "; ".join(f"{'.'.join(map(str, item['loc']))}: {item['msg']}" for item in error.errors())) from None
+
+
+def register_model_tools(server: MCPServer, runtime: ToolRuntime) -> None:
+    factory = runtime.session_factory
+
+    def dependency():  # never called: the tools pass the signed-in person themselves
+        raise RuntimeError
+
+    models = _endpoints(create_model_router(session_factory=factory, authenticated_user_dependency=dependency))
+    versions = _endpoints(create_version_router(session_factory=factory, authenticated_user_dependency=dependency))
+    metrics = _endpoints(create_metric_router(session_factory=factory, authenticated_user_dependency=dependency))
+    simulations = _endpoints(create_simulation_router(session_factory=factory, authenticated_user_dependency=dependency))
+    analysis = _endpoints(create_analysis_router(session_factory=factory, authenticated_user_dependency=dependency))
+
+    async def read(organization_id: UUID, function: Callable[..., Any], **arguments: Any) -> dict:
+        result = await runtime.call(lambda user: function(organization_id=organization_id, user=user, **arguments), organization_id=organization_id)
+        return {"result": result, "notice": UNTRUSTED}
+
+    async def write(organization_id: UUID, function: Callable[..., Any], **arguments: Any) -> dict:
+        result = await runtime.call(lambda user: function(organization_id=organization_id, user=user, request=REQUEST, **arguments), organization_id=organization_id)
+        return {"result": result, "notice": UNTRUSTED}
+
+    @server.tool(title="List models", annotations=READ_ONLY)
+    async def list_models(organization_id: UUID) -> dict:
+        """List the digital-twin models of an Organization."""
+        return await read(organization_id, models["list_models"])
+
+    @server.tool(title="Get a model graph", annotations=READ_ONLY)
+    async def get_model(organization_id: UUID, model_id: UUID, version_id: UUID | None = None) -> dict:
+        """Get a model's versions, its node and connection types, and the nodes and connections of one version (the baseline unless version_id is given)."""
+        return await read(organization_id, models["read_graph"], model_id=model_id, version_id=version_id)
+
+    @server.tool(title="List the changes of a version", annotations=READ_ONLY)
+    async def get_version_changes(organization_id: UUID, model_id: UUID, version_id: UUID) -> dict:
+        """List the nodes and connections a version added, removed or changed against the version it was forked from."""
+        return await read(organization_id, versions["changes"], model_id=model_id, version_id=version_id)
+
+    @server.tool(title="List the metrics of a version", annotations=READ_ONLY)
+    async def list_metrics(organization_id: UUID, model_id: UUID, version_id: UUID) -> dict:
+        """List the metrics (KPIs) of a version. A derived metric has a formula over other metric keys."""
+        return await read(organization_id, metrics["list_metrics"], model_id=model_id, version_id=version_id)
+
+    @server.tool(title="Get a metric's monthly values", annotations=READ_ONLY)
+    async def get_metric_series(organization_id: UUID, model_id: UUID, version_id: UUID, metric_id: UUID) -> dict:
+        """Get the monthly values of a metric (derived metrics are calculated). Periods are first-of-month dates."""
+        return await read(organization_id, metrics["read_series"], model_id=model_id, version_id=version_id, metric_id=metric_id)
+
+    @server.tool(title="List simulations", annotations=READ_ONLY)
+    async def list_simulations(organization_id: UUID, model_id: UUID, version_id: UUID) -> dict:
+        """List the forecast simulations that were run on a version."""
+        return await read(organization_id, simulations["list_simulations"], model_id=model_id, version_id=version_id)
+
+    @server.tool(title="Get a simulation result", annotations=READ_ONLY)
+    async def get_simulation(organization_id: UUID, model_id: UUID, version_id: UUID, simulation_id: UUID) -> dict:
+        """Get a simulation's history, forecast and 95% bands per metric."""
+        return await read(organization_id, simulations["read"], model_id=model_id, version_id=version_id, simulation_id=simulation_id)
+
+    @server.tool(title="Get the analysis of a simulation", annotations=READ_ONLY)
+    async def get_analysis(organization_id: UUID, model_id: UUID, simulation_id: UUID, compare_to: UUID | None = None) -> dict:
+        """Get the findings of a simulation and the stored action proposals (optionally compared with another simulation)."""
+        return await read(organization_id, analysis["read"], model_id=model_id, simulation_id=simulation_id, compare_to=compare_to)
+
+    @server.tool(title="Create a model", annotations=WRITES)
+    async def create_model(organization_id: UUID, name: str, description: str | None = None) -> dict:
+        """Create a model with the default node and connection types and an empty baseline. Owner or Admin only."""
+        return await write(organization_id, models["create_model"], body=_body(ModelRequest, {"name": name, "description": description}))
+
+    @server.tool(title="Add a node", annotations=WRITES)
+    async def create_node(organization_id: UUID, model_id: UUID, node_type_id: UUID, name: str, version_id: UUID | None = None, description: str | None = None, x: float = 0, y: float = 0) -> dict:
+        """Add a node to a version (the baseline unless version_id is given). Use a node_type_id from get_model."""
+        body = _body(NodeRequest, {"version_id": version_id, "node_type_id": node_type_id, "name": name, "description": description, "x": x, "y": y})
+        return await write(organization_id, models["create_node"], model_id=model_id, body=body)
+
+    @server.tool(title="Connect two nodes", annotations=WRITES)
+    async def create_connection(organization_id: UUID, model_id: UUID, connection_type_id: UUID, source_node_id: UUID, target_node_id: UUID) -> dict:
+        """Connect two nodes of the same version. The model's metamodel must allow the connection type between their node types."""
+        body = _body(ConnectionRequest, {"connection_type_id": connection_type_id, "source_node_id": source_node_id, "target_node_id": target_node_id})
+        return await write(organization_id, models["create_connection"], model_id=model_id, body=body)
+
+    @server.tool(title="Create a version", annotations=WRITES)
+    async def create_version(organization_id: UUID, model_id: UUID, name: str, base_version_id: UUID | None = None, description: str | None = None) -> dict:
+        """Fork a version (the baseline unless base_version_id is given): the new version copies the graph and the metrics."""
+        body = _body(VersionRequest, {"name": name, "description": description, "base_version_id": base_version_id})
+        return await write(organization_id, versions["create_version"], model_id=model_id, body=body)
+
+    @server.tool(title="Create a metric", annotations=WRITES)
+    async def create_metric(organization_id: UUID, model_id: UUID, version_id: UUID, key: str, name: str, unit: str | None = None, formula: str | None = None, node_id: UUID | None = None) -> dict:
+        """Create a metric. key is lower-case letters, digits and underscores; give a formula over other metric keys for a derived metric."""
+        body = _body(MetricRequest, {"key": key, "name": name, "unit": unit, "formula": formula, "node_id": node_id})
+        return await write(organization_id, metrics["create_metric"], model_id=model_id, version_id=version_id, body=body)
+
+    @server.tool(title="Set monthly values of a metric", annotations=WRITES)
+    async def set_metric_values(organization_id: UUID, model_id: UUID, version_id: UUID, metric_id: UUID, values: list[dict]) -> dict:
+        """Set monthly values of an input metric. values is a list of {"period": "YYYY-MM-01", "value": number}; a null value clears the month."""
+        return await write(organization_id, metrics["write_values"], model_id=model_id, version_id=version_id, metric_id=metric_id, body=_body(ValuesRequest, {"values": values}))
+
+    @server.tool(title="Run a simulation", annotations=WRITES)
+    async def run_simulation(organization_id: UUID, model_id: UUID, version_id: UUID, name: str, method: str = "linear", horizon_months: int = 12, adjustments: list[dict] | None = None) -> dict:
+        """Forecast the metrics of a version. adjustments is a list of {"metric_key": ..., "change_pct": ...} what-if changes."""
+        body = _body(SimulationRequest, {"name": name, "method": method, "horizon_months": horizon_months, "adjustments": adjustments or []})
+        return await write(organization_id, simulations["run"], model_id=model_id, version_id=version_id, body=body)
+
+    @server.tool(title="Generate the analysis of a simulation", annotations=WRITES)
+    async def generate_analysis(organization_id: UUID, model_id: UUID, simulation_id: UUID, compare_to: UUID | None = None) -> dict:
+        """Generate the findings and action proposals of a simulation. Decisions already taken on proposals are kept."""
+        return await write(organization_id, analysis["generate"], model_id=model_id, simulation_id=simulation_id, compare_to=compare_to)
