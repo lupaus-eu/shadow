@@ -67,3 +67,62 @@ def test_the_analysis_has_a_summary_slot_and_no_llm_route(database_url: str, sta
     assert body["summary"] is None and body["summary_at"] is None and body["summary_author"] is None
     assert not [key for key in body if key.startswith("ai_")]
     assert owner.post(f"{api}/analysis/ai", json={}).status_code in (404, 405)
+
+
+def test_a_person_writes_a_summary_and_one_proposal_per_metric(database_url: str, stack: ExitStack) -> None:
+    owner, path, sims = _world(stack, database_url, "analysis-write")
+    run = owner.post(sims, json={"name": "Trend", "horizon_months": 12}).json()["simulation"]["id"]
+    api = f"{path}/simulations/{run}"
+    summary = owner.put(f"{api}/analysis/summary", json={"text": "  Revenue falls.  "})
+    assert summary.status_code == 200 and summary.json()["summary"] == "Revenue falls." and summary.json()["summary_author"] and summary.json()["summary_at"]
+    assert not summary.json()["summary_author"].startswith("agent:")
+    assert owner.put(f"{api}/analysis/summary", json={"text": ""}).status_code == 422
+    assert owner.put(f"{api}/analysis/summary", json={"text": "x" * 4001}).status_code == 422
+    body = {"title": "Protect revenue", "rationale": "Down 18 %.", "severity": "high"}
+    first = owner.put(f"{api}/analysis/proposals/revenue", json=body)
+    assert first.status_code == 200 and first.json()["kind"] == "agent" and first.json()["status"] == "proposed"
+    assert owner.put(f"{api}/analysis/proposals/ghost", json=body).status_code == 404
+    assert owner.put(f"{api}/analysis/proposals/revenue", json={**body, "severity": "urgent"}).status_code == 422
+    assert owner.put(f"{api}/analysis/proposals/revenue", json={**body, "title": ""}).status_code == 422
+    # a decision survives regenerating the rules; a repeat replaces the proposal and asks for a new decision
+    owner.patch(f"{api}/recommendations/{first.json()['id']}", json={"status": "accepted", "expected_version": 1})
+    owner.post(f"{api}/analysis")
+    kept = [r for r in owner.get(f"{api}/analysis").json()["recommendations"] if r["kind"] == "agent"]
+    assert len(kept) == 1 and kept[0]["status"] == "accepted" and kept[0]["title"] == "Protect revenue"
+    again = owner.put(f"{api}/analysis/proposals/revenue", json={**body, "title": "Changed"}).json()
+    assert again["id"] == first.json()["id"] and again["title"] == "Changed" and again["status"] == "proposed" and again["version"] == 3
+    assert len([r for r in owner.get(f"{api}/analysis").json()["recommendations"] if r["kind"] == "agent"]) == 1
+    workbook = owner.get(f"{api}/analysis/export")
+    assert workbook.status_code == 200
+    from io import BytesIO
+
+    from openpyxl import load_workbook
+
+    book = load_workbook(BytesIO(workbook.content))
+    rows = {row[0]: row[1] for row in book["Summary"].iter_rows(values_only=True) if row[0]}
+    assert rows["Summary"] == "Revenue falls." and rows["Summary written by"]
+    assert "agent" in [row[2] for row in book["Proposals"].iter_rows(values_only=True)]
+
+
+def test_the_writing_routes_audit_without_text(database_url: str, stack: ExitStack) -> None:
+    from sqlalchemy import text
+
+    from test_models_graph import _tenant  # noqa: F401
+
+    application, owner, organization_id, base = _tenant(stack, database_url, "analysis-audit")
+    from test_models_graph import _graph
+
+    model_id = owner.post(f"{base}/models", json={"name": "Twin"}).json()["id"]
+    path = f"{base}/models/{model_id}"
+    url = f"{path}/versions/{_graph(owner, base, model_id)['version']['id']}/metrics"
+    metric = owner.post(url, json={"key": "revenue", "name": "Revenue"}).json()
+    _values(owner, url, metric["id"], [(f"2025-{m:02d}-01", 100 + m) for m in range(1, 13)])
+    run = owner.post(f"{url.replace('/metrics', '')}/simulations", json={"name": "Trend", "horizon_months": 6}).json()["simulation"]["id"]
+    api = f"{path}/simulations/{run}"
+    owner.put(f"{api}/analysis/summary", json={"text": "DISTINCTIVE-SUMMARY-TEXT"})
+    owner.put(f"{api}/analysis/proposals/revenue", json={"title": "DISTINCTIVE-TITLE", "rationale": "r", "severity": "low"})
+    with application.state.database_engine.connect() as connection:
+        rows = connection.execute(text("SELECT action, change_summary::text FROM audit_events WHERE organization_id = :org AND action LIKE 'analysis.%'"), {"org": organization_id}).all()
+    actions = {row[0] for row in rows}
+    assert {"analysis.summary_set", "analysis.proposal_set"} <= actions
+    assert not any("DISTINCTIVE" in row[1] for row in rows)

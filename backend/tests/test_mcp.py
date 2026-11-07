@@ -269,3 +269,38 @@ def test_agents_work_with_models_through_the_same_rules(database_url: str) -> No
         assert len(series["result"]["points"]) == 12
     audit = audit_rows(application, organization_id, "node.created")
     assert len(audit) == 1 and audit[0]["source"] == "mcp" and audit[0]["name"] == "App"
+
+
+def test_agents_write_a_summary_and_proposals_under_their_own_label(database_url: str) -> None:
+    application, verifier = make_app(database_url, "mcp-analysis")
+    with TestClient(application) as owner:
+        login(owner)
+        organization_id = active_org(owner, verifier)
+        bearer = token("mcp-analysis")
+        names = {tool["name"] for tool in rpc(owner, bearer, "tools/list").json()["result"]["tools"]}
+        assert {"set_analysis_summary", "add_proposal"} <= names
+        _, created = call(owner, bearer, "create_model", organization_id=organization_id, name="Agent twin")
+        model_id = created["result"]["id"]
+        _, graph = call(owner, bearer, "get_model", organization_id=organization_id, model_id=model_id)
+        version_id = graph["result"]["version"]["id"]
+        _, metric = call(owner, bearer, "create_metric", organization_id=organization_id, model_id=model_id, version_id=version_id, key="revenue", name="Revenue")
+        values = [{"period": f"2025-{month:02d}-01", "value": 100 - month * 3} for month in range(1, 13)]
+        call(owner, bearer, "set_metric_values", organization_id=organization_id, model_id=model_id, version_id=version_id, metric_id=metric["result"]["id"], values=values)
+        _, run = call(owner, bearer, "run_simulation", organization_id=organization_id, model_id=model_id, version_id=version_id, name="Plan", horizon_months=6)
+        simulation_id = run["result"]["simulation"]["id"]
+        failed, _ = call(owner, bearer, "set_analysis_summary", organization_id=organization_id, model_id=model_id, simulation_id=simulation_id, text="")
+        assert failed
+        failed, message = call(owner, bearer, "add_proposal", organization_id=organization_id, model_id=model_id, simulation_id=simulation_id, metric_key="ghost", title="t", rationale="r")
+        assert failed and "404" in message
+        failed, _ = call(owner, bearer, "add_proposal", organization_id=organization_id, model_id=model_id, simulation_id=simulation_id, metric_key="revenue", title="t", rationale="r", severity="urgent")
+        assert failed
+        ok, summary = call(owner, bearer, "set_analysis_summary", organization_id=organization_id, model_id=model_id, simulation_id=simulation_id, text="Revenue falls.")
+        assert not ok and summary["result"]["summary"] == "Revenue falls." and summary["result"]["summary_author"] == f"agent:{SETTINGS.client_id}"
+        ok, proposal = call(owner, bearer, "add_proposal", organization_id=organization_id, model_id=model_id, simulation_id=simulation_id, metric_key="revenue", title="Protect revenue", rationale="Down.", severity="high")
+        assert not ok and proposal["result"]["kind"] == "agent"
+        _, read = call(owner, bearer, "get_analysis", organization_id=organization_id, model_id=model_id, simulation_id=simulation_id)
+        assert read["result"]["summary_author"] == f"agent:{SETTINGS.client_id}"
+        assert [(item["kind"], item["metric_key"]) for item in read["result"]["recommendations"]] == [("agent", "revenue")]
+    audit = audit_rows(application, organization_id, "analysis.summary_set")
+    assert len(audit) == 1 and audit[0]["source"] == "mcp" and "Revenue falls." not in json.dumps(audit)
+    assert len(audit_rows(application, organization_id, "analysis.proposal_set")) == 1

@@ -275,15 +275,16 @@ history applies per method, 12 months for Prophet and 24 for seasonal), `GET`
 and `DELETE` `/{simulation_id}` read with history, forecast, and bands, or
 delete.
 
-## Analysis (ADR-0044)
+## Analysis (ADR-0044, ADR-0047)
 
 Under `.../models/{model_id}/simulations/{simulation_id}/analysis`.
 
 | Method and path | Purpose |
 | --- | --- |
-| `GET` | Findings, proposals, `ai_available`, `ai_summary`, `ai_generated_at` |
+| `GET` | Findings, proposals, and the agent- or person-written `summary`, `summary_at`, `summary_author` (`agent:<client>` when written through MCP) |
 | `POST` | Generate rule-based findings and proposals; decided proposals persist |
-| `POST` `/ai` | Ask the Anthropic API for a summary and proposals (`kind="ai"`). Answers 503 when `ANTHROPIC_API_KEY` is not set. The call runs outside the database transaction |
+| `PUT` `/summary` | Set the summary `{text}` (1–4000 characters); audit `analysis.summary_set` without the text |
+| `PUT` `/proposals/{metric_key}` | Create or replace the one `agent` proposal of a metric `{title, rationale, severity}`; a replaced proposal goes back to `proposed`; audit `analysis.proposal_set`. Rule regeneration never touches `agent` proposals |
 | `GET` `/export` | Excel workbook with Summary, Findings, Proposals, and Forecast sheets |
 | `PATCH` `.../recommendations/{recommendation_id}` | Accept or dismiss a proposal |
 
@@ -420,9 +421,10 @@ Protocol. The endpoint is off unless `MCP_ENABLED=true`.
   - Reads: `list_models`, `get_model` (nodes, connections, metamodel), `get_version_changes`,
     `list_metrics`, `get_metric_series`, `list_simulations`, `get_simulation`, `get_analysis`.
   - Writes: `create_model`, `create_node`, `create_connection`, `create_version`,
-    `create_metric`, `set_metric_values`, `run_simulation`, `generate_analysis`, and
+    `create_metric`, `set_metric_values`, `run_simulation`, `generate_analysis`,
+    `set_analysis_summary`, `add_proposal` (the agent's own analysis, ADR-0047), and
     `merge_version` (Owner or Admin; marked destructive).
-  - There are no delete tools and no AI-analysis tool; metamodel editing, import, and
+  - There are no delete tools; Shadow itself calls no model (ADR-0047); metamodel editing, import, and
     export stay in the web application (ADR-0046).
   Tools call the same endpoint functions as the REST API, so roles, `expected_version`,
   the read-only state, and audit are identical. Writes are saved at once and carry the MCP

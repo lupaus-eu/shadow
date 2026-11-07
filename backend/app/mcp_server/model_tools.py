@@ -15,7 +15,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 from mcp.server.mcpserver import MCPServer
 from pydantic import BaseModel, ValidationError
 
-from app.analysis_routes import create_analysis_router
+from app.analysis_routes import ProposalRequest, SummaryRequest, create_analysis_router
 from app.mcp_server.runtime import ToolRuntime
 from app.mcp_server.tools import DELETES, READ_ONLY, UNTRUSTED, WRITES
 from app.metric_routes import MetricRequest, ValuesRequest, create_metric_router
@@ -141,6 +141,16 @@ def register_model_tools(server: MCPServer, runtime: ToolRuntime) -> None:
     async def generate_analysis(organization_id: UUID, model_id: UUID, simulation_id: UUID, compare_to: UUID | None = None) -> dict:
         """Generate the findings and action proposals of a simulation. Decisions already taken on proposals are kept."""
         return await write(organization_id, analysis["generate"], model_id=model_id, simulation_id=simulation_id, compare_to=compare_to)
+
+    @server.tool(title="Write the summary of a simulation's analysis", annotations=WRITES)
+    async def set_analysis_summary(organization_id: UUID, model_id: UUID, simulation_id: UUID, text: str) -> dict:
+        """Store your own written summary (1-4000 characters, plain text) of a simulation's analysis; it replaces the previous summary and is shown to the Organization labelled as written by an agent. Base it on get_analysis and get_simulation."""
+        return await write(organization_id, analysis["set_summary"], model_id=model_id, simulation_id=simulation_id, body=_body(SummaryRequest, {"text": text}))
+
+    @server.tool(title="Add an action proposal to an analysis", annotations=WRITES)
+    async def add_proposal(organization_id: UUID, model_id: UUID, simulation_id: UUID, metric_key: str, title: str, rationale: str, severity: str = "medium") -> dict:
+        """Propose one action for a metric of a simulation (metric_key as in get_analysis findings; severity high, medium or low; title up to 200 and rationale up to 1500 characters, citing the figures it rests on). One agent proposal exists per metric: repeating the call replaces it and puts it back to 'proposed' for a new decision. People accept or dismiss proposals in the web application."""
+        return await write(organization_id, analysis["set_proposal"], model_id=model_id, simulation_id=simulation_id, metric_key=metric_key, body=_body(ProposalRequest, {"title": title, "rationale": rationale, "severity": severity}))
 
     @server.tool(title="Merge a version into its base", annotations=DELETES)
     async def merge_version(organization_id: UUID, model_id: UUID, version_id: UUID, expected_version: int) -> dict:

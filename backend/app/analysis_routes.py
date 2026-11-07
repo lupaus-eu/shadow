@@ -6,17 +6,18 @@ dismissed ones are kept as they are. ``compare_to`` names a second simulation of
 (for example one of the baseline) that the findings are compared against.
 """
 
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 from uuid import uuid4
 
 from app.analysis import analyze
+from app.audit import current_source
 from app.auth import AuthenticatedUser
 from app.auth_routes import AuthenticatedUserDependency
 from app.model_routes import _audit, _editor_session, _member_session, _model, _stale
@@ -60,6 +61,24 @@ class AnalysisResponse(BaseModel):
     compared_to: SimulationResponse | None
     findings: list[FindingResponse]
     recommendations: list[RecommendationResponse]
+
+
+class SummaryRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=4000)
+
+
+class ProposalRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    rationale: str = Field(min_length=1, max_length=1500)
+    severity: Literal["high", "medium", "low"]
+
+
+def _author(user: AuthenticatedUser) -> str:
+    """The person, or the agent program acting for them when the call came through MCP."""
+    source = current_source()
+    if source and source.get("source") == "mcp":
+        return f"agent:{source.get('mcp_client') or 'unknown'}"[:200]
+    return user.account.display_name
 
 
 class StatusUpdate(BaseModel):
@@ -131,6 +150,36 @@ def create_analysis_router(*, session_factory: sessionmaker[Session], authentica
             session.flush()
             _audit(session, request, "analysis.generated", "simulation", simulation.id, {"proposals": len(wanted)})
             return _response_of(session, simulation, other, analysis)
+
+    @router.put(base + "/analysis/summary", response_model=AnalysisResponse)
+    def set_summary(organization_id: UUID, model_id: UUID, simulation_id: UUID, body: SummaryRequest, request: Request, user: AuthenticatedUser = Depends(authenticated_user_dependency)) -> AnalysisResponse:
+        with _editor_session(session_factory, organization_id, user) as session:
+            _model(session, organization_id, model_id)
+            simulation = _simulation(session, model_id, simulation_id)
+            simulation.analysis_summary = body.text.strip()
+            simulation.analysis_summary_at = datetime.now(UTC)
+            simulation.analysis_summary_author = _author(user)
+            session.flush()
+            _audit(session, request, "analysis.summary_set", "simulation", simulation.id, {"characters": len(simulation.analysis_summary)})
+            return _response_of(session, simulation, None, _build(session, simulation, None))
+
+    @router.put(base + "/analysis/proposals/{metric_key}", response_model=RecommendationResponse)
+    def set_proposal(organization_id: UUID, model_id: UUID, simulation_id: UUID, metric_key: str, body: ProposalRequest, request: Request, user: AuthenticatedUser = Depends(authenticated_user_dependency)) -> RecommendationResponse:
+        with _editor_session(session_factory, organization_id, user) as session:
+            _model(session, organization_id, model_id)
+            simulation = _simulation(session, model_id, simulation_id)
+            if metric_key not in {item.key for item in _build(session, simulation, None).findings}:
+                raise HTTPException(status_code=404, detail="Metric not found in this simulation")
+            row = session.scalar(select(Recommendation).where(Recommendation.simulation_id == simulation.id, Recommendation.kind == AGENT_KIND, Recommendation.metric_key == metric_key).with_for_update())
+            if row is None:
+                row = Recommendation(id=uuid4(), organization_id=organization_id, simulation_id=simulation.id, kind=AGENT_KIND, metric_key=metric_key, severity=body.severity, title=body.title.strip(), rationale=body.rationale.strip(), version=1)
+                session.add(row)
+            else:  # new text needs a new decision
+                row.severity, row.title, row.rationale = body.severity, body.title.strip(), body.rationale.strip()
+                row.status, row.version = "proposed", row.version + 1
+            session.flush()
+            _audit(session, request, "analysis.proposal_set", "recommendation", row.id, {"metric": metric_key, "severity": body.severity})
+            return RecommendationResponse.model_validate(row, from_attributes=True)
 
     @router.patch(base + "/recommendations/{recommendation_id}", response_model=RecommendationResponse)
     def decide(organization_id: UUID, model_id: UUID, simulation_id: UUID, recommendation_id: UUID, body: StatusUpdate, request: Request, user: AuthenticatedUser = Depends(authenticated_user_dependency)) -> RecommendationResponse:
