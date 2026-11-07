@@ -31,7 +31,7 @@ class Adjustment(BaseModel):
 
 class SimulationRequest(BaseModel):
     name: str = Field(min_length=1, max_length=120)
-    method: Literal["linear", "seasonal", "holt"] = "linear"
+    method: Literal["linear", "seasonal", "holt", "prophet"] = "linear"
     horizon_months: int = Field(default=12, ge=1, le=60)
     adjustments: list[Adjustment] = Field(default_factory=list, max_length=100)
 

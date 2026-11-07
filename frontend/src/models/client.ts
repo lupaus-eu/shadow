@@ -121,7 +121,7 @@ export async function saveValues(organizationId: string, modelId: string, versio
   return (await call(`${metricsUrl(organizationId, modelId, versionId)}/${metricId}/values`, { method: "PUT", ...json({ values }) })).json();
 }
 
-export type SimulationMethod = "linear" | "seasonal" | "holt";
+export type SimulationMethod = "linear" | "seasonal" | "holt" | "prophet";
 export type Adjustment = { metric_key: string; change_pct: number };
 export type Simulation = { id: string; version_id: string; name: string; method: SimulationMethod; horizon_months: number; adjustments: Adjustment[]; skipped: Record<string, string>; history_end: string | null; created_at: string };
 export type ForecastPoint = { period: string; value: number; lower: number | null; upper: number | null };

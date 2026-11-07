@@ -1,9 +1,10 @@
 """Statistical forecasts of monthly series (no external dependencies).
 
-Three methods: ``linear`` (least-squares trend), ``seasonal`` (trend plus an average
-month-of-year effect, from 24 months of history) and ``holt`` (double exponential
-smoothing, parameters chosen by one-step error). Each returns point forecasts with an
-approximate 95% prediction interval.
+Four methods: ``linear`` (least-squares trend), ``seasonal`` (trend plus an average
+month-of-year effect, from 24 months of history), ``holt`` (double exponential
+smoothing, parameters chosen by one-step error) and ``prophet`` (Prophet's trend and yearly
+seasonality model, from 12 months of history). Each returns point forecasts with a
+95% prediction interval.
 """
 
 import math
@@ -12,8 +13,8 @@ from datetime import date
 
 from app.metric_engine import add_months
 
-METHODS = ("linear", "seasonal", "holt")
-MIN_HISTORY = {"linear": 3, "seasonal": 24, "holt": 4}
+METHODS = ("linear", "seasonal", "holt", "prophet")
+MIN_HISTORY = {"linear": 3, "seasonal": 24, "holt": 4, "prophet": 12}
 Z95 = 1.96
 
 
@@ -74,6 +75,8 @@ def forecast(series: dict[date, float], method: str, until: date) -> list[Foreca
     months = (until.year - last.year) * 12 + until.month - last.month
     if months <= 0:
         return []
+    if method == "prophet":
+        return _prophet(first, values, last, months)
     points: list[ForecastPoint] = []
     if method in ("linear", "seasonal"):
         intercept, slope, sxx = _linear_fit(values)
@@ -117,3 +120,19 @@ def forecast(series: dict[date, float], method: str, until: date) -> list[Foreca
         width = Z95 * sigma * math.sqrt(h)
         points.append(ForecastPoint(add_months(last, h), value, value - width, value + width))
     return points
+
+
+def _prophet(first: date, values: list[float], last: date, months: int) -> list[ForecastPoint]:
+    """Prophet is imported on first use: loading it (pandas, Stan) is slow and most runs do not need it."""
+    import logging
+
+    import pandas
+    from prophet import Prophet
+
+    for name in ("cmdstanpy", "prophet"):
+        logging.getLogger(name).setLevel(logging.WARNING)
+    history = pandas.DataFrame({"ds": pandas.to_datetime([add_months(first, t) for t in range(len(values))]), "y": values})
+    model = Prophet(interval_width=0.95, daily_seasonality=False, weekly_seasonality=False, yearly_seasonality=len(values) >= 24)
+    model.fit(history)
+    predicted = model.predict(model.make_future_dataframe(periods=months, freq="MS")).tail(months)
+    return [ForecastPoint(add_months(last, h), float(row.yhat), float(row.yhat_lower), float(row.yhat_upper)) for h, row in enumerate(predicted.itertuples(), start=1)]

@@ -38,6 +38,14 @@ def test_seasonal_forecast_repeats_the_yearly_shape_and_holt_extends_the_trend()
         forecast(_series(2), "linear", date(2026, 1, 1))
 
 
+def test_prophet_forecasts_with_a_band_and_needs_a_year_of_history() -> None:
+    points = forecast(_series(24), "prophet", date(2026, 6, 1))
+    assert len(points) == 6 and all(p.lower <= p.value <= p.upper for p in points)
+    assert points[-1].value > points[0].value  # the rising trend continues
+    with pytest.raises(InsufficientHistory):
+        forecast(_series(8), "prophet", date(2025, 12, 1))
+
+
 def test_gaps_are_interpolated() -> None:
     series = _series(10)
     del series[date(2024, 4, 1)]
