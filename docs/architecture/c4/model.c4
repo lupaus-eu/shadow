@@ -89,8 +89,8 @@ model {
         description 'Forecast methods linear, seasonal, Holt and Prophet (ADR-0042) with bands, what-if adjustments, and derived metrics.'
       }
       analysis = component 'Analysis' {
-        technology 'analysis, analysis_routes, ai'
-        description 'Findings and action proposals from rules, plus the optional AI analysis through the Anthropic API, run outside the database transaction (ADR-0044).'
+        technology 'analysis, analysis_routes'
+        description 'Findings and action proposals from rules, plus the summary and proposals an agent writes through MCP (ADR-0047). Calls no model.'
       }
       metricIo = component 'Import and export' {
         technology 'metric_io, metric_io_routes'
@@ -102,7 +102,7 @@ model {
       }
       mcp = component 'MCP interface' {
         technology 'mcp_server/server, mcp_server/model_tools, mcp_routes (official Python MCP SDK)'
-        description 'Streamable HTTP endpoint at /api/mcp for the person\'s own agents (ADR-0037). Verifies Authentik access tokens (audience = the MCP provider\'s client id, ADR-0038), resolves the customer account, and calls the same functions as the REST API, so the same access rules apply. Organization tools plus tools for models, versions, metrics, simulations, analysis, and merging (model_tools; ADR-0046). Read and write tools; each change is audited as made through MCP. Two switches stop it per Organization (Owners and Admins; the operator).'
+        description 'Streamable HTTP endpoint at /api/mcp for the person\'s own agents (ADR-0037). Verifies Authentik access tokens (audience = the MCP provider\'s client id, ADR-0038), resolves the customer account, and calls the same functions as the REST API, so the same access rules apply. Organization tools plus tools for models, versions, metrics, simulations, analysis, and merging (model_tools; ADR-0046). Read and write tools; each change is audited as made through MCP, and every call is recorded without content for Owners and Admins (ADR-0047). Two switches stop it per Organization (Owners and Admins; the operator).'
       }
       support = component 'Support Access and platform' {
         technology 'support_access_routes, platform_routes, platform_admin, monitoring_routes'
@@ -178,10 +178,6 @@ model {
     #external
     description 'An agent the person chooses (for example Claude with a custom connector). Shadow offers the capability and asks nothing itself: confirmations and tool choices belong to the agent and its user (ADR-0037).'
   }
-  anthropic = externalSystem 'Anthropic API' {
-    #external
-    description 'Optional model provider for AI-assisted analysis; used only when ANTHROPIC_API_KEY is set (ADR-0044).'
-  }
   scaleway = externalSystem 'Scaleway Transactional Email' {
     #external
     description 'Email delivery for Shadow Invitations and Authentik messages (ADR-0023).'
@@ -244,7 +240,7 @@ model {
   shadow.webApp -> shadow.api.models 'models, graph, metamodel, versions' 'HTTPS'
   shadow.webApp -> shadow.api.metrics 'metrics and values' 'HTTPS'
   shadow.webApp -> shadow.api.simulations 'forecasts and simulations' 'HTTPS'
-  shadow.webApp -> shadow.api.analysis 'analysis and AI analysis' 'HTTPS'
+  shadow.webApp -> shadow.api.analysis 'analysis and proposals' 'HTTPS'
   shadow.webApp -> shadow.api.metricIo 'import and export' 'HTTPS'
   shadow.api.models -> shadow.api.accessRule 'authorizes'
   shadow.api.metrics -> shadow.api.accessRule 'authorizes'
@@ -254,11 +250,11 @@ model {
   shadow.api.simulations -> shadow.api.metrics 'reads history, evaluates derived metrics'
   shadow.api.analysis -> shadow.api.simulations 'reads forecasts and findings inputs'
   shadow.api.metricIo -> shadow.api.metrics 'writes imported values, reads series'
-  shadow.api.analysis -> anthropic 'sends metric names and forecast figures when AI analysis is enabled' 'HTTPS, REST'
   shadow.api.mcp -> shadow.api.models 'calls the same functions'
   shadow.api.mcp -> shadow.api.metrics 'calls the same functions'
   shadow.api.mcp -> shadow.api.simulations 'calls the same functions'
-  shadow.api.mcp -> shadow.api.analysis 'calls the same functions'
+  shadow.api.mcp -> shadow.api.analysis 'calls the same functions, including the agents summary and proposals'
+  shadow.api.mcp -> shadow.api.persistence 'records every call without content (mcp_calls)'
   shadow.api.models -> shadow.api.audit 'records'
   shadow.api.metrics -> shadow.api.audit 'records'
   shadow.api.simulations -> shadow.api.audit 'records'

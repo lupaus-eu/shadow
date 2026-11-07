@@ -24,6 +24,10 @@ extra, so use your agent's own confirmation settings, especially for deleting. S
 Event descriptions is passed to the agent as data. If an Owner or Admin turns agent access off,
 your agent stops working for that Organization.
 
+## Asking your agent to analyse a simulation
+
+Shadow calls no AI model itself. To get a written summary and action proposals, connect your own agent (see above) and ask it to analyse a simulation: it reads the model, metrics, simulation and rule-based analysis through MCP, then writes a summary and proposals back. They appear on the analysis page labelled **Agent**, with the agent's name and the date. Check them before acting: you accept or dismiss each proposal yourself. The agent, its provider and its token cost are your responsibility.
+
 ## Billing notices
 
 If the workspace says the Organization is read-only, you can still view every

@@ -25,6 +25,10 @@ its own page with its own address:
 The Organization overview keeps only the Yearclocks, recently opened ones, and
 My groups. A page your role may not open says that the page does not exist.
 
+## Agents and the agent call log
+
+Shadow calls no AI model itself. People connect their own agents under **Connect an agent**; each agent acts with the rights of the person who connected it. The agent, its provider, its token cost and what it does with the data it reads are that person's responsibility. Every agent call, reads included, is recorded without its content (tool, person, agent program, outcome). Open **Activity** and choose **Agent calls** to read the record; only Owners and Admins can. Successful reads are kept for 90 days, writes and refused or failed calls longer. Turning agent access off stops every call for the Organization.
+
 ## Creating an Organization
 
 1. Sign in and choose **Create your organization** (or **Create another

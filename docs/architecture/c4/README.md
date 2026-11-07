@@ -14,13 +14,13 @@ the C4 levels.
 
 | Level | View | Shows |
 | --- | --- | --- |
-| 1 · System context | `index` | Owners and Admins, Members, Platform Operators, Shadow, Authentik, Stripe, Scaleway, Anthropic, AI agents |
+| 1 · System context | `index` | Owners and Admins, Members, Platform Operators, Shadow, Authentik, Stripe, Scaleway, AI agents |
 | 2 · Containers | `containers` | Edge proxy, web application, API, background worker, migration job, Shadow database, and the systems around them |
 | 2 · Containers | `identity` | Authentik's server, worker, and database next to Shadow |
 | 3 · Components | `webAppComponents` | Sign-in shell, Organization workspace, Model workspace, operator console, API clients, localization |
 | 3 · Components | `apiComponents` | Authentication, Organizations, billing, the access rule, models and versions, metrics, forecasts and simulations, analysis, import and export, MCP, Support Access, audit, persistence |
 | 3 · Components | `workerComponents` | Scheduler, job runner, email delivery |
-| Dynamic | `signIn`, `invitation`, `billingWebhook`, `versionMerge`, `aiAnalysis` | Key flows step by step |
+| Dynamic | `signIn`, `invitation`, `billingWebhook`, `versionMerge`, `agentAnalysis` | Key flows step by step |
 | Deployment | `localDeployment`, `productionDeployment` | Where each container runs |
 
 C4 level 4 (code) is not modelled. The source and the database model

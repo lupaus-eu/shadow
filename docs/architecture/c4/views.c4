@@ -13,7 +13,6 @@ views {
       authentik,
       stripe,
       scaleway,
-      anthropic,
       aiAgent
     autoLayout TopBottom
   }
@@ -29,7 +28,6 @@ views {
       authentik,
       stripe,
       scaleway,
-      anthropic,
       aiAgent
     autoLayout TopBottom
   }
@@ -106,13 +104,13 @@ views {
     autoLayout LeftRight
   }
 
-  dynamic view aiAnalysis {
-    title 'Flow · AI analysis of a simulation'
-    organizationMember -> shadow.webApp.modelWorkspace 'presses Analyse with AI'
-    shadow.webApp.modelWorkspace -> shadow.api.analysis 'POST analysis/ai'
-    shadow.api.analysis -> shadow.api.simulations 'reads the stored forecast'
-    shadow.api.analysis -> anthropic 'asks for findings (no database transaction open)'
-    shadow.api.analysis -> shadow.api.persistence 'validates the answer and stores summary and proposals'
+  dynamic view agentAnalysis {
+    title 'Flow · An agent analyses a simulation'
+    organizationMember -> aiAgent 'asks it to analyse a simulation'
+    aiAgent -> shadow.api.mcp 'get_analysis, then set_analysis_summary and add_proposal'
+    shadow.api.mcp -> shadow.api.analysis 'same functions as the web application'
+    shadow.api.analysis -> shadow.api.persistence 'stores summary and proposals with the agent as author'
+    shadow.api.mcp -> shadow.api.persistence 'records the call without content'
     autoLayout LeftRight
   }
 

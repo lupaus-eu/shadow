@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: superseded
 ---
 
 # Run AI analysis through the Anthropic API when enabled
@@ -20,3 +20,5 @@ Action proposals from rules are limited to patterns the code knows. An AI model 
 - When enabled, metric names and forecast figures leave the platform to Anthropic whenever someone presses the button. Sub-processor notices and the privacy text must name Anthropic before the feature is enabled in production.
 - There is no per-Organization switch yet; enabling is a platform decision.
 - Tests use a fake client; the real API has not been exercised without a key.
+
+Superseded by ADR-0047: Shadow makes no LLM calls; agents write analysis through MCP.

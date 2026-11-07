@@ -64,6 +64,7 @@ export function ConnectAgent({ organizationId, locale }: { organizationId: strin
               <ol className={`m-0 list-decimal pl-5 ${MUTED}`}>{text.steps.map((step) => <li key={step}>{step}</li>)}</ol>
             </div>
             <p className={`m-0 ${MUTED}`}>{text.responsibility}</p>
+            <p className={`m-0 ${MUTED}`}>{text.costResponsibility}</p>
           </>
         )}
       </Section>

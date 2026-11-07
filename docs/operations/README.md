@@ -53,13 +53,6 @@ per-Organization switches (`mcp_enabled`, on by default; `mcp_platform_blocked`,
 
 Every MCP call is recorded without content in `mcp_calls` (migration `0059`, ADR-0047); Owners and Admins read it in Activity under **Agent calls**. `MCP_READ_LOG_RETENTION_DAYS` (default 90) sets how long successful read calls are kept; the worker enqueues one `mcp.read_log_cleanup` job per active Organization each day. Writes, refusals and failures are kept. If the table cannot be written, agent writes fail and reads still work, so watch the backend log for `could not be recorded`.
 
-### AI analysis
-
-AI analysis is off unless `ANTHROPIC_API_KEY` is set (`SHADOW_AI_MODEL` picks the model; both are in
-`.env.example` and `.env.production.example`). When on, the metric names and forecast figures of
-the simulation being analysed are sent to Anthropic each time someone presses the button (ADR-0044).
-Name Anthropic among the sub-processors before enabling it in production. Unset the key to stop it.
-
 ### Event content migration (P11)
 
 - Migration `0047` adds `location`, `links`, `description_format`, `starts_at`,

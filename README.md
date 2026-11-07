@@ -9,7 +9,7 @@ notifications, billing, legal documents, the platform console and the MCP interf
 **Status:** the platform base and the Shadow features run (`docker compose up`): models with
 a graph and an editable metamodel, versions with change lists and merge, metrics with formulas,
 CSV and Excel import and export, forecasts (linear, seasonal, Holt, Prophet) and simulations,
-analysis with optional AI summaries (needs `ANTHROPIC_API_KEY`), and MCP tools for all of it.
+analysis with proposals, and MCP tools for all of it (agents bring their own model; Shadow calls none).
 The previous implementation is kept in `legacy/` (tag `pre-yearclock-base`). Some operational
 and end-user documents under `docs/` still describe the Yearclock product.
 The architecture is in `docs/architecture/` (C4 model in LikeC4, database in DBML).

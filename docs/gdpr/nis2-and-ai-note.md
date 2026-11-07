@@ -16,4 +16,4 @@ measures. Meanwhile the measures on the security page apply.
 **verify** with counsel. Yearclock does not provide or deploy an AI system of its own. An agent that a person connects
 through the MCP interface is that person's choice, runs on the provider the person selects, and acts with the person's
 own permissions; Yearclock stores no agent conversations (see [README.md](README.md)). No duty is assumed to arise.
-Revisit if Yearclock adds its own AI features.
+Shadow makes no LLM calls itself (ADR-0047) and records each agent call per person without content. Revisit if Shadow adds its own AI features.

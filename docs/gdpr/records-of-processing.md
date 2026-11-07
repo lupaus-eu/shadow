@@ -15,7 +15,7 @@ The inventory of what is processed is in [README.md](README.md); this record arr
 | Contact and data protection officer | The legal contact (`LEGAL_CONTACT_EMAIL`); no officer (see [dpia-and-dpo-note.md](dpia-and-dpo-note.md)) |
 | Purposes | Identifying and signing in people; authorization; invitations; audit and security; notifications and the opt-in Summary; billing identity; proof of acceptance of legal documents; support |
 | Categories of data subjects | Members and invitees of customer Organizations; billing contacts; Platform staff |
-| Categories of data | Account identity (issuer, subject, email, display name, language); sessions; membership, roles, Groups, recent Yearclocks; invitation address and role; billing name and email; audit entries; notifications and settings; queued email; acceptance records (with an e-mail snapshot) |
+| Categories of data | Account identity (issuer, subject, email, display name, language); sessions; membership, roles, Groups, recent Yearclocks; invitation address and role; billing name and email; audit entries; agent call records (person, agent program, tool, outcome; no content; successful reads deleted after 90 days); notifications and settings; queued email; acceptance records (with an e-mail snapshot) |
 | Recipients | Sub-processors (hosting, email, billing, backups) as listed on the sub-processors page; none else |
 | Transfers outside the EU and EEA | `TODO(lawyer)` per sub-processor; none are known from the repository |
 | Retention | [Retention and deletion in README.md](README.md#retention-and-deletion) |

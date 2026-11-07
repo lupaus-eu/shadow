@@ -16,7 +16,7 @@
 - Agent interface: official Python MCP SDK (`mcp`), a thin adapter over the application (ADR-0037, ADR-0038)
 - Forecasting: pure-Python methods (linear, seasonal, Holt) and Prophet 1.5 (ADR-0042)
 - Spreadsheet import and export: `openpyxl` (XLSX) and the standard `csv` module
-- AI analysis (optional): Anthropic Messages API through `httpx`, no SDK (ADR-0044)
+- No LLM calls from the system: agents work through MCP under the user's own subscription (ADR-0047)
 - Billing: Stripe Billing
 - Transactional email: Scaleway Transactional Email
 - Local orchestration: Docker Compose

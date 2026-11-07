@@ -54,17 +54,24 @@ A stored run of Forecasts for a Version, optionally with what-if adjustments. De
 _Avoid_: Scenario, projection
 
 **Analysis**:
-The Findings and Proposals derived from a Simulation by rules, optionally extended by an AI summary and AI Proposals.
+The Findings and Proposals derived from a Simulation by rules, optionally extended by a summary and Proposals an Agent wrote through MCP.
 
 **Finding**:
 An observation in an Analysis, such as a Metric that falls below a threshold in the forecast.
 
 **Proposal**:
-A suggested action from an Analysis. It is open until someone accepts or dismisses it, and the decision survives a new Analysis. Rule Proposals and AI Proposals (`kind` `rule` or `ai`) are kept apart.
+A suggested action from an Analysis. It is open until someone accepts or dismisses it, and the decision survives a new Analysis. Rule Proposals and Agent Proposals are kept apart by **Proposal source**.
 _Avoid_: Recommendation, task
 
-**AI Analysis**:
-An optional Analysis step that sends metric names and forecast figures to the Anthropic API and stores the returned summary and Proposals. It exists only when `ANTHROPIC_API_KEY` is set; the Organization has no separate switch yet.
+**Agent**:
+Software acting for a person through MCP under that person's own account and rights. It is not part of Shadow: Shadow calls no model itself (ADR-0047). The agent, its provider and its token cost are the connecting person's responsibility.
+_Avoid_: AI Analysis, bot
+
+**Agent call**:
+One MCP tool call, successful, refused or failed, recorded without its arguments or result with the person and the agent program. Owners and Admins read the record in Activity.
+
+**Proposal source**:
+Where a Proposal came from: `rule` (generated from the forecast rules) or `agent` (written through MCP). There is one agent Proposal per Metric; repeating the call replaces it.
 
 **Import**:
 Reading Metric values for a Version from a CSV or Excel file, in a wide layout (months as rows, Metrics as columns) or a long layout (metric, period, value). Unknown or derived Metrics and unreadable cells are reported and skipped.
