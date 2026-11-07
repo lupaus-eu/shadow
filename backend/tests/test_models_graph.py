@@ -16,9 +16,9 @@ def stack():
         yield clients
 
 
-def _tenant(stack: ExitStack, database_url: str, subject: str):
+def _tenant(stack: ExitStack, database_url: str, subject: str, **app_kwargs):
     verifier = Verifier()
-    application = create_app(database_url=database_url, oidc_client=OIDC(subject, f"{subject}@example.com"), stripe_billing=Stripe(), stripe_webhook_verifier=verifier, clock=lambda: NOW)
+    application = create_app(database_url=database_url, oidc_client=OIDC(subject, f"{subject}@example.com"), stripe_billing=Stripe(), stripe_webhook_verifier=verifier, clock=lambda: NOW, **app_kwargs)
     client = stack.enter_context(TestClient(application))
     login(client)
     organization_id = active_org(client, verifier, seats=3)

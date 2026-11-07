@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { useOrganization } from "../shell/organization-outlet";
 import { Alert, Badge, Button, EmptyState, Field, Select } from "../ui";
-import { decideRecommendation, generateAnalysis, loadAnalysis, loadSimulations, type Analysis, type Finding, type Recommendation, type RecommendationStatus, type Simulation } from "./client";
+import { decideRecommendation, generateAiAnalysis, generateAnalysis, loadAnalysis, loadSimulations, type Analysis, type Finding, type Recommendation, type RecommendationStatus, type Simulation } from "./client";
 import { modelMessages } from "./messages";
 import { useModel } from "./ModelShell";
 
@@ -19,6 +19,7 @@ export function AnalysisPage() {
   const [compareId, setCompareId] = useState("");
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     void loadSimulations(organizationId, modelId, version.id).then((list) => { setRuns(list); setRunId(list[0]?.id ?? ""); setCompareId(""); }).catch(() => setError(text.failed));
@@ -32,6 +33,11 @@ export function AnalysisPage() {
 
   async function generate() {
     try { setAnalysis(await generateAnalysis(organizationId, modelId, runId, compareId || null)); setError(null); } catch { setError(text.failed); }
+  }
+  async function askAi() {
+    setBusy(true);
+    try { setAnalysis(await generateAiAnalysis(organizationId, modelId, runId, compareId || null, locale)); setError(null); } catch { setError(text.aiFailed); }
+    setBusy(false);
   }
   async function decide(recommendation: Recommendation, status: RecommendationStatus) {
     try {
@@ -51,6 +57,7 @@ export function AnalysisPage() {
         <Field label={text.chooseRun} className="w-64">{(control) => <Select {...control} value={runId} onChange={(event) => setRunId(event.target.value)}>{(runs ?? []).map((run) => <option key={run.id} value={run.id}>{run.name}</option>)}</Select>}</Field>
         <Field label={text.compareTo} className="w-64">{(control) => <Select {...control} value={compareId} onChange={(event) => setCompareId(event.target.value)}><option value="">{text.noComparison}</option>{(runs ?? []).filter((run) => run.id !== runId).map((run) => <option key={run.id} value={run.id}>{run.name}</option>)}</Select>}</Field>
         {writable && runId ? <Button variant="primary" onClick={() => void generate()}>{text.generate}</Button> : null}
+        {writable && runId && analysis?.ai_available ? <Button disabled={busy} onClick={() => void askAi()}>{text.askAi}</Button> : null}
       </div>
       {error ? <Alert tone="danger" role="alert">{error}</Alert> : null}
       {analysis ? (
@@ -62,12 +69,19 @@ export function AnalysisPage() {
               <tbody>{analysis.findings.map((finding) => <FindingRow key={finding.key} finding={finding} compared={analysis.compared_to !== null} text={text} />)}</tbody>
             </table></div>
           </section>
+          {analysis.ai_summary ? (
+            <section className="flex flex-col gap-1 rounded-[var(--radius-card)] border border-line bg-surface p-4" aria-label={text.aiSummary}>
+              <h3 className="m-0 text-[14px] font-semibold">{text.aiSummary} <Badge>{text.aiBadge}</Badge></h3>
+              <p className="m-0 text-[13px]">{analysis.ai_summary}</p>
+              <p className="m-0 text-xs text-ink-muted">{text.aiNote}</p>
+            </section>
+          ) : null}
           <section className="flex flex-col gap-2">
             <h3 className="m-0 text-[14px] font-semibold">{text.proposals}</h3>
             {analysis.recommendations.length === 0 ? <p className="m-0 text-[13px] text-ink-muted">{text.noProposals}</p> : null}
             {analysis.recommendations.map((item) => (
               <article key={item.id} className="flex flex-col gap-2 rounded-[var(--radius-card)] border border-line bg-surface p-4" aria-label={item.title}>
-                <div className="flex flex-wrap items-center gap-2"><strong className="text-[14px]">{item.title}</strong><Badge>{text.severities[item.severity]}</Badge><Badge>{text.statuses[item.status]}</Badge></div>
+                <div className="flex flex-wrap items-center gap-2"><strong className="text-[14px]">{item.title}</strong>{item.kind === "ai" ? <Badge>{text.aiBadge}</Badge> : null}<Badge>{text.severities[item.severity]}</Badge><Badge>{text.statuses[item.status]}</Badge></div>
                 <p className="m-0 text-[13px] text-ink-muted">{item.rationale}</p>
                 {writable ? (
                   <div className="flex gap-2">
