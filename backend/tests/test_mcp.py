@@ -2,6 +2,7 @@
 import asyncio
 import json
 import time
+from uuid import UUID
 from datetime import UTC, datetime
 
 import httpx
@@ -304,3 +305,103 @@ def test_agents_write_a_summary_and_proposals_under_their_own_label(database_url
     audit = audit_rows(application, organization_id, "analysis.summary_set")
     assert len(audit) == 1 and audit[0]["source"] == "mcp" and "Revenue falls." not in json.dumps(audit)
     assert len(audit_rows(application, organization_id, "analysis.proposal_set")) == 1
+
+
+def call_rows(application, organization_id: str | None = None, person: str | None = None) -> list[dict]:
+    where = "organization_id = :org" if organization_id else "organization_id IS NULL AND user_account_id = :person"
+    with application.state.database_engine.connect() as connection:
+        rows = connection.execute(text(f"SELECT tool, kind, outcome, reason, mcp_client, user_account_id::text, organization_id::text FROM mcp_calls WHERE {where} ORDER BY occurred_at"), {"org": organization_id, "person": person}).mappings().all()
+    return [dict(row) for row in rows]
+
+
+def test_every_agent_call_is_recorded_without_its_content(database_url: str) -> None:
+    application, verifier = make_app(database_url, "mcp-calls")
+    with TestClient(application) as owner:
+        login(owner)
+        organization_id = active_org(owner, verifier)
+        person = owner.get("/api/v1/auth/session").json()["user_account"]["id"]
+        bearer = token("mcp-calls")
+        call(owner, bearer, "list_organizations")
+        call(owner, bearer, "get_organization", organization_id=organization_id)
+        _, created = call(owner, bearer, "create_model", organization_id=organization_id, name="DISTINCTIVE-MODEL-NAME")
+        model_id = created["result"]["id"]
+        call(owner, bearer, "create_node", organization_id=organization_id, model_id=model_id, node_type_id="00000000-0000-0000-0000-000000000000", name="  ")
+        call(owner, bearer, "get_model", organization_id=organization_id, model_id="00000000-0000-0000-0000-000000000000")
+        owner.patch(f"/api/v1/organizations/{organization_id}/mcp", json={"enabled": False})
+        call(owner, bearer, "get_organization", organization_id=organization_id)
+        owner.patch(f"/api/v1/organizations/{organization_id}/mcp", json={"enabled": True})
+        stranger = "00000000-0000-0000-0000-0000000000aa"
+        call(owner, bearer, "get_organization", organization_id=stranger)
+        page = owner.get(f"/api/v1/organizations/{organization_id}/mcp-calls")
+    rows = call_rows(application, organization_id)
+    assert [(row["tool"], row["kind"], row["outcome"], row["reason"]) for row in rows] == [
+        ("get_organization", "read", "ok", None),
+        ("create_model", "write", "ok", None),
+        ("create_node", "write", "error", "invalid_input"),
+        ("get_model", "read", "error", "http_404"),
+        ("get_organization", "read", "refused", "switch_off"),
+    ]
+    assert all(row["user_account_id"] == person and row["mcp_client"] == SETTINGS.client_id for row in rows)
+    assert not any(row["tool"] == "list_organizations" for row in rows) and call_rows(application, person=person) == [
+        {"tool": "get_organization", "kind": "read", "outcome": "refused", "reason": "not_member", "mcp_client": SETTINGS.client_id, "user_account_id": person, "organization_id": None}
+    ]
+    assert "DISTINCTIVE" not in json.dumps(rows) and "DISTINCTIVE" not in page.text
+    assert page.status_code == 200 and [item["tool"] for item in page.json()["items"]][0] == "get_organization"
+    assert page.json()["items"][0]["person"] and page.json()["items"][0]["mcp_client"] == SETTINGS.client_id
+
+
+def test_a_failed_record_stops_writes_but_not_reads(database_url: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.mcp_server.calls as calls
+
+    application, verifier = make_app(database_url, "mcp-calls-fail")
+    with TestClient(application) as owner:
+        login(owner)
+        organization_id = active_org(owner, verifier)
+        bearer = token("mcp-calls-fail")
+        monkeypatch.setattr(calls, "_write", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("audit down")))
+        read_failed, read = call(owner, bearer, "get_organization", organization_id=organization_id)
+        write_failed, message = call(owner, bearer, "create_model", organization_id=organization_id, name="Unrecorded")
+    assert not read_failed and read["notice"]
+    assert write_failed and "could not be recorded" in message
+
+
+def test_only_owners_and_admins_read_the_agent_calls(database_url: str) -> None:
+    application, verifier = make_app(database_url, "mcp-calls-roles")
+    with TestClient(application) as owner:
+        login(owner)
+        organization_id = active_org(owner, verifier, seats=3)
+        member_app, _ = join(application, owner, organization_id, subject="mcp-calls-member", email="mcp-calls-member@example.com")
+        admin_app, _ = join(application, owner, organization_id, subject="mcp-calls-admin", email="mcp-calls-admin@example.com", role="admin")
+        assert owner.get(f"/api/v1/organizations/{organization_id}/mcp-calls").status_code == 200
+    with TestClient(admin_app) as admin:
+        login(admin)
+        assert admin.get(f"/api/v1/organizations/{organization_id}/mcp-calls").status_code == 200
+    with TestClient(member_app) as member:
+        login(member)
+        assert member.get(f"/api/v1/organizations/{organization_id}/mcp-calls").status_code == 403
+
+
+def test_the_cleanup_deletes_only_old_successful_reads(database_url: str) -> None:
+    from app.database import create_session_factory
+    from app.jobs import run_one_background_job, schedule_mcp_read_log_cleanup_jobs
+
+    application, verifier = make_app(database_url, "mcp-calls-cleanup")
+    with TestClient(application) as owner:
+        login(owner)
+        organization_id = active_org(owner, verifier)
+        person = owner.get("/api/v1/auth/session").json()["user_account"]["id"]
+    insert = text("INSERT INTO mcp_calls (id, organization_id, user_account_id, mcp_client, tool, kind, outcome, duration_ms, occurred_at) VALUES (gen_random_uuid(), :org, :person, 'c', :tool, :kind, :outcome, 5, now() - make_interval(days => :age))")
+    with application.state.database_engine.begin() as connection:
+        for tool, kind, outcome, age in [("old_read", "read", "ok", 100), ("new_read", "read", "ok", 10), ("old_failed_read", "read", "error", 100), ("old_write", "write", "ok", 100), ("old_refused", "read", "refused", 100)]:
+            connection.execute(insert, {"org": organization_id, "person": person, "tool": tool, "kind": kind, "outcome": outcome, "age": age})
+    factory = create_session_factory(application.state.database_engine)
+    assert schedule_mcp_read_log_cleanup_jobs(factory, today=NOW.date()) >= 1
+    while run_one_background_job(factory, organization_id=UUID(organization_id)):
+        pass
+    kept = {row["tool"] for row in call_rows(application, organization_id)}
+    assert kept == {"new_read", "old_failed_read", "old_write", "old_refused"}
+    # the application role may delete nothing else
+    with application.state.database_engine.begin() as connection:
+        connection.execute(text("SET LOCAL ROLE shadow_app"))
+        connection.execute(text("SELECT set_config('app.current_organization_id', :org, true)"), {"org": organization_id})
+        assert connection.execute(text("DELETE FROM mcp_calls WHERE tool = 'old_write'")).rowcount == 0

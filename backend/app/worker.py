@@ -56,7 +56,7 @@ def _deliver_one(session_factory, sender: TransactionalEmailSender, topic: str) 
 
 def main() -> None:
     import os
-    from app.jobs import run_one_background_job, schedule_notification_cleanup_jobs, schedule_organization_purge_jobs, schedule_purge_jobs
+    from app.jobs import run_one_background_job, schedule_mcp_read_log_cleanup_jobs, schedule_notification_cleanup_jobs, schedule_organization_purge_jobs, schedule_purge_jobs
     from app.legal_announcements import schedule_legal_announcements
     from app.legal_documents import LegalLibrary
     from app.support_access_routes import expire_support_access
@@ -76,6 +76,7 @@ def main() -> None:
         if now >= next_schedule:
             schedule_purge_jobs(session_factory, today=now.date())
             schedule_notification_cleanup_jobs(session_factory, today=now.date())
+            schedule_mcp_read_log_cleanup_jobs(session_factory, today=now.date())
             schedule_organization_purge_jobs(session_factory, now=now)
             schedule_legal_announcements(session_factory, legal_library, now=now)
             next_schedule = now + schedule_interval

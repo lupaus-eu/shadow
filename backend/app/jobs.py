@@ -16,6 +16,7 @@ from app.database import RequestContext, transaction_session
 from app.models import BackgroundJob, Organization, OrganizationStatus
 from app.lifecycle import organization_deletion_window, purge_deleted_content, purge_organization
 from app.legal_announcements import ANNOUNCE_JOB, announce_document
+from app.mcp_server.calls import READ_LOG_JOB, cleanup_read_log
 from app.notifications import CLEANUP_JOB, cleanup_notifications
 from app.work_queue import (
     BackgroundJobDraft,
@@ -39,7 +40,7 @@ def retry_delay(attempts: int) -> timedelta:
 PURGE_JOB = "content.purge"
 ORGANIZATION_PURGE_JOB = "organization.purge"
 
-HANDLERS: dict[str, JobHandler] = {PURGE_JOB: purge_deleted_content, ORGANIZATION_PURGE_JOB: purge_organization, CLEANUP_JOB: cleanup_notifications, ANNOUNCE_JOB: announce_document}
+HANDLERS: dict[str, JobHandler] = {PURGE_JOB: purge_deleted_content, ORGANIZATION_PURGE_JOB: purge_organization, CLEANUP_JOB: cleanup_notifications, READ_LOG_JOB: cleanup_read_log, ANNOUNCE_JOB: announce_document}
 
 
 def schedule_purge_jobs(session_factory: sessionmaker[Session], *, today: date) -> int:
@@ -59,6 +60,16 @@ def schedule_notification_cleanup_jobs(session_factory: sessionmaker[Session], *
     for organization_id in organization_ids:
         with transaction_session(session_factory, RequestContext(organization_id=organization_id)) as session:
             enqueue_background_job(session, BackgroundJobDraft(job_type=CLEANUP_JOB, payload={}, idempotency_key=f"{CLEANUP_JOB}:{organization_id}:{today.isoformat()}"))
+    return len(organization_ids)
+
+
+def schedule_mcp_read_log_cleanup_jobs(session_factory: sessionmaker[Session], *, today: date) -> int:
+    """Enqueue one cleanup of old successful MCP read calls per active Organization, once per day."""
+    with transaction_session(session_factory, RequestContext(worker_scope="enumerate")) as session:
+        organization_ids = session.scalars(select(Organization.id).where(Organization.status == OrganizationStatus.ACTIVE.value)).all()
+    for organization_id in organization_ids:
+        with transaction_session(session_factory, RequestContext(organization_id=organization_id)) as session:
+            enqueue_background_job(session, BackgroundJobDraft(job_type=READ_LOG_JOB, payload={}, idempotency_key=f"{READ_LOG_JOB}:{organization_id}:{today.isoformat()}"))
     return len(organization_ids)
 
 

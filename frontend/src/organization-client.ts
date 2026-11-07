@@ -458,6 +458,15 @@ export async function loadPayments(organizationId: string, signal?: AbortSignal)
   }
 }
 
+export type McpCallItem = { id: string; occurred_at: string; person: string | null; mcp_client: string; tool: string; kind: "read" | "write"; outcome: "ok" | "refused" | "error"; reason: string | null; duration_ms: number };
+
+export async function loadMcpCalls(organizationId: string, { offset = 0, limit = 25 }: { offset?: number; limit?: number } = {}): Promise<{ items: McpCallItem[]; next_offset: number | null }> {
+  const response = await fetch(`${apiBaseUrl}/api/v1/organizations/${organizationId}/mcp-calls?${new URLSearchParams({ offset: String(offset), limit: String(limit) }).toString()}`, { credentials: "include" });
+  if (response.status === 401) throw new AuthenticationRequiredError();
+  if (!response.ok) throw new Error("mcp calls");
+  return response.json();
+}
+
 export async function loadAuditEvents(organizationId: string, { prefix, offset = 0, limit = 25 }: { prefix?: string; offset?: number; limit?: number } = {}): Promise<{ items: AuditItem[]; next_offset: number | null }> {
   const params = new URLSearchParams({ offset: String(offset), limit: String(limit) });
   if (prefix) params.set("prefix", prefix);

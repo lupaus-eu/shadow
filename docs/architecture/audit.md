@@ -27,6 +27,8 @@ Audit Events never contain credentials, tokens, payment details, MFA material, o
 - Organization deletion lifecycle changes
 - Exports of a Yearclock's Events (`yearclock.export`: format, scope, row count, language; never the content); imports (`yearclock.import_preview` and `yearclock.import` with the import reference, counts, and format, plus one `event.created` per created Event carrying `import_id`); Data transfers (`data.export`, `data.import_preview`, `data.import`: one entry per Organization with the format, import reference, and counts, never content); Organization Exports (`organization.export`: the schema and counts of what the file holds, never content)
 
+Agent calls through MCP are recorded separately in `mcp_calls` (ADR-0047): every call, including reads, without content. That table is not part of the Audit Events guarantee above: the application role may delete only successful read rows, and only the retention job under its own worker scope does so (default 90 days). Writes through MCP also produce their normal Audit Event with `source: "mcp"`.
+
 Ordinary customer read-only viewing is not logged. Reads performed through Support Access are logged.
 
 ## Storage and access

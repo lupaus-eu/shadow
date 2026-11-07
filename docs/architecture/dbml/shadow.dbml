@@ -1,5 +1,5 @@
 // Shadow PostgreSQL schema, generated from the migrated database by backend/app/dbml.py.
-// Alembic revision 0058. Do not edit by hand: run `UPDATE_DBML=1 pytest tests/test_dbml_model.py` in backend/.
+// Alembic revision 0059. Do not edit by hand: run `UPDATE_DBML=1 pytest tests/test_dbml_model.py` in backend/.
 
 Project shadow {
   database_type: 'PostgreSQL'
@@ -133,6 +133,25 @@ Table legal_announcements {
   indexes {
     (document_key, version) [pk]
   }
+}
+
+Table mcp_calls {
+  id uuid [pk]
+  organization_id uuid
+  user_account_id uuid [not null]
+  mcp_client varchar(200) [not null]
+  tool varchar(80) [not null]
+  kind varchar(5) [not null]
+  outcome varchar(7) [not null]
+  reason varchar(40)
+  duration_ms integer [not null]
+  occurred_at "timestamp with time zone" [not null, default: `now()`]
+
+  indexes {
+    (organization_id, occurred_at) [name: 'ix_mcp_calls_organization_occurred']
+  }
+
+  Note: 'Checks: ck_mcp_calls_kind: kind::text = ANY (ARRAY[\'read\'::character varying, \'write\'::character varying]::text[]); ck_mcp_calls_outcome: outcome::text = ANY (ARRAY[\'ok\'::character varying, \'refused\'::character varying, \'error\'::character varying]::text[]). RLS forced: mcp_calls_cleanup delete, mcp_calls_insert insert, mcp_calls_select select, mcp_calls_support_select (restrictive) select'
 }
 
 Table metric_values {
@@ -716,6 +735,7 @@ TableGroup notifications {
 
 TableGroup operations {
   audit_events
+  mcp_calls
   background_jobs
   outbox_messages
   support_access_requests

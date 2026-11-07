@@ -221,6 +221,7 @@ services:
     environment:
       <<: [*shadow_database, *scaleway, *lifecycle]
       WORKER_SCHEDULE_INTERVAL_SECONDS: ${WORKER_SCHEDULE_INTERVAL_SECONDS:-3600}
+      MCP_READ_LOG_RETENTION_DAYS: ${MCP_READ_LOG_RETENTION_DAYS:-90}
       DATABASE_POOL_SIZE: ${WORKER_DATABASE_POOL_SIZE:-2}
       DATABASE_MAX_OVERFLOW: "0"
     depends_on:

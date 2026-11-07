@@ -9,6 +9,7 @@ from mcp.server.transport_security import TransportSecuritySettings
 from sqlalchemy.orm import Session, sessionmaker
 from starlette.applications import Starlette
 
+from app.mcp_server.calls import track_tools
 from app.mcp_server.runtime import ToolRuntime
 from app.mcp_server.settings import McpSettings
 from app.mcp_server.model_tools import register_model_tools
@@ -41,6 +42,7 @@ def create_mcp_app(
         ),
     )
     runtime = ToolRuntime(session_factory, settings)
+    track_tools(server, session_factory, settings)  # before any tool is registered (ADR-0047)
     register_read_tools(server, runtime)
     register_write_tools(server, runtime)
     register_model_tools(server, runtime)

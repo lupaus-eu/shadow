@@ -20,7 +20,7 @@ TABLE_GROUPS: dict[str, list[str]] = {
     "metrics": ["metrics", "metric_values"],
     "simulation_analysis": ["simulations", "simulation_points", "recommendations"],
     "notifications": ["notifications", "notification_preferences"],
-    "operations": ["audit_events", "background_jobs", "outbox_messages", "support_access_requests"],
+    "operations": ["audit_events", "mcp_calls", "background_jobs", "outbox_messages", "support_access_requests"],
 }
 
 

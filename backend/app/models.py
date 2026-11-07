@@ -672,3 +672,20 @@ class Recommendation(Base):
     status: Mapped[str] = mapped_column(String(12), server_default="proposed")
     version: Mapped[int] = mapped_column(Integer, server_default="1")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class McpCall(Base):
+    """One MCP tool call, without its arguments or result (ADR-0047)."""
+
+    __tablename__ = "mcp_calls"
+    __table_args__ = {"implicit_returning": False}  # the row is written for an Organization the insert policy sees, but the insert itself needs no read-back
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    organization_id: Mapped[UUID | None] = mapped_column(Uuid, index=True)
+    user_account_id: Mapped[UUID] = mapped_column(Uuid)
+    mcp_client: Mapped[str] = mapped_column(String(200))
+    tool: Mapped[str] = mapped_column(String(80))
+    kind: Mapped[str] = mapped_column(String(5))
+    outcome: Mapped[str] = mapped_column(String(7))
+    reason: Mapped[str | None] = mapped_column(String(40))
+    duration_ms: Mapped[int] = mapped_column(Integer)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

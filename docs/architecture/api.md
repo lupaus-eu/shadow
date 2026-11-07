@@ -298,6 +298,11 @@ Under `.../models/{model_id}/simulations/{simulation_id}/analysis`.
   `target_id`, `occurred_at`, and `change_summary`. `limit` defaults to 50 and
   is capped at 100; `next_offset` is `null` on the last page. No endpoint
   mutates Audit Events.
+- `GET /api/v1/organizations/{organization_id}/mcp-calls?outcome=&kind=&offset=&limit=`
+  returns the agent calls of the Organization (ADR-0047), newest first, for Owners and
+  Admins only (Members `403`). Each item has `person` (email), `mcp_client`, `tool`,
+  `kind` (`read` or `write`), `outcome` (`ok`, `refused`, `error`), a short `reason` code and
+  `duration_ms`; never arguments or results.
 
 ## Notifications
 
@@ -434,6 +439,12 @@ Protocol. The endpoint is off unless `MCP_ENABLED=true`.
   off or its `mcp_platform_blocked` flag is set, before any content is read.
 - Every audit entry written during an MCP call carries `source: "mcp"` and
   `mcp_client` (the client id).
+- Every tool call, read or write, ok, refused or failed, also leaves one content-free
+  `mcp_calls` row naming the person the agent acted for and the agent program (ADR-0047),
+  written in its own transaction after the call. A write call, a refusal or a failure fails
+  when the row cannot be written; a successful read returns its result and logs the fault.
+  `list_organizations` (no Organization) is not stored. Successful reads are deleted after
+  `MCP_READ_LOG_RETENTION_DAYS` (default 90) by the daily `mcp.read_log_cleanup` job.
 
 Switch and connection details (Owners and Admins only; other members get `403`):
 
