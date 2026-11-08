@@ -11,6 +11,7 @@ import {
 import { EditRefused } from "./canvas/diagram";
 import type { GraphData, GraphEdit } from "./canvas/graph-types";
 import { ShadowCanvas, type CanvasTarget, type ShadowCanvasHandle } from "./canvas/ShadowCanvas";
+import { useCanvasView } from "./canvas/useCanvasView";
 import { useGraphState } from "./canvas/useGraphState";
 import { modelMessages } from "./messages";
 import { readPanels, writePanels, type PanelState } from "./panel-state";
@@ -56,6 +57,8 @@ export function ModelCanvas() {
   const text = modelMessages(locale);
   const source = useMemo(() => ({ organizationId, modelId, lineId }), [organizationId, modelId, lineId]);
   const { graph, event, status, reload } = useGraphState(source);
+  // The view (pan and zoom) is kept while this line stays open on this tab; another line or another tab starts fresh.
+  const view = useCanvasView(`${organizationId}|${modelId}|${lineId}`);
   const [notice, setNotice] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [connecting, setConnecting] = useState<{ sourceId: string; connectionTypeId: string } | null>(null);
@@ -129,6 +132,14 @@ export function ModelCanvas() {
     return true;
   }
 
+  /** Esc in the drawing: leaves connect mode if it is on (true), otherwise lets the canvas clear the selection. */
+  function cancelConnect(): boolean {
+    if (!connecting) return false;
+    setConnecting(null);
+    return true;
+  }
+  const toolbarTexts = { toolbar: text.zoomToolbar, zoomIn: text.zoomIn, zoomOut: text.zoomOut, fit: text.zoomFit, actualSize: text.zoomActual, zoomLevel: text.zoomLevel };
+
   if (status === "failed") return <Alert tone="danger" role="alert">{text.failed}</Alert>;
   if (!graph) return <p role="status" className="text-ink-muted">{text.loading}</p>;
 
@@ -171,7 +182,7 @@ export function ModelCanvas() {
       <div ref={area} style={{ height: areaHeight }} className="flex min-h-0 gap-3">
         {phone ? null : <Panel side="left" title={text.panelNodes} collapsed={panels.left} onToggle={() => toggle("left")} text={text}>{nodeList}</Panel>}
         <div className="min-w-0 flex-1 overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface">
-          <ShadowCanvas ref={canvas} graph={graph} readOnly={!writable} selectedId={selectedId} onSelect={setSelectedId} onElementClick={onElementClick} send={send} connecting={connecting !== null} label={text.canvasLabel} />
+          <ShadowCanvas ref={canvas} graph={graph} readOnly={!writable} selectedId={selectedId} onSelect={setSelectedId} onElementClick={onElementClick} send={send} connecting={connecting !== null} onEscape={cancelConnect} view={view} toolbarTexts={toolbarTexts} label={text.canvasLabel} />
         </div>
         {phone ? null : <Panel side="right" title={text.panelDetails} collapsed={panels.right} onToggle={() => toggle("right")} text={text}>{rightContent}</Panel>}
       </div>

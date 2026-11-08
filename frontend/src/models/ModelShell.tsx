@@ -3,7 +3,7 @@ import { Link, NavLink, Outlet, useOutletContext, useParams, useSearchParams } f
 
 import { usePageTitle } from "../shell/AppShell";
 import { modelHref, modelsHref } from "../shell/nav";
-import { useOrganization } from "../shell/organization-outlet";
+import { useOrganization, type OrganizationOutlet } from "../shell/organization-outlet";
 import { Alert, Button, Field, Select, useConfirm } from "../ui";
 import { createScenario, deleteLine, loadLines, loadModels, RuleError, startingEvent, type ModelLine, type ModelSummary } from "./client";
 import { modelMessages } from "./messages";
@@ -15,7 +15,8 @@ const TAB = "inline-flex h-9 items-center rounded-[8px] px-3 text-[13px] font-me
 
 /** `/organizations/:organizationId/models/:modelId/*`: the model's tabs and the line (Base line or Scenario) everything below shows. */
 export function ModelShell() {
-  const { workspace, locale } = useOrganization();
+  const organization = useOrganization();
+  const { workspace, locale } = organization;
   const { modelId = "" } = useParams();
   const [search, setSearch] = useSearchParams();
   const text = modelMessages(locale);
@@ -87,7 +88,8 @@ export function ModelShell() {
         {tab("/analysis", text.tabs.analysis)}
       </nav>
       {notice ? <Alert tone="danger" role="alert">{notice}</Alert> : null}
-      <Outlet context={{ organizationId, modelId, model, line, lines, writable, reloadLines } satisfies ModelOutlet} />
+      {/* The pages below read both the model and the organization (language, workspace): a nested Outlet context replaces the parent's, so it carries both. */}
+      <Outlet context={{ ...organization, organizationId, modelId, model, line, lines, writable, reloadLines } satisfies ModelOutlet & OrganizationOutlet} />
     </div>
   );
 }

@@ -20,6 +20,10 @@ function transformItem() {
 
 class FakeSVGMatrix {
   a = 1; b = 0; c = 0; d = 1; e = 0; f = 0;
+  private static of(matrix: Matrix) { return Object.assign(new FakeSVGMatrix(), matrix); }
+  // `canvas.viewbox(box)` builds its matrix as `createSVGMatrix().scale(s).translate(x, y)`.
+  scale(factor: number) { return FakeSVGMatrix.of(multiply(this, { a: factor, b: 0, c: 0, d: factor, e: 0, f: 0 })); }
+  translate(x: number, y: number) { return FakeSVGMatrix.of(multiply(this, { a: 1, b: 0, c: 0, d: 1, e: x, f: y })); }
 }
 (globalThis as { SVGMatrix?: unknown }).SVGMatrix ??= FakeSVGMatrix;
 

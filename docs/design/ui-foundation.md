@@ -219,6 +219,30 @@ keep the reading column. `OrganizationLayout` turns `wide` on for that route.
   dark theme redefines the tokens and the canvas follows. Canvas colours are never hard-coded except a node's own type colour,
   which is data. Selection is a heavier accent outline, a node with keyboard focus the same, and an element the shown state
   added or changed carries a "+" or "~" badge and a dashed outline: nothing is shown by colour alone.
+- **Canvas toolbar** (`CanvasToolbar`, a `role="toolbar"` over the top left of the canvas): zoom out, the percentage
+  readout, zoom in, **Fit** and **100 %**. Every control is a labelled button (Finnish and English texts in
+  `models/messages.ts`; Fit is "Fit the whole graph in view" / "Sovita koko kaavio näkymään"); the readout is a plain
+  `<output>` that is not announced on every change. Zoom out and in disable at the limits.
+- **Zoom and view rules.** Zoom is 10 % to 400 % everywhere (wheel, pinch, buttons, keys). The wheel and a pinch zoom
+  around the pointer, a drag on the background, a middle-button drag, **Space + drag** and one finger on the background
+  pan; two fingers pinch and pan. **Fit** shows the whole graph with 48 px of padding and never zooms in past 100 %;
+  **100 %** is scale 1 around the centre of the drawing area. The first load of a line is fitted automatically; after
+  that the view is kept across saves, renames and reloads of the same line, and starts over when the person switches
+  line (`?line=`) or leaves the tab. The view is held in memory only. Fit, 100 % and the zoom steps ease over 160 ms,
+  and under `prefers-reduced-motion` they jump at once; nothing else on the canvas animates.
+- **Keyboard map** (keys act while focus is inside the drawing, never in a text field, and never with Ctrl, Cmd or Alt held;
+  each later ticket adds its own keys through `keymap.ts` and lists them here):
+
+  | Key | Does |
+  | --- | --- |
+  | `+` (or `=`) / `-` | Zoom in / out one step around the centre |
+  | `0` | 100 % |
+  | `F` | Fit the whole graph |
+  | Arrows | Move the selected nodes 10 px (Shift 50 px); with no node selected, or on a read-only canvas, pan 50 px (Shift 200 px) |
+  | `Esc` | Cancel connect mode; otherwise clear the selection |
+  | Space + drag | Pan (on a focused node Space selects it, like Enter) |
+  | `Enter` / Space on a focused node | Select it |
+
 - A click on the element that is already the only selection keeps it selected (diagram-js would toggle it off); a click on
   the background clears the selection.
 

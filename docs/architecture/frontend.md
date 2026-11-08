@@ -234,6 +234,17 @@ canvas is one `Diagram` created once in `ShadowCanvas.tsx` and never recreated o
   `commandStack.undo()` and the person gets the readable notice. Moves made with the mouse are collected and saved in
   one positions write 400 ms after the last one. Edits are sent one after the other, each against the event's freshly
   loaded version. After every write the state is loaded again, which replaces optimistic elements with the real ones.
-- diagram-js modules in use: `modeling`, `selection`, `move`, `outline`, `movecanvas` and `zoomscroll`; its CSS is imported
+- Navigation (ticket 03): `diagram/GraphNavigation` is the one place that moves the view (`setView` clamps the zoom to
+  10 %-400 %): wheel and pinch (ctrl + wheel) zoom around the pointer, touch pan (one finger on the background) and pinch,
+  space + drag, Fit (whole graph with 48 px padding, never past 100 %), 100 % around the centre, zoom steps of 1.25, and
+  animation (160 ms) that is skipped under `prefers-reduced-motion`. It replaces the wheel handler of the library's
+  `zoomScroll` (which stops at 20 % and scrolls on a plain wheel) and keeps Space away from the library's hand tool.
+  `view.ts` holds the arithmetic and `ViewMemory`; `useCanvasView(key)` holds one memory per organization, model and line
+  in React state (not browser storage): saves and reloads keep the view, `?line=` switching or leaving the tab starts a
+  new one, and only the first load of a line is fitted automatically. `CanvasToolbar` (zoom out and in, readout, Fit,
+  100 %) sits over the canvas inside `ShadowCanvas`. `keymap.ts` is the key map (`Keymap.register`, reachable as
+  `ShadowCanvasHandle.registerKey`); `diagram/GraphKeys` connects it to the library's `keyboard` service, which fires only
+  while focus is inside the drawing, and the keymap ignores text fields as well.
+- diagram-js modules in use: `modeling`, `selection`, `move`, `outline`, `movecanvas`, `zoomscroll`, `keyboard` and `hand-tool`; its CSS is imported
   into `theme.css` (layer `components`) and its `--bio-*` variables are defined from Shadow's colour tokens, so the canvas
   follows the theme. The remaining modules the design expects were verified to exist (ADR-0051).
