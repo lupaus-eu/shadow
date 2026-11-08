@@ -254,11 +254,22 @@ def test_agents_work_with_models_through_the_same_rules(database_url: str) -> No
         model_id = created["result"]["id"]
         _, graph = call(owner, bearer, "get_model", organization_id=organization_id, model_id=model_id)
         version_id = graph["result"]["version"]["id"]
-        types = {item["key"]: item["id"] for item in graph["result"]["node_types"]}
-        failed, message = call(owner, bearer, "create_node", organization_id=organization_id, model_id=model_id, node_type_id=types["product"], name="  ")
+        types = {item["key"]: item["id"] for item in graph["result"]["node_types"]} | {f"c:{item['key']}": item["id"] for item in graph["result"]["connection_types"]}
+        event = graph["result"]["latest_event"]
+        failed, message = call(owner, bearer, "create_node", organization_id=organization_id, model_id=model_id, event_id=event["id"], node_type_id=types["product"], name="  ")
         assert failed and "name" in message
-        ok, node = call(owner, bearer, "create_node", organization_id=organization_id, model_id=model_id, node_type_id=types["product"], name="App")
-        assert not ok and node["result"]["name"] == "App"
+        ok, node = call(owner, bearer, "create_node", organization_id=organization_id, model_id=model_id, event_id=event["id"], node_type_id=types["product"], name="App", expected_version=event["version"])
+        assert not ok and node["result"]["node"]["name"] == "App" and node["result"]["id"] == node["result"]["node"]["id"]
+        stale, message = call(owner, bearer, "create_node", organization_id=organization_id, model_id=model_id, event_id=event["id"], node_type_id=types["journey"], name="Late", expected_version=event["version"])
+        assert stale and "409" in message  # the first edit moved the event on
+        _, journey = call(owner, bearer, "create_node", organization_id=organization_id, model_id=model_id, event_id=event["id"], node_type_id=types["journey"], name="Onboarding")
+        link = {"connection_type_id": types["c:features_in"], "source_node_id": node["result"]["id"], "target_node_id": journey["result"]["id"]}
+        assert not call(owner, bearer, "create_connection", organization_id=organization_id, model_id=model_id, event_id=event["id"], **link)[0]
+        refused, reason = call(owner, bearer, "create_connection", organization_id=organization_id, model_id=model_id, event_id=event["id"], **link)
+        assert refused and "chain_broken" in reason and "duplicate_connection" in reason  # nothing was saved
+        _, after = call(owner, bearer, "get_model", organization_id=organization_id, model_id=model_id)
+        assert {item["name"] for item in after["result"]["nodes"]} == {"App", "Onboarding"} and len(after["result"]["connections"]) == 1
+        assert after["result"]["latest_event"]["id"] == event["id"]
         _, metric = call(owner, bearer, "create_metric", organization_id=organization_id, model_id=model_id, line_id=version_id, key="revenue", name="Revenue")
         values = [{"period": f"2025-{month:02d}-01", "value": 100 + month * 10} for month in range(1, 13)]
         assert not call(owner, bearer, "set_metric_values", organization_id=organization_id, model_id=model_id, line_id=version_id, metric_id=metric["result"]["id"], values=values)[0]
@@ -268,8 +279,9 @@ def test_agents_work_with_models_through_the_same_rules(database_url: str) -> No
         assert analysis["result"]["findings"]
         _, series = call(owner, bearer, "get_metric_series", organization_id=organization_id, model_id=model_id, line_id=version_id, metric_id=metric["result"]["id"])
         assert len(series["result"]["points"]) == 12
-    audit = audit_rows(application, organization_id, "node.created")
-    assert len(audit) == 1 and audit[0]["source"] == "mcp" and audit[0]["name"] == "App"
+    audit = audit_rows(application, organization_id, "event.updated")
+    assert len(audit) == 3 and all(row["fields"] == ["changes"] and row["source"] == "mcp" for row in audit)  # two nodes and a connection, written as changes of the event
+    assert audit[-1]["change_counts"] == {"add_connection": 1, "add_node": 2} and "App" not in json.dumps(audit)
 
 
 def test_agents_write_a_summary_and_proposals_under_their_own_label(database_url: str) -> None:
@@ -325,7 +337,7 @@ def test_every_agent_call_is_recorded_without_its_content(database_url: str) -> 
         call(owner, bearer, "get_organization", organization_id=organization_id)
         _, created = call(owner, bearer, "create_model", organization_id=organization_id, name="DISTINCTIVE-MODEL-NAME")
         model_id = created["result"]["id"]
-        call(owner, bearer, "create_node", organization_id=organization_id, model_id=model_id, node_type_id="00000000-0000-0000-0000-000000000000", name="  ")
+        call(owner, bearer, "create_node", organization_id=organization_id, model_id=model_id, event_id="00000000-0000-0000-0000-000000000000", node_type_id="00000000-0000-0000-0000-000000000000", name="  ")
         call(owner, bearer, "get_model", organization_id=organization_id, model_id="00000000-0000-0000-0000-000000000000")
         owner.patch(f"/api/v1/organizations/{organization_id}/mcp", json={"enabled": False})
         call(owner, bearer, "get_organization", organization_id=organization_id)

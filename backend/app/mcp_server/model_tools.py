@@ -1,4 +1,4 @@
-"""Model tools for agents: models, versions, lines, metrics, simulations and analysis.
+"""Model tools for agents: models, versions, canvas edits in events, metrics, simulations and analysis.
 
 Each tool calls the same endpoint function the REST API serves, so the rules, the roles, the
 read-only subscription block and the audit entries are the REST API's own. The endpoint
@@ -6,6 +6,7 @@ functions are taken from the routers, not copied.
 """
 
 from collections.abc import Callable
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any
 from uuid import UUID
@@ -17,11 +18,12 @@ from pydantic import BaseModel, ValidationError
 
 from app.analysis_routes import ProposalRequest, SummaryRequest, create_analysis_router
 from app.mcp_server.runtime import ToolRuntime
-from app.mcp_server.tools import DELETES, READ_ONLY, UNTRUSTED, WRITES
+from app.mcp_server.tools import READ_ONLY, UNTRUSTED, WRITES
 from app.metric_routes import MetricRequest, ValuesRequest, create_metric_router
-from app.model_routes import ConnectionRequest, ModelRequest, NodeRequest, create_model_router
+from app.model_routes import ModelRequest, create_model_router
 from app.simulation_routes import SimulationRequest, create_simulation_router
-from app.version_routes import MergeRequest, VersionRequest, create_version_router
+from app.timeline_edit_routes import ConnectionCreate, NodeCreate, create_timeline_edit_router
+from app.version_routes import VersionRequest, create_version_router
 
 REQUEST = SimpleNamespace(headers={})  # the audit entry takes only a request id from it
 
@@ -45,6 +47,7 @@ def register_model_tools(server: MCPServer, runtime: ToolRuntime) -> None:
 
     models = _endpoints(create_model_router(session_factory=factory, authenticated_user_dependency=dependency))
     versions = _endpoints(create_version_router(session_factory=factory, authenticated_user_dependency=dependency))
+    edits = _endpoints(create_timeline_edit_router(session_factory=factory, authenticated_user_dependency=dependency, clock=lambda: datetime.now(UTC)))
     metrics = _endpoints(create_metric_router(session_factory=factory, authenticated_user_dependency=dependency))
     simulations = _endpoints(create_simulation_router(session_factory=factory, authenticated_user_dependency=dependency))
     analysis = _endpoints(create_analysis_router(session_factory=factory, authenticated_user_dependency=dependency))
@@ -64,17 +67,12 @@ def register_model_tools(server: MCPServer, runtime: ToolRuntime) -> None:
 
     @server.tool(title="Get a model graph", annotations=READ_ONLY)
     async def get_model(organization_id: UUID, model_id: UUID, version_id: UUID | None = None) -> dict:
-        """Get a model's versions, its node and connection types, and the nodes and connections of one version (the baseline unless version_id is given)."""
+        """Get a model's versions, its node and connection types, and the nodes and connections of one version (the baseline unless version_id is given) after its last event. latest_event is the event that create_node and create_connection write into (null while the line has no events yet): pass its id (and, if you want a stale-write check, its version). version_id is also the id of the version's line."""
         return await read(organization_id, models["read_graph"], model_id=model_id, version_id=version_id)
-
-    @server.tool(title="List the changes of a version", annotations=READ_ONLY)
-    async def get_version_changes(organization_id: UUID, model_id: UUID, version_id: UUID) -> dict:
-        """List the nodes and connections a version added, removed or changed against the version it was forked from."""
-        return await read(organization_id, versions["changes"], model_id=model_id, version_id=version_id)
 
     @server.tool(title="List the metrics of a line", annotations=READ_ONLY)
     async def list_metrics(organization_id: UUID, model_id: UUID, line_id: UUID) -> dict:
-        """List the metrics (KPIs) of a line (the Base line or a Scenario; until list_lines exists, a line id is the id of a version listed by get_model). A derived metric has a formula over other metric keys."""
+        """List the metrics (KPIs) of a line (the Base line or a Scenario; the line id is the id of a version listed by get_model). A derived metric has a formula over other metric keys."""
         return await read(organization_id, metrics["list_metrics"], model_id=model_id, line_id=line_id)
 
     @server.tool(title="Get a metric's monthly values", annotations=READ_ONLY)
@@ -103,16 +101,16 @@ def register_model_tools(server: MCPServer, runtime: ToolRuntime) -> None:
         return await write(organization_id, models["create_model"], body=_body(ModelRequest, {"name": name, "description": description}))
 
     @server.tool(title="Add a node", annotations=WRITES)
-    async def create_node(organization_id: UUID, model_id: UUID, node_type_id: UUID, name: str, version_id: UUID | None = None, description: str | None = None, x: float = 0, y: float = 0) -> dict:
-        """Add a node to a version (the baseline unless version_id is given). Use a node_type_id from get_model."""
-        body = _body(NodeRequest, {"version_id": version_id, "node_type_id": node_type_id, "name": name, "description": description, "x": x, "y": y})
-        return await write(organization_id, models["create_node"], model_id=model_id, body=body)
+    async def create_node(organization_id: UUID, model_id: UUID, event_id: UUID, node_type_id: UUID, name: str, description: str | None = None, x: float = 0, y: float = 0, expected_version: int | None = None) -> dict:
+        """Add a node as a change inside an event (event_id is the latest_event of get_model, or any event of a line you may write). Use a node_type_id from get_model. The result holds the new node's id. expected_version is the event's current version (optional; refused with a conflict when stale). A chain that would break is refused with the reason and nothing is saved."""
+        body = _body(NodeCreate, {"expected_version": expected_version, "node_type_id": node_type_id, "name": name, "description": description, "x": x, "y": y})
+        return await write(organization_id, edits["create_node"], model_id=model_id, event_id=event_id, body=body)
 
     @server.tool(title="Connect two nodes", annotations=WRITES)
-    async def create_connection(organization_id: UUID, model_id: UUID, connection_type_id: UUID, source_node_id: UUID, target_node_id: UUID) -> dict:
-        """Connect two nodes of the same version. The model's metamodel must allow the connection type between their node types."""
-        body = _body(ConnectionRequest, {"connection_type_id": connection_type_id, "source_node_id": source_node_id, "target_node_id": target_node_id})
-        return await write(organization_id, models["create_connection"], model_id=model_id, body=body)
+    async def create_connection(organization_id: UUID, model_id: UUID, event_id: UUID, connection_type_id: UUID, source_node_id: UUID, target_node_id: UUID, expected_version: int | None = None) -> dict:
+        """Connect two nodes as a change inside an event (see create_node for event_id and expected_version). The model's metamodel must allow the connection type between their node types; otherwise the call is refused with the reason and nothing is saved."""
+        body = _body(ConnectionCreate, {"expected_version": expected_version, "connection_type_id": connection_type_id, "source_node_id": source_node_id, "target_node_id": target_node_id})
+        return await write(organization_id, edits["create_connection"], model_id=model_id, event_id=event_id, body=body)
 
     @server.tool(title="Create a version", annotations=WRITES)
     async def create_version(organization_id: UUID, model_id: UUID, name: str, base_version_id: UUID | None = None, description: str | None = None) -> dict:
@@ -151,8 +149,3 @@ def register_model_tools(server: MCPServer, runtime: ToolRuntime) -> None:
     async def add_proposal(organization_id: UUID, model_id: UUID, simulation_id: UUID, metric_key: str, title: str, rationale: str, severity: str = "medium") -> dict:
         """Propose one action for a metric of a simulation (metric_key as in get_analysis findings; severity high, medium or low; title up to 200 and rationale up to 1500 characters, citing the figures it rests on). One agent proposal exists per metric: repeating the call replaces it and puts it back to 'proposed' for a new decision. People accept or dismiss proposals in the web application."""
         return await write(organization_id, analysis["set_proposal"], model_id=model_id, simulation_id=simulation_id, metric_key=metric_key, body=_body(ProposalRequest, {"title": title, "rationale": rationale, "severity": severity}))
-
-    @server.tool(title="Merge a version into its base", annotations=DELETES)
-    async def merge_version(organization_id: UUID, model_id: UUID, version_id: UUID, expected_version: int) -> dict:
-        """Apply a version's changes (see get_version_changes) to the version it was forked from, usually the baseline. This edits the base and cannot be undone; metrics are not merged. Owner or Admin only. expected_version is the version's current `version` number."""
-        return await write(organization_id, versions["merge"], model_id=model_id, version_id=version_id, body=_body(MergeRequest, {"expected_version": expected_version}))

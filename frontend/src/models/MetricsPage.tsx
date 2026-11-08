@@ -41,11 +41,11 @@ export function MetricsPage() {
 
   const reload = useCallback(async () => {
     try {
-      const [list, graph] = await Promise.all([loadMetrics(organizationId, modelId, version.id), loadGraph(organizationId, modelId, version.is_baseline ? null : version.id)]);
+      const [list, graph] = await Promise.all([loadMetrics(organizationId, modelId, version.id), loadGraph(organizationId, modelId, version.id)]);
       setMetrics(list);
       setNodes(graph.nodes);
     } catch { setError(text.failed); }
-  }, [organizationId, modelId, version.id, version.is_baseline, text.failed]);
+  }, [organizationId, modelId, version.id, text.failed]);
   useEffect(() => { setSelectedId(null); void reload(); }, [reload]);
 
   const selected = metrics?.find((item) => item.id === selectedId) ?? null;

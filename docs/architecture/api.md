@@ -228,12 +228,14 @@ Every write is audited.
 | Method and path | Purpose |
 | --- | --- |
 | `GET`, `POST` `/models` | List and create models; a new model gets the default metamodel and a base version |
-| `GET`, `PATCH`, `DELETE` `/models/{model_id}` | Read (with types and rules), rename, delete |
-| `POST`, `PATCH`, `DELETE` `.../nodes[/{node_id}]` | Nodes of a version (`version_id` in the body or query) |
-| `POST`, `DELETE` `.../connections[/{connection_id}]` | Connections; the allowed-connection rule is enforced |
-| `POST`, `PATCH`, `DELETE` `.../node-types[/{type_id}]` | Node types; deleting one in use answers 409 `in_use` |
+| `GET`, `PATCH`, `DELETE` `/models/{model_id}` | Read (with types and rules; `?version_id=` picks the line of that version), rename, delete. The graph is the replayed state after the line's last event, with `latest_event` (`id`, `version`, `occurred_on`, `title`); nodes and connections carry no `version`. Until ticket 08 retires the route, prefer `GET .../lines/{line_id}/state` |
+| `POST`, `PATCH`, `DELETE` `.../node-types[/{type_id}]` | Node types; deleting one that any event change names (or an old `nodes` row) answers 409 `in_use` |
 | `POST`, `PATCH`, `DELETE` `.../connection-types[/{type_id}]` | Connection types; the same rule |
-| `POST`, `DELETE` `.../allowed-connections` | Add or remove a rule allowing a connection type between two node types; removing one in use answers 409 |
+| `POST`, `DELETE` `.../allowed-connections` | Add or remove a rule allowing a connection type between two node types; removing one that some chain of the Model needs to replay (an event adds or re-routes a connection by it, in any line) answers 409 `in_use` |
+
+The routes `POST`, `PATCH`, `DELETE` `.../nodes` and `.../connections` (version-based) were removed with the
+model-timeline ticket 07; canvas edits are changes inside an event (below). The node-type, connection-type and
+rule deletes lock the Model row like event writes, so an event cannot start using a type while it is deleted.
 
 ## Versions (ADR-0045)
 
@@ -241,8 +243,11 @@ Every write is audited.
 | --- | --- |
 | `GET`, `POST` `/models/{model_id}/versions` | List and fork a version from a base; a fork also creates the Scenario line of the same id (branching from the base line's last event) and copies the base line's metrics |
 | `PATCH`, `DELETE` `.../versions/{version_id}` | Rename, delete; the line of the same id is renamed or deleted with it |
-| `GET` `.../versions/{version_id}/changes` | Change list against the base: added, removed, and changed nodes and connections |
-| `POST` `.../versions/{version_id}/merge` | Apply the change list to the base. Owner or Admin only. Answers counts of what was applied; metrics are not merged. Audit `version.merged` |
+
+The change list (`GET .../versions/{id}/changes`) and merge (`POST .../versions/{id}/merge`) routes were removed with
+ticket 07 of the model timeline: graphs live in events now (ADR-0048) and ADR-0050 replaces merge with adoption of
+a Scenario. A fork starts from the base line's graph (it branches from its last event, so it copies no nodes);
+ticket 08 retires the remaining version routes.
 
 ## Lines, events and state (model timeline; ADR-0048, ADR-0049)
 
@@ -251,7 +256,7 @@ Routes under `/models/{model_id}/lines` and `/models/{model_id}/events`. Reads a
 need any membership; they work while the Organization is read-only. Event writes are in
 `backend/app/timeline_event_routes.py`. Another Organization, an unknown Model, line or event answers 404. A
 line's id equals its former version id. Scenario and position writes are in `backend/app/timeline_line_routes.py`
-(below); adoption arrives with ticket 08.
+(below); canvas edits are in `backend/app/timeline_edit_routes.py` (below); adoption arrives with ticket 08.
 
 | Method and path | Purpose |
 | --- | --- |
@@ -320,6 +325,33 @@ removed or moved before its branch point, or the content of one of those events 
 `start_changed_at` set. Audit actions `event.created`, `event.updated` and `event.deleted` hold ids, the event
 date and change counts per operation, never names, titles or notes (`audit.md`).
 
+### Canvas edits inside an event (ADR-0049)
+
+| Method and path | Purpose |
+| --- | --- |
+| `POST` `/events/{event_id}/nodes` | `node_type_id`, `name`, `description?`, `x`, `y`, `expected_version?`; answers 201 `{id, event, node}` (`id` is the generated element id) |
+| `PATCH` `/events/{event_id}/nodes/{node_id}` | `name`, `description` (null clears), `node_type_id` (only the fields sent change), `expected_version`; answers `{id, event, node}` |
+| `DELETE` `/events/{event_id}/nodes/{node_id}?expected_version=` | Remove the node (its connections go with it); 204 |
+| `POST` `/events/{event_id}/connections` | `connection_type_id`, `source_node_id`, `target_node_id`, `expected_version?`; 201 `{id, event, connection}` |
+| `PATCH` `/events/{event_id}/connections/{connection_id}` | Re-type and/or re-route (`connection_type_id`, `source_node_id`, `target_node_id`), `expected_version`; `{id, event, connection}` |
+| `DELETE` `/events/{event_id}/connections/{connection_id}?expected_version=` | Remove the connection; 204 |
+
+The event is the one whose state the person is looking at: any event of a line they may write, not only the last. Each
+edit is appended to the event's changes, the list is tidied (`backend/app/timeline/compact.py`: an element added and
+removed in the same event leaves no change, nor do its connections and renames; renames, re-routes and type changes
+merge into the add or the earlier change of the same element; a change that leaves the state as it was is dropped),
+the whole chain is replayed as for any event write, and the event's changes are rewritten and renumbered. The `event`
+in the answer is the saved event with its changes and new `version`; an edit that changes nothing writes nothing and
+leaves the version alone. `expected_version` is the event's `version` (409 `{latest_version}` when stale); a create may
+leave it out, a change and a delete need it. The node or connection must exist in the state after the event (404
+otherwise). Roles, read-only Organization, 404 and 422 `chain_broken` as for event writes (the 422 also covers what a
+single edit gets wrong: `duplicate_connection`, `connection_not_allowed`, `self_connection`, `missing_endpoint`,
+`missing_type`); on a refusal the event is unchanged. Re-typing and re-routing a connection in one PATCH is tried in
+both orders; a pair that is allowed only together is refused with `connection_not_allowed` (remove the connection and add
+a new one). A node created here also gets the position `x`, `y` on the line (a Scenario's own line for a Scenario's
+event). Moving nodes stays `PUT .../positions`. The audit entry is `event.updated` with `fields: ["changes"]`, the new
+and `previous_change_counts` per operation, and no names.
+
 ### Scenarios and positions (ADR-0048)
 
 `POST /lines` takes `name` (trimmed, at most 120, unique per Model ignoring case, the Base line's name counts),
@@ -363,8 +395,10 @@ updates or removes its old version row so both route families agree.
 
 Under `/models/{model_id}/lines/{line_id}/metrics` (a line is the Base line or a Scenario; until ticket 09 the web
 application passes the id of the selected version, which is also the id of its line). Keys, formulas and derived
-metrics are scoped to one line; an unknown line, or one of another Model, answers 404. A metric's `node_id` still
-refers to a node of the old `nodes` table (ticket 08 remaps it).
+metrics are scoped to one line; an unknown line, or one of another Model, answers 404. A metric's `node_id` is a
+node's element id (migration 0063 dropped the foreign key to the old `nodes` table); creating or changing a metric
+accepts a node of the line's current state (after its last event), otherwise 422, and a metric that already has a node
+keeps it when saved unchanged even if a later event removed the node.
 
 | Method and path | Purpose |
 | --- | --- |
@@ -541,12 +575,13 @@ Protocol. The endpoint is off unless `MCP_ENABLED=true`.
   belong to an existing customer User Account; MCP never creates an account.
 - Tools (every Organization-scoped tool takes `organization_id`):
   - Organizations: `list_organizations`, `get_organization`.
-  - Reads: `list_models`, `get_model` (nodes, connections, metamodel), `get_version_changes`,
+  - Reads: `list_models`, `get_model` (nodes, connections, metamodel and `latest_event`, the event `create_node` and `create_connection` write into),
     `list_metrics`, `get_metric_series`, `list_simulations`, `get_simulation` (these four take `line_id`), `get_analysis`.
-  - Writes: `create_model`, `create_node`, `create_connection`, `create_version`,
+  - Writes: `create_model`, `create_node` and `create_connection` (these two take `event_id`, as changes inside that event,
+    and an optional `expected_version` of the event), `create_version`,
     `create_metric`, `set_metric_values`, `run_simulation` (these three take `line_id`), `generate_analysis`,
-    `set_analysis_summary`, `add_proposal` (the agent's own analysis, ADR-0047), and
-    `merge_version` (Owner or Admin; marked destructive).
+    `set_analysis_summary`, `add_proposal` (the agent's own analysis, ADR-0047). `get_version_changes` and
+    `merge_version` were removed with ticket 07 of the model timeline.
   - There are no delete tools; Shadow itself calls no model (ADR-0047); metamodel editing, import, and
     export stay in the web application (ADR-0046).
   Tools call the same endpoint functions as the REST API, so roles, `expected_version`,

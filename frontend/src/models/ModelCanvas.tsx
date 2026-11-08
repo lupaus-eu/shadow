@@ -4,8 +4,8 @@ import { useOrganization } from "../shell/organization-outlet";
 import { useModel } from "./ModelShell";
 import { Alert, Button, Field, Select, TextArea, TextInput } from "../ui";
 import {
-  createConnection, createNode, deleteConnection, deleteNode, loadGraph, loadVersionChanges, RuleError, StaleVersionError, updateNode,
-  type Graph, type GraphConnection, type GraphNode, type VersionChanges,
+  ChainBrokenError, createConnection, createEditsEvent, createNode, deleteConnection, deleteNode, loadGraph, RuleError, saveNodePositions, StaleVersionError, updateNode,
+  type Graph, type GraphConnection, type GraphNode, type LineEvent,
 } from "./client";
 import { modelMessages } from "./messages";
 
@@ -26,13 +26,12 @@ function edgePoint(node: GraphNode, to: { x: number; y: number }) {
   return { x: from.x + dx * scale, y: from.y + dy * scale };
 }
 
-/** `/organizations/:organizationId/models/:modelId`: the model's nodes and connections on a canvas. */
+/** `/organizations/:organizationId/models/:modelId`: the nodes and connections of a line on a canvas. Edits are changes of the line's last event (ticket 09 of the model timeline adds the event list and the choice of event). */
 export function ModelCanvas() {
   const { locale } = useOrganization();
   const { organizationId, modelId, version, writable } = useModel();
-  const versionId = version.is_baseline ? null : version.id;
+  const lineId = version.id; // a line has the id of its version
   const text = modelMessages(locale);
-  const [changes, setChanges] = useState<VersionChanges | null>(null);
   const [graph, setGraph] = useState<Graph | null>(null);
   const [failed, setFailed] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -43,12 +42,10 @@ export function ModelCanvas() {
 
   const reload = useCallback(async () => {
     try {
-      const loaded = await loadGraph(organizationId, modelId, versionId);
-      setGraph(loaded);
+      setGraph(await loadGraph(organizationId, modelId, lineId));
       setFailed(false);
-      setChanges(loaded.version.is_baseline ? null : await loadVersionChanges(organizationId, modelId, loaded.version.id));
     } catch { setFailed(true); }
-  }, [organizationId, modelId, versionId]);
+  }, [organizationId, modelId, lineId]);
   useEffect(() => { void reload(); }, [reload]);
 
   const nodes = graph?.nodes ?? [];
@@ -61,10 +58,13 @@ export function ModelCanvas() {
   async function act(action: () => Promise<unknown>, rule = text.failed) {
     setNotice(null);
     try { await action(); } catch (cause) {
-      setNotice(cause instanceof StaleVersionError ? text.stale : cause instanceof RuleError ? rule : text.failed);
+      setNotice(cause instanceof StaleVersionError ? text.stale : cause instanceof ChainBrokenError ? text.chainBroken : cause instanceof RuleError ? rule : text.failed);
     }
     await reload();
   }
+
+  /** An edit goes into the line's last event; a line that has none yet gets an "Edits" event first. */
+  const edit = (action: (event: LineEvent) => Promise<unknown>, rule = text.failed) => act(async () => action(graph?.event ?? await createEditsEvent(organizationId, modelId, lineId, text.editsEvent)), rule);
 
   function pointer(event: React.PointerEvent) {
     const box = svg.current?.getBoundingClientRect();
@@ -94,11 +94,8 @@ export function ModelCanvas() {
     const moved = drag.moved;
     setDrag(null);
     if (!node || !moved) return;
-    // The server holds the version from before the move: reload gives the fresh row afterwards.
-    void act(async () => {
-      const original = (await loadGraph(organizationId, modelId, versionId)).nodes.find((item) => item.id === node.id);
-      if (original) await updateNode(organizationId, modelId, original, { x: Math.round(node.x), y: Math.round(node.y) });
-    });
+    // A move is a position of the line, not an edit of an event.
+    void act(() => saveNodePositions(organizationId, modelId, lineId, [{ node_id: node.id, x: Math.round(node.x), y: Math.round(node.y) }]));
   }
 
   function clickNode(node: GraphNode) {
@@ -106,7 +103,7 @@ export function ModelCanvas() {
     const source = byId.get(connecting.sourceId);
     setConnecting(null);
     if (!source || source.id === node.id) return;
-    void act(() => createConnection(organizationId, modelId, { connection_type_id: connecting.connectionTypeId, source_node_id: source.id, target_node_id: node.id }), text.notAllowed);
+    void edit((event) => createConnection(organizationId, modelId, event, { connection_type_id: connecting.connectionTypeId, source_node_id: source.id, target_node_id: node.id }), text.notAllowed);
   }
 
   if (failed) return <Alert tone="danger" role="alert">{text.failed}</Alert>;
@@ -152,19 +149,18 @@ export function ModelCanvas() {
           </svg>
         </div>
         <aside className="flex flex-col gap-4">
-          {writable ? <AddNode graph={graph} onAdd={(input) => act(() => createNode(organizationId, modelId, { ...input, version_id: graph.version.id }))} text={text} count={nodes.length} /> : null}
+          {writable ? <AddNode graph={graph} onAdd={(input) => edit((event) => createNode(organizationId, modelId, event, input))} text={text} count={nodes.length} /> : null}
           {selectedNode ? (
-            <NodePanel key={`${selectedNode.id}-${selectedNode.version}`} graph={graph} node={selectedNode} writable={writable} connecting={connecting !== null} text={text}
-              onSave={(changes) => act(() => updateNode(organizationId, modelId, selectedNode, changes))}
-              onDelete={() => { setSelected(null); void act(() => deleteNode(organizationId, modelId, selectedNode)); }}
+            <NodePanel key={`${selectedNode.id}-${selectedNode.name}-${selectedNode.description ?? ""}`} graph={graph} node={selectedNode} writable={writable} connecting={connecting !== null} text={text}
+              onSave={(changes) => edit((event) => updateNode(organizationId, modelId, event, selectedNode, changes))}
+              onDelete={() => { setSelected(null); void edit((event) => deleteNode(organizationId, modelId, event, selectedNode)); }}
               onConnect={(connectionTypeId) => setConnecting({ sourceId: selectedNode.id, connectionTypeId })}
               onCancel={() => setConnecting(null)} />
           ) : selectedConnection ? (
             <ConnectionPanel connection={selectedConnection} writable={writable} byId={byId} connectionTypes={connectionTypes} text={text}
-              onDelete={() => { setSelected(null); void act(() => deleteConnection(organizationId, modelId, selectedConnection)); }} />
+              onDelete={() => { setSelected(null); void edit((event) => deleteConnection(organizationId, modelId, event, selectedConnection)); }} />
           ) : <p className="m-0 text-[13px] text-ink-muted">{text.noSelection}</p>}
           {connecting ? <Alert tone="info" role="status">{text.connectHint}</Alert> : null}
-          {changes ? <ChangesPanel changes={changes} text={text} /> : null}
         </aside>
       </div>
     </div>
@@ -218,26 +214,6 @@ function ConnectionPanel({ connection, writable, byId, connectionTypes, text, on
       <h2 className="m-0 text-[14px] font-semibold">{connectionTypes.get(connection.connection_type_id)?.name}</h2>
       <p className="m-0 text-[13px]">{byId.get(connection.source_node_id)?.name} → {byId.get(connection.target_node_id)?.name}</p>
       {writable ? <Button variant="ghost-danger" onClick={onDelete}>{text.deleteConnection}</Button> : null}
-    </div>
-  );
-}
-
-function ChangesPanel({ changes, text }: { changes: VersionChanges; text: Text }) {
-  const groups: Array<[string, string[]]> = [
-    [text.addedNodes, changes.added_nodes.map((item) => item.name)],
-    [text.removedNodes, changes.removed_nodes.map((item) => item.name)],
-    [text.changedNodes, changes.changed_nodes.map((item) => `${item.name} (${item.fields.join(", ")})`)],
-    [text.addedConnections, changes.added_connections.map((item) => `${item.source} → ${item.target}`)],
-    [text.removedConnections, changes.removed_connections.map((item) => `${item.source} → ${item.target}`)],
-  ];
-  const visible = groups.filter(([, items]) => items.length > 0);
-  return (
-    <div className="flex flex-col gap-2 rounded-[var(--radius-card)] border border-line bg-surface p-4">
-      <h2 className="m-0 text-[14px] font-semibold">{text.changes}</h2>
-      {changes.base ? <p className="m-0 text-xs text-ink-muted">{text.forkedFrom(changes.base.is_baseline ? text.baseline : changes.base.name)}</p> : null}
-      {visible.length === 0 ? <p className="m-0 text-[13px] text-ink-muted">{text.noChanges}</p> : visible.map(([title, items]) => (
-        <div key={title}><p className="m-0 text-xs font-semibold">{title}</p><ul className="m-0 list-disc pl-5 text-[13px]">{items.map((item, index) => <li key={index}>{item}</li>)}</ul></div>
-      ))}
     </div>
   );
 }

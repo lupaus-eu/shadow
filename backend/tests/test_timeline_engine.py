@@ -234,6 +234,31 @@ def test_compaction_folds_merges_and_drops_without_changing_the_outcome() -> Non
     assert apply_changes(base, kept, METAMODEL).nodes.keys() == apply_changes(base, drawn, METAMODEL).nodes.keys()
 
 
+def test_compaction_merges_connection_edits_and_drops_changes_that_change_nothing() -> None:
+    a, b, c, link = uuid4(), uuid4(), uuid4(), uuid4()
+    base = apply_changes(State(), [add_node(PERSON, "Ada", a), add_node(TEAM, "T1", b), add_node(TEAM, "T2", c), add_connection(MEMBER_OF, a, b, link)], METAMODEL)
+    # re-routes merge, and routing back to where it started is no change at all
+    back = [Change("reroute_connection", link, {"target_node_id": str(c)}), Change("reroute_connection", link, {"target_node_id": str(b)})]
+    assert compact(back, base, METAMODEL) == []
+    away = compact([Change("reroute_connection", link, {"target_node_id": str(c)}), Change("reroute_connection", link, {"source_node_id": str(a)}), Change("change_connection_type", link, {"connection_type_id": str(MEMBER_OF)})], base, METAMODEL)
+    assert away == [Change("reroute_connection", link, {"target_node_id": str(c), "source_node_id": str(a)})] or away == [Change("reroute_connection", link, {"target_node_id": str(c)})]
+    # inside the event that adds the connection, re-routes fold into the add
+    fresh, owns = uuid4(), uuid4()
+    product = uuid4()
+    added = [add_node(PRODUCT, "P", product), add_connection(OWNS, b, product, fresh), Change("reroute_connection", fresh, {"source_node_id": str(c)}), Change("change_connection_type", fresh, {"connection_type_id": str(OWNS)})]
+    tidy = compact(added, base, METAMODEL)
+    assert [item.op for item in tidy] == ["add_node", "add_connection"] and tidy[1].payload["source_node_id"] == str(c)
+    assert apply_changes(base, tidy, METAMODEL).connections == apply_changes(base, added, METAMODEL).connections and owns
+    # a rename back and forth is a no-op; a different final name stays one change
+    rename = [Change("update_node", a, {"name": "X"}), Change("update_node", a, {"name": "Ada"})]
+    assert compact(rename, base, METAMODEL) == []
+    assert compact([Change("update_node", a, {"name": "X"}), Change("update_node", a, {"name": "Y"})], base, METAMODEL) == [Change("update_node", a, {"name": "Y"})]
+    # a merge that would be invalid at the point of the earlier change is not made
+    late = uuid4()
+    risky = [add_connection(OWNS, b, product, fresh), add_node(PRODUCT, "P", late), Change("reroute_connection", fresh, {"target_node_id": str(late)})]
+    assert compact(risky, apply_changes(base, [add_node(PRODUCT, "P0", product)], METAMODEL), METAMODEL) == risky
+
+
 def test_compaction_leaves_changes_alone_when_unsure() -> None:
     node = uuid4()
     invalid = [Change("remove_node", node, {})]

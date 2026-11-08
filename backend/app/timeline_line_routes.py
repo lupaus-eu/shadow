@@ -20,7 +20,7 @@ from app.auth_routes import AuthenticatedUserDependency
 from app.limits import LINES_PER_MODEL, _refuse_at
 from app.metric_routes import copy_metrics
 from app.model_routes import MANAGERS, _audit, _member_session, _model, _stale
-from app.models import Metric, ModelLine, ModelVersion, Node, NodePosition, OrganizationMembership
+from app.models import Metric, ModelLine, ModelVersion, NodePosition, OrganizationMembership
 from app.subscription_access import require_organization_mutation_access
 from app.timeline.chain import state_after
 from app.timeline.errors import ChainBroken
@@ -101,11 +101,9 @@ def create_timeline_line_router(*, session_factory: sessionmaker[Session], authe
             line = ModelLine(id=uuid4(), organization_id=organization_id, model_id=model_id, name=body.name, description=body.description, kind="scenario", parent_line_id=branch.line_id, branch_event_id=branch.id, created_by_user_account_id=user.account.id, version=1)
             session.add(line)
             session.flush()
-            # Node ids are the same in every line; a metric keeps its node only if the node exists at the branch point
-            # (and, until ticket 08 moves metrics.node_id off the old ``nodes`` table, still has a row there).
+            # Node ids are the same in every line; a metric keeps its node only if the node exists at the branch point.
             linked = set(session.scalars(select(Metric.node_id).where(Metric.line_id == branch.line_id, Metric.node_id.is_not(None))))
-            kept = set(session.scalars(select(Node.id).where(Node.id.in_(linked)))) if linked else set()
-            copy_metrics(session, branch.line_id, line.id, {node_id: node_id for node_id in linked & kept if node_id in start.nodes})
+            copy_metrics(session, branch.line_id, line.id, {node_id: node_id for node_id in linked if node_id in start.nodes})
             _audit(session, request, "line.created", "line", line.id, {"model_id": str(model_id), "line_id": str(line.id), "parent_line_id": str(branch.line_id), "branch_event_id": str(branch.id)})
             session.refresh(line)
             return _line_response(load_timeline(session, model_id), line.id)

@@ -1,12 +1,12 @@
 """Migration 0061: versions, graphs, metrics and simulations become lines and events (model-timeline ticket 02).
 
-The seed is built through the application (old version routes still exist), the schema is moved back to
-0060 and up to 0061 again, and the replayed state of every line is compared with the old graph.
+The seed is built through the application and by writing the old graph tables directly (the routes that wrote
+them were removed in ticket 07), the schema is moved back to 0060 and up to 0061 again, and the replayed state of every line is compared with the old graph.
 """
 from contextlib import ExitStack
 from datetime import datetime
 from pathlib import Path
-from uuid import UUID
+from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -34,28 +34,59 @@ def _config(database_url: str) -> Config:
     return config
 
 
-def _node(owner, path, version_id, node_type_id, name, **extra):
-    body = {"node_type_id": node_type_id, "name": name, **extra}
-    if version_id:
-        body["version_id"] = version_id
-    created = owner.post(f"{path}/nodes", json=body)
-    assert created.status_code == 201, created.text
-    return created.json()
+class OldGraph:
+    """Writes the old ``nodes`` and ``connections`` tables directly: the routes that did it are gone since ticket 07, the migration must still convert what they left."""
+
+    def __init__(self, engine, organization_id: str, model_id: str) -> None:
+        self.engine, self.org, self.model = engine, organization_id, model_id
+
+    def run(self, sql: str, **params):
+        with self.engine.begin() as connection:
+            return connection.execute(text(sql), params)
+
+    def node(self, version_id, type_id, name, description=None, x=0, y=0, origin=None) -> dict:
+        node_id = uuid4()
+        self.run(
+            "INSERT INTO nodes (id, organization_id, model_id, version_id, origin_node_id, node_type_id, name, description, x, y) VALUES (:id, :org, :model, :version, :origin, :type, :name, :description, :x, :y)",
+            id=node_id, org=self.org, model=self.model, version=version_id, origin=origin, type=type_id, name=name, description=description, x=x, y=y,
+        )
+        return {"id": node_id, "name": name}
+
+    def connection(self, version_id, type_id, source, target) -> UUID:
+        connection_id = uuid4()
+        self.run("INSERT INTO connections (id, organization_id, model_id, version_id, connection_type_id, source_node_id, target_node_id) VALUES (:id, :org, :model, :version, :type, :source, :target)", id=connection_id, org=self.org, model=self.model, version=version_id, type=type_id, source=source, target=target)
+        return connection_id
+
+    def copy(self, base_version, fork_version) -> None:
+        """What the old fork route did: copy the graph, every node remembering its origin."""
+        mapping = {}
+        with self.engine.connect() as connection:
+            nodes = connection.execute(text("SELECT id, node_type_id, name, description, x, y FROM nodes WHERE version_id = :v ORDER BY created_at, id"), {"v": base_version}).mappings().all()
+            links = connection.execute(text("SELECT connection_type_id, source_node_id, target_node_id FROM connections WHERE version_id = :v"), {"v": base_version}).mappings().all()
+        for row in nodes:
+            mapping[row["id"]] = self.node(fork_version, row["node_type_id"], row["name"], row["description"], row["x"], row["y"], origin=row["id"])["id"]
+        for row in links:
+            self.connection(fork_version, row["connection_type_id"], mapping[row["source_node_id"]], mapping[row["target_node_id"]])
+
+    def named(self, version_id, name) -> UUID:
+        return self.run("SELECT id FROM nodes WHERE version_id = :v AND name = :n", v=version_id, n=name).scalar_one()
 
 
-def _seed(owner, base) -> dict:
-    """A Model with a graph, metrics, a simulation and forks of every shape; returns the ids that matter."""
+def _seed(owner, base, engine, organization_id) -> dict:
+    """A Model with a graph (in the old tables), metrics, a simulation and forks of every shape; returns the ids that matter."""
     model_id = owner.post(f"{base}/models", json={"name": "Twin"}).json()["id"]
     path = f"{base}/models/{model_id}"
     types = _types(_graph(owner, base, model_id))
     baseline = _graph(owner, base, model_id)["version"]["id"]
-    app = _node(owner, path, None, types["product"], "App", description="The product", x=10, y=20)
-    journey = _node(owner, path, None, types["journey"], "Onboarding", x=30, y=40)
-    goal = _node(owner, path, None, types["contract"], "Terms")
-    for source, target in ((app, journey), (app, goal)):
-        assert owner.post(f"{path}/connections", json={"connection_type_id": types["c:features_in"] if target is journey else types["c:is_composed_of"], "source_node_id": source["id"], "target_node_id": target["id"]}).status_code == 201, "seed connection"
+    old = OldGraph(engine, organization_id, model_id)
+    app = old.node(baseline, types["product"], "App", description="The product", x=10, y=20)
+    journey = old.node(baseline, types["journey"], "Onboarding", x=30, y=40)
+    terms = old.node(baseline, types["contract"], "Terms")
+    old.connection(baseline, types["c:features_in"], app["id"], journey["id"])
+    old.connection(baseline, types["c:is_composed_of"], app["id"], terms["id"])
     metrics = f"{path}/lines/{baseline}/metrics"
-    revenue = owner.post(metrics, json={"key": "revenue", "name": "Revenue", "unit": "EUR", "node_id": app["id"]}).json()
+    revenue = owner.post(metrics, json={"key": "revenue", "name": "Revenue", "unit": "EUR"}).json()
+    old.run("UPDATE metrics SET node_id = :node WHERE id = :id", node=app["id"], id=revenue["id"])  # the old nodes are no events' nodes: tie the metric the way the old routes did
     owner.post(metrics, json={"key": "double", "name": "Double", "formula": "revenue * 2"})
     _values(owner, metrics, revenue["id"], [(f"2025-{m:02d}-01", 100 + m) for m in range(1, 13)])
     assert owner.post(f"{path}/lines/{baseline}/simulations", json={"name": "Base run", "method": "linear", "horizon_months": 3}).status_code == 201
@@ -64,32 +95,23 @@ def _seed(owner, base) -> dict:
         body = {"name": name} | ({"base_version_id": base_version} if base_version else {})
         created = owner.post(f"{path}/versions", json=body)
         assert created.status_code == 201, created.text
+        old.copy(base_version or baseline, created.json()["id"])
         return created.json()["id"]
-
-    def nodes_of(version_id):
-        return {item["name"]: item for item in owner.get(path, params={"version_id": version_id}).json()["nodes"]}
-
-    def connections_of(version_id):
-        return owner.get(path, params={"version_id": version_id}).json()["connections"]
 
     # Growth: rename, move, drop one connection, add a node; it has a fork of its own.
     growth = fork("Growth")
-    names = nodes_of(growth)
-    assert owner.patch(f"{path}/nodes/{names['App']['id']}", json={"expected_version": 1, "name": "App 2", "description": None, "x": 111, "y": 222}).status_code == 200
-    connection = next(item for item in connections_of(growth) if item["connection_type_id"] == types["c:is_composed_of"])
-    assert owner.delete(f"{path}/connections/{connection['id']}", params={"expected_version": 1}).status_code == 204
-    _node(owner, path, growth, types["product"], "Extra", x=5, y=6)
+    old.run("UPDATE nodes SET name = 'App 2', description = NULL, x = 111, y = 222 WHERE id = :id", id=old.named(growth, "App"))
+    old.run("DELETE FROM connections WHERE version_id = :v AND connection_type_id = :t", v=growth, t=types["c:is_composed_of"])
+    old.node(growth, types["product"], "Extra", x=5, y=6)
     deeper = fork("Growth deeper", growth)
-    names = nodes_of(deeper)
-    assert owner.delete(f"{path}/nodes/{names['Onboarding']['id']}", params={"expected_version": 1}).status_code == 204
-    extra = nodes_of(deeper)["Extra"]
-    added = _node(owner, path, deeper, types["journey"], "Checkout")
-    assert owner.post(f"{path}/connections", json={"connection_type_id": types["c:features_in"], "source_node_id": extra["id"], "target_node_id": added["id"]}).status_code == 201
+    old.run("DELETE FROM nodes WHERE id = :id", id=old.named(deeper, "Onboarding"))
+    added = old.node(deeper, types["journey"], "Checkout")
+    old.connection(deeper, types["c:features_in"], old.named(deeper, "Extra"), added["id"])
     # Dropping a node takes its connections with it.
     pruned = fork("Pruned")
-    assert owner.delete(f"{path}/nodes/{nodes_of(pruned)['Onboarding']['id']}", params={"expected_version": 1}).status_code == 204
+    old.run("DELETE FROM nodes WHERE id = :id", id=old.named(pruned, "Onboarding"))
     # The baseline moves on after the forks above were made: they lack its new node, so their events remove it.
-    _node(owner, path, None, types["person"], "Late")
+    old.node(baseline, types["person"], "Late")
     # Same as the baseline: no event of its own; a fork of it branches where it branches.
     unchanged = fork("Unchanged")
     below_unchanged = fork("Below unchanged", unchanged)
@@ -174,12 +196,12 @@ def _assert_replay_equals_old_graph(data, version_id, model_id) -> None:
 
 def test_upgrade_converts_every_version_without_losing_anything_and_downgrade_is_clean(database_url: str, stack: ExitStack) -> None:
     application, owner, organization_id, base = _tenant(stack, database_url, "migration-lines")
-    seeded = _seed(owner, base)
+    engine = create_engine(database_url)
+    seeded = _seed(owner, base, engine, organization_id)
     model_id = UUID(seeded["org_model"])
     empty_model = owner.post(f"{base}/models", json={"name": "No baseline"}).json()["id"]
     stack.close()
 
-    engine = create_engine(database_url)
     config = _config(database_url)
     with engine.begin() as connection:
         connection.execute(text("DELETE FROM model_versions WHERE model_id = :id"), {"id": empty_model})

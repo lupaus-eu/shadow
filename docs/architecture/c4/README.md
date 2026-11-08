@@ -20,7 +20,7 @@ the C4 levels.
 | 3 · Components | `webAppComponents` | Sign-in shell, Organization workspace, Model workspace, operator console, API clients, localization |
 | 3 · Components | `apiComponents` | Authentication, Organizations, billing, the access rule, models and versions, metrics, forecasts and simulations, analysis, import and export, MCP, Support Access, audit, persistence |
 | 3 · Components | `workerComponents` | Scheduler, job runner, email delivery |
-| Dynamic | `signIn`, `invitation`, `billingWebhook`, `versionMerge`, `agentAnalysis` | Key flows step by step |
+| Dynamic | `signIn`, `invitation`, `billingWebhook`, `canvasEdit`, `agentAnalysis` | Key flows step by step |
 | Deployment | `localDeployment`, `productionDeployment` | Where each container runs |
 
 C4 level 4 (code) is not modelled. The source and the database model

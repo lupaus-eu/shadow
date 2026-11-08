@@ -4,18 +4,22 @@ export type ModelSummary = { id: string; name: string; description: string | nul
 export type NodeType = { id: string; key: string; name: string; color: string; shape: string; version: number };
 export type ConnectionType = { id: string; key: string; name: string; style: string; source_end: string; target_end: string; version: number };
 export type AllowedConnection = { connection_type_id: string; source_node_type_id: string; target_node_type_id: string };
-export type GraphNode = { id: string; node_type_id: string; name: string; description: string | null; x: number; y: number; version: number };
-export type GraphConnection = { id: string; connection_type_id: string; source_node_id: string; target_node_id: string; version: number };
+export type GraphNode = { id: string; node_type_id: string; name: string; description: string | null; x: number; y: number };
+export type GraphConnection = { id: string; connection_type_id: string; source_node_id: string; target_node_id: string };
 export type ModelVersion = { id: string; name: string; description: string | null; is_baseline: boolean; base_version_id: string | null; version: number };
-export type NodeChange = { node_id: string; name: string; fields: string[] };
-export type ConnectionChange = { connection_id: string; connection_type_id: string; source: string; target: string };
-export type VersionChanges = { version: ModelVersion; base: ModelVersion | null; added_nodes: NodeChange[]; removed_nodes: NodeChange[]; changed_nodes: NodeChange[]; added_connections: ConnectionChange[]; removed_connections: ConnectionChange[] };
-export type Graph = { model: ModelSummary; version: ModelVersion; versions: ModelVersion[]; node_types: NodeType[]; connection_types: ConnectionType[]; allowed_connections: AllowedConnection[]; nodes: GraphNode[]; connections: GraphConnection[] };
+/** An event of a line; `version` is what a canvas edit sends as `expected_version`. */
+export type LineEvent = { id: string; line_id: string; occurred_on: string; title: string; version: number; planned: boolean; change_count: number };
+/** The graph a line shows after its last event (a line has the id of the version it came from until the line picker arrives, ticket 09 of the model timeline). */
+export type Graph = { event: LineEvent | null; node_types: NodeType[]; connection_types: ConnectionType[]; allowed_connections: AllowedConnection[]; nodes: GraphNode[]; connections: GraphConnection[] };
 
 /** A write was refused because the row changed since it was read (HTTP 409 with `latest_version`). */
 export class StaleVersionError extends Error {}
 /** A write was refused by a rule of the model (HTTP 409 duplicate or 422). */
 export class RuleError extends Error {}
+/** An edit would break a later event or Scenario (HTTP 422 `chain_broken`); `cause` is the machine-readable reason. The edit was not saved. */
+export class ChainBrokenError extends RuleError {
+  constructor(readonly cause: string) { super("chain_broken"); }
+}
 
 const modelsUrl = (organizationId: string) => `${apiBaseUrl}/api/v1/organizations/${organizationId}/models`;
 
@@ -26,7 +30,10 @@ async function call(url: string, init?: RequestInit): Promise<Response> {
     const detail = ((await response.json().catch(() => null)) as { detail?: { latest_version?: number } } | null)?.detail;
     throw detail?.latest_version !== undefined ? new StaleVersionError() : new RuleError("conflict");
   }
-  if (response.status === 422) throw new RuleError("rule");
+  if (response.status === 422) {
+    const detail = ((await response.json().catch(() => null)) as { detail?: { reason?: string; cause?: string } } | null)?.detail;
+    throw detail?.reason === "chain_broken" ? new ChainBrokenError(detail.cause ?? "unknown") : new RuleError("rule");
+  }
   if (!response.ok) throw new Error(`Request failed (${response.status})`);
   return response;
 }
@@ -49,9 +56,22 @@ export async function deleteModel(organizationId: string, model: ModelSummary): 
   await call(`${modelsUrl(organizationId)}/${model.id}?expected_version=${model.version}`, { method: "DELETE" });
 }
 
-export async function loadGraph(organizationId: string, modelId: string, versionId?: string | null, signal?: AbortSignal): Promise<Graph> {
-  const query = versionId ? `?version_id=${versionId}` : "";
-  return (await call(`${modelsUrl(organizationId)}/${modelId}${query}`, { signal })).json();
+type LineState = Omit<Graph, "event"> & { event: LineEvent | null };
+
+/** The graph after the line's last event (any event, planned or not, as that is the one a canvas edit changes). */
+export async function loadGraph(organizationId: string, modelId: string, lineId: string, signal?: AbortSignal): Promise<Graph> {
+  const line = `${modelsUrl(organizationId)}/${modelId}/lines/${lineId}`;
+  const events: LineEvent[] = await (await call(`${line}/events`, { signal })).json();
+  const last = events[events.length - 1];
+  const state: LineState = await (await call(`${line}/state${last ? `?event_id=${last.id}` : ""}`, { signal })).json();
+  return { event: state.event, node_types: state.node_types, connection_types: state.connection_types, allowed_connections: state.allowed_connections, nodes: state.nodes, connections: state.connections };
+}
+
+/** A line with no events yet (a new Scenario) gets one to hold the canvas edits; the date is today. */
+export async function createEditsEvent(organizationId: string, modelId: string, lineId: string, title: string): Promise<LineEvent> {
+  const now = new Date();
+  const occurredOn = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  return (await call(`${modelsUrl(organizationId)}/${modelId}/lines/${lineId}/events`, { method: "POST", ...json({ occurred_on: occurredOn, title, changes: [] }) })).json();
 }
 
 export async function createVersion(organizationId: string, modelId: string, name: string, baseVersionId: string | null): Promise<ModelVersion> {
@@ -62,28 +82,31 @@ export async function deleteVersion(organizationId: string, modelId: string, ver
   await call(`${modelsUrl(organizationId)}/${modelId}/versions/${version.id}?expected_version=${version.version}`, { method: "DELETE" });
 }
 
-export async function loadVersionChanges(organizationId: string, modelId: string, versionId: string): Promise<VersionChanges> {
-  return (await call(`${modelsUrl(organizationId)}/${modelId}/versions/${versionId}/changes`)).json();
+// Canvas edits are changes inside an event; `event.version` is the stale check. Moving a node is a position of the line, not an edit.
+const eventUrl = (organizationId: string, modelId: string, event: LineEvent) => `${modelsUrl(organizationId)}/${modelId}/events/${event.id}`;
+
+export async function createNode(organizationId: string, modelId: string, event: LineEvent, input: { node_type_id: string; name: string; x: number; y: number }): Promise<GraphNode> {
+  return ((await (await call(`${eventUrl(organizationId, modelId, event)}/nodes`, { method: "POST", ...json({ ...input, expected_version: event.version }) })).json()) as { node: GraphNode }).node;
 }
 
-export async function createNode(organizationId: string, modelId: string, input: { node_type_id: string; name: string; x: number; y: number; version_id?: string }): Promise<GraphNode> {
-  return (await call(`${modelsUrl(organizationId)}/${modelId}/nodes`, { method: "POST", ...json(input) })).json();
+export async function updateNode(organizationId: string, modelId: string, event: LineEvent, node: GraphNode, changes: { name?: string; description?: string | null; node_type_id?: string }): Promise<void> {
+  await call(`${eventUrl(organizationId, modelId, event)}/nodes/${node.id}`, { method: "PATCH", ...json({ ...changes, expected_version: event.version }) });
 }
 
-export async function updateNode(organizationId: string, modelId: string, node: GraphNode, changes: { name?: string; description?: string | null; x?: number; y?: number }): Promise<GraphNode> {
-  return (await call(`${modelsUrl(organizationId)}/${modelId}/nodes/${node.id}`, { method: "PATCH", ...json({ ...changes, expected_version: node.version }) })).json();
+export async function deleteNode(organizationId: string, modelId: string, event: LineEvent, node: GraphNode): Promise<void> {
+  await call(`${eventUrl(organizationId, modelId, event)}/nodes/${node.id}?expected_version=${event.version}`, { method: "DELETE" });
 }
 
-export async function deleteNode(organizationId: string, modelId: string, node: GraphNode): Promise<void> {
-  await call(`${modelsUrl(organizationId)}/${modelId}/nodes/${node.id}?expected_version=${node.version}`, { method: "DELETE" });
+export async function createConnection(organizationId: string, modelId: string, event: LineEvent, input: { connection_type_id: string; source_node_id: string; target_node_id: string }): Promise<void> {
+  await call(`${eventUrl(organizationId, modelId, event)}/connections`, { method: "POST", ...json({ ...input, expected_version: event.version }) });
 }
 
-export async function createConnection(organizationId: string, modelId: string, input: { connection_type_id: string; source_node_id: string; target_node_id: string }): Promise<GraphConnection> {
-  return (await call(`${modelsUrl(organizationId)}/${modelId}/connections`, { method: "POST", ...json(input) })).json();
+export async function deleteConnection(organizationId: string, modelId: string, event: LineEvent, connection: GraphConnection): Promise<void> {
+  await call(`${eventUrl(organizationId, modelId, event)}/connections/${connection.id}?expected_version=${event.version}`, { method: "DELETE" });
 }
 
-export async function deleteConnection(organizationId: string, modelId: string, connection: GraphConnection): Promise<void> {
-  await call(`${modelsUrl(organizationId)}/${modelId}/connections/${connection.id}?expected_version=${connection.version}`, { method: "DELETE" });
+export async function saveNodePositions(organizationId: string, modelId: string, lineId: string, positions: { node_id: string; x: number; y: number }[]): Promise<void> {
+  await call(`${modelsUrl(organizationId)}/${modelId}/lines/${lineId}/positions`, { method: "PUT", ...json(positions) });
 }
 
 export async function loadVersions(organizationId: string, modelId: string): Promise<ModelVersion[]> {
@@ -198,12 +221,6 @@ export async function allowConnection(organizationId: string, modelId: string, r
 
 export async function disallowConnection(organizationId: string, modelId: string, rule: AllowedConnection): Promise<void> {
   await call(`${modelsUrl(organizationId)}/${modelId}/allowed-connections?${new URLSearchParams(rule)}`, { method: "DELETE" });
-}
-
-export type MergeResult = { base: ModelVersion; added_nodes: number; removed_nodes: number; changed_nodes: number; added_connections: number; removed_connections: number; skipped_connections: number };
-
-export async function mergeVersion(organizationId: string, modelId: string, version: ModelVersion): Promise<MergeResult> {
-  return (await call(`${modelsUrl(organizationId)}/${modelId}/versions/${version.id}/merge`, { method: "POST", ...json({ expected_version: version.version }) })).json();
 }
 
 export type ImportReport = { metrics: number; values: number; unknown_metrics: string[]; derived_metrics: string[]; invalid_cells: number };

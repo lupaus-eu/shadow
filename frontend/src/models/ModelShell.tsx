@@ -5,7 +5,7 @@ import { usePageTitle } from "../shell/AppShell";
 import { modelHref, modelsHref } from "../shell/nav";
 import { useOrganization } from "../shell/organization-outlet";
 import { Alert, Button, Field, Select, useConfirm } from "../ui";
-import { createVersion, deleteVersion, mergeVersion, loadModels, loadVersions, RuleError, type ModelSummary, type ModelVersion } from "./client";
+import { createVersion, deleteVersion, loadModels, loadVersions, RuleError, type ModelSummary, type ModelVersion } from "./client";
 import { modelMessages } from "./messages";
 
 export type ModelOutlet = { organizationId: string; modelId: string; model: ModelSummary; version: ModelVersion; versions: ModelVersion[]; writable: boolean; reloadVersions: () => Promise<void> };
@@ -26,7 +26,6 @@ export function ModelShell() {
   const [versions, setVersions] = useState<ModelVersion[] | null>(null);
   const [failed, setFailed] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
-  const [noticeIsInfo, setNoticeIsInfo] = useState(false);
   usePageTitle(model?.name ?? text.title);
 
   const reloadVersions = useCallback(async () => {
@@ -51,22 +50,6 @@ export function ModelShell() {
       setNotice(cause instanceof RuleError ? text.versionDuplicate : text.failed);
     }
   }
-  async function merge() {
-    if (!version || version.is_baseline) return;
-    const base = versions?.find((item) => item.id === version.base_version_id);
-    if (!base) return;
-    const baseName = base.is_baseline ? text.baseline : base.name;
-    if (!(await confirm({ title: text.mergeConfirm(version.name, baseName), confirmLabel: text.mergeVersion }))) return;
-    setNotice(null);
-    setNoticeIsInfo(false);
-    try {
-      const result = await mergeVersion(organizationId, modelId, version);
-      await reloadVersions();
-      select(base.is_baseline ? null : base.id);
-      setNoticeIsInfo(true);
-      setNotice(text.mergedNotice(result.added_nodes + result.removed_nodes + result.changed_nodes + result.added_connections + result.removed_connections, baseName));
-    } catch { setNotice(text.failed); }
-  }
   async function remove() {
     if (!version || version.is_baseline) return;
     if (!(await confirm({ title: text.deleteVersionConfirm(version.name), confirmLabel: text.deleteVersion, destructive: true }))) return;
@@ -87,7 +70,6 @@ export function ModelShell() {
       <div className="flex flex-wrap items-end gap-3">
         <Field label={text.version} className="w-56">{(control) => <Select {...control} value={version.id} onChange={(event) => select(versions.find((item) => item.id === event.target.value)?.is_baseline ? null : event.target.value)}>{versions.map((item) => <option key={item.id} value={item.id}>{item.is_baseline ? text.baseline : item.name}</option>)}</Select>}</Field>
         {writable ? <Button onClick={() => void fork()}>{text.newVersion}</Button> : null}
-        {writable && !version.is_baseline ? <Button onClick={() => void merge()}>{text.mergeVersion}</Button> : null}
         {writable && !version.is_baseline ? <Button variant="ghost-danger" onClick={() => void remove()}>{text.deleteVersion}</Button> : null}
       </div>
       <nav aria-label={model.name} className="flex flex-wrap gap-1 border-b border-line pb-2">
@@ -97,7 +79,7 @@ export function ModelShell() {
         {tab("/simulations", text.tabs.simulations)}
         {tab("/analysis", text.tabs.analysis)}
       </nav>
-      {notice ? <Alert tone={noticeIsInfo ? "info" : "danger"} role="alert">{notice}</Alert> : null}
+      {notice ? <Alert tone="danger" role="alert">{notice}</Alert> : null}
       <Outlet context={{ organizationId, modelId, model, version, versions, writable, reloadVersions } satisfies ModelOutlet} />
     </div>
   );

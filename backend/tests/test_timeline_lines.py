@@ -126,8 +126,6 @@ def test_a_scenario_gets_a_copy_of_the_parents_metrics_and_values_that_is_then_i
     world.owner.put(f"{metrics}/{revenue['id']}/values", json={"values": [{"period": "2026-01-01", "value": 10}, {"period": "2026-02-01", "value": 20}]})
     ada, app_node = data["ids"]["C"], data["ids"]["A"]
     with transaction_session(world.factory, RequestContext(organization_id=UUID(world.org))) as session:
-        for node_id, label, type_key in ((ada, "Ada", "person"), (app_node, "App", "product")):  # metrics.node_id still references the old nodes table until ticket 08
-            session.execute(text("INSERT INTO nodes (id, organization_id, model_id, version_id, node_type_id, name) VALUES (:id, :org, :model, :line, :type, :name)"), {"id": node_id, "org": world.org, "model": world.model, "line": world.line, "type": world.types[type_key], "name": label})
         session.execute(text("UPDATE metrics SET node_id = :node WHERE key = 'tied'"), {"node": ada})
         session.execute(text("UPDATE metrics SET node_id = :node WHERE key = 'revenue'"), {"node": app_node})
     early = make(world, "Early", data["first"]["id"])  # Ada does not exist yet there

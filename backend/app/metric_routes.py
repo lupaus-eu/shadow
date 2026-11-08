@@ -18,7 +18,11 @@ from app.auth_routes import AuthenticatedUserDependency
 from app.formulas import FormulaError, parse_formula
 from app.metric_engine import formula_order, month_start, series_of_line
 from app.model_routes import _audit, _editor_session, _member_session, _model, _stale, line_of
-from app.models import Metric, MetricValue, Node
+from app.models import Metric, MetricValue
+from app.timeline.chain import state_after
+from app.timeline.errors import ChainBroken
+from app.timeline.loader import load_timeline
+from app.timeline.state import State
 
 KEY_PATTERN = r"^[a-z][a-z0-9_]{0,39}$"
 MAX_VALUES_PER_REQUEST = 600
@@ -99,15 +103,21 @@ def _check_formulas(session: Session, line_id: UUID, changed: Metric | None = No
         raise HTTPException(status_code=422, detail=str(error)) from None
 
 
-def _validate_node(session: Session, line_id: UUID, node_id: UUID | None) -> None:
-    """``metrics.node_id`` still references the old ``nodes`` table (until ticket 08 of the model timeline remaps it to
-    element ids and drops the table), so the node must exist there as a node of the version that shares this line's id."""
-    if node_id is not None and session.scalar(select(Node.id).where(Node.id == node_id, Node.version_id == line_id)) is None:
+def _validate_node(session: Session, model_id: UUID, line_id: UUID, node_id: UUID | None) -> None:
+    """A metric may be tied to a node of the line's current graph: the state after the line's last event (``metrics.node_id`` is an element id)."""
+    if node_id is None:
+        return
+    timeline = load_timeline(session, model_id)
+    try:
+        state = state_after(timeline.lines, timeline.events, timeline.metamodel, line_id)
+    except ChainBroken:
+        state = State()
+    if node_id not in state.nodes:
         raise HTTPException(status_code=422, detail="node not found in this line")
 
 
 def copy_metrics(session: Session, base_line_id: UUID, fork_line_id: UUID, node_mapping: dict[UUID, UUID]) -> None:
-    """Copy a line's metrics and stored values into a Scenario line (the old fork route has already copied the nodes)."""
+    """Copy a line's metrics and stored values into a Scenario line; ``node_mapping`` says which tied nodes the copy keeps (element ids are the same in every line)."""
     mapping: dict[UUID, UUID] = {}
     for metric in session.scalars(select(Metric).where(Metric.line_id == base_line_id)).all():
         copy = Metric(id=uuid4(), organization_id=metric.organization_id, model_id=metric.model_id, line_id=fork_line_id, node_id=node_mapping.get(metric.node_id) if metric.node_id else None, key=metric.key, name=metric.name, unit=metric.unit, formula=metric.formula, version=1)
@@ -138,7 +148,7 @@ def create_metric_router(*, session_factory: sessionmaker[Session], authenticate
             line = line_of(session, organization_id, model.id, line_id)
             if session.scalar(select(Metric.id).where(Metric.line_id == line.id, Metric.key == body.key)) is not None:
                 raise HTTPException(status_code=409, detail={"reason": "duplicate_key"})
-            _validate_node(session, line.id, body.node_id)
+            _validate_node(session, model.id, line.id, body.node_id)
             metric = Metric(id=uuid4(), organization_id=organization_id, model_id=model.id, line_id=line.id, node_id=body.node_id, key=body.key, name=body.name, unit=body.unit, formula=body.formula, version=1)
             _check_formulas(session, line.id, changed=metric)
             session.add(metric)
@@ -154,7 +164,8 @@ def create_metric_router(*, session_factory: sessionmaker[Session], authenticate
             _stale(metric.version, body.expected_version)
             if body.key != metric.key:
                 raise HTTPException(status_code=422, detail="the key of a metric cannot change")
-            _validate_node(session, line.id, body.node_id)
+            if body.node_id != metric.node_id:  # a node the metric already has stays, even if a later event removed it
+                _validate_node(session, model_id, line.id, body.node_id)
             was_derived = bool(metric.formula)
             changes = {key: value for key, value in (("name", body.name), ("unit", body.unit), ("node_id", str(body.node_id) if body.node_id else None), ("formula", body.formula)) if (str(getattr(metric, key)) if key == "node_id" and getattr(metric, key) else getattr(metric, key)) != value}
             metric.name, metric.unit, metric.node_id, metric.formula = body.name, body.unit, body.node_id, body.formula

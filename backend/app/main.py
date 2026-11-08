@@ -42,6 +42,7 @@ from app.metamodel_routes import create_metamodel_router
 from app.metric_io_routes import create_metric_io_router
 from app.model_routes import create_model_router
 from app.version_routes import create_version_router
+from app.timeline_edit_routes import create_timeline_edit_router
 from app.timeline_event_routes import create_timeline_event_router
 from app.timeline_line_routes import create_timeline_line_router
 from app.timeline_routes import create_timeline_router
@@ -226,6 +227,7 @@ def create_app(
     application.include_router(create_version_router(session_factory=application.state.session_factory, authenticated_user_dependency=authenticated_user_dependency))
     application.include_router(create_timeline_router(session_factory=application.state.session_factory, authenticated_user_dependency=authenticated_user_dependency, clock=clock))
     application.include_router(create_timeline_event_router(session_factory=application.state.session_factory, authenticated_user_dependency=authenticated_user_dependency, clock=clock))
+    application.include_router(create_timeline_edit_router(session_factory=application.state.session_factory, authenticated_user_dependency=authenticated_user_dependency, clock=clock))
     application.include_router(create_timeline_line_router(session_factory=application.state.session_factory, authenticated_user_dependency=authenticated_user_dependency, clock=clock))
     application.include_router(create_metric_router(session_factory=application.state.session_factory, authenticated_user_dependency=authenticated_user_dependency))
     application.include_router(create_simulation_router(session_factory=application.state.session_factory, authenticated_user_dependency=authenticated_user_dependency))

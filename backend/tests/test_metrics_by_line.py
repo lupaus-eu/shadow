@@ -9,7 +9,7 @@ from alembic.config import Config
 from sqlalchemy import create_engine, text
 
 from test_metrics import _values
-from test_models_graph import _graph, _tenant
+from test_models_graph import _add_node, _graph, _latest_event, _tenant
 
 BACKEND = Path(__file__).resolve().parents[1]
 MONTHS = [(f"2025-{month:02d}-01", 100 + month) for month in range(1, 13)]
@@ -94,14 +94,41 @@ def test_unknown_lines_answer_404_and_other_models_lines_are_not_reachable(datab
     assert owner.get(f"{base}/models/{other}/lines/{baseline}/metrics/export").status_code == 404
 
 
-def test_metrics_can_point_at_a_node_of_the_line(database_url: str, stack: ExitStack) -> None:
+def test_metrics_can_point_at_a_node_of_the_lines_current_graph(database_url: str, stack: ExitStack) -> None:
     owner, _, base, model_id, baseline = _model(stack, database_url, "lines-node")
     path = f"{base}/models/{model_id}"
     types = {item["key"]: item["id"] for item in _graph(owner, base, model_id)["node_types"]}
-    node = owner.post(f"{path}/nodes", json={"node_type_id": types["product"], "name": "App"}).json()
+    event = _latest_event(owner, path)
+    node = _add_node(owner, path, event["id"], types["product"], "App").json()
     created = owner.post(f"{path}/lines/{baseline}/metrics", json={"key": "users", "name": "Users", "node_id": node["id"]})
     assert created.status_code == 201 and created.json()["node_id"] == node["id"]
     assert owner.post(f"{path}/lines/{baseline}/metrics", json={"key": "ghost", "name": "Ghost", "node_id": str(uuid4())}).status_code == 422
+    # A node of another line that does not exist here is refused; a Scenario sees the nodes up to its branch point and its own.
+    scenario = owner.post(f"{path}/lines", json={"name": "What if", "branch_event_id": event["id"]}).json()["id"]
+    assert owner.post(f"{path}/lines/{scenario}/metrics", json={"key": "users2", "name": "Users", "node_id": node["id"]}).status_code == 201
+    own = owner.post(f"{path}/lines/{scenario}/events", json={"occurred_on": "2099-01-01", "title": "Own", "changes": []}).json()["id"]
+    mine = _add_node(owner, path, own, types["goal"], "Mine").json()
+    assert owner.post(f"{path}/lines/{baseline}/metrics", json={"key": "mine", "name": "Mine", "node_id": mine["id"]}).status_code == 422
+    assert owner.post(f"{path}/lines/{scenario}/metrics", json={"key": "mine", "name": "Mine", "node_id": mine["id"]}).status_code == 201
+    # A node that a later event removes can no longer be chosen, but a metric that already has it can still be saved.
+    metric = owner.get(f"{path}/lines/{scenario}/metrics").json()
+    mine_metric = next(item for item in metric if item["key"] == "mine")
+    version = owner.get(f"{path}/events/{own}").json()["version"]
+    assert owner.delete(f"{path}/events/{own}/nodes/{mine['id']}", params={"expected_version": version}).status_code == 204
+    assert owner.post(f"{path}/lines/{scenario}/metrics", json={"key": "again", "name": "Again", "node_id": mine["id"]}).status_code == 422
+    kept = owner.patch(f"{path}/lines/{scenario}/metrics/{mine_metric['id']}", json={"key": "mine", "name": "Mine 2", "node_id": mine["id"], "expected_version": 1})
+    assert kept.status_code == 200 and kept.json()["name"] == "Mine 2"
+    cleared = owner.patch(f"{path}/lines/{scenario}/metrics/{mine_metric['id']}", json={"key": "mine", "name": "Mine 2", "node_id": None, "expected_version": 2})
+    assert cleared.status_code == 200 and cleared.json()["node_id"] is None
+
+
+def test_the_old_metric_node_foreign_key_is_gone(database_url: str, stack: ExitStack) -> None:
+    owner, _, base, model_id, baseline = _model(stack, database_url, "lines-node-fk")
+    engine = create_engine(database_url)
+    with engine.connect() as connection:
+        references = connection.execute(text("SELECT count(*) FROM pg_constraint WHERE conrelid = 'metrics'::regclass AND contype = 'f' AND confrelid = 'nodes'::regclass")).scalar_one()
+    engine.dispose()
+    assert references == 0
 
 
 def _config(database_url: str) -> Config:
@@ -145,6 +172,48 @@ def test_migration_0062_makes_line_id_required_and_drops_version_id(database_url
         command.downgrade(config, "0061")  # restores version_id from line_id
         with engine.connect() as connection:
             assert connection.execute(text("SELECT count(*) FROM metrics WHERE version_id IS DISTINCT FROM line_id")).scalar_one() == 0
+    finally:
+        command.upgrade(config, "head")
+        engine.dispose()
+
+
+def test_migration_0063_remaps_metric_nodes_to_element_ids_and_drops_the_foreign_key(database_url: str, stack: ExitStack) -> None:
+    owner, organization_id, base, model_id, baseline = _model(stack, database_url, "lines-0063")
+    path = f"{base}/models/{model_id}"
+    types = {item["key"]: item["id"] for item in _graph(owner, base, model_id)["node_types"]}
+    event = _latest_event(owner, path)["id"]
+    shared, own = uuid4(), uuid4()  # a baseline node a fork copied, and a node only the fork has
+    created = owner.post(f"{path}/lines/{baseline}/events", json={"occurred_on": "2099-01-01", "title": "Nodes", "changes": [{"op": "add_node", "element_id": str(shared), "payload": {"node_type_id": types["product"], "name": "Shared"}}]})
+    assert created.status_code == 201 and event
+    fork = owner.post(f"{path}/versions", json={"name": "Fork"}).json()["id"]
+    fork_event = owner.post(f"{path}/lines/{fork}/events", json={"occurred_on": "2099-02-01", "title": "Own", "changes": [{"op": "add_node", "element_id": str(own), "payload": {"node_type_id": types["goal"], "name": "Own"}}]})
+    assert fork_event.status_code == 201, fork_event.text
+    metrics = {key: owner.post(f"{path}/lines/{line}/metrics", json={"key": key, "name": key}).json()["id"] for key, line in (("on_base", baseline), ("on_copy", fork), ("on_own", fork), ("on_stale", baseline))}
+    stack.close()
+    engine = create_engine(database_url)
+    config = _config(database_url)
+    model, org = UUID(model_id), organization_id
+    base_node, copy_node, own_node, stale_node = uuid4(), uuid4(), own, uuid4()  # old rows: the baseline's node, the fork's copy of it (origin), the fork's own node, and a node no event holds
+    try:
+        command.downgrade(config, "0062")
+        with engine.begin() as connection:
+            references = connection.execute(text("SELECT count(*) FROM pg_constraint WHERE conrelid = 'metrics'::regclass AND contype = 'f' AND confrelid = 'nodes'::regclass")).scalar_one()
+            assert references == 1  # restored by the downgrade
+            for node_id, version, origin, name, type_key in ((base_node, baseline, None, "Shared", "product"), (copy_node, fork, base_node, "Shared", "product"), (own_node, fork, None, "Own", "goal"), (stale_node, baseline, None, "Stale", "product")):
+                connection.execute(text("INSERT INTO nodes (id, organization_id, model_id, version_id, origin_node_id, node_type_id, name) VALUES (:id, :org, :model, :version, :origin, :type, :name)"), {"id": node_id, "org": org, "model": model, "version": UUID(version), "origin": origin, "type": UUID(types[type_key]), "name": name})
+            for key, node_id in (("on_base", base_node), ("on_copy", copy_node), ("on_own", own_node), ("on_stale", stale_node)):
+                connection.execute(text("UPDATE metrics SET node_id = :node WHERE id = :id"), {"node": node_id, "id": UUID(metrics[key])})
+            connection.execute(text("UPDATE event_changes SET element_id = :element WHERE element_id = :old"), {"element": base_node, "old": shared})  # the event that adds the baseline node names the old node's id (baseline nodes keep their ids)
+        command.upgrade(config, "0063")
+        with engine.connect() as connection:
+            references = connection.execute(text("SELECT count(*) FROM pg_constraint WHERE conrelid = 'metrics'::regclass AND contype = 'f' AND confrelid = 'nodes'::regclass")).scalar_one()
+            nodes = {row.key: row.node_id for row in connection.execute(text("SELECT key, node_id FROM metrics WHERE model_id = :model AND key LIKE 'on_%'"), {"model": model})}
+        assert references == 0
+        assert nodes == {"on_base": base_node, "on_copy": base_node, "on_own": own_node, "on_stale": None}  # the copy reuses the base element id; a node no event adds becomes NULL
+        command.downgrade(config, "0062")
+        with engine.connect() as connection:
+            back = {row.key: row.node_id for row in connection.execute(text("SELECT key, node_id FROM metrics WHERE model_id = :model AND key LIKE 'on_%'"), {"model": model})}
+        assert back == {"on_base": base_node, "on_copy": copy_node, "on_own": own_node, "on_stale": None}  # each line gets the old node row it had
     finally:
         command.upgrade(config, "head")
         engine.dispose()

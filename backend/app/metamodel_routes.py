@@ -1,10 +1,16 @@
 """Metamodel editing: a Model's node types, connection types, and which node types may connect.
 
 The default metamodel seeds every new Model; from then on the Model owns its types. Every member
-can edit the types of a Model (like nodes); a type that nodes or connections still use cannot be deleted.
+can edit the types of a Model (like nodes); a type, or an allowed-connection rule, that an event of any line
+still uses cannot be deleted (409 ``in_use``, ADR-0049). A node or connection type is used when any event
+change payload names it; a rule is used when the chains would no longer replay without it. The deletes lock
+the Model like event writes do, so an event cannot start using a type while it is deleted. Until ticket 08 of
+the model timeline drops the old ``nodes`` and ``connections`` tables their rows count too, because their
+foreign keys would otherwise stop the delete.
 """
 
 import re
+from dataclasses import replace
 from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
@@ -24,7 +30,10 @@ from app.model_routes import (
     _model,
     _stale,
 )
-from app.models import AllowedConnection, Connection, ConnectionType, Node, NodeType
+from app.models import AllowedConnection, Connection, ConnectionType, EventChange, Node, NodeType, TimelineEvent
+from app.timeline.chain import validate_lines
+from app.timeline.errors import ChainBroken
+from app.timeline.loader import load_timeline
 
 COLOR = r"^#[0-9A-Fa-f]{6}$"
 Style = Literal["solid", "dashed"]
@@ -89,6 +98,23 @@ def _type(session: Session, cls, organization_id: UUID, model_id: UUID, type_id:
     return item
 
 
+def _named_by_event(session: Session, model_id: UUID, key: str, type_id: UUID) -> bool:
+    """Whether any event change of any line of the Model names the type (``node_type_id`` or ``connection_type_id`` in its payload)."""
+    statement = select(func.count()).select_from(EventChange).join(TimelineEvent, TimelineEvent.id == EventChange.event_id).where(TimelineEvent.model_id == model_id, EventChange.payload[key].as_string() == str(type_id))
+    return bool(session.scalar(statement))
+
+
+def _rule_needed_by_events(session: Session, model_id: UUID, rule: tuple[UUID, UUID, UUID]) -> bool:
+    """Whether some chain of the Model would stop replaying if the rule (connection type, source type, target type) were gone."""
+    timeline = load_timeline(session, model_id)
+    without = replace(timeline.metamodel, allowed=timeline.metamodel.allowed - {rule})
+    try:
+        validate_lines(timeline.lines, timeline.events, without)
+    except ChainBroken:
+        return True
+    return False
+
+
 def create_metamodel_router(*, session_factory: sessionmaker[Session], authenticated_user_dependency: AuthenticatedUserDependency) -> APIRouter:
     router = APIRouter(prefix="/api/v1/organizations", tags=["metamodel"])
 
@@ -128,9 +154,10 @@ def create_metamodel_router(*, session_factory: sessionmaker[Session], authentic
     @router.delete("/{organization_id}/models/{model_id}/node-types/{type_id}", status_code=204)
     def delete_node_type(organization_id: UUID, model_id: UUID, type_id: UUID, expected_version: int, request: Request, user: AuthenticatedUser = Depends(authenticated_user_dependency)) -> Response:
         with _editor_session(session_factory, organization_id, user) as session:
+            _model(session, organization_id, model_id, lock=True)
             item = _type(session, NodeType, organization_id, model_id, type_id, lock=True)
             _stale(item.version, expected_version)
-            if session.scalar(select(func.count()).select_from(Node).where(Node.node_type_id == item.id)):
+            if _named_by_event(session, model_id, "node_type_id", item.id) or session.scalar(select(func.count()).select_from(Node).where(Node.node_type_id == item.id)):
                 raise HTTPException(status_code=409, detail={"reason": "in_use"})
             _audit(session, request, "node_type.deleted", "node_type", item.id, {"model_id": str(model_id), "name": item.name})
             session.delete(item)
@@ -170,9 +197,10 @@ def create_metamodel_router(*, session_factory: sessionmaker[Session], authentic
     @router.delete("/{organization_id}/models/{model_id}/connection-types/{type_id}", status_code=204)
     def delete_connection_type(organization_id: UUID, model_id: UUID, type_id: UUID, expected_version: int, request: Request, user: AuthenticatedUser = Depends(authenticated_user_dependency)) -> Response:
         with _editor_session(session_factory, organization_id, user) as session:
+            _model(session, organization_id, model_id, lock=True)
             item = _type(session, ConnectionType, organization_id, model_id, type_id, lock=True)
             _stale(item.version, expected_version)
-            if session.scalar(select(func.count()).select_from(Connection).where(Connection.connection_type_id == item.id)):
+            if _named_by_event(session, model_id, "connection_type_id", item.id) or session.scalar(select(func.count()).select_from(Connection).where(Connection.connection_type_id == item.id)):
                 raise HTTPException(status_code=409, detail={"reason": "in_use"})
             _audit(session, request, "connection_type.deleted", "connection_type", item.id, {"model_id": str(model_id), "name": item.name})
             session.delete(item)
@@ -195,7 +223,7 @@ def create_metamodel_router(*, session_factory: sessionmaker[Session], authentic
     @router.delete("/{organization_id}/models/{model_id}/allowed-connections", status_code=204)
     def disallow_connection(organization_id: UUID, model_id: UUID, connection_type_id: UUID, source_node_type_id: UUID, target_node_type_id: UUID, request: Request, user: AuthenticatedUser = Depends(authenticated_user_dependency)) -> Response:
         with _editor_session(session_factory, organization_id, user) as session:
-            model = _model(session, organization_id, model_id)
+            model = _model(session, organization_id, model_id, lock=True)
             rule = session.scalar(select(AllowedConnection).where(AllowedConnection.model_id == model.id, AllowedConnection.connection_type_id == connection_type_id, AllowedConnection.source_node_type_id == source_node_type_id, AllowedConnection.target_node_type_id == target_node_type_id).with_for_update())
             if rule is None:
                 raise HTTPException(status_code=404, detail="Rule not found")
@@ -207,7 +235,7 @@ def create_metamodel_router(*, session_factory: sessionmaker[Session], authentic
                 .join(target, target.c.id == Connection.target_node_id)
                 .where(Connection.connection_type_id == connection_type_id, Node.node_type_id == source_node_type_id, target.c.node_type_id == target_node_type_id)
             )
-            if used:
+            if used or _rule_needed_by_events(session, model.id, (connection_type_id, source_node_type_id, target_node_type_id)):
                 raise HTTPException(status_code=409, detail={"reason": "in_use"})
             _audit(session, request, "allowed_connection.deleted", "model", model.id, {"connection_type_id": str(connection_type_id)})
             session.delete(rule)

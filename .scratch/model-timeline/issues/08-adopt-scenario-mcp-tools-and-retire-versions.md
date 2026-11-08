@@ -10,7 +10,7 @@ Adopt a Scenario into its parent, add the MCP tools, and remove versions and mer
 
 - `POST /lines/{line}/adopt` per ADR-0050 with chain check and audit `line.adopted`.
 - MCP: `list_lines`, `list_events`, `get_state`, `create_scenario`, `add_event`, `update_event`, `delete_event`, `adopt_scenario`; `create_version`, `merge_version`, `get_version_changes` removed.
-- Migration 0063 drops `nodes`, `connections`, `model_versions`; version routes removed; ADR-0045 marked superseded and ADR-0048 to 0050 accepted.
+- Migration 0064 drops `nodes`, `connections`, `model_versions`; version routes removed; ADR-0045 marked superseded and ADR-0048 to 0050 accepted. (Ticket 07 took the number 0063 for the `metrics.node_id` remap, which is therefore already done; the old version `changes` and `merge` routes and the MCP tools `merge_version` and `get_version_changes` were also removed in ticket 07, so ticket 08 removes only what remains: the version list, create, rename and delete routes, `create_version`, `GET /models/{id}` with `version_id`, and the frozen old tables with the `in_use` checks that still look at them in `metamodel_routes.py`.)
 
 ## Acceptance criteria
 

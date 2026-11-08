@@ -46,7 +46,7 @@ Alembic migrations 0060 onward; every table has `organization_id`, row-level sec
   `node_positions`; each fork becomes a Scenario branching from that event, with one event holding the
   difference to its base (add, remove, update, re-route), dated the fork's creation day; element ids are
   kept so metrics' `node_id` still match. A fork of a fork branches from its base fork's last event; a fork with no difference gets no event, and a fork of it branches where it does. A line takes the id of its version, and a new Model gets a Base line (with an empty "Initial situation" event) when it is created, in the same request as the baseline version, until ticket 04.
-- Ticket 04's migration (0062) sets `line_id` required and drops `version_id`; retirement (0063, in ticket 08): drop `nodes`, `connections`, `model_versions` after the code no longer
+- Ticket 04's migration (0062) sets `line_id` required and drops `version_id`; ticket 07's migration (0063) drops the foreign key `metrics.node_id` → `nodes.id` and remaps the column to element ids (the 0061 rules); retirement (0064, in ticket 08): drop `nodes`, `connections`, `model_versions` after the code no longer
   reads them. Downgrade rebuilds them from the present state of each line (the latest state, including
   planned events) so the CI upgrade/downgrade check passes; planned-event dates and history are lost on
   downgrade, which the migration docstring states.
@@ -87,8 +87,11 @@ All under `/api/v1/organizations/{org}/models/{model}`; errors are `{detail: {re
   `event`, `planned`, `positions`, and for the shown event `added`, `updated` and `removed` element lists (removed
   ones with their data) so the canvas can mark what it changed.
 - `POST /events/{event}/nodes`, `PATCH /events/{event}/nodes/{id}`, `DELETE ...`, and the same for
-  `/connections`: canvas edits as changes inside the event, validated and compacted. They replace today's
-  `/nodes` and `/connections` routes.
+  `/connections`: canvas edits as changes inside the event, validated and compacted (`expected_version` of the event in
+  the body, or the query for a delete; a create may omit it). They replace today's `/nodes` and `/connections` routes.
+  Compaction also folds re-routes and type changes of a connection into its add or an earlier change, and drops a change
+  that leaves the state as it was. A connection re-typed and re-routed together is tried in both orders and refused if
+  only the pair is allowed.
 - `PUT /lines/{line}/positions` (`[{node_id, x, y}]`): writes positions only, no event, no audit.
 - `POST /lines/{line}/adopt` (Scenario into parent; ADR-0050).
 - Metric, simulation and analysis routes take `line_id` in place of `version_id`.
