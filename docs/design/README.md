@@ -479,6 +479,7 @@ number of **Scenarios** (what-if copies of a line). The shown line is `?line=` (
   its creator, an Owner or an Admin), *Adopt into parent line* (the parent's write rule, confirmed first), *Delete scenario*
   (confirmed first). A 403 from the server is still handled and says the role does not allow it.
 - **Start changed.** A Scenario whose starting state changed shows a warning with *I have checked it* (acknowledge).
+- **Structure canvas guidance** lives in `ui-foundation.md` ("Full-width canvas pages": layout, drawing, keyboard map, accessibility, contrast, reduced motion, phones); this file covers the model page around it (line bar, event list, event editor).
 - **Event list** (Structure tab). A column beside the canvas, oldest first, opened with the *Events (n)* button in the line bar (open by itself only on screens at least 1600 px wide, so it never squeezes the drawing). Each event shows date, title, number of
   changes and, for a Scenario that starts from it, a small badge that opens the Scenario. A **planned** event (dated after
   today) has the word *Planned*, a dashed amber frame and an amber fill: never colour alone. A *Now* divider sits between the

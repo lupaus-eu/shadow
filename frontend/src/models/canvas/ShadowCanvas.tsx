@@ -1,5 +1,5 @@
 import Diagram from "diagram-js";
-import { useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
+import { useEffect, useId, useImperativeHandle, useRef, useState, type Ref } from "react";
 
 import { CanvasToolbar, type CanvasToolbarTexts } from "./CanvasToolbar";
 import { buildExportSvg, downloadBlob, exportFileName, resolveTokens, svgBlob, svgToPng } from "./export";
@@ -58,6 +58,8 @@ export type ShadowCanvasHandle = {
   autoLayout(): Promise<boolean>;
   /** Downloads the canvas as an SVG or a PNG file named after the model and the line; false when nothing is drawn. */
   exportImage(kind: "svg" | "png"): Promise<boolean>;
+  /** Puts keyboard focus back on the drawing (the selected node, else the first drawn node, else the drawing itself); used after a dialog closed. */
+  focus(): void;
   /** Switches the lasso mode. */
   setLasso(on: boolean): void;
   /** Adds a key to the canvas keymap (it only fires while focus is inside the drawing and not in a text field); returns the function that removes it. */
@@ -104,6 +106,8 @@ type Props = {
   onToggleConnect(): void;
   toolbarTexts: CanvasToolbarTexts;
   label: string;
+  /** Said by screen readers after the label: the keys of the drawing. */
+  description?: string;
   ref?: Ref<ShadowCanvasHandle>;
 };
 
@@ -116,8 +120,9 @@ const kindOf = (element: GraphElement | undefined): CanvasTarget["kind"] => (isN
  * which updates shapes in place, and the diagram reports selection and edits back through the props. The container is observed so the
  * diagram follows the size the page gives it.
  */
-export function ShadowCanvas({ graph, readOnly, selectedIds, onSelect, drawing, drawingTexts, readGraph, isRefusal, onHistory, onToggleConnect, onElementClick, send, connecting = false, onEscape, view, filter = noFilter, keyBindings, snap, onSnapChange, exportName, onToolResult, toolbarTexts, label, ref }: Props) {
+export function ShadowCanvas({ graph, readOnly, selectedIds, onSelect, drawing, drawingTexts, readGraph, isRefusal, onHistory, onToggleConnect, onElementClick, send, connecting = false, onEscape, view, filter = noFilter, keyBindings, snap, onSnapChange, exportName, onToolResult, toolbarTexts, label, description, ref }: Props) {
   const container = useRef<HTMLDivElement>(null);
+  const descriptionId = useId();
   const diagram = useRef<Diagram | null>(null);
   const services = useRef<Services | null>(null);
   const props = useRef({ onSelect, onElementClick, onEscape, send, selectedIds, view, keyBindings, drawing, drawingTexts, readGraph, isRefusal, onHistory, snap, onSnapChange, exportName, onToolResult });
@@ -187,6 +192,13 @@ export function ShadowCanvas({ graph, readOnly, selectedIds, onSelect, drawing, 
       distribute: (axis) => runTool("distribute", () => services.current?.tools.distribute(axis) ?? Promise.resolve(false)),
       autoLayout: () => runTool("layout", () => services.current?.tools.autoLayout() ?? Promise.resolve(false), true),
       exportImage: (kind) => runTool("export", () => exportImage(kind), true),
+      focus: () => {
+        const host = container.current;
+        if (!host) return;
+        const visible = ".djs-element.djs-shape[role='button']:not(.shadow-hidden)";
+        const target = host.querySelector<SVGElement>(`.selected${visible}`) ?? host.querySelector<SVGElement>(visible) ?? host.querySelector<SVGElement>(".djs-container > svg");
+        target?.focus();
+      },
       setLasso: (on) => services.current?.drawing.setLasso(on),
       registerKey: (binding) => services.current?.keys.keymap.register(binding) ?? (() => undefined),
     };
@@ -357,7 +369,8 @@ export function ShadowCanvas({ graph, readOnly, selectedIds, onSelect, drawing, 
   const nodeCount = graph?.nodes.length ?? 0;
   return (
     <div className="relative h-full w-full">
-      <div ref={container} role="group" aria-label={label} data-connecting={connecting || undefined} data-zoom={zoomPercent(scale)} className="shadow-canvas h-full w-full" />
+      {description ? <p id={descriptionId} className="sr-only">{description}</p> : null}
+      <div ref={container} role="group" aria-label={label} aria-describedby={description ? descriptionId : undefined} data-connecting={connecting || undefined} data-zoom={zoomPercent(scale)} className="shadow-canvas h-full w-full" />
       <CanvasToolbar
         scale={scale}
         texts={toolbarTexts}

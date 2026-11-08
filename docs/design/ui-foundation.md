@@ -70,6 +70,18 @@ never replaced by interface tokens.
 | sidebar-ink on sidebar | `#C9D3DA` on `#111C24` | 11.37:1 |
 | sidebar-muted on sidebar | `#8C9AA5` on `#111C24` | 5.99:1 |
 | white on danger | `#FFFFFF` on `#B42318` | 6.57:1 |
+| ink on surface-sunken (row hover) | `#17212B` on `#E9EDF0` | 13.84:1 |
+| ink on accent-soft (selected row) | `#17212B` on `#E3F2EF` | 14.13:1 |
+| ink-muted on surface-subtle (toolbar hover) | `#56636E` on `#F8FAFB` | 5.89:1 |
+| warning-ink on surface (Planned label) | `#6B4E00` on `#FFFFFF` | 7.74:1 |
+| info-ink on surface (Scenario caption) | `#1D4F86` on `#FFFFFF` | 8.35:1 |
+| danger on danger-soft | `#B42318` on `#FEF1F0` | 5.97:1 |
+| line-strong on surface (control and popover borders, graphics; needs 3:1) | `#8A96A0` on `#FFFFFF` | 3.02:1 |
+
+`frontend/tests/canvas/contrast.test.ts` computes the ratios of every pair the Structure canvas uses (text 4.5:1, controls and graphics
+3:1) from `theme.css`. **There is no dark theme yet**, so only the light tokens are tested; the test also fails when a dark rule
+(`prefers-color-scheme: dark` or `data-theme`) appears, as a reminder to add that theme's token block to it. A node's own type colour is
+data and is not checked; its label colour is chosen for contrast by the renderer.
 | danger on danger-soft | `#B42318` on `#FEF1F0` | 5.97:1 |
 | warning-ink on warning-soft | `#6B4E00` on `#FFF4D6` | 7.06:1 |
 | success-ink on success-soft | `#0B5F3A` on `#E7F6EE` | 6.94:1 |
@@ -338,6 +350,37 @@ keep the reading column. `OrganizationLayout` turns `wide` on for that route.
   | `Shift+Ctrl/Cmd+Z`, `Ctrl/Cmd+Y` | Redo |
   | Space + drag | Pan (on a focused node Space selects it, like Enter) |
   | `Enter` / Space on a focused node | Select it |
+  | `Tab` / `Shift+Tab` | Move between the toolbar, the nodes (each is a button named "name (type)") and the panels |
+
+- **Accessibility of the canvas** (ticket 09 of the Structure canvas).
+  - *Text alternative.* The left panel is the focusable list of every node: name, description, and a spoken-only line with the
+    type and the node's connections ("Type: Unit. outgoing Reports to: Support."). It is the same list as the type panel (no second list
+    exists); a row selects the node and centres the canvas on it. A collapsed group is hidden from assistive technology until it is
+    opened. The canvas group has `aria-describedby` pointing at a one-line summary of the keys (`canvasHelp`).
+  - *Every mouse action has a keyboard route.* Select: Tab to a node, Enter or Space. Move: arrows. Connect: `C`, Enter on the
+    first node, Tab to the second, Enter (a choice of types is a dialog). Select a connection (to re-route or delete it): the
+    selected node's **Connections** list in the details panel (one button per connection; focus moves to the connection's details).
+    Delete: `Delete` with a confirmation. Rename: `F2`. Lasso: `L` or the toolbar toggle. Align, distribute, Arrange, snap, minimap,
+    export, undo, redo, zoom and Fit are toolbar buttons (and keys where listed above). Events and scenarios are controls of the model
+    page above the canvas. Not possible without a pointer: dragging a node by an arbitrary distance (arrows move 10 px steps), the library's
+    drag from the context pad (the connect key replaces it), and moving a connection's end (re-route is a select in the details).
+  - *Live region* (`role="status"`, polite, `canvas/a11y.ts` `nextAnnouncement` makes a repeated sentence audible again). It says:
+    the selection ("Selected Sales, Unit.", the two ends of a connection, or a count), connect mode on, the source chosen, and off,
+    every refusal, undo and redo, align, distribute, Arrange, export, and a new node. A refusal is also a visible `role="alert"` notice.
+  - *Focus.* After a confirmation or the connection-type dialog closes, focus returns to where it was; when that element is gone (a
+    deleted node) it returns to the canvas (`ShadowCanvasHandle.focus`: the selected node, else the first drawn node, else the drawing).
+  - *Marks never rely on colour alone.* Added, changed and removed are the glyphs `+`, `~` and `−` on a badge (and a dashed outline for
+    removed), with text in the legend and the lists; a planned event says "Planned" in words; a hidden type is not drawn, a search
+    match has a heavier outline and the rest are dimmed (opacity plus the outline), selection and keyboard focus are a heavier outline,
+    and a pressed toolbar toggle has `aria-pressed` and a filled background. Base line and Scenario differ by words as well as by the
+    accent of the caption.
+  - *Reduced motion.* Under `prefers-reduced-motion: reduce` a global rule in `theme.css` switches off every CSS transition and animation
+    on the page (toolbar, panels, popover, minimap, dialogs), and the canvas centres and zooms without the tween.
+  - *Texts.* Every label, message and shortcut hint is in `models/messages.ts` and `timeline-messages.ts` in Finnish and English;
+    `tests/canvas/messages.test.ts` fails when a key is missing from one language, empty, or a copy of the English text. Server text is
+    never shown: refusals are rebuilt from the structured answer (`refusalMessage`, the `text.stale`, `text.failed` family).
+  - *Phones.* Under 768 px the panels are a bottom sheet (it closes when a node is added, so the node being named is not covered);
+    the toolbar wraps inside the canvas; with a coarse pointer buttons are 44 px.
 
 - **Time control** (ticket 08 of the Structure canvas). The canvas shows the state after the chosen event of the chosen line and **drawing edits that
   event**, whichever it is (an earlier one, the last, a planned one): the edit goes to that event with its own version, and only the

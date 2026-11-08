@@ -30,6 +30,7 @@ import { readPanels, writePanels, type PanelState } from "./panel-state";
 import { readSnap, writeSnap } from "./canvas/snap";
 import { canvasWritable, markCounts, shouldClearHistory, sourceEventId } from "./canvas/edit-target";
 import { ghostSummary } from "./canvas/ghosts";
+import { nextAnnouncement, nodeConnectionRows, selectionAnnouncement } from "./canvas/a11y";
 import { refusalMessage } from "./timeline/refusals";
 
 const MIN_CANVAS_HEIGHT = 320;
@@ -88,6 +89,9 @@ export function ModelCanvas() {
   const [connecting, setConnecting] = useState<{ sourceId: string | null; connectionTypeId: string | null } | null>(null);
   const [picker, setPicker] = useState<{ sourceId: string; targetId: string; types: { id: string; name: string }[] } | null>(null);
   const [announcement, setAnnouncement] = useState("");
+  const connectDone = useRef(false);
+  const prevConnecting = useRef<typeof connecting>(null);
+  const lastSelection = useRef("");
   const confirm = useConfirm();
   const [, setSearch] = useSearchParams();
   const canvas = useRef<ShadowCanvasHandle>(null);
@@ -182,8 +186,27 @@ export function ModelCanvas() {
     const b = typeName(targetId);
     return a && b ? text.refusalNotAllowed(a, b) : text.notAllowed;
   };
-  const say = (message: string) => setAnnouncement((old) => (old === message ? `${message}\u00A0` : message));
+  const say = (message: string) => setAnnouncement((old) => nextAnnouncement(old, message));
+  /** After a dialog closed, focus that has nowhere to go (the node it came from was deleted) returns to the drawing, so the keyboard carries on where it was. */
+  const restoreFocus = () => { window.setTimeout(() => { const active = document.activeElement; if (!active || active === document.body || !document.contains(active)) canvas.current?.focus(); }, 80); };
   const refuse = (message: string) => { setNotice(message); say(message); };
+
+  // The live region says what a change of selection and of connect mode came to (a refusal, undo and tools say their own).
+  useEffect(() => {
+    const key = selectedIds.join("|");
+    if (key === lastSelection.current) return;
+    lastSelection.current = key;
+    if (graph) say(selectionAnnouncement(graph, selectedIds, text));
+  }, [selectedIds]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const before = prevConnecting.current;
+    prevConnecting.current = connecting;
+    if (connecting) {
+      if (connecting.sourceId !== null && connecting.sourceId !== before?.sourceId) say(text.connectFromNode(byId.get(connecting.sourceId)?.name ?? ""));
+      else if (!before) say(text.connectOn);
+    } else if (before && !connectDone.current) say(text.connectOff);
+    connectDone.current = false;
+  }, [connecting]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Draws an edit and sends it. A refusal before sending (read-only, a rule) gets its notice here; a refused write got its notice in `send`. */
   const edit = (change: GraphEdit): Promise<void> =>
@@ -214,6 +237,7 @@ export function ModelCanvas() {
     if (summary.nodes.length + summary.connections.length === 0) return;
     const label = (item: (typeof summary.connections)[number]) => `${item.source?.name ?? "?"} \u2192 ${item.target?.name ?? "?"} (${item.type?.name ?? "?"})`;
     const ok = await confirm({ title: text.deleteTitle(summary.nodes.map((node) => node.name), summary.connections.map(label)), confirmLabel: text.deleteElements, destructive: true });
+    restoreFocus();
     if (!ok) return;
     setSelectedIds([]);
     setNotice(null);
@@ -230,6 +254,7 @@ export function ModelCanvas() {
     if (!connecting || target.kind !== "node") return false;
     if (connecting.sourceId === null) { setConnecting({ ...connecting, sourceId: target.id }); return true; }
     const { sourceId, connectionTypeId } = connecting;
+    connectDone.current = true;
     setConnecting(null);
     requestConnection(sourceId, target.id, connectionTypeId);
     return true;
@@ -296,11 +321,12 @@ export function ModelCanvas() {
   if (status === "failed") return <Alert tone="danger" role="alert">{text.failed}</Alert>;
   if (!graph) return <p role="status" className="text-ink-muted">{text.loading}</p>;
 
-  const addNode = writable ? <AddNode graph={graph} onAdd={(typeId) => { canvas.current?.addNode(typeId); }} text={text} /> : null;
+  // On a phone the sheet would cover the node that opens for naming, so it closes first.
+  const addNode = writable ? <AddNode graph={graph} onAdd={(typeId) => { if (phone) setSheetOpen(false); canvas.current?.addNode(typeId); }} text={text} /> : null;
   const details = (
     <>
       {selectedNode ? (
-        <NodePanel key={`${selectedNode.id}-${selectedNode.name}-${selectedNode.description ?? ""}`} graph={graph} node={selectedNode} writable={writable} connecting={connecting !== null} text={text}
+        <NodePanel key={`${selectedNode.id}-${selectedNode.name}-${selectedNode.description ?? ""}`} graph={graph} onSelectConnection={(id) => { setSelectedId(id); window.setTimeout(() => document.getElementById("canvas-connection-title")?.focus(), 0); }} node={selectedNode} writable={writable} connecting={connecting !== null} text={text}
           metrics={nodeMetrics} locale={locale} metricsHref={`${modelHref(organizationId, modelId)}/metrics?line=${lineId}`}
           onSave={(changes) => void edit({ kind: "node.update", id: selectedNode.id, name: changes.name, description: changes.description })}
           onDelete={() => void requestDelete([selectedNode.id])}
@@ -324,7 +350,7 @@ export function ModelCanvas() {
     // A node that is no longer drawn cannot stay selected.
     if (selectedNode && next.has(selectedNode.node_type_id)) setSelectedId(null);
   };
-  const addOfType = (typeId: string) => { canvas.current?.addNode(typeId); };
+  const addOfType = (typeId: string) => { if (phone) setSheetOpen(false); canvas.current?.addNode(typeId); };
   const nodeList = (
     <TypePanel
       groups={groups} hidden={hiddenTypes} collapse={collapse} query={query} matches={matchIds} selectedId={selectedId} markers={graph.markers} writable={writable}
@@ -335,6 +361,7 @@ export function ModelCanvas() {
       onToggleCollapse={(typeId, wasOpen) => setCollapse((old) => { const next = { ...old, [typeId]: wasOpen }; writeTypeCollapse(modelId, next); return next; })}
       onAdd={addOfType}
       onSelectNode={(id) => { setSelectedId(id); canvas.current?.centreOnNode(id, { zoom: true }); }}
+      connectionsOf={(id) => nodeConnectionRows(graph, id, text).map((row) => row.label)}
     />
   );
   const ghosts = ghostSummary(graph);
@@ -347,12 +374,12 @@ export function ModelCanvas() {
       {shownEventRow?.planned ? <Alert tone="warning">{timelineMessages(locale).plannedNotice}</Alert> : null}
       {notice ? <Alert tone="danger" role="alert">{notice}</Alert> : null}
       <div role="status" aria-live="polite" className="sr-only">{announcement}</div>
-      <Dialog open={picker !== null} onOpenChange={(open) => { if (!open) setPicker(null); }} title={text.chooseConnection}
+      <Dialog open={picker !== null} onOpenChange={(open) => { if (!open) { setPicker(null); restoreFocus(); } }} title={text.chooseConnection}
         description={picker ? text.chooseConnectionHint(byId.get(picker.sourceId)?.name ?? "", byId.get(picker.targetId)?.name ?? "") : undefined}
-        footer={<Button onClick={() => setPicker(null)}>{text.cancel}</Button>}>
+        footer={<Button onClick={() => { setPicker(null); restoreFocus(); }}>{text.cancel}</Button>}>
         <div className="flex flex-col gap-2">
           {picker?.types.map((type) => (
-            <Button key={type.id} onClick={() => { const chosen = picker; setPicker(null); void edit({ kind: "connection.create", connectionTypeId: type.id, sourceId: chosen.sourceId, targetId: chosen.targetId }); }}>{type.name}</Button>
+            <Button key={type.id} onClick={() => { const chosen = picker; setPicker(null); restoreFocus(); void edit({ kind: "connection.create", connectionTypeId: type.id, sourceId: chosen.sourceId, targetId: chosen.targetId }); }}>{type.name}</Button>
           ))}
         </div>
       </Dialog>
@@ -363,7 +390,7 @@ export function ModelCanvas() {
             drawing={{ connect: (a, b) => requestConnection(a, b), remove: (ids) => void requestDelete(ids), create: (input) => { say(text.nodeAdded); void edit({ kind: "node.create", nodeTypeId: input.nodeTypeId, name: input.name, x: input.x, y: input.y }); }, rename: (id, name) => { const node = byId.get(id); void edit({ kind: "node.update", id, name, description: node?.description ?? null }); } }}
             drawingTexts={{ connect: text.padConnect, remove: text.padRemove, nodeName: text.nodeName, namePlaceholder: text.namePlaceholder }}
             readGraph={readGraph} isRefusal={(error) => error instanceof StaleVersionError || error instanceof RuleError || error instanceof ForbiddenError} onHistory={onHistory}
-            onToggleConnect={() => setConnecting((old) => (old ? null : { sourceId: null, connectionTypeId: null }))} onElementClick={onElementClick} send={send} connecting={connecting !== null} onEscape={cancelConnect} view={view} filter={filter} keyBindings={keyBindings} snap={snap} onSnapChange={changeSnap} exportName={{ model: model.name, line: line.name }} onToolResult={onToolResult} toolbarTexts={toolbarTexts} label={text.canvasLabel} />
+            onToggleConnect={() => setConnecting((old) => (old ? null : { sourceId: null, connectionTypeId: null }))} onElementClick={onElementClick} send={send} connecting={connecting !== null} onEscape={cancelConnect} view={view} filter={filter} keyBindings={keyBindings} snap={snap} onSnapChange={changeSnap} exportName={{ model: model.name, line: line.name }} onToolResult={onToolResult} toolbarTexts={toolbarTexts} label={text.canvasLabel} description={text.canvasHelp} />
           <CanvasCaption locale={locale} kind={line.kind} lineName={line.name} event={shownEventRow} markers={graph.markers} />
         </div>
         {phone ? null : <Panel side="right" title={text.panelDetails} collapsed={panels.right} onToggle={() => toggle("right")} text={text}>{rightContent}</Panel>}
@@ -456,13 +483,13 @@ function AddNode({ graph, onAdd, text }: { graph: GraphData; onAdd: (typeId: str
   );
 }
 
-function NodePanel({ graph, node, writable, connecting, text, metrics, locale, metricsHref, onSave, onDelete, onConnect, onCancel }: { graph: GraphData; node: GraphNode; writable: boolean; connecting: boolean; text: Text; metrics: NodeMetricsState; locale: string; metricsHref: string; onSave: (changes: { name: string; description: string | null }) => void; onDelete: () => void; onConnect: (connectionTypeId: string) => void; onCancel: () => void }) {
+function NodePanel({ graph, node, writable, connecting, text, metrics, locale, metricsHref, onSave, onDelete, onConnect, onCancel, onSelectConnection }: { onSelectConnection: (id: string) => void; graph: GraphData; node: GraphNode; writable: boolean; connecting: boolean; text: Text; metrics: NodeMetricsState; locale: string; metricsHref: string; onSave: (changes: { name: string; description: string | null }) => void; onDelete: () => void; onConnect: (connectionTypeId: string) => void; onCancel: () => void }) {
   const [name, setName] = useState(node.name);
   const [description, setDescription] = useState(node.description ?? "");
   const options = graph.allowedConnections.filter((item) => item.source_node_type_id === node.node_type_id).map((item) => item.connection_type_id);
   const available = graph.connectionTypes.filter((type) => options.includes(type.id));
   const [connectionTypeId, setConnectionTypeId] = useState(available[0]?.id ?? "");
-  const related = graph.connections.filter((item) => item.source_node_id === node.id || item.target_node_id === node.id);
+  const related = nodeConnectionRows(graph, node.id, text);
   return (
     <div className="flex flex-col gap-3 rounded-[var(--radius-card)] border border-line bg-surface p-4">
       <h2 className="m-0 text-[14px] font-semibold">{text.selected}</h2>
@@ -475,7 +502,14 @@ function NodePanel({ graph, node, writable, connecting, text, metrics, locale, m
           {connecting ? <Button onClick={onCancel}>{text.cancel}</Button> : <Button onClick={() => onConnect(connectionTypeId)}>{text.connectFrom}</Button>}
         </div>
       ) : null}
-      {related.length > 0 ? <p className="m-0 text-xs text-ink-muted">{text.connections}: {related.length}</p> : null}
+      {related.length > 0 ? (
+        <section aria-labelledby="node-connections-title" className="flex flex-col gap-1">
+          <h3 id="node-connections-title" className="m-0 text-xs font-semibold text-ink-muted">{text.connections}: {related.length}</h3>
+          <ul className="m-0 flex list-none flex-col gap-0.5 p-0">
+            {related.map((row, index) => <li key={`${row.id}-${index}`}><button type="button" onClick={() => onSelectConnection(row.id)} className="min-h-7 w-full cursor-pointer rounded-[6px] border-0 bg-transparent px-1 py-0.5 text-left text-xs text-ink hover:bg-surface-sunken pointer-coarse:min-h-11">{row.label}</button></li>)}
+          </ul>
+        </section>
+      ) : null}
       <NodeMetricsList metrics={metrics} locale={locale} href={metricsHref} text={text} />
     </div>
   );
@@ -517,7 +551,7 @@ function ConnectionPanel({ connection, writable, byId, connectionTypes, text, on
   const nodeOptions = [...byId.values()].sort((a, b) => a.name.localeCompare(b.name)).map((node) => <option key={node.id} value={node.id}>{node.name}</option>);
   return (
     <div className="flex flex-col gap-3 rounded-[var(--radius-card)] border border-line bg-surface p-4">
-      <h2 className="m-0 text-[14px] font-semibold">{connectionTypes.get(connection.connection_type_id)?.name}</h2>
+      <h2 id="canvas-connection-title" tabIndex={-1} className="m-0 text-[14px] font-semibold">{connectionTypes.get(connection.connection_type_id)?.name}</h2>
       <p className="m-0 text-[13px]">{byId.get(connection.source_node_id)?.name} → {byId.get(connection.target_node_id)?.name}</p>
       {writable ? (
         <>

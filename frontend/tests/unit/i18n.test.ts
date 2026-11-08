@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { messages, platformMessages, workspaceMessages } from "../../src/i18n.ts";
+import { messages, platformMessages, rememberLocale, storedLocale, workspaceMessages } from "../../src/i18n.ts";
 
 type Tree = Record<string, unknown>;
 
@@ -35,5 +35,16 @@ for (const [name, load] of [["messages", messages], ["workspaceMessages", worksp
 test("an unknown locale falls back to English", () => {
   for (const load of [messages, workspaceMessages, platformMessages]) {
     assert.equal(load("sv" as never), load("en"));
+  }
+});
+
+test("blocked storage does not break reading or remembering the locale", () => {
+  const original = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+  Object.defineProperty(globalThis, "localStorage", { configurable: true, get() { throw new Error("blocked"); } });
+  try {
+    assert.equal(storedLocale(), "en");
+    assert.doesNotThrow(() => rememberLocale("fi"));
+  } finally {
+    if (original) Object.defineProperty(globalThis, "localStorage", original); else delete (globalThis as { localStorage?: unknown }).localStorage;
   }
 });

@@ -33,7 +33,7 @@
 - CI: GitHub Actions
 - Tests: pytest (backend), Node's built-in test runner for pure frontend
   modules, Vitest with jsdom for frontend modules that need a DOM (the
-  Structure canvas, `frontend/tests/canvas/`), Playwright with `@axe-core/playwright` for browser and automated
+  Structure canvas, `frontend/tests/canvas/`), Playwright with `@axe-core/playwright` (also on the Structure canvas: keyboard path, node list, 375 px) for browser and automated
   accessibility checks
 
 ## Defaults

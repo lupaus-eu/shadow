@@ -542,3 +542,14 @@
     }
   }
 }
+
+/* Reduced motion: nothing on the page (canvas panels, toolbar, popover, minimap, dialogs) animates or transitions; the canvas also centres without animation (GraphNavigation). */
+@layer base {
+  @media (prefers-reduced-motion: reduce) {
+    *, ::before, ::after {
+      transition: none !important;
+      animation: none !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}

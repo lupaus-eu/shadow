@@ -127,9 +127,9 @@ this version" with what replaces them.
 ### Accessibility and quality
 
 - [ ] Every action reachable by mouse has a keyboard route; nodes are focusable and announced
-      with name and type; the canvas has a text alternative (the node list).
-- [ ] The tool respects reduced motion (no animated centring) and contrast in both themes.
-- [ ] Finnish and English texts for every new label.
+      with name and type; the canvas has a text alternative (the node list). (Verified by: ticket 09, `structure-canvas-accessibility.spec.ts`, mocked API and Chromium only, no screen reader; unticked until the product owner has tried it.)
+- [ ] The tool respects reduced motion (no animated centring) and contrast in both themes. (Verified by: ticket 09, a global reduced-motion rule and Playwright media emulation; `contrast.test.ts` for the light tokens. No dark theme exists, so "both themes" cannot be met yet.)
+- [x] Finnish and English texts for every new label. (Verified by: `frontend/tests/canvas/messages.test.ts`, ticket 09: every key of the model, canvas and timeline message files in both languages, none empty or copied.)
 - [x] Frontend unit tests for geometry, filtering, undo and layout helpers; a browser test for
       zoom, fit, add, connect and filter; typecheck and build pass.
 
@@ -223,7 +223,7 @@ never stored on the server).
 
 ## Documentation effects
 
-Criteria in the sections above stay unticked on purpose: their only evidence is Vitest and Playwright against a mocked API in Chromium (no real sign-in, backend, other browsers, touch or screen reader) or a hand check by the product owner. Ticked: the unit-test criterion (Vitest suites for geometry, filtering, undo and layout helpers pass; Playwright specs exist; typecheck and build pass; verified by ticket 08 and 09 records) and the not-gated performance statement. Documentation effects below are ticked where the file was updated (`docs/design/ui-foundation.md`, `docs/user/README.md`, `docs/architecture/frontend.md`, `stack.md`, `project-layout.md`, ADR-0051, `CONTEXT.md`).
+Criteria in the sections above stay unticked on purpose: their only evidence is Vitest and Playwright against a mocked API in Chromium (no real sign-in, backend, other browsers, touch or screen reader) or a hand check by the product owner. Ticked: the unit-test criterion (Vitest suites for geometry, filtering, undo and layout helpers pass; Playwright specs exist; typecheck and build pass; verified by ticket 08 and 09 records), the not-gated performance statement and the Finnish and English texts (a unit test of the message files). Ticket 09 added the accessibility documentation (`docs/design/ui-foundation.md`, `docs/architecture/frontend.md`) and left the keyboard, reduced-motion and contrast criteria unticked for the reasons noted on them. Documentation effects below are ticked where the file was updated (`docs/design/ui-foundation.md`, `docs/user/README.md`, `docs/architecture/frontend.md`, `stack.md`, `project-layout.md`, ADR-0051, `CONTEXT.md`).
 
 - [x] `docs/design/` - canvas interaction guidance (navigation, shortcuts, panels, states) - at the UI ticket
 - [x] `docs/user/README.md` - how to draw, navigate, filter and undo - at the last ticket

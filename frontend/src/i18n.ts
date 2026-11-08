@@ -254,12 +254,21 @@ export function messages(locale: Locale) {
 }
 
 export function storedLocale(): Locale {
-  const locale = localStorage.getItem(storedLocaleKey);
-  return locale === "fi" || locale === "en" ? locale : "en";
+  // Blocked or unavailable storage (a private window, site data blocked) falls back to English instead of throwing.
+  try {
+    const locale = localStorage.getItem(storedLocaleKey);
+    return locale === "fi" || locale === "en" ? locale : "en";
+  } catch {
+    return "en";
+  }
 }
 
 export function rememberLocale(locale: Locale) {
-  localStorage.setItem(storedLocaleKey, locale);
+  try {
+    localStorage.setItem(storedLocaleKey, locale);
+  } catch {
+    // The choice stays for this page view only.
+  }
 }
 
 

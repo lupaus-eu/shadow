@@ -62,7 +62,7 @@ const node = (page: Page, name: string) => canvas(page).locator(`g.djs-element.d
 const connection = (page: Page) => canvas(page).locator("g.djs-element.djs-connection");
 const show = (page: Page, type: string) => page.getByRole("checkbox", { name: `Show ${type} nodes` });
 const panel = (page: Page) => page.getByRole("complementary", { name: "Nodes" });
-const row = (page: Page, name: string) => panel(page).getByRole("button", { name });
+const row = (page: Page, name: string) => panel(page).getByRole("button", { name: new RegExp(`^${name}( |$)`) });
 const centreOf = async (page: Page, name: string) => { const box = (await node(page, name).locator(".shadow-node-body").boundingBox())!; return { x: box.x + box.width / 2, y: box.y + box.height / 2 }; };
 
 async function open(page: Page, options: { writable?: boolean } = {}) {

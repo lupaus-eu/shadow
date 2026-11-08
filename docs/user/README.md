@@ -108,7 +108,10 @@ A label in the lower left corner says which line and Event is shown and marks wh
   (or pan), `/` search, `C` connect, `L` lasso, `F2` rename, `Delete` or `Backspace` delete, `Esc` cancel or
   clear the selection, `Enter` or Space select a focused node.
 
-Everything the mouse does has a keyboard route; the node list in the left panel is the text alternative to the picture. The
+Everything the mouse does has a keyboard route; the node list in the left panel is the text alternative to the picture (each row
+has the node's name, description, type and connections). Press `Tab` to reach a node, `Enter` to select it, `C` to connect (`Enter` on
+the first node, `Tab` to the second, `Enter`), and use the **Connections** list in the details panel to select a connection. A
+screen reader announces your selection, connect mode, refusals, undo and redo. Under reduced motion settings nothing animates. The
 Structure canvas needs a writable Organization to draw; on a read-only Organization (for example after the subscription
 ended) you can read every line and state but not change them. Members can write Scenarios but not the Base line.
 

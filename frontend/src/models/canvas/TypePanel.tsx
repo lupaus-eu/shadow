@@ -21,6 +21,7 @@ export type TypePanelTexts = {
   collapseType(name: string): string;
   expandType(name: string): string;
   addNodeOfType(name: string): string;
+  typeOf(name: string): string;
 };
 
 type Props = {
@@ -47,10 +48,12 @@ type Props = {
   onToggleCollapse(typeId: string, collapsed: boolean): void;
   onAdd(typeId: string): void;
   onSelectNode(nodeId: string): void;
+  /** The connections of a node as plain sentences (direction, type, other node); read out with the row, which makes this list the canvas's text alternative. */
+  connectionsOf(nodeId: string): string[];
 };
 
 /** The left panel of the Structure canvas: nodes grouped by type with visibility, collapse, "+" and a name search. */
-export function TypePanel({ groups, hidden, collapse, query, matches, selectedId, markers, writable, texts, searchRef, onQuery, onSubmitSearch, onToggleType, onSelectAll, onDeselectAll, onToggleCollapse, onAdd, onSelectNode }: Props) {
+export function TypePanel({ groups, hidden, collapse, query, matches, selectedId, markers, writable, texts, searchRef, onQuery, onSubmitSearch, onToggleType, onSelectAll, onDeselectAll, onToggleCollapse, onAdd, onSelectNode, connectionsOf }: Props) {
   const added = new Set(markers.added);
   const updated = new Set(markers.updated);
   const onSearchKey = (event: KeyboardEvent<HTMLInputElement>) => {
@@ -112,6 +115,7 @@ export function TypePanel({ groups, hidden, collapse, query, matches, selectedId
                 {group.nodes.map((node) => {
                   const change = added.has(node.id) ? "added" : updated.has(node.id) ? "updated" : null;
                   const dimmed = matches !== null && !matches.has(node.id);
+                  const links = connectionsOf(node.id);
                   return (
                     <li key={node.id}>
                       <button
@@ -131,6 +135,7 @@ export function TypePanel({ groups, hidden, collapse, query, matches, selectedId
                           {change ? <span data-change={change} className="shrink-0 rounded-[4px] border border-line px-1 text-[11px] leading-4 text-ink" title={change === "added" ? texts.changeAdded : texts.changeUpdated}><span aria-hidden="true">{change === "added" ? "+" : "~"}</span><span className="sr-only">{change === "added" ? texts.changeAdded : texts.changeUpdated}</span></span> : null}
                         </span>
                         {node.description ? <span className="line-clamp-2 w-full text-xs font-normal text-ink-muted">{node.description}</span> : null}
+                        <span className="sr-only">{texts.typeOf(type.name)} {links.length > 0 ? `${links.join("; ")}.` : ""}</span>
                       </button>
                     </li>
                   );
