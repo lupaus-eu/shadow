@@ -1,18 +1,65 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp } from "lucide-react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 
 import { useOrganization } from "../shell/organization-outlet";
 import { useModel } from "./ModelShell";
-import { Alert, Button, Field, Select, TextArea, TextInput } from "../ui";
+import { Alert, Button, Field, IconButton, Select, TextArea, TextInput, cx } from "../ui";
 import {
   ChainBrokenError, createConnection, createEditsEvent, createNode, deleteConnection, deleteNode, loadGraph, RuleError, saveNodePositions, StaleVersionError, updateNode,
   type Graph, type GraphConnection, type GraphNode, type LineEvent,
 } from "./client";
 import { modelMessages } from "./messages";
+import { readPanels, writePanels, type PanelState } from "./panel-state";
 
 const NODE_WIDTH = 150;
 const NODE_HEIGHT = 46;
-const CANVAS_WIDTH = 1400;
-const CANVAS_HEIGHT = 800;
+const MIN_CANVAS_HEIGHT = 320;
+const SHEET_HANDLE = 48;
+
+/** The height that makes the element end at the bottom of the viewport, so the page itself does not scroll. Re-measured when the window or the content above changes. */
+function useFillHeight(ref: RefObject<HTMLElement | null>, reserve: number) {
+  const [height, setHeight] = useState(480);
+  useLayoutEffect(() => {
+    const update = () => {
+      const top = ref.current?.getBoundingClientRect().top ?? 0;
+      // 12 px is the bottom padding of the wide page.
+      setHeight(Math.max(MIN_CANVAS_HEIGHT, Math.floor(window.innerHeight - top - 12 - reserve)));
+    };
+    update();
+    window.addEventListener("resize", update);
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(update);
+    observer?.observe(document.body);
+    return () => { window.removeEventListener("resize", update); observer?.disconnect(); };
+  }, [ref, reserve]);
+  return height;
+}
+
+/** The size of an element, kept up to date; the SVG viewBox follows it so one unit is one pixel. */
+function useElementSize(ref: RefObject<HTMLElement | null>) {
+  const [size, setSize] = useState({ width: 900, height: 480 });
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    const update = () => setSize((old) => (old.width === element.clientWidth && old.height === element.clientHeight ? old : { width: element.clientWidth, height: element.clientHeight }));
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [ref]);
+  return size;
+}
+
+function useIsPhone() {
+  const query = "(max-width: 767px)";
+  const [phone, setPhone] = useState(() => typeof window !== "undefined" && window.matchMedia(query).matches);
+  useEffect(() => {
+    const list = window.matchMedia(query);
+    const change = () => setPhone(list.matches);
+    list.addEventListener("change", change);
+    return () => list.removeEventListener("change", change);
+  }, []);
+  return phone;
+}
 
 const centre = (node: GraphNode) => ({ x: node.x + NODE_WIDTH / 2, y: node.y + NODE_HEIGHT / 2 });
 
@@ -39,6 +86,14 @@ export function ModelCanvas() {
   const [connecting, setConnecting] = useState<{ sourceId: string; connectionTypeId: string } | null>(null);
   const [drag, setDrag] = useState<{ id: string; dx: number; dy: number; moved: boolean } | null>(null);
   const svg = useRef<SVGSVGElement>(null);
+  const area = useRef<HTMLDivElement>(null);
+  const stage = useRef<HTMLDivElement>(null);
+  const phone = useIsPhone();
+  const [panels, setPanels] = useState<PanelState>(() => readPanels());
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const areaHeight = useFillHeight(area, phone ? SHEET_HANDLE : 0);
+  const size = useElementSize(stage);
+  const toggle = (side: keyof PanelState) => setPanels((old) => { const next = { ...old, [side]: !old[side] }; writePanels(next); return next; });
 
   const reload = useCallback(async () => {
     try {
@@ -68,8 +123,8 @@ export function ModelCanvas() {
 
   function pointer(event: React.PointerEvent) {
     const box = svg.current?.getBoundingClientRect();
-    const scale = box ? CANVAS_WIDTH / box.width : 1;
-    return { x: (event.clientX - (box?.left ?? 0)) * scale, y: (event.clientY - (box?.top ?? 0)) * scale };
+    // The viewBox is the container size, so a client pixel is one canvas unit.
+    return { x: event.clientX - (box?.left ?? 0), y: event.clientY - (box?.top ?? 0) };
   }
 
   function startDrag(event: React.PointerEvent, node: GraphNode) {
@@ -82,8 +137,8 @@ export function ModelCanvas() {
   function moveDrag(event: React.PointerEvent) {
     if (!drag || !graph) return;
     const at = pointer(event);
-    const x = Math.max(0, Math.min(CANVAS_WIDTH - NODE_WIDTH, at.x - drag.dx));
-    const y = Math.max(0, Math.min(CANVAS_HEIGHT - NODE_HEIGHT, at.y - drag.dy));
+    const x = at.x - drag.dx;
+    const y = at.y - drag.dy;
     setGraph({ ...graph, nodes: graph.nodes.map((node) => (node.id === drag.id ? { ...node, x, y } : node)) });
     if (!drag.moved) setDrag({ ...drag, moved: true });
   }
@@ -109,13 +164,46 @@ export function ModelCanvas() {
   if (failed) return <Alert tone="danger" role="alert">{text.failed}</Alert>;
   if (!graph) return <p role="status" className="text-ink-muted">{text.loading}</p>;
 
+  const addNode = writable ? <AddNode graph={graph} onAdd={(input) => edit((event) => createNode(organizationId, modelId, event, input))} text={text} count={nodes.length} /> : null;
+  const details = (
+    <>
+      {selectedNode ? (
+        <NodePanel key={`${selectedNode.id}-${selectedNode.name}-${selectedNode.description ?? ""}`} graph={graph} node={selectedNode} writable={writable} connecting={connecting !== null} text={text}
+          onSave={(changes) => edit((event) => updateNode(organizationId, modelId, event, selectedNode, changes))}
+          onDelete={() => { setSelected(null); void edit((event) => deleteNode(organizationId, modelId, event, selectedNode)); }}
+          onConnect={(connectionTypeId) => setConnecting({ sourceId: selectedNode.id, connectionTypeId })}
+          onCancel={() => setConnecting(null)} />
+      ) : selectedConnection ? (
+        <ConnectionPanel connection={selectedConnection} writable={writable} byId={byId} connectionTypes={connectionTypes} text={text}
+          onDelete={() => { setSelected(null); void edit((event) => deleteConnection(organizationId, modelId, event, selectedConnection)); }} />
+      ) : <p className="m-0 text-[13px] text-ink-muted">{text.noSelection}</p>}
+      {connecting ? <Alert tone="info" role="status">{text.connectHint}</Alert> : null}
+    </>
+  );
+  const nodeList = (
+    <ul className="m-0 flex list-none flex-col gap-1 p-0">
+      {nodes.length === 0 ? <li className="text-[13px] text-ink-muted">{text.noNodes}</li> : null}
+      {nodes.map((node) => (
+        <li key={node.id}>
+          <button type="button" aria-pressed={selected?.kind === "node" && selected.id === node.id} onClick={() => setSelected({ kind: "node", id: node.id })} className="flex min-h-8 w-full cursor-pointer items-center gap-2 rounded-[6px] border-0 bg-transparent px-2 py-1 text-left text-[13px] text-ink hover:bg-surface-sunken aria-pressed:bg-accent-soft pointer-coarse:min-h-11">
+            <span aria-hidden="true" className="size-3 shrink-0 rounded-[3px] border border-line" style={{ background: types.get(node.node_type_id)?.color ?? "#ddd" }} />
+            <span className="min-w-0 flex-1 truncate">{node.name}</span>
+            <span className="shrink-0 text-xs text-ink-muted">{types.get(node.node_type_id)?.name}</span>
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+  const rightContent = <>{addNode}{details}</>;
+
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-3">
       {!writable ? <Alert tone="warning">{text.readOnly}</Alert> : null}
       {notice ? <Alert tone="danger" role="alert">{notice}</Alert> : null}
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <div className="overflow-auto rounded-[var(--radius-card)] border border-line bg-surface">
-          <svg ref={svg} role="group" aria-label={text.canvasLabel} viewBox={`0 0 ${CANVAS_WIDTH} ${CANVAS_HEIGHT}`} width="100%" style={{ minWidth: 900, touchAction: "none" }} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerDown={(event) => { if (event.target === event.currentTarget) { setSelected(null); setConnecting(null); } }}>
+      <div ref={area} style={{ height: areaHeight }} className="flex min-h-0 gap-3">
+        {phone ? null : <Panel side="left" title={text.panelNodes} collapsed={panels.left} onToggle={() => toggle("left")} text={text}>{nodeList}</Panel>}
+        <div ref={stage} className="min-w-0 flex-1 overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface">
+          <svg ref={svg} role="group" aria-label={text.canvasLabel} viewBox={`0 0 ${size.width} ${size.height}`} width="100%" height="100%" style={{ display: "block", touchAction: "none" }} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag} onPointerDown={(event) => { if (event.target === event.currentTarget) { setSelected(null); setConnecting(null); } }}>
             <defs>
               <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="currentColor" /></marker>
             </defs>
@@ -148,22 +236,39 @@ export function ModelCanvas() {
             })}
           </svg>
         </div>
-        <aside className="flex flex-col gap-4">
-          {writable ? <AddNode graph={graph} onAdd={(input) => edit((event) => createNode(organizationId, modelId, event, input))} text={text} count={nodes.length} /> : null}
-          {selectedNode ? (
-            <NodePanel key={`${selectedNode.id}-${selectedNode.name}-${selectedNode.description ?? ""}`} graph={graph} node={selectedNode} writable={writable} connecting={connecting !== null} text={text}
-              onSave={(changes) => edit((event) => updateNode(organizationId, modelId, event, selectedNode, changes))}
-              onDelete={() => { setSelected(null); void edit((event) => deleteNode(organizationId, modelId, event, selectedNode)); }}
-              onConnect={(connectionTypeId) => setConnecting({ sourceId: selectedNode.id, connectionTypeId })}
-              onCancel={() => setConnecting(null)} />
-          ) : selectedConnection ? (
-            <ConnectionPanel connection={selectedConnection} writable={writable} byId={byId} connectionTypes={connectionTypes} text={text}
-              onDelete={() => { setSelected(null); void edit((event) => deleteConnection(organizationId, modelId, event, selectedConnection)); }} />
-          ) : <p className="m-0 text-[13px] text-ink-muted">{text.noSelection}</p>}
-          {connecting ? <Alert tone="info" role="status">{text.connectHint}</Alert> : null}
-        </aside>
+        {phone ? null : <Panel side="right" title={text.panelDetails} collapsed={panels.right} onToggle={() => toggle("right")} text={text}>{rightContent}</Panel>}
       </div>
+      {phone ? (
+        <section aria-label={text.panelDetails} className="fixed inset-x-0 bottom-0 z-20 flex flex-col border-t border-line bg-surface shadow-[var(--shadow-overlay)]">
+          <button type="button" aria-expanded={sheetOpen} aria-controls="canvas-sheet" onClick={() => setSheetOpen((open) => !open)} style={{ height: SHEET_HANDLE }} className="flex w-full cursor-pointer items-center justify-center gap-2 border-0 bg-transparent text-[13px] font-medium text-ink">
+            {sheetOpen ? <ChevronDown size={16} aria-hidden="true" /> : <ChevronUp size={16} aria-hidden="true" />}
+            {sheetOpen ? text.hidePanels : text.showPanels}
+          </button>
+          <div id="canvas-sheet" hidden={!sheetOpen} className={cx("max-h-[55dvh] flex-col gap-4 overflow-y-auto p-3", sheetOpen ? "flex" : "hidden")}>
+            {rightContent}
+            <section aria-label={text.panelNodes} className="flex flex-col gap-2"><h2 className="m-0 text-[14px] font-semibold">{text.panelNodes}</h2>{nodeList}</section>
+          </div>
+        </section>
+      ) : null}
     </div>
+  );
+}
+
+/** A collapsible side panel: a column when open, a narrow rail with one button when collapsed. */
+function Panel({ side, title, collapsed, onToggle, text, children }: { side: "left" | "right"; title: string; collapsed: boolean; onToggle: () => void; text: Text; children: ReactNode }) {
+  // The chevron points where the panel goes when it collapses (left panel to the left, right panel to the right).
+  const closeIcon = side === "left" ? <ChevronLeft size={16} /> : <ChevronRight size={16} />;
+  const openIcon = side === "left" ? <ChevronRight size={16} /> : <ChevronLeft size={16} />;
+  const id = `canvas-panel-${side}`;
+  return (
+    <aside aria-label={title} className={cx("flex shrink-0 flex-col gap-3 overflow-hidden", collapsed ? "w-10 items-center" : side === "left" ? "w-[220px]" : "w-[280px]")}>
+      <div className={cx("flex items-center gap-2", collapsed ? "flex-col" : "justify-between")}>
+        {collapsed ? null : <h2 className="m-0 text-[14px] font-semibold">{title}</h2>}
+        <IconButton label={collapsed ? text.expandPanel(title) : text.collapsePanel(title)} icon={collapsed ? openIcon : closeIcon} onClick={onToggle} aria-expanded={!collapsed} aria-controls={id} />
+        {collapsed ? <span className="text-xs font-semibold text-ink-muted [writing-mode:vertical-rl]" aria-hidden="true">{title}</span> : null}
+      </div>
+      <div id={id} hidden={collapsed} className={cx("min-h-0 flex-1 flex-col gap-4 overflow-y-auto", collapsed ? "hidden" : "flex")}>{children}</div>
+    </aside>
   );
 }
 

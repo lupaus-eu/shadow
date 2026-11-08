@@ -66,7 +66,7 @@ export function ShellFrame({ locale, sidebar, footer, account, badge, children, 
             <h1 id="page-title" className="min-w-0 flex-1 truncate text-[17px] font-semibold">{title}</h1>
             {account}
           </header>
-          <main id="main-content" tabIndex={-1} aria-labelledby="page-title" className={cx("w-full flex-1 px-4 py-6 outline-none lg:px-8 print:p-0", wide ? "" : "mx-auto max-w-6xl")}>
+          <main id="main-content" tabIndex={-1} aria-labelledby="page-title" className={cx("w-full flex-1 outline-none print:p-0", wide ? "px-3 py-3 lg:px-4" : "mx-auto max-w-6xl px-4 py-6 lg:px-8")}>
             {children}
           </main>
         </div>

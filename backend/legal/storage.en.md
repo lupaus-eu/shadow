@@ -23,6 +23,7 @@ This list is kept equal to the code by automated tests (`backend/legal/browser-s
 | Key | Purpose | Lifetime |
 | --- | --- | --- |
 | `shadow.locale` | Remembers your language. | Until you clear site data. |
+| `shadow.canvas.panels` | Remembers which canvas panels you collapsed. | Until you clear site data. |
 | `shadow.had-session` (session storage) | Lets the sign-in page say that your session ended. | Until you close the tab. |
 | `shadow.signed-out` (session storage) | Lets the sign-in page confirm your sign-out once. | Removed after one use. |
 

@@ -17,6 +17,11 @@
       "key": "shadow.locale",
       "purpose": "Remembers the chosen language on this device so signed-out pages use it.",
       "lifetime": "Until the person clears site data."
+    },
+    {
+      "key": "shadow.canvas.panels",
+      "purpose": "Remembers which side panels of the model Structure canvas you collapsed on this device.",
+      "lifetime": "Until the person clears site data."
     }
   ],
   "sessionStorage": [

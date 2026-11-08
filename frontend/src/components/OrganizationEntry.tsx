@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useState } from "react";
 import { ChevronLeft } from "lucide-react";
-import { Link, Outlet, useNavigate, useParams } from "react-router";
+import { Link, Outlet, useMatch, useNavigate, useParams } from "react-router";
 
 import type { UserAccount } from "../auth-client";
 import { messages, workspaceMessages, type Locale } from "../i18n";
@@ -116,8 +116,10 @@ export function OrganizationLayout() {
   }, [organizationId, revision]);
 
   const current = workspace?.organization.id === organizationId ? workspace : null;
+  // Only the Structure tab of a model uses the full width; every other page keeps the reading column.
+  const structure = useMatch("/organizations/:organizationId/models/:modelId");
   return (
-    <AppShell actions={current ? <NotificationBell organizationId={current.organization.id} locale={locale} /> : null} sidebar={current ? <OrganizationSidebar workspace={current} locale={locale} /> : null}>
+    <AppShell wide={structure !== null} actions={current ? <NotificationBell organizationId={current.organization.id} locale={locale} /> : null} sidebar={current ? <OrganizationSidebar workspace={current} locale={locale} /> : null}>
       {failed ? <><PageTitle title={labels.title} /><Alert tone="danger" role="alert">{labels.organizationNotFound}</Alert></> : null}
       {!failed && !current ? <p role="status" className="text-ink-muted">{labels.organizationLoading}</p> : null}
       {!failed && current ? <Outlet context={{ workspace: current, locale, revision, reload } satisfies OrganizationOutlet} /> : null}

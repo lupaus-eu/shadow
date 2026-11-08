@@ -185,8 +185,8 @@ A new colour pair needs a row here before it ships.
   - a 56 px top bar on `surface` with the page title (the only `h1`) and the
     account menu (initials; who is signed in, language as radio items, sign
     out);
-  - the page in `main`, at most 72rem wide except the planner, which uses the
-    full width;
+  - the page in `main`, at most 72rem wide except the planner and the model
+    Structure canvas, which use the full width (`AppShell wide`);
   - below `lg` (1024 px) the sidebar moves into a left drawer opened from the
     menu button; it closes when a link is chosen;
   - **Skip to content** is the first focus stop.
@@ -194,6 +194,25 @@ A new colour pair needs a row here before it ships.
   badge (warning tone) next to the logo, its own sidebar, the signed-in
   account and roles at the bottom of the sidebar, and **Sign out** in the top
   bar.
+
+## Full-width canvas pages
+
+The model **Structure** tab (`frontend/src/models/ModelCanvas.tsx`) is the only
+page of the model that is full width; Types, Metrics, Simulations and Analysis
+keep the reading column. `OrganizationLayout` turns `wide` on for that route.
+
+- The canvas area ends at the bottom of the window (`window.innerHeight` minus
+  its measured top, minimum 320 px), so the page does not scroll while drawing;
+  the SVG `viewBox` is the container size (one unit is one pixel).
+- Side panels sit beside the canvas: **Nodes** left (220 px), **Details** right
+  (280 px, add node, selection, changes). Each collapses to a 40 px rail with
+  one icon button (label **Collapse/Expand the ... panel**, `aria-expanded`,
+  `aria-controls`). The collapsed state is the per-person
+  `localStorage` key `shadow.canvas.panels`, read and written in try/catch
+  (`models/panel-state.ts`); the page works without it.
+- Below 768 px the panels become a bottom sheet: a 48 px handle button
+  (**Show/Hide panels**, `aria-expanded`) fixed to the bottom, with the details
+  and the node list in a scrolling sheet of at most 55 % of the height.
 
 ## The Authentik sign-in pages (ADR-0039)
 
