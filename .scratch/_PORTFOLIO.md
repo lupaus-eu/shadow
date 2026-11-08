@@ -9,7 +9,7 @@
 | [Feature: Model timeline (Base line, events and scenarios)](model-timeline/PRD.md) | ready for implementation | 8/11 | [09 frontend event list and scenario picker](model-timeline/issues/09-frontend-event-list-and-scenario-picker.md) — ready-for-agent | — |
 | [Feature: Shadow models (digital twin of an organisation)](shadow-models/PRD.md) | implemented (written after the fact, 2026-11-07; the features were built in | 0/0 | — | — |
 | [Feature: Structure canvas (full-width drawing tool)](structure-canvas/PRD.md) | ready for implementation | 6/9 | [07 Snap, align, auto layout, minimap and export](structure-canvas/issues/07-layout-tools-minimap-export.md) — ready-for-agent | — |
-| [Feature: Companies (tenants) and roles](tenants-and-roles/PRD.md) | needs decision | 2/11 | [03 Company access, session and sign-in accounts (080C)](tenants-and-roles/issues/03-tenant-access.md) — needs-info | — |
+| [Feature: Companies (tenants) and roles](tenants-and-roles/PRD.md) | wontfix | 2/11 | — | — |
 
 ## Tekniset työt
 
@@ -39,20 +39,6 @@
 | [07 Snap, align, auto layout, minimap and export](structure-canvas/issues/07-layout-tools-minimap-export.md) | ready-for-agent | 5 | kyllä | — |
 | [08 Time control (scenario picker, event list, edits into the selected event)](structure-canvas/issues/08-time-control.md) | ready-for-agent | 6 | kyllä | — |
 | [09 Accessibility, texts, browser test and documentation](structure-canvas/issues/09-accessibility-texts-docs.md) | ready-for-agent | 5 | ei | 07 |
-
-### Feature: Companies (tenants) and roles
-
-| Ticket | Tila | Avoimia kriteerejä | Aloitettavissa | Odottaa ticketejä |
-| --- | --- | ---: | --- | --- |
-| [03 Company access, session and sign-in accounts (080C)](tenants-and-roles/issues/03-tenant-access.md) | needs-info | 3 | kyllä | — |
-| [04 Company routes: Organisations and Customers (080D, part 1)](tenants-and-roles/issues/04-routes-organisations-and-customers.md) | needs-info | 3 | ei | 03 |
-| [05 Company routes: scenarios, states, structure, metrics (080D, part 2)](tenants-and-roles/issues/05-routes-scenarios-and-structure.md) | needs-info | 2 | ei | 03 |
-| [06 Company routes: predictions, change sets, prediction worker (080D, part 3)](tenants-and-roles/issues/06-routes-predictions-change-sets-and-worker.md) | needs-info | 3 | ei | 03 |
-| [07 MCP company context (080E)](tenants-and-roles/issues/07-mcp-company-context.md) | needs-info | 2 | ei | 04, 05, 06 |
-| [08 Members API (080F)](tenants-and-roles/issues/08-members-api.md) | needs-info | 3 | ei | 03 |
-| [09 Frontend company context (080F, UI)](tenants-and-roles/issues/09-frontend-company-context.md) | needs-info | 3 | ei | 04, 05, 06, 07, 08 |
-| [10 Row-level security and isolation tests (080G)](tenants-and-roles/issues/10-row-level-security.md) | needs-info | 2 | ei | 04, 05, 06, 07, 08 |
-| [11 Drop users.role (080G, cleanup)](tenants-and-roles/issues/11-drop-users-role.md) | needs-info | 1 | ei | 07, 08, 09 |
 
 ## Tilan tulkinta
 

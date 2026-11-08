@@ -108,6 +108,8 @@ def _next_ticket(tickets: list[Ticket]) -> Ticket | None:
 
 
 def _delivery_status(source_status: str, tickets: list[Ticket]) -> str:
+    if source_status == "wontfix":
+        return "wontfix"
     if not tickets:
         return source_status
     statuses = {ticket.status for ticket in tickets} - {"wontfix"}
