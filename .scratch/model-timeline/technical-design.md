@@ -151,8 +151,25 @@ rights. Support Access still opens no model route.
 - MCP: each tool with roles and the call log; `test_no_llm_calls.py` still passes.
 - Frontend unit: refusal message builder, event list grouping and Planned/Now marks. Browser: create a Scenario
   from a past event, plan an event, break and fix a chain.
-- Performance: a script builds a model with 2000 events and 500 nodes and records the time of `state`, `events` and
-  a write on the development stack; the numbers go into this document.
+- Performance: `backend/tests/test_timeline_performance.py` (marker `perf`, excluded from the normal run by
+  `addopts = -m "not perf"`; run it with `pytest -m perf -s`) builds a model with 2000 events and 500 nodes directly
+  in the database and times the HTTP routes with the FastAPI TestClient against the PostgreSQL test database.
+
+### Performance (ticket 10)
+
+Model: 2000 events on the Base line (560 adds with 217 connections, then renames, re-routes and 60 removals, leaving
+500 nodes), plus five Scenarios (three and a late one branching from the Base line, one branching from another
+Scenario; 20 to 30 events each). Three runs each, worst value compared with the limit. Machine: Apple M4, 10 cores,
+16 GB, PostgreSQL 16 in Docker (compose service `db`, port 55432), TestClient in the same process (no network).
+
+| Measurement | Runs (s) | Limit (s) | Result |
+| --- | --- | --- | --- |
+| `GET .../lines/{line}/state` (500 nodes, 217 connections) | 0.212, 0.174, 0.205 | 2 | met |
+| `GET .../lines/{line}/events` (2000 events) | 0.218, 0.213, 0.220 | 2 | met |
+| `PATCH` of an event at position ~1000 with four Scenarios branching from it (validated write) | 0.359, 0.357, 0.388 | 5 | met |
+
+No caching or snapshots were added. The canvas (diagram-js) is not performance-gated by the product owner; these are
+backend timings only.
 
 Select checks using [`docs/agents/testing.md`](../../docs/agents/testing.md).
 
