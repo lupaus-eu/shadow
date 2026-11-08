@@ -2,8 +2,8 @@
 
 ## Target
 
-- Repository: `lupaus-eu/yearclock`
-- Domain: `yearclock.example.com` (placeholder; the production product name and
+- Repository: `lupaus-eu/shadow`
+- Domain: `shadow.example.com` (placeholder; the production product name and
   domain are undecided)
 - Expected platform: a single Docker Compose host. The alpha and beta run on an
   Hetzner Cloud server on x86-64 (ADR-0035, ADR-0053); Coolify or another Compose host also works.
@@ -16,7 +16,7 @@
 - FastAPI backend
 - `migrate` one-shot Alembic job, run before backend and worker rollout
 - Python `worker` processes built from the backend image
-- PostgreSQL instance with separate Yearclock and Authentik logical databases,
+- PostgreSQL instance with separate Shadow and Authentik logical databases,
   owners, credentials, connection pools, migration histories, and backups
   (ADR-0011)
 - Authentik server, worker, and configuration bootstrap
@@ -33,15 +33,15 @@ are deployment secrets and never committed.
   `worker`, restarts services, and keeps `postgres18_data`, Authentik media, and
   Caddy certificates in volumes. It builds nothing: `migrate`, `backend`, and
   `worker` run the backend image and `frontend` the frontend image, both selected
-  by `YEARCLOCK_TAG` (see "Images and deployment").
+  by `SHADOW_TAG` (see "Images and deployment").
 - The frontend image's `production` target builds the SPA with a same-origin
   API (`VITE_API_BASE_URL=""`) and serves it with Caddy, mapping every route,
   including `/platform`, to `index.html`. The local stack uses the
   `development` target (Vite).
 - `caddy/` (mounted as a directory; `make deploy` runs `caddy reload`) holds the Caddyfile and serves the app, operator console, and API on
-  `YEARCLOCK_SITE_ADDRESS` and Authentik on `YEARCLOCK_IDENTITY_ADDRESS`, with
+  `SHADOW_SITE_ADDRESS` and Authentik on `SHADOW_IDENTITY_ADDRESS`, with
   HSTS, a strict Content-Security-Policy (override with
-  `YEARCLOCK_CONTENT_SECURITY_POLICY`), `nosniff`, a referrer policy, a
+  `SHADOW_CONTENT_SECURITY_POLICY`), `nosniff`, a referrer policy, a
   permissions policy, and `Cache-Control: no-store` for `/api/*` and
   `/platform`. The local `edge` profile uses the same file; its CSP blocks the
   Vite dev server, so use it with a production-style build.
@@ -66,18 +66,18 @@ are deployment secrets and never committed.
 
 ## Images and deployment
 
-- `.github/workflows/images.yml` builds `yearclock-backend` and
-  `yearclock-frontend` (the `production` target, same-origin API) for
+- `.github/workflows/images.yml` builds `shadow-backend` and
+  `shadow-frontend` (the `production` target, same-origin API) for
   `linux/amd64` (the Hetzner host is x86-64, ADR-0053) and pushes them to `ghcr.io/lupaus-eu/` on every push to `main`
   and every `v*` tag. Tags are `sha-<short>`, the Git tag, and `main`; there is no
-  `latest`. `YEARCLOCK_IMAGE_PREFIX` overrides the registry path. CI deploys
+  `latest`. `SHADOW_IMAGE_PREFIX` overrides the registry path. CI deploys
   nothing and holds no host secret.
 - The host needs Docker, `docker-compose.prod.yml`, `caddy/Caddyfile`, `authentik/`,
   `scripts/ops/`, and `.env.production`; it has no source tree to build.
 - First time: `docker login ghcr.io -u <user>` with a token that has only
   `read:packages`.
 - Release: cut a `v*` tag from a `main` commit whose CI run is green, wait for the
-  Images workflow, set `YEARCLOCK_TAG` in `.env.production`, then:
+  Images workflow, set `SHADOW_TAG` in `.env.production`, then:
 
   ```bash
   docker compose -f docker-compose.prod.yml --env-file .env.production pull
@@ -90,7 +90,7 @@ are deployment secrets and never committed.
   roll back to an earlier tag only when it is compatible with the current schema;
   otherwise restore from backup (`docs/runbooks/backup.md`).
 - The host's files (Compose file, Caddyfile, Authentik blueprints, scripts) are not in the images: copy them with the `rsync` command in `docs/runbooks/first-deployment.md` section 7 before each release that changes them.
-- Rollback: set the previous `YEARCLOCK_TAG` and run the same two commands.
+- Rollback: set the previous `SHADOW_TAG` and run the same two commands.
 - `Makefile.prod`, copied to the host as `Makefile`, wraps these commands (`make deploy`, `make tag TAG=…`, `make logs`, `make authentik-apply`, `make enroll-platform`); it is not used in development (`docs/runbooks/production-commands.md`).
 - Prune old tags in GHCR now and then; run `docker image prune -a` on the host.
 

@@ -15,11 +15,11 @@
 
 ## Project name and host ports
 
-The Compose project is named `yearclock`, so containers, networks, and volumes
-are named `yearclock-<service>-<n>` in every checkout. Services never set
+The Compose project is named `shadow`, so containers, networks, and volumes
+are named `shadow-<service>-<n>` in every checkout. Services never set
 `container_name`.
 
-Yearclock owns host ports **8100–8199** on shared development machines. Other
+Shadow owns host ports **8100–8199** on shared development machines. Other
 projects on the same machine use their own ranges. Every published port binds
 to `127.0.0.1` and is overridable through the variable shown. Containers reach
 each other on the Compose network by service name and container port
@@ -28,15 +28,15 @@ do not affect.
 
 | Host port | Variable | Service or process | Container port |
 | --- | --- | --- | --- |
-| 8100 | `YEARCLOCK_BACKEND_PORT` | `backend`; also `uvicorn --port 8100` outside Compose | 8000 |
-| 8132 | `YEARCLOCK_DB_PORT` | `db` (host pytest and Alembic) | 5432 |
-| 8143 | `YEARCLOCK_HTTPS_PORT` | `caddy` HTTPS (`edge` profile) | 443 |
-| 8173 | `YEARCLOCK_FRONTEND_PORT` | `frontend` Vite dev server; also `npm run dev` | 8173 |
+| 8100 | `SHADOW_BACKEND_PORT` | `backend`; also `uvicorn --port 8100` outside Compose | 8000 |
+| 8132 | `SHADOW_DB_PORT` | `db` (host pytest and Alembic) | 5432 |
+| 8143 | `SHADOW_HTTPS_PORT` | `caddy` HTTPS (`edge` profile) | 443 |
+| 8173 | `SHADOW_FRONTEND_PORT` | `frontend` Vite dev server; also `npm run dev` | 8173 |
 | 8174 | — | Playwright browser-test server (`npm run dev:test`) | — |
 | 8175 | — | `npm run preview` | — |
 | 8176 | — | LikeC4 view browser (`make c4`) | — |
-| 8180 | `YEARCLOCK_HTTP_PORT` | `caddy` HTTP (`edge` profile) | 80 |
-| 8190 | `YEARCLOCK_AUTHENTIK_PORT` | `authentik-server` | 9000 |
+| 8180 | `SHADOW_HTTP_PORT` | `caddy` HTTP (`edge` profile) | 80 |
+| 8190 | `SHADOW_AUTHENTIK_PORT` | `authentik-server` | 9000 |
 
 Vite uses `strictPort`, so a busy port stops it instead of silently moving to
 another one. When you change a host port, also change the URLs that contain it
@@ -90,9 +90,9 @@ Use `.env` for local values. Keep `.env.example` synchronized when adding requir
 
 `docker-compose.yml` is the local development stack and the only one that
 builds; `docker-compose.dev.yml` layers live reload on top of it (`make dev`). `docker-compose.prod.yml` is the production stack; it runs images from GHCR
-selected by `YEARCLOCK_TAG` (ADR-0035) and builds nothing: only `caddy` publishes ports, with the same variables
+selected by `SHADOW_TAG` (ADR-0035) and builds nothing: only `caddy` publishes ports, with the same variables
 and 81NN defaults so the port check passes; production sets
-`YEARCLOCK_EDGE_BIND_ADDRESS=0.0.0.0`, `YEARCLOCK_HTTP_PORT=80`, and
-`YEARCLOCK_HTTPS_PORT=443`. The port check gives required `${NAME:?}`
+`SHADOW_EDGE_BIND_ADDRESS=0.0.0.0`, `SHADOW_HTTP_PORT=80`, and
+`SHADOW_HTTPS_PORT=443`. The port check gives required `${NAME:?}`
 variables placeholder values when it resolves a file. See
 `docs/architecture/deployment.md` and `docs/runbooks/production-readiness.md`.

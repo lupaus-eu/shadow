@@ -22,7 +22,7 @@ for getting the first containers running.
   `backend` and `frontend`.
 - [ ] **human** Find the packages: `https://github.com/orgs/lupaus-eu/packages`
   (also in the repository's right-hand sidebar under *Packages*). Both
-  `yearclock-backend` and `yearclock-frontend` must list the tag `v0.1.0`. They link
+  `shadow-backend` and `shadow-frontend` must list the tag `v0.1.0`. They link
   to the repository through the image labels and stay private.
 
 ## 2. GitHub: a token for the host
@@ -81,9 +81,9 @@ The host downloads the private images, so it needs a credential.
   mounts `caddy/` and `authentik/`, and the backup scripts live in `scripts/ops/`):
 
   ```bash
-  sudo mkdir -p /opt/yearclock && sudo chown "$USER" /opt/yearclock
-  git clone https://github.com/lupaus-eu/yearclock.git /opt/yearclock
-  cd /opt/yearclock && git checkout v0.1.0
+  sudo mkdir -p /opt/shadow && sudo chown "$USER" /opt/shadow
+  git clone https://github.com/lupaus-eu/shadow.git /opt/shadow
+  cd /opt/shadow && git checkout v0.1.0
   ```
 
   (A private repository needs a read-only deploy key or a token for the clone.)
@@ -101,8 +101,8 @@ The host downloads the private images, so it needs a credential.
   chmod 600 .env.production
   ```
 
-- [ ] Set in it: `YEARCLOCK_TAG=v0.1.0`, `YEARCLOCK_EDGE_BIND_ADDRESS=0.0.0.0`,
-  `YEARCLOCK_HTTP_PORT=80`, `YEARCLOCK_HTTPS_PORT=443`, the two site addresses,
+- [ ] Set in it: `SHADOW_TAG=v0.1.0`, `SHADOW_EDGE_BIND_ADDRESS=0.0.0.0`,
+  `SHADOW_HTTP_PORT=80`, `SHADOW_HTTPS_PORT=443`, the two site addresses,
   `FRONTEND_URL`, `PUBLIC_API_BASE_URL`, and `OIDC_ISSUER`.
 - [ ] Check that the file resolves, without starting anything:
 
@@ -113,7 +113,7 @@ The host downloads the private images, so it needs a credential.
 ## 5. First start
 
 The host can use short commands from [`Makefile.prod`](../../Makefile.prod): copy it
-as `Makefile` (`rsync -av Makefile.prod <host>:/opt/yearclock/Makefile`), then
+as `Makefile` (`rsync -av Makefile.prod <host>:/opt/shadow/Makefile`), then
 `make config`, `make deploy` (pull, start, status), `make ps`, `make logs SERVICE=backend`,
 `make tag TAG=<tag>`, and `make help` for the rest (all described in
 [`production-commands.md`](production-commands.md)). The commands below are what they run.
@@ -162,10 +162,10 @@ blueprint) silently does nothing. Run this from a checkout of the commit you are
 changed (when unsure, run it; add `-n` to see what would change). It never touches `.env.production`:
 
 ```bash
-rsync -av --relative docker-compose.prod.yml caddy authentik docker/postgres/init scripts/ops <host>:/opt/yearclock/ && rsync -av Makefile.prod <host>:/opt/yearclock/Makefile
+rsync -av --relative docker-compose.prod.yml caddy authentik docker/postgres/init scripts/ops <host>:/opt/shadow/ && rsync -av Makefile.prod <host>:/opt/shadow/Makefile
 ```
 
-Then on the host, in `/opt/yearclock`:
+Then on the host, in `/opt/shadow`:
 
 ```bash
 make deploy
@@ -185,8 +185,8 @@ after the Caddyfile is first mounted as a directory (`make deploy` reloads it fr
 result as the feature says, for example the MCP metadata in `docs/runbooks/mcp-interface.md`.
 
 - [ ] Tag a release from a green `main`, wait for the Images workflow, then on the
-  host set `YEARCLOCK_TAG`, copy the host's files with the `rsync` command above
+  host set `SHADOW_TAG`, copy the host's files with the `rsync` command above
   (the host has no source tree), and run `make deploy` (or `pull` and `up -d` as in section 5).
-- [ ] Roll back by setting the previous `YEARCLOCK_TAG` and running the same two
+- [ ] Roll back by setting the previous `SHADOW_TAG` and running the same two
   commands, only if that release is compatible with the current database schema;
   otherwise restore from backup.

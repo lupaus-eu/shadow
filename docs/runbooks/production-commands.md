@@ -1,7 +1,7 @@
 # Production commands (`make`)
 
 [`Makefile.prod`](../../Makefile.prod) gives the production host short commands for
-the Compose work. Run them in `/opt/yearclock` as the `deploy` user. Every command
+the Compose work. Run them in `/opt/shadow` as the `deploy` user. Every command
 reads `docker-compose.prod.yml` and `.env.production`; `make help` lists them.
 
 ## Install
@@ -11,7 +11,7 @@ to the host under the name `Makefile`, from your own machine, and again whenever
 changes:
 
 ```bash
-rsync -av Makefile.prod hetzner-deploy:/opt/yearclock/Makefile
+rsync -av Makefile.prod hetzner-deploy:/opt/shadow/Makefile
 ```
 
 `make` itself comes from cloud-init; on an older host: `sudo apt-get install -y make`.
@@ -20,8 +20,8 @@ rsync -av Makefile.prod hetzner-deploy:/opt/yearclock/Makefile
 
 | Command | What it does |
 | --- | --- |
-| `make deploy` | Downloads the images named by `YEARCLOCK_TAG`, starts or updates the stack, and shows the status. The normal way to release. |
-| `make tag TAG=sha-1234567` | Writes the release into `YEARCLOCK_TAG` in `.env.production` (letters, digits, `.`, `_`, `-` only). It changes nothing that runs; follow it with `make deploy`. A rollback is the same with the previous tag. |
+| `make deploy` | Downloads the images named by `SHADOW_TAG`, starts or updates the stack, and shows the status. The normal way to release. |
+| `make tag TAG=sha-1234567` | Writes the release into `SHADOW_TAG` in `.env.production` (letters, digits, `.`, `_`, `-` only). It changes nothing that runs; follow it with `make deploy`. A rollback is the same with the previous tag. |
 | `make version` | Shows the configured tag and the image and status of every service. |
 | `make ps` | Shows the services, including finished one-shot containers (`migrate` should be `exited (0)`). |
 | `make logs` | Follows the last 100 lines of every service's log. `make logs SERVICE=backend` follows one. Stop with Ctrl+C. |
@@ -51,7 +51,7 @@ make deploy
 | `make authentik-apply` | Applies the Authentik blueprints now, even when nothing changed. Normally `authentik-config-init` skips them and the apply happens only when a blueprint, the Authentik image, or a related setting changed (`authentik-invitations.md`). Use it to undo a change made in the Authentik interface. |
 | `make enroll-platform EMAIL=you@example.com ROLE=platform_admin` | Allows that address to sign in to the Platform area (`ROLE` is `platform_admin` or `support_agent`). Run it before the person's first Platform sign-in, and never sign that identity in to the customer application first. Needs the stack to be running. |
 | `make backup` | Runs the off-host backup once, now (`backup.md`): dumps both databases, copies them to Scaleway with restic. Needs the `BACKUP_*` settings. |
-| `make timers` | Shows the `yearclock-*` systemd timers and when they last and next run. Empty until the timers are enabled after the backup is set up. |
+| `make timers` | Shows the `shadow-*` systemd timers and when they last and next run. Empty until the timers are enabled after the backup is set up. |
 
 ## Housekeeping
 

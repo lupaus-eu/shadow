@@ -1,6 +1,6 @@
 # Off-host backups
 
-Both PostgreSQL databases (Yearclock and Authentik) are dumped on a schedule,
+Both PostgreSQL databases (Shadow and Authentik) are dumped on a schedule,
 encrypted on the host with [restic](https://restic.net/), and stored in Scaleway
 Object Storage. A failed backup, and optionally every successful one, sends an email
 through the Scaleway Transactional Email service the application already uses; an
@@ -16,7 +16,7 @@ until an operator does the setup below; the scripts live in `scripts/ops/`.
 
 `scripts/ops/backup-offsite.sh`:
 
-1. dumps both databases with `backup-databases.sh` into `/var/backups/yearclock`;
+1. dumps both databases with `backup-databases.sh` into `/var/backups/shadow`;
 2. adds the dumps and `.env.production` itself (`BACKUP_EXTRA_FILES`) to a
    restic repository in the bucket, encrypted with the repository password;
 3. keeps 24 hourly, 30 daily, and 6 monthly snapshots (`forget --prune`);
@@ -63,7 +63,7 @@ operator alone holds the key.
 
 5. **Settings in `.env.production`.** The backup scripts read the same
    `.env.production` file the production stack already uses (in the project
-   directory on the host, for example `/opt/yearclock/.env.production`); there is no
+   directory on the host, for example `/opt/shadow/.env.production`); there is no
    separate backup file. Add these lines to it, with real values, and keep it
    `chmod 600`:
 
@@ -92,14 +92,14 @@ operator alone holds the key.
    ```bash
    sudo cp scripts/ops/systemd/*.service scripts/ops/systemd/*.timer /etc/systemd/system/
    sudo systemctl daemon-reload
-   sudo systemctl enable --now yearclock-backup.timer yearclock-disk-check.timer
+   sudo systemctl enable --now shadow-backup.timer shadow-disk-check.timer
    ```
 
 7. **First run.** Run it by hand, check that the success email arrives, and look at
    the snapshot list:
 
    ```bash
-   cd /opt/yearclock && sudo scripts/ops/backup-offsite.sh
+   cd /opt/shadow && sudo scripts/ops/backup-offsite.sh
    sudo scripts/ops/restic.sh snapshots
    ```
 
@@ -107,9 +107,9 @@ operator alone holds the key.
    of it, but you need the restic password first to read it, so the password must
    also be somewhere other than the host (step 4).
 
-For the beta change `OnCalendar` in `yearclock-backup.timer` to `hourly` (and the
+For the beta change `OnCalendar` in `shadow-backup.timer` to `hourly` (and the
 heartbeat period to 1 hour, grace 2 hours), then
-`sudo systemctl daemon-reload && sudo systemctl restart yearclock-backup.timer`.
+`sudo systemctl daemon-reload && sudo systemctl restart shadow-backup.timer`.
 
 ## Rehearse a restore
 
@@ -120,7 +120,7 @@ took, and the result next to the alpha or beta gate.
    against scratch databases):
 
    ```bash
-   cd /opt/yearclock && sudo DRILL=1 scripts/ops/restore-offsite.sh /tmp/restore
+   cd /opt/shadow && sudo DRILL=1 scripts/ops/restore-offsite.sh /tmp/restore
    ```
 
    This restores the newest snapshot and runs `restore-drill.sh`, which loads each
@@ -131,10 +131,10 @@ took, and the result next to the alpha or beta gate.
    put the `BACKUP_SCW_*` and `RESTIC_PASSWORD` values in the environment (the file
    does not exist there yet), restore the latest snapshot (`restore-offsite.sh`),
    take `.env.production` from the restored files, start `db` with `docker compose -f docker-compose.prod.yml up -d db`,
-   load both dumps with `pg_restore --clean --if-exists --no-owner` (Yearclock
-   dump into the Yearclock database as the Yearclock owner, Authentik dump into the
+   load both dumps with `pg_restore --clean --if-exists --no-owner` (Shadow
+   dump into the Shadow database as the Shadow owner, Authentik dump into the
    Authentik database as the Authentik owner), start the stack, sign in, and open a
-   Yearclock. Time it.
+   Shadow. Time it.
 
 ## Restore into production
 
@@ -163,8 +163,8 @@ took, and the result next to the alpha or beta gate.
 ## Operating
 
 - A failure email, or a missing daily success email, means no recent backup: look at
-  `journalctl -u yearclock-backup`.
-- Take a backup (`sudo systemctl start yearclock-backup`) before each deploy;
+  `journalctl -u shadow-backup`.
+- Take a backup (`sudo systemctl start shadow-backup`) before each deploy;
   migrations run automatically.
 - Rotate the bucket key by creating a new one, updating `BACKUP_SCW_ACCESS_KEY` and `BACKUP_SCW_SECRET_KEY` in `.env.production`, and deleting
   the old one. Never change the restic password without keeping the old one until

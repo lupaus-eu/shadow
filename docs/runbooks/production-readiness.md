@@ -19,17 +19,17 @@ Record the date, the person, and the evidence next to each item when it is done.
   `AUTHENTIK_SECRET_KEY`, `AUTHENTIK_BOOTSTRAP_PASSWORD`, `OIDC_CLIENT_SECRET`,
   `MCP_OIDC_CLIENT_SECRET`, and `MONITORING_TOKEN` with `openssl rand -hex 32` (letters and digits only: the
   database password is part of a URL), a different value for each.
-- [ ] **human** Set `YEARCLOCK_EDGE_BIND_ADDRESS=0.0.0.0`,
-  `YEARCLOCK_HTTP_PORT=80`, `YEARCLOCK_HTTPS_PORT=443`,
-  `YEARCLOCK_SITE_ADDRESS=<app domain>`, `YEARCLOCK_IDENTITY_ADDRESS=<identity domain>`,
+- [ ] **human** Set `SHADOW_EDGE_BIND_ADDRESS=0.0.0.0`,
+  `SHADOW_HTTP_PORT=80`, `SHADOW_HTTPS_PORT=443`,
+  `SHADOW_SITE_ADDRESS=<app domain>`, `SHADOW_IDENTITY_ADDRESS=<identity domain>`,
   `FRONTEND_URL` and `PUBLIC_API_BASE_URL` to `https://<app domain>`, and
-  `OIDC_ISSUER=https://<identity domain>/application/o/yearclock/`.
+  `OIDC_ISSUER=https://<identity domain>/application/o/shadow/`.
 - [ ] **human** Point DNS A/AAAA records for both domains at the host.
 - [ ] **human** Order the host (2 GB / 2 CPU at least, 4 GB recommended; add 2 GB swap
   on the smaller one), install Docker, and `docker login ghcr.io` with a
   `read:packages` token (ADR-0035).
 - [ ] Cut a `v*` tag from a green `main`, wait for the Images workflow, and set
-  `YEARCLOCK_TAG=<tag>` in `.env.production`.
+  `SHADOW_TAG=<tag>` in `.env.production`.
 - [ ] Start: `docker compose -f docker-compose.prod.yml --env-file .env.production pull`,
   then `docker compose -f docker-compose.prod.yml --env-file .env.production up -d`.
   `migrate` runs before `backend` and `worker`. Only Caddy publishes ports.
@@ -72,8 +72,8 @@ summary.
 - [ ] **human** Verify in the sandbox (with test clocks for the renewals): signup and activation, a seat increase, a failed
   renewal (grace), recovery, cancellation, and a webhook with a wrong
   signature (rejected with 400). Stripe's dashboard shows failed deliveries;
-  Yearclock does not store rejected webhook calls.
-- [ ] **human** With the restricted key and a test clock, open **Billing and seats**: the next charge shows the previewed amount; after scheduling a seat decrease it shows the lower seat count (if not, see the fallback in `.scratch/yearclock-v2-billing-overview/technical-design.md`); after a renewal and a seat increase the payment list shows both invoices with working Stripe links; after cancelling it says there is no further charge.
+  Shadow does not store rejected webhook calls.
+- [ ] **human** With the restricted key and a test clock, open **Billing and seats**: the next charge shows the previewed amount; after scheduling a seat decrease it shows the lower seat count (if not, see the fallback in `.scratch/shadow-v2-billing-overview/technical-design.md`); after a renewal and a seat increase the payment list shows both invoices with working Stripe links; after cancelling it says there is no further charge.
 - [ ] **human** Secret rotation: roll the webhook secret in Stripe, update
   `STRIPE_WEBHOOK_SECRET`, restart `backend`, and send a test event.
 
@@ -117,6 +117,6 @@ the minimum for any production use.
   `scripts/ops/backup-databases.sh` run copied off the host with encryption is
   the minimum).
 - [ ] **human** Run `DRILL=1 scripts/ops/restore-offsite.sh /tmp/restore` (or
-  `scripts/ops/restore-drill.sh <yearclock dump> <authentik dump>`)
+  `scripts/ops/restore-drill.sh <shadow dump> <authentik dump>`)
   after the first backup and then monthly; record the output. (Verified on the
   development stack on 2026-09-23: both restores succeeded independently.)

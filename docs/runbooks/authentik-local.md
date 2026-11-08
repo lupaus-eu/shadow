@@ -1,6 +1,6 @@
 # Local Authentik setup
 
-This runbook completes the local identity configuration supplied by Docker Compose. Authentik owns registration, email verification, credentials, passkeys, MFA, recovery, and its own identity sessions. Yearclock receives only verified OpenID Connect identity claims.
+This runbook completes the local identity configuration supplied by Docker Compose. Authentik owns registration, email verification, credentials, passkeys, MFA, recovery, and its own identity sessions. Shadow receives only verified OpenID Connect identity claims.
 
 ## 1. Set local secrets
 
@@ -11,7 +11,7 @@ Copy `.env.example` to `.env` and replace at least:
 - `AUTHENTIK_BOOTSTRAP_PASSWORD`
 - `OIDC_CLIENT_SECRET`
 
-Keep `OIDC_CLIENT_SECRET` identical for the Yearclock backend and the mounted Authentik blueprint. Never commit `.env`.
+Keep `OIDC_CLIENT_SECRET` identical for the Shadow backend and the mounted Authentik blueprint. Never commit `.env`.
 
 ## 2. Start and initialize
 
@@ -19,19 +19,19 @@ Keep `OIDC_CLIENT_SECRET` identical for the Yearclock backend and the mounted Au
 docker compose up --build
 ```
 
-Open `http://localhost:8190/if/flow/initial-setup/` including the trailing slash. Sign in as `akadmin`. The mounted `yearclock-application.yaml` blueprint creates the confidential Yearclock OIDC provider and application automatically. The provider allows only the authorization-code grant used by the backend.
+Open `http://localhost:8190/if/flow/initial-setup/` including the trailing slash. Sign in as `akadmin`. The mounted `shadow-application.yaml` blueprint creates the confidential Shadow OIDC provider and application automatically. The provider allows only the authorization-code grant used by the backend.
 
 Confirm the provider discovery document:
 
 ```text
-http://localhost:8190/application/o/yearclock/.well-known/openid-configuration
+http://localhost:8190/application/o/shadow/.well-known/openid-configuration
 ```
 
 ## 3. Identity flow policy
 
 The one-shot `authentik-config-init` service applies the pinned image's
 verified-email enrollment and email-plus-MFA recovery flows before the
-Yearclock backend starts. It then applies the versioned Yearclock policy:
+Shadow backend starts. It then applies the versioned Shadow policy:
 
 - password login always requires an enrolled TOTP or WebAuthn factor;
 - a user without a factor must configure one before login can finish;
@@ -48,12 +48,12 @@ password-only access.
 
 Configure the Scaleway SMTP values in `.env` before testing enrollment or
 recovery. Identity email credentials belong only to Authentik and remain
-separate from later Yearclock transactional-email credentials.
+separate from later Shadow transactional-email credentials.
 
 ## Legal links on the sign-in pages
 
 Authentik 2026.8 takes the footer links of its flow pages from the system setting **Footer links**, not from the
-brand, so `yearclock-brand.yaml` cannot carry them. **Human:** in the Authentik admin interface open
+brand, so `shadow-brand.yaml` cannot carry them. **Human:** in the Authentik admin interface open
 System > Settings and set Footer links to `[{"name": "Terms and privacy", "href": "https://<app domain>/legal"}]`
 (a Finnish name is fine). Not yet confirmed on 2026.8.5 against a running instance; check the page after setting it.
 
@@ -63,7 +63,7 @@ The sign-in pages use the web application's stylesheet (ADR-0039). Locally the s
 dev server (`AUTHENTIK_THEME_CSS_URL`, default `http://localhost:8173/src/theme.css?direct`), so start the
 frontend (`make up` does) to see the application's colors; without it the pages show the bridge's fallback colors.
 The dev server's stylesheet has no font rules, so locally the pages use the system font; production uses Inter.
-After changing `authentik/blueprints/yearclock-brand.css` run `docker compose up -d authentik-config-init`
+After changing `authentik/blueprints/shadow-brand.css` run `docker compose up -d authentik-config-init`
 (`make authentik-apply` in production) and reload the page.
 
 ## Enrollment invitations
@@ -83,10 +83,10 @@ Use a non-admin test identity and verify:
 - a passkey can be enrolled and used to sign in;
 - password sign-in cannot finish without a second factor;
 - the recovery flow requires email plus the configured MFA check;
-- Yearclock opens its authenticated English shell;
+- Shadow opens its authenticated English shell;
 - switching to Finnish survives a reload;
-- logout returns to the signed-out Yearclock entry point;
-- deleting or expiring the Authentik session causes Yearclock access to fail closed after its local session expires or is revoked through configured OIDC logout.
+- logout returns to the signed-out Shadow entry point;
+- deleting or expiring the Authentik session causes Shadow access to fail closed after its local session expires or is revoked through configured OIDC logout.
 
 The Authentik container version is pinned. Review its release notes and re-run this checklist before changing that version.
 

@@ -6,7 +6,7 @@ and the date.
 
 | Item | Decision needed | Owner | Status |
 | --- | --- | --- | --- |
-| Product name and domains | App domain (`YEARCLOCK_SITE_ADDRESS`) and identity domain (`YEARCLOCK_IDENTITY_ADDRESS`); `yearclock.example.com` is a placeholder. | Product owner | Open |
+| Product name and domains | App domain (`SHADOW_SITE_ADDRESS`) and identity domain (`SHADOW_IDENTITY_ADDRESS`); `shadow.example.com` is a placeholder. | Product owner | Open |
 | Legal retention | Statutory retention for Billing Records, the purged Organization row (name and billing contact), audit events, and outbox messages (`docs/gdpr/README.md`; the decisions for counsel are in `docs/legal/counsel-checklist.md`). | Legal | Open |
 | Tax | Stripe Tax registrations or manual rates, and the invoice legal entity. | Finance | Open |
 | Stripe | Live account, Product/Price, webhook secret, Customer Portal settings (cancellation on, update quantities off; for P14 the secret key must be allowed to update subscriptions, release subscription schedules, create Checkout sessions for existing customers, and update customers; a Stripe test-mode run of cancel, resubscribe, and contact change); key owner and rotation schedule. | Finance / operator | Open |
