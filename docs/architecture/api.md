@@ -244,6 +244,29 @@ Every write is audited.
 | `GET` `.../versions/{version_id}/changes` | Change list against the base: added, removed, and changed nodes and connections |
 | `POST` `.../versions/{version_id}/merge` | Apply the change list to the base. Owner or Admin only. Answers counts of what was applied; metrics are not merged. Audit `version.merged` |
 
+## Lines, events and state (model timeline; ADR-0048, ADR-0049)
+
+Read-only routes under `/models/{model_id}/lines` (`backend/app/timeline_routes.py`; loading and the
+planned rule are in `backend/app/timeline/loader.py`). Reading needs any membership and works while the
+Organization is read-only; another Organization, an unknown Model, line or event answers 404. A line's
+id equals its former version id. Writes arrive with later tickets.
+
+| Method and path | Purpose |
+| --- | --- |
+| `GET` `/lines` | Lines, Base first: `kind`, `parent_line_id`, `branch_event_id`, `start_changed_at`, `version`, `event_count`, `latest_event_date` |
+| `GET` `.../lines/{line_id}/events` | The line's own events by date then entry order: `occurred_on`, `title`, `note`, `planned`, `change_count`, `change_counts` per operation, `branches` (Scenarios that branch from the event) |
+| `GET` `.../lines/{line_id}/state` | The graph after `?event_id=` (an event of that line) or on `?as_of=YYYY-MM-DD` (the last event dated that day or earlier); with neither, the present state (`as_of` = today). Both together answer 422 `event_id_and_as_of` |
+
+The state answers the graph in the shape of `GET /models/{model_id}` (`nodes`, `connections`, `node_types`,
+`connection_types`, `allowed_connections`; nodes carry no `version`) plus `line`, `event` (null before the
+line's first event), `as_of`, `planned`, `positions` (`node_id`, `x`, `y`: the line's own position, else the
+nearest ancestor line's, else the position the node was added with; node `x` and `y` already hold the
+resolved position), and, for the shown event, `added`, `updated` (with `previous`) and `removed` lists of
+`nodes` and `connections` (removed ones keep their data and last drawn position). `planned` is true when
+the shown event is dated after today in the Organization's time zone; the present state ignores such events,
+but a planned event's own state can be read by `event_id`. A chain that cannot be replayed answers 422
+`chain_broken` with `line_id`, `event_id`, `position`, `cause`, `element`.
+
 ## Metrics
 
 Under `.../versions/{version_id}/metrics`.
