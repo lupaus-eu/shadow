@@ -16,7 +16,7 @@ def _setup(stack, database_url, subject):
     _, owner, _, base = _tenant(stack, database_url, subject)
     model_id = owner.post(f"{base}/models", json={"name": "Twin"}).json()["id"]
     version = _graph(owner, base, model_id)["version"]["id"]
-    return owner, f"{base}/models/{model_id}", f"{base}/models/{model_id}/versions/{version}/metrics"
+    return owner, f"{base}/models/{model_id}", f"{base}/models/{model_id}/lines/{version}/metrics"
 
 
 def _values(owner, url, metric_id, pairs):
@@ -62,7 +62,7 @@ def test_forks_copy_metrics_and_edits_stay_in_their_version(database_url: str, s
     owner.post(url, json={"key": "double", "name": "Double", "formula": "revenue * 2"})
     _values(owner, url, revenue["id"], [("2026-01-01", 10)])
     fork = owner.post(f"{path}/versions", json={"name": "Scenario"}).json()
-    fork_url = f"{path}/versions/{fork['id']}/metrics"
+    fork_url = f"{path}/lines/{fork['id']}/metrics"
     copies = {m["key"]: m for m in owner.get(fork_url).json()}
     assert set(copies) == {"revenue", "double"} and copies["revenue"]["id"] != revenue["id"]
     _values(owner, fork_url, copies["revenue"]["id"], [("2026-01-01", 99)])

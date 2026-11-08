@@ -1,7 +1,7 @@
 """Import and export: metric values as CSV or Excel, and an analysis as an Excel workbook.
 
 Import takes the file as the request body (``?filename=`` names it) and applies it to the input
-metrics of one version; derived metrics, unknown metrics and unreadable cells are reported and
+metrics of one line; derived metrics, unknown metrics and unreadable cells are reported and
 skipped. Everything else is written in one transaction, with an audit entry.
 """
 
@@ -18,9 +18,9 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.analysis_routes import _build, _simulation
 from app.auth import AuthenticatedUser
 from app.auth_routes import AuthenticatedUserDependency
-from app.metric_engine import series_of_version
+from app.metric_engine import series_of_line
 from app.metric_io import MAX_BYTES, ImportError_, csv_bytes, parse_table, series_table, workbook_bytes
-from app.model_routes import _audit, _editor_session, _member_session, _model, version_of
+from app.model_routes import _audit, _editor_session, _member_session, _model, line_of
 from app.models import MetricValue, Recommendation
 from app.simulation_routes import result_of
 
@@ -43,8 +43,8 @@ def create_metric_io_router(*, session_factory: sessionmaker[Session], authentic
     router = APIRouter(prefix="/api/v1/organizations", tags=["Import and export"])
     base = "/{organization_id}/models/{model_id}"
 
-    @router.post(base + "/versions/{version_id}/metrics/import", response_model=ImportReport)
-    async def import_values(organization_id: UUID, model_id: UUID, version_id: UUID, request: Request, filename: str = "values.csv", user: AuthenticatedUser = Depends(authenticated_user_dependency)) -> ImportReport:
+    @router.post(base + "/lines/{line_id}/metrics/import", response_model=ImportReport)
+    async def import_values(organization_id: UUID, model_id: UUID, line_id: UUID, request: Request, filename: str = "values.csv", user: AuthenticatedUser = Depends(authenticated_user_dependency)) -> ImportReport:
         if int(request.headers.get("content-length") or 0) > MAX_BYTES:
             raise HTTPException(status_code=413, detail="the file is too large")
         data = await request.body()
@@ -56,8 +56,8 @@ def create_metric_io_router(*, session_factory: sessionmaker[Session], authentic
                 raise HTTPException(status_code=422, detail=str(error)) from None
             with _editor_session(session_factory, organization_id, user) as session:
                 _model(session, organization_id, model_id)
-                version = version_of(session, organization_id, model_id, version_id)
-                metrics, _ = series_of_version(session, version.id)
+                line = line_of(session, organization_id, model_id, line_id)
+                metrics, _ = series_of_line(session, line.id)
                 by_label = {**{metric.name.lower(): metric for metric in metrics.values()}, **{key: metric for key, metric in metrics.items()}}
                 unknown, derived, written, touched = [], [], 0, 0
                 for label, series in parsed.values.items():
@@ -73,23 +73,23 @@ def create_metric_io_router(*, session_factory: sessionmaker[Session], authentic
                         if period in existing:
                             existing[period].value = number
                         else:
-                            session.add(MetricValue(metric_id=metric.id, period=period, organization_id=organization_id, version_id=version.id, value=number))
+                            session.add(MetricValue(metric_id=metric.id, period=period, organization_id=organization_id, line_id=line.id, value=number))
                     touched += 1
                     written += len(series)
                 session.flush()
-                _audit(session, request, "metric.values_imported", "model_version", version.id, {"metrics": touched, "values": written, "skipped_metrics": len(unknown) + len(derived)})
+                _audit(session, request, "metric.values_imported", "model_line", line.id, {"metrics": touched, "values": written, "skipped_metrics": len(unknown) + len(derived)})
                 return ImportReport(metrics=touched, values=written, unknown_metrics=sorted(unknown), derived_metrics=sorted(derived), invalid_cells=parsed.invalid_cells)
 
         return await run_in_threadpool(apply)
 
-    @router.get(base + "/versions/{version_id}/metrics/export")
-    def export_values(organization_id: UUID, model_id: UUID, version_id: UUID, format: Literal["csv", "xlsx"] = "csv", user: AuthenticatedUser = Depends(authenticated_user_dependency)) -> Response:
+    @router.get(base + "/lines/{line_id}/metrics/export")
+    def export_values(organization_id: UUID, model_id: UUID, line_id: UUID, format: Literal["csv", "xlsx"] = "csv", user: AuthenticatedUser = Depends(authenticated_user_dependency)) -> Response:
         with _member_session(session_factory, organization_id, user) as (session, _membership):
             model = _model(session, organization_id, model_id)
-            version = version_of(session, organization_id, model_id, version_id)
-            metrics, series = series_of_version(session, version.id)
+            line = line_of(session, organization_id, model_id, line_id)
+            metrics, series = series_of_line(session, line.id)
             rows = series_table([(key, series[key]) for key in metrics])
-            name = _filename(f"{model.name}-{version.name}-metrics")
+            name = _filename(f"{model.name}-{line.name}-metrics")
         if format == "csv":
             return Response(csv_bytes(rows), media_type="text/csv; charset=utf-8", headers={"Content-Disposition": f'attachment; filename="{name}.csv"'})
         return Response(workbook_bytes({"Metrics": rows}), media_type=XLSX, headers={"Content-Disposition": f'attachment; filename="{name}.xlsx"'})

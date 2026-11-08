@@ -1,4 +1,4 @@
-"""Model tools for agents: models, versions, metrics, simulations and analysis.
+"""Model tools for agents: models, versions, lines, metrics, simulations and analysis.
 
 Each tool calls the same endpoint function the REST API serves, so the rules, the roles, the
 read-only subscription block and the audit entries are the REST API's own. The endpoint
@@ -72,25 +72,25 @@ def register_model_tools(server: MCPServer, runtime: ToolRuntime) -> None:
         """List the nodes and connections a version added, removed or changed against the version it was forked from."""
         return await read(organization_id, versions["changes"], model_id=model_id, version_id=version_id)
 
-    @server.tool(title="List the metrics of a version", annotations=READ_ONLY)
-    async def list_metrics(organization_id: UUID, model_id: UUID, version_id: UUID) -> dict:
-        """List the metrics (KPIs) of a version. A derived metric has a formula over other metric keys."""
-        return await read(organization_id, metrics["list_metrics"], model_id=model_id, version_id=version_id)
+    @server.tool(title="List the metrics of a line", annotations=READ_ONLY)
+    async def list_metrics(organization_id: UUID, model_id: UUID, line_id: UUID) -> dict:
+        """List the metrics (KPIs) of a line (the Base line or a Scenario; until list_lines exists, a line id is the id of a version listed by get_model). A derived metric has a formula over other metric keys."""
+        return await read(organization_id, metrics["list_metrics"], model_id=model_id, line_id=line_id)
 
     @server.tool(title="Get a metric's monthly values", annotations=READ_ONLY)
-    async def get_metric_series(organization_id: UUID, model_id: UUID, version_id: UUID, metric_id: UUID) -> dict:
+    async def get_metric_series(organization_id: UUID, model_id: UUID, line_id: UUID, metric_id: UUID) -> dict:
         """Get the monthly values of a metric (derived metrics are calculated). Periods are first-of-month dates."""
-        return await read(organization_id, metrics["read_series"], model_id=model_id, version_id=version_id, metric_id=metric_id)
+        return await read(organization_id, metrics["read_series"], model_id=model_id, line_id=line_id, metric_id=metric_id)
 
     @server.tool(title="List simulations", annotations=READ_ONLY)
-    async def list_simulations(organization_id: UUID, model_id: UUID, version_id: UUID) -> dict:
-        """List the forecast simulations that were run on a version."""
-        return await read(organization_id, simulations["list_simulations"], model_id=model_id, version_id=version_id)
+    async def list_simulations(organization_id: UUID, model_id: UUID, line_id: UUID) -> dict:
+        """List the forecast simulations that were run on a line."""
+        return await read(organization_id, simulations["list_simulations"], model_id=model_id, line_id=line_id)
 
     @server.tool(title="Get a simulation result", annotations=READ_ONLY)
-    async def get_simulation(organization_id: UUID, model_id: UUID, version_id: UUID, simulation_id: UUID) -> dict:
+    async def get_simulation(organization_id: UUID, model_id: UUID, line_id: UUID, simulation_id: UUID) -> dict:
         """Get a simulation's history, forecast and 95% bands per metric."""
-        return await read(organization_id, simulations["read"], model_id=model_id, version_id=version_id, simulation_id=simulation_id)
+        return await read(organization_id, simulations["read"], model_id=model_id, line_id=line_id, simulation_id=simulation_id)
 
     @server.tool(title="Get the analysis of a simulation", annotations=READ_ONLY)
     async def get_analysis(organization_id: UUID, model_id: UUID, simulation_id: UUID, compare_to: UUID | None = None) -> dict:
@@ -121,21 +121,21 @@ def register_model_tools(server: MCPServer, runtime: ToolRuntime) -> None:
         return await write(organization_id, versions["create_version"], model_id=model_id, body=body)
 
     @server.tool(title="Create a metric", annotations=WRITES)
-    async def create_metric(organization_id: UUID, model_id: UUID, version_id: UUID, key: str, name: str, unit: str | None = None, formula: str | None = None, node_id: UUID | None = None) -> dict:
+    async def create_metric(organization_id: UUID, model_id: UUID, line_id: UUID, key: str, name: str, unit: str | None = None, formula: str | None = None, node_id: UUID | None = None) -> dict:
         """Create a metric. key is lower-case letters, digits and underscores; give a formula over other metric keys for a derived metric."""
         body = _body(MetricRequest, {"key": key, "name": name, "unit": unit, "formula": formula, "node_id": node_id})
-        return await write(organization_id, metrics["create_metric"], model_id=model_id, version_id=version_id, body=body)
+        return await write(organization_id, metrics["create_metric"], model_id=model_id, line_id=line_id, body=body)
 
     @server.tool(title="Set monthly values of a metric", annotations=WRITES)
-    async def set_metric_values(organization_id: UUID, model_id: UUID, version_id: UUID, metric_id: UUID, values: list[dict]) -> dict:
+    async def set_metric_values(organization_id: UUID, model_id: UUID, line_id: UUID, metric_id: UUID, values: list[dict]) -> dict:
         """Set monthly values of an input metric. values is a list of {"period": "YYYY-MM-01", "value": number}; a null value clears the month."""
-        return await write(organization_id, metrics["write_values"], model_id=model_id, version_id=version_id, metric_id=metric_id, body=_body(ValuesRequest, {"values": values}))
+        return await write(organization_id, metrics["write_values"], model_id=model_id, line_id=line_id, metric_id=metric_id, body=_body(ValuesRequest, {"values": values}))
 
     @server.tool(title="Run a simulation", annotations=WRITES)
-    async def run_simulation(organization_id: UUID, model_id: UUID, version_id: UUID, name: str, method: str = "linear", horizon_months: int = 12, adjustments: list[dict] | None = None) -> dict:
-        """Forecast the metrics of a version. adjustments is a list of {"metric_key": ..., "change_pct": ...} what-if changes."""
+    async def run_simulation(organization_id: UUID, model_id: UUID, line_id: UUID, name: str, method: str = "linear", horizon_months: int = 12, adjustments: list[dict] | None = None) -> dict:
+        """Forecast the metrics of a line. adjustments is a list of {"metric_key": ..., "change_pct": ...} what-if changes."""
         body = _body(SimulationRequest, {"name": name, "method": method, "horizon_months": horizon_months, "adjustments": adjustments or []})
-        return await write(organization_id, simulations["run"], model_id=model_id, version_id=version_id, body=body)
+        return await write(organization_id, simulations["run"], model_id=model_id, line_id=line_id, body=body)
 
     @server.tool(title="Generate the analysis of a simulation", annotations=WRITES)
     async def generate_analysis(organization_id: UUID, model_id: UUID, simulation_id: UUID, compare_to: UUID | None = None) -> dict:

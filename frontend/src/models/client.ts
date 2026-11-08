@@ -95,55 +95,56 @@ export type MetricInput = { key: string; name: string; unit: string | null; node
 export type SeriesPoint = { period: string; value: number | null };
 export type Series = { metric: Metric; points: SeriesPoint[] };
 
-const metricsUrl = (organizationId: string, modelId: string, versionId: string) => `${modelsUrl(organizationId)}/${modelId}/versions/${versionId}/metrics`;
+// A line has the id of the version it came from (model timeline ticket 04), so the tabs pass the selected version id until the line picker arrives (ticket 09).
+const metricsUrl = (organizationId: string, modelId: string, lineId: string) => `${modelsUrl(organizationId)}/${modelId}/lines/${lineId}/metrics`;
 
-export async function loadMetrics(organizationId: string, modelId: string, versionId: string): Promise<Metric[]> {
-  return (await call(metricsUrl(organizationId, modelId, versionId))).json();
+export async function loadMetrics(organizationId: string, modelId: string, lineId: string): Promise<Metric[]> {
+  return (await call(metricsUrl(organizationId, modelId, lineId))).json();
 }
 
-export async function createMetric(organizationId: string, modelId: string, versionId: string, input: MetricInput): Promise<Metric> {
-  return (await call(metricsUrl(organizationId, modelId, versionId), { method: "POST", ...json(input) })).json();
+export async function createMetric(organizationId: string, modelId: string, lineId: string, input: MetricInput): Promise<Metric> {
+  return (await call(metricsUrl(organizationId, modelId, lineId), { method: "POST", ...json(input) })).json();
 }
 
-export async function updateMetric(organizationId: string, modelId: string, versionId: string, metric: Metric, input: MetricInput): Promise<Metric> {
-  return (await call(`${metricsUrl(organizationId, modelId, versionId)}/${metric.id}`, { method: "PATCH", ...json({ ...input, expected_version: metric.version }) })).json();
+export async function updateMetric(organizationId: string, modelId: string, lineId: string, metric: Metric, input: MetricInput): Promise<Metric> {
+  return (await call(`${metricsUrl(organizationId, modelId, lineId)}/${metric.id}`, { method: "PATCH", ...json({ ...input, expected_version: metric.version }) })).json();
 }
 
-export async function deleteMetric(organizationId: string, modelId: string, versionId: string, metric: Metric): Promise<void> {
-  await call(`${metricsUrl(organizationId, modelId, versionId)}/${metric.id}?expected_version=${metric.version}`, { method: "DELETE" });
+export async function deleteMetric(organizationId: string, modelId: string, lineId: string, metric: Metric): Promise<void> {
+  await call(`${metricsUrl(organizationId, modelId, lineId)}/${metric.id}?expected_version=${metric.version}`, { method: "DELETE" });
 }
 
-export async function loadSeries(organizationId: string, modelId: string, versionId: string, metricId: string): Promise<Series> {
-  return (await call(`${metricsUrl(organizationId, modelId, versionId)}/${metricId}/series`)).json();
+export async function loadSeries(organizationId: string, modelId: string, lineId: string, metricId: string): Promise<Series> {
+  return (await call(`${metricsUrl(organizationId, modelId, lineId)}/${metricId}/series`)).json();
 }
 
-export async function saveValues(organizationId: string, modelId: string, versionId: string, metricId: string, values: SeriesPoint[]): Promise<Series> {
-  return (await call(`${metricsUrl(organizationId, modelId, versionId)}/${metricId}/values`, { method: "PUT", ...json({ values }) })).json();
+export async function saveValues(organizationId: string, modelId: string, lineId: string, metricId: string, values: SeriesPoint[]): Promise<Series> {
+  return (await call(`${metricsUrl(organizationId, modelId, lineId)}/${metricId}/values`, { method: "PUT", ...json({ values }) })).json();
 }
 
 export type SimulationMethod = "linear" | "seasonal" | "holt" | "prophet";
 export type Adjustment = { metric_key: string; change_pct: number };
-export type Simulation = { id: string; version_id: string; name: string; method: SimulationMethod; horizon_months: number; adjustments: Adjustment[]; skipped: Record<string, string>; history_end: string | null; created_at: string };
+export type Simulation = { id: string; line_id: string; name: string; method: SimulationMethod; horizon_months: number; adjustments: Adjustment[]; skipped: Record<string, string>; history_end: string | null; created_at: string };
 export type ForecastPoint = { period: string; value: number; lower: number | null; upper: number | null };
 export type MetricResult = { key: string; name: string; unit: string | null; derived: boolean; history: { period: string; value: number }[]; forecast: ForecastPoint[] };
 export type SimulationResult = { simulation: Simulation; metrics: MetricResult[] };
 
-const simulationsUrl = (organizationId: string, modelId: string, versionId: string) => `${modelsUrl(organizationId)}/${modelId}/versions/${versionId}/simulations`;
+const simulationsUrl = (organizationId: string, modelId: string, lineId: string) => `${modelsUrl(organizationId)}/${modelId}/lines/${lineId}/simulations`;
 
-export async function loadSimulations(organizationId: string, modelId: string, versionId: string): Promise<Simulation[]> {
-  return (await call(simulationsUrl(organizationId, modelId, versionId))).json();
+export async function loadSimulations(organizationId: string, modelId: string, lineId: string): Promise<Simulation[]> {
+  return (await call(simulationsUrl(organizationId, modelId, lineId))).json();
 }
 
-export async function runSimulation(organizationId: string, modelId: string, versionId: string, input: { name: string; method: SimulationMethod; horizon_months: number; adjustments: Adjustment[] }): Promise<SimulationResult> {
-  return (await call(simulationsUrl(organizationId, modelId, versionId), { method: "POST", ...json(input) })).json();
+export async function runSimulation(organizationId: string, modelId: string, lineId: string, input: { name: string; method: SimulationMethod; horizon_months: number; adjustments: Adjustment[] }): Promise<SimulationResult> {
+  return (await call(simulationsUrl(organizationId, modelId, lineId), { method: "POST", ...json(input) })).json();
 }
 
-export async function loadSimulation(organizationId: string, modelId: string, versionId: string, simulationId: string): Promise<SimulationResult> {
-  return (await call(`${simulationsUrl(organizationId, modelId, versionId)}/${simulationId}`)).json();
+export async function loadSimulation(organizationId: string, modelId: string, lineId: string, simulationId: string): Promise<SimulationResult> {
+  return (await call(`${simulationsUrl(organizationId, modelId, lineId)}/${simulationId}`)).json();
 }
 
-export async function deleteSimulation(organizationId: string, modelId: string, versionId: string, simulationId: string): Promise<void> {
-  await call(`${simulationsUrl(organizationId, modelId, versionId)}/${simulationId}`, { method: "DELETE" });
+export async function deleteSimulation(organizationId: string, modelId: string, lineId: string, simulationId: string): Promise<void> {
+  await call(`${simulationsUrl(organizationId, modelId, lineId)}/${simulationId}`, { method: "DELETE" });
 }
 
 export type Finding = { key: string; name: string; unit: string | null; derived: boolean; start: number | null; end: number | null; change_pct: number | null; trend: string; turns_negative: string | null; band_ratio: number | null; versus: number | null };
@@ -208,8 +209,8 @@ export async function mergeVersion(organizationId: string, modelId: string, vers
 export type ImportReport = { metrics: number; values: number; unknown_metrics: string[]; derived_metrics: string[]; invalid_cells: number };
 
 /** Sends a CSV or Excel file as the request body; the server reports what it applied and what it skipped. */
-export async function importValues(organizationId: string, modelId: string, versionId: string, file: File): Promise<ImportReport> {
-  const response = await fetch(`${modelsUrl(organizationId)}/${modelId}/versions/${versionId}/metrics/import?filename=${encodeURIComponent(file.name)}`, { method: "POST", credentials: "include", body: file, headers: { "Content-Type": "application/octet-stream" } });
+export async function importValues(organizationId: string, modelId: string, lineId: string, file: File): Promise<ImportReport> {
+  const response = await fetch(`${modelsUrl(organizationId)}/${modelId}/lines/${lineId}/metrics/import?filename=${encodeURIComponent(file.name)}`, { method: "POST", credentials: "include", body: file, headers: { "Content-Type": "application/octet-stream" } });
   if (response.status === 401) throw new AuthenticationRequiredError();
   if (response.status === 422) throw new RuleError(((await response.json().catch(() => null)) as { detail?: string } | null)?.detail ?? "rule");
   if (!response.ok) throw new Error(`Request failed (${response.status})`);
@@ -228,5 +229,5 @@ async function download(url: string, fallbackName: string): Promise<void> {
   URL.revokeObjectURL(link.href);
 }
 
-export const exportValues = (organizationId: string, modelId: string, versionId: string, format: "csv" | "xlsx") => download(`${modelsUrl(organizationId)}/${modelId}/versions/${versionId}/metrics/export?format=${format}`, `metrics.${format}`);
+export const exportValues = (organizationId: string, modelId: string, lineId: string, format: "csv" | "xlsx") => download(`${modelsUrl(organizationId)}/${modelId}/lines/${lineId}/metrics/export?format=${format}`, `metrics.${format}`);
 export const exportAnalysis = (organizationId: string, modelId: string, simulationId: string, compareTo: string | null) => download(`${modelsUrl(organizationId)}/${modelId}/simulations/${simulationId}/analysis/export${compareTo ? `?compare_to=${compareTo}` : ""}`, "analysis.xlsx");

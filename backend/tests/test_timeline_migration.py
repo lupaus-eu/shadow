@@ -54,11 +54,11 @@ def _seed(owner, base) -> dict:
     goal = _node(owner, path, None, types["contract"], "Terms")
     for source, target in ((app, journey), (app, goal)):
         assert owner.post(f"{path}/connections", json={"connection_type_id": types["c:features_in"] if target is journey else types["c:is_composed_of"], "source_node_id": source["id"], "target_node_id": target["id"]}).status_code == 201, "seed connection"
-    metrics = f"{path}/versions/{baseline}/metrics"
+    metrics = f"{path}/lines/{baseline}/metrics"
     revenue = owner.post(metrics, json={"key": "revenue", "name": "Revenue", "unit": "EUR", "node_id": app["id"]}).json()
     owner.post(metrics, json={"key": "double", "name": "Double", "formula": "revenue * 2"})
     _values(owner, metrics, revenue["id"], [(f"2025-{m:02d}-01", 100 + m) for m in range(1, 13)])
-    assert owner.post(f"{path}/versions/{baseline}/simulations", json={"name": "Base run", "method": "linear", "horizon_months": 3}).status_code == 201
+    assert owner.post(f"{path}/lines/{baseline}/simulations", json={"name": "Base run", "method": "linear", "horizon_months": 3}).status_code == 201
 
     def fork(name, base_version=None):
         body = {"name": name} | ({"base_version_id": base_version} if base_version else {})
@@ -93,7 +93,7 @@ def _seed(owner, base) -> dict:
     # Same as the baseline: no event of its own; a fork of it branches where it branches.
     unchanged = fork("Unchanged")
     below_unchanged = fork("Below unchanged", unchanged)
-    owner.post(f"{path}/versions/{below_unchanged}/metrics", json={"key": "own", "name": "Own"})
+    owner.post(f"{path}/lines/{below_unchanged}/metrics", json={"key": "own", "name": "Own"})
     return {"org_model": model_id, "baseline": baseline, "growth": growth, "deeper": deeper, "unchanged": unchanged, "below_unchanged": below_unchanged, "pruned": pruned}
 
 

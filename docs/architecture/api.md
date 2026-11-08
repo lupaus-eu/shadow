@@ -239,8 +239,8 @@ Every write is audited.
 
 | Method and path | Purpose |
 | --- | --- |
-| `GET`, `POST` `/models/{model_id}/versions` | List and fork a version from a base |
-| `PATCH`, `DELETE` `.../versions/{version_id}` | Rename, delete |
+| `GET`, `POST` `/models/{model_id}/versions` | List and fork a version from a base; a fork also creates the Scenario line of the same id (branching from the base line's last event) and copies the base line's metrics |
+| `PATCH`, `DELETE` `.../versions/{version_id}` | Rename, delete; the line of the same id is renamed or deleted with it |
 | `GET` `.../versions/{version_id}/changes` | Change list against the base: added, removed, and changed nodes and connections |
 | `POST` `.../versions/{version_id}/merge` | Apply the change list to the base. Owner or Admin only. Answers counts of what was applied; metrics are not merged. Audit `version.merged` |
 
@@ -269,7 +269,10 @@ but a planned event's own state can be read by `event_id`. A chain that cannot b
 
 ## Metrics
 
-Under `.../versions/{version_id}/metrics`.
+Under `/models/{model_id}/lines/{line_id}/metrics` (a line is the Base line or a Scenario; until ticket 09 the web
+application passes the id of the selected version, which is also the id of its line). Keys, formulas and derived
+metrics are scoped to one line; an unknown line, or one of another Model, answers 404. A metric's `node_id` still
+refers to a node of the old `nodes` table (ticket 08 remaps it).
 
 | Method and path | Purpose |
 | --- | --- |
@@ -292,7 +295,7 @@ prefixed with `'`.
 
 ## Simulations and forecasts (ADR-0042)
 
-Under `.../versions/{version_id}/simulations`: `GET`, `POST` list and run a
+Under `.../lines/{line_id}/simulations` (the response field is `line_id`): `GET`, `POST` list and run a
 simulation (method `linear`, `seasonal`, `holt`, or `prophet`; a minimum
 history applies per method, 12 months for Prophet and 24 for seasonal), `GET`
 and `DELETE` `/{simulation_id}` read with history, forecast, and bands, or
@@ -447,9 +450,9 @@ Protocol. The endpoint is off unless `MCP_ENABLED=true`.
 - Tools (every Organization-scoped tool takes `organization_id`):
   - Organizations: `list_organizations`, `get_organization`.
   - Reads: `list_models`, `get_model` (nodes, connections, metamodel), `get_version_changes`,
-    `list_metrics`, `get_metric_series`, `list_simulations`, `get_simulation`, `get_analysis`.
+    `list_metrics`, `get_metric_series`, `list_simulations`, `get_simulation` (these four take `line_id`), `get_analysis`.
   - Writes: `create_model`, `create_node`, `create_connection`, `create_version`,
-    `create_metric`, `set_metric_values`, `run_simulation`, `generate_analysis`,
+    `create_metric`, `set_metric_values`, `run_simulation` (these three take `line_id`), `generate_analysis`,
     `set_analysis_summary`, `add_proposal` (the agent's own analysis, ADR-0047), and
     `merge_version` (Owner or Admin; marked destructive).
   - There are no delete tools; Shadow itself calls no model (ADR-0047); metamodel editing, import, and

@@ -1,7 +1,7 @@
-"""Metrics (KPIs): monthly values and formulas per Model version (Shadow feature 3).
+"""Metrics (KPIs): monthly values and formulas per line of a Model (Shadow feature 3; model timeline ADR-0048).
 
 An input metric holds monthly values; a derived metric has a formula over other metrics of the
-same version by key and is computed on read. Every member edits; reads need no more than
+same line by key and is computed on read. Every member edits; reads need no more than
 membership. Deleting a metric that other formulas read is refused.
 """
 
@@ -16,8 +16,8 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.auth import AuthenticatedUser
 from app.auth_routes import AuthenticatedUserDependency
 from app.formulas import FormulaError, parse_formula
-from app.metric_engine import formula_order, month_start, series_of_version
-from app.model_routes import _audit, _editor_session, _member_session, _model, _stale, version_of
+from app.metric_engine import formula_order, month_start, series_of_line
+from app.model_routes import _audit, _editor_session, _member_session, _model, _stale, line_of
 from app.models import Metric, MetricValue, Node
 
 KEY_PATTERN = r"^[a-z][a-z0-9_]{0,39}$"
@@ -78,17 +78,17 @@ def _response(metric: Metric, count: int) -> MetricResponse:
     return MetricResponse(id=metric.id, key=metric.key, name=metric.name, unit=metric.unit, node_id=metric.node_id, formula=metric.formula, derived=bool(metric.formula), version=metric.version, values=count)
 
 
-def _metric(session: Session, version_id: UUID, metric_id: UUID, *, lock: bool = False) -> Metric:
-    statement = select(Metric).where(Metric.id == metric_id, Metric.version_id == version_id)
+def _metric(session: Session, line_id: UUID, metric_id: UUID, *, lock: bool = False) -> Metric:
+    statement = select(Metric).where(Metric.id == metric_id, Metric.line_id == line_id)
     metric = session.scalar(statement.with_for_update() if lock else statement)
     if metric is None:
         raise HTTPException(status_code=404, detail="Metric not found")
     return metric
 
 
-def _check_formulas(session: Session, version_id: UUID, changed: Metric | None = None, removed_key: str | None = None) -> None:
-    """The version's formulas must parse, read existing keys, and not form a cycle."""
-    metrics = {metric.key: metric for metric in session.scalars(select(Metric).where(Metric.version_id == version_id)).all()}
+def _check_formulas(session: Session, line_id: UUID, changed: Metric | None = None, removed_key: str | None = None) -> None:
+    """The line's formulas must parse, read existing keys, and not form a cycle."""
+    metrics = {metric.key: metric for metric in session.scalars(select(Metric).where(Metric.line_id == line_id)).all()}
     if changed is not None:
         metrics[changed.key] = changed
     if removed_key is not None:
@@ -99,78 +99,80 @@ def _check_formulas(session: Session, version_id: UUID, changed: Metric | None =
         raise HTTPException(status_code=422, detail=str(error)) from None
 
 
-def _validate_node(session: Session, version_id: UUID, node_id: UUID | None) -> None:
-    if node_id is not None and session.scalar(select(Node.id).where(Node.id == node_id, Node.version_id == version_id)) is None:
-        raise HTTPException(status_code=422, detail="node not found in this version")
+def _validate_node(session: Session, line_id: UUID, node_id: UUID | None) -> None:
+    """``metrics.node_id`` still references the old ``nodes`` table (until ticket 08 of the model timeline remaps it to
+    element ids and drops the table), so the node must exist there as a node of the version that shares this line's id."""
+    if node_id is not None and session.scalar(select(Node.id).where(Node.id == node_id, Node.version_id == line_id)) is None:
+        raise HTTPException(status_code=422, detail="node not found in this line")
 
 
-def copy_metrics(session: Session, base_version_id: UUID, fork_version_id: UUID, node_mapping: dict[UUID, UUID]) -> None:
-    """Copy a version's metrics and stored values into a fork (nodes already copied)."""
+def copy_metrics(session: Session, base_line_id: UUID, fork_line_id: UUID, node_mapping: dict[UUID, UUID]) -> None:
+    """Copy a line's metrics and stored values into a Scenario line (the old fork route has already copied the nodes)."""
     mapping: dict[UUID, UUID] = {}
-    for metric in session.scalars(select(Metric).where(Metric.version_id == base_version_id)).all():
-        copy = Metric(id=uuid4(), organization_id=metric.organization_id, model_id=metric.model_id, version_id=fork_version_id, node_id=node_mapping.get(metric.node_id) if metric.node_id else None, key=metric.key, name=metric.name, unit=metric.unit, formula=metric.formula, version=1)
+    for metric in session.scalars(select(Metric).where(Metric.line_id == base_line_id)).all():
+        copy = Metric(id=uuid4(), organization_id=metric.organization_id, model_id=metric.model_id, line_id=fork_line_id, node_id=node_mapping.get(metric.node_id) if metric.node_id else None, key=metric.key, name=metric.name, unit=metric.unit, formula=metric.formula, version=1)
         mapping[metric.id] = copy.id
         session.add(copy)
     session.flush()
-    for value in session.scalars(select(MetricValue).where(MetricValue.version_id == base_version_id)).all():
-        session.add(MetricValue(metric_id=mapping[value.metric_id], period=value.period, organization_id=value.organization_id, version_id=fork_version_id, value=value.value))
+    for value in session.scalars(select(MetricValue).where(MetricValue.line_id == base_line_id)).all():
+        session.add(MetricValue(metric_id=mapping[value.metric_id], period=value.period, organization_id=value.organization_id, line_id=fork_line_id, value=value.value))
     session.flush()
 
 
 def create_metric_router(*, session_factory: sessionmaker[Session], authenticated_user_dependency: AuthenticatedUserDependency) -> APIRouter:
     router = APIRouter(prefix="/api/v1/organizations", tags=["Metrics"])
-    base = "/{organization_id}/models/{model_id}/versions/{version_id}/metrics"
+    base = "/{organization_id}/models/{model_id}/lines/{line_id}/metrics"
 
     @router.get(base, response_model=list[MetricResponse])
-    def list_metrics(organization_id: UUID, model_id: UUID, version_id: UUID, user: AuthenticatedUser = Depends(authenticated_user_dependency)) -> list[MetricResponse]:
+    def list_metrics(organization_id: UUID, model_id: UUID, line_id: UUID, user: AuthenticatedUser = Depends(authenticated_user_dependency)) -> list[MetricResponse]:
         with _member_session(session_factory, organization_id, user) as (session, _membership):
             _model(session, organization_id, model_id)
-            version = version_of(session, organization_id, model_id, version_id)
-            metrics, series = series_of_version(session, version.id)
+            line = line_of(session, organization_id, model_id, line_id)
+            metrics, series = series_of_line(session, line.id)
             return [_response(metric, len(series[key])) for key, metric in metrics.items()]
 
     @router.post(base, response_model=MetricResponse, status_code=201)
-    def create_metric(organization_id: UUID, model_id: UUID, version_id: UUID, body: MetricRequest, request: Request, user: AuthenticatedUser = Depends(authenticated_user_dependency)) -> MetricResponse:
+    def create_metric(organization_id: UUID, model_id: UUID, line_id: UUID, body: MetricRequest, request: Request, user: AuthenticatedUser = Depends(authenticated_user_dependency)) -> MetricResponse:
         with _editor_session(session_factory, organization_id, user) as session:
             model = _model(session, organization_id, model_id)
-            version = version_of(session, organization_id, model.id, version_id)
-            if session.scalar(select(Metric.id).where(Metric.version_id == version.id, Metric.key == body.key)) is not None:
+            line = line_of(session, organization_id, model.id, line_id)
+            if session.scalar(select(Metric.id).where(Metric.line_id == line.id, Metric.key == body.key)) is not None:
                 raise HTTPException(status_code=409, detail={"reason": "duplicate_key"})
-            _validate_node(session, version.id, body.node_id)
-            metric = Metric(id=uuid4(), organization_id=organization_id, model_id=model.id, version_id=version.id, node_id=body.node_id, key=body.key, name=body.name, unit=body.unit, formula=body.formula, version=1)
-            _check_formulas(session, version.id, changed=metric)
+            _validate_node(session, line.id, body.node_id)
+            metric = Metric(id=uuid4(), organization_id=organization_id, model_id=model.id, line_id=line.id, node_id=body.node_id, key=body.key, name=body.name, unit=body.unit, formula=body.formula, version=1)
+            _check_formulas(session, line.id, changed=metric)
             session.add(metric)
             session.flush()
             _audit(session, request, "metric.created", "metric", metric.id, {"key": metric.key, "name": metric.name})
             return _response(metric, 0)
 
     @router.patch(base + "/{metric_id}", response_model=MetricResponse)
-    def update_metric(organization_id: UUID, model_id: UUID, version_id: UUID, metric_id: UUID, body: MetricUpdate, request: Request, user: AuthenticatedUser = Depends(authenticated_user_dependency)) -> MetricResponse:
+    def update_metric(organization_id: UUID, model_id: UUID, line_id: UUID, metric_id: UUID, body: MetricUpdate, request: Request, user: AuthenticatedUser = Depends(authenticated_user_dependency)) -> MetricResponse:
         with _editor_session(session_factory, organization_id, user) as session:
-            version = version_of(session, organization_id, model_id, version_id)
-            metric = _metric(session, version.id, metric_id, lock=True)
+            line = line_of(session, organization_id, model_id, line_id)
+            metric = _metric(session, line.id, metric_id, lock=True)
             _stale(metric.version, body.expected_version)
             if body.key != metric.key:
                 raise HTTPException(status_code=422, detail="the key of a metric cannot change")
-            _validate_node(session, version.id, body.node_id)
+            _validate_node(session, line.id, body.node_id)
             was_derived = bool(metric.formula)
             changes = {key: value for key, value in (("name", body.name), ("unit", body.unit), ("node_id", str(body.node_id) if body.node_id else None), ("formula", body.formula)) if (str(getattr(metric, key)) if key == "node_id" and getattr(metric, key) else getattr(metric, key)) != value}
             metric.name, metric.unit, metric.node_id, metric.formula = body.name, body.unit, body.node_id, body.formula
-            _check_formulas(session, version.id, changed=metric)
+            _check_formulas(session, line.id, changed=metric)
             if body.formula and not was_derived:
                 session.execute(delete(MetricValue).where(MetricValue.metric_id == metric.id))  # a derived metric holds no stored values
             metric.version += 1
             _audit(session, request, "metric.updated", "metric", metric.id, {key: value for key, value in changes.items() if key != "formula"} | ({"formula_changed": True} if "formula" in changes else {}))
-            count = len(series_of_version(session, version.id)[1][metric.key])
+            count = len(series_of_line(session, line.id)[1][metric.key])
             return _response(metric, count)
 
     @router.delete(base + "/{metric_id}", status_code=204)
-    def delete_metric(organization_id: UUID, model_id: UUID, version_id: UUID, metric_id: UUID, expected_version: int, request: Request, user: AuthenticatedUser = Depends(authenticated_user_dependency)) -> Response:
+    def delete_metric(organization_id: UUID, model_id: UUID, line_id: UUID, metric_id: UUID, expected_version: int, request: Request, user: AuthenticatedUser = Depends(authenticated_user_dependency)) -> Response:
         with _editor_session(session_factory, organization_id, user) as session:
-            version = version_of(session, organization_id, model_id, version_id)
-            metric = _metric(session, version.id, metric_id, lock=True)
+            line = line_of(session, organization_id, model_id, line_id)
+            metric = _metric(session, line.id, metric_id, lock=True)
             _stale(metric.version, expected_version)
-            readers = [other.key for other in session.scalars(select(Metric).where(Metric.version_id == version.id, Metric.formula.is_not(None), Metric.id != metric.id)).all() if metric.key in parse_formula(other.formula or "").identifiers]
+            readers = [other.key for other in session.scalars(select(Metric).where(Metric.line_id == line.id, Metric.formula.is_not(None), Metric.id != metric.id)).all() if metric.key in parse_formula(other.formula or "").identifiers]
             if readers:
                 raise HTTPException(status_code=409, detail={"reason": "read_by_formulas", "metrics": readers})
             _audit(session, request, "metric.deleted", "metric", metric.id, {"key": metric.key})
@@ -178,19 +180,19 @@ def create_metric_router(*, session_factory: sessionmaker[Session], authenticate
         return Response(status_code=204)
 
     @router.get(base + "/{metric_id}/series", response_model=SeriesResponse)
-    def read_series(organization_id: UUID, model_id: UUID, version_id: UUID, metric_id: UUID, user: AuthenticatedUser = Depends(authenticated_user_dependency)) -> SeriesResponse:
+    def read_series(organization_id: UUID, model_id: UUID, line_id: UUID, metric_id: UUID, user: AuthenticatedUser = Depends(authenticated_user_dependency)) -> SeriesResponse:
         with _member_session(session_factory, organization_id, user) as (session, _membership):
-            version = version_of(session, organization_id, model_id, version_id)
-            metric = _metric(session, version.id, metric_id)
-            _, series = series_of_version(session, version.id)
+            line = line_of(session, organization_id, model_id, line_id)
+            metric = _metric(session, line.id, metric_id)
+            _, series = series_of_line(session, line.id)
             points = [ValuePoint(period=period, value=value) for period, value in sorted(series[metric.key].items())]
             return SeriesResponse(metric=_response(metric, len(points)), points=points)
 
     @router.put(base + "/{metric_id}/values", response_model=SeriesResponse)
-    def write_values(organization_id: UUID, model_id: UUID, version_id: UUID, metric_id: UUID, body: ValuesRequest, request: Request, user: AuthenticatedUser = Depends(authenticated_user_dependency)) -> SeriesResponse:
+    def write_values(organization_id: UUID, model_id: UUID, line_id: UUID, metric_id: UUID, body: ValuesRequest, request: Request, user: AuthenticatedUser = Depends(authenticated_user_dependency)) -> SeriesResponse:
         with _editor_session(session_factory, organization_id, user) as session:
-            version = version_of(session, organization_id, model_id, version_id)
-            metric = _metric(session, version.id, metric_id, lock=True)
+            line = line_of(session, organization_id, model_id, line_id)
+            metric = _metric(session, line.id, metric_id, lock=True)
             if metric.formula:
                 raise HTTPException(status_code=422, detail="a derived metric has no stored values")
             wanted = {month_start(point.period): point.value for point in body.values}
@@ -202,10 +204,10 @@ def create_metric_router(*, session_factory: sessionmaker[Session], authenticate
                 elif period in existing:
                     existing[period].value = value
                 else:
-                    session.add(MetricValue(metric_id=metric.id, period=period, organization_id=organization_id, version_id=version.id, value=value))
+                    session.add(MetricValue(metric_id=metric.id, period=period, organization_id=organization_id, line_id=line.id, value=value))
             session.flush()
             _audit(session, request, "metric.values_changed", "metric", metric.id, {"key": metric.key, "periods": len(wanted)})
-            _, series = series_of_version(session, version.id)
+            _, series = series_of_line(session, line.id)
             points = [ValuePoint(period=period, value=value) for period, value in sorted(series[metric.key].items())]
             return SeriesResponse(metric=_response(metric, len(points)), points=points)
 

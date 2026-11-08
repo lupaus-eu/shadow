@@ -114,7 +114,7 @@ def test_the_writing_routes_audit_without_text(database_url: str, stack: ExitSta
 
     model_id = owner.post(f"{base}/models", json={"name": "Twin"}).json()["id"]
     path = f"{base}/models/{model_id}"
-    url = f"{path}/versions/{_graph(owner, base, model_id)['version']['id']}/metrics"
+    url = f"{path}/lines/{_graph(owner, base, model_id)['version']['id']}/metrics"
     metric = owner.post(url, json={"key": "revenue", "name": "Revenue"}).json()
     _values(owner, url, metric["id"], [(f"2025-{m:02d}-01", 100 + m) for m in range(1, 13)])
     run = owner.post(f"{url.replace('/metrics', '')}/simulations", json={"name": "Trend", "horizon_months": 6}).json()["simulation"]["id"]

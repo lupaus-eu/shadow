@@ -602,14 +602,13 @@ class Connection(Base):
 
 
 class Metric(Base):
-    """A KPI of a Model version: monthly values, or a formula over other metrics by key."""
+    """A KPI of a line (Base line or Scenario) of a Model: monthly values, or a formula over other metrics by key."""
 
     __tablename__ = "metrics"
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     organization_id: Mapped[UUID] = mapped_column(Uuid, index=True)
     model_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    version_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    line_id: Mapped[UUID | None] = mapped_column(Uuid, index=True)  # replaces version_id in ticket 04 (model-timeline)
+    line_id: Mapped[UUID] = mapped_column(Uuid, index=True)
     node_id: Mapped[UUID | None] = mapped_column(Uuid)
     key: Mapped[str] = mapped_column(String(40))
     name: Mapped[str] = mapped_column(String(120))
@@ -624,20 +623,18 @@ class MetricValue(Base):
     metric_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     period: Mapped[date] = mapped_column(Date, primary_key=True)
     organization_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    version_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    line_id: Mapped[UUID | None] = mapped_column(Uuid, index=True)
+    line_id: Mapped[UUID] = mapped_column(Uuid, index=True)
     value: Mapped[float] = mapped_column(Float)
 
 
 class Simulation(Base):
-    """A forecast run of a Model version: method, horizon, what-if adjustments, and results."""
+    """A forecast run of a line of a Model: method, horizon, what-if adjustments, and results."""
 
     __tablename__ = "simulations"
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     organization_id: Mapped[UUID] = mapped_column(Uuid, index=True)
     model_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    version_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    line_id: Mapped[UUID | None] = mapped_column(Uuid, index=True)
+    line_id: Mapped[UUID] = mapped_column(Uuid, index=True)
     name: Mapped[str] = mapped_column(String(120))
     method: Mapped[str] = mapped_column(String(20))
     horizon_months: Mapped[int] = mapped_column(Integer)

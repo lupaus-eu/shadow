@@ -1,5 +1,5 @@
 // Shadow PostgreSQL schema, generated from the migrated database by backend/app/dbml.py.
-// Alembic revision 0061. Do not edit by hand: run `UPDATE_DBML=1 pytest tests/test_dbml_model.py` in backend/.
+// Alembic revision 0062. Do not edit by hand: run `UPDATE_DBML=1 pytest tests/test_dbml_model.py` in backend/.
 
 Project shadow {
   database_type: 'PostgreSQL'
@@ -175,15 +175,13 @@ Table metric_values {
   metric_id uuid
   period date
   organization_id uuid [not null]
-  version_id uuid [not null]
   value "double precision" [not null]
-  line_id uuid
+  line_id uuid [not null]
 
   indexes {
     (metric_id, period) [pk]
     line_id [name: 'ix_metric_values_line_id']
     organization_id [name: 'ix_metric_values_organization_id']
-    version_id [name: 'ix_metric_values_version_id']
   }
 
   Note: 'Checks: ck_metric_values_finite: value = value AND (value <> ALL (ARRAY[\'Infinity\'::double precision, \'-Infinity\'::double precision])); ck_metric_values_month_start: EXTRACT(day FROM period) = 1::numeric. RLS forced: metric_values_live_organization (restrictive) all, metric_values_policy all, metric_values_support_delete (restrictive) delete, metric_values_support_insert (restrictive) insert, metric_values_support_select (restrictive) select, metric_values_support_update (restrictive) update'
@@ -193,7 +191,6 @@ Table metrics {
   id uuid [pk]
   organization_id uuid [not null]
   model_id uuid [not null]
-  version_id uuid [not null]
   node_id uuid
   key varchar(40) [not null]
   name varchar(120) [not null]
@@ -201,17 +198,14 @@ Table metrics {
   formula text
   version integer [not null, default: `1`]
   created_at "timestamp with time zone" [not null, default: `now()`]
-  line_id uuid
+  line_id uuid [not null]
 
   indexes {
     (id, line_id) [unique]
-    (id, version_id) [unique]
     (line_id, key) [unique]
-    (version_id, key) [unique]
     line_id [name: 'ix_metrics_line_id']
     model_id [name: 'ix_metrics_model_id']
     organization_id [name: 'ix_metrics_organization_id']
-    version_id [name: 'ix_metrics_version_id']
   }
 
   Note: 'Checks: ck_metrics_key: key::text ~ \'^[a-z][a-z0-9_]{0,39}$\'::text; ck_metrics_name: length(btrim(name::text)) > 0. RLS forced: metrics_live_organization (restrictive) all, metrics_policy all, metrics_support_delete (restrictive) delete, metrics_support_insert (restrictive) insert, metrics_support_select (restrictive) select, metrics_support_update (restrictive) update'
@@ -600,7 +594,6 @@ Table simulations {
   id uuid [pk]
   organization_id uuid [not null]
   model_id uuid [not null]
-  version_id uuid [not null]
   name varchar(120) [not null]
   method varchar(20) [not null]
   horizon_months integer [not null]
@@ -612,14 +605,13 @@ Table simulations {
   analysis_summary text
   analysis_summary_at "timestamp with time zone"
   analysis_summary_author text
-  line_id uuid
+  line_id uuid [not null]
 
   indexes {
     (id, organization_id) [unique]
     line_id [name: 'ix_simulations_line_id']
     model_id [name: 'ix_simulations_model_id']
     organization_id [name: 'ix_simulations_organization_id']
-    version_id [name: 'ix_simulations_version_id']
   }
 
   Note: 'Checks: ck_simulations_horizon: horizon_months >= 1 AND horizon_months <= 60; ck_simulations_method: method::text = ANY (ARRAY[\'linear\'::character varying, \'seasonal\'::character varying, \'holt\'::character varying, \'prophet\'::character varying]::text[]); ck_simulations_name: length(btrim(name::text)) > 0. RLS forced: simulations_live_organization (restrictive) all, simulations_policy all, simulations_support_delete (restrictive) delete, simulations_support_insert (restrictive) insert, simulations_support_select (restrictive) select, simulations_support_update (restrictive) update'
@@ -731,11 +723,9 @@ Ref: event_changes.organization_id > organizations.id [delete: cascade]
 Ref: legal_acceptances.organization_id > organizations.id [delete: cascade]
 Ref: legal_acceptances.user_account_id > user_accounts.id [delete: set null]
 Ref: metric_values.(metric_id, line_id) > metrics.(id, line_id) [delete: cascade]
-Ref: metric_values.(metric_id, version_id) > metrics.(id, version_id) [delete: cascade]
 Ref: metric_values.organization_id > organizations.id [delete: cascade]
 Ref: metrics.(line_id, model_id) > model_lines.(id, model_id) [delete: cascade]
 Ref: metrics.(model_id, organization_id) > models.(id, organization_id) [delete: cascade]
-Ref: metrics.(version_id, model_id) > model_versions.(id, model_id) [delete: cascade]
 Ref: metrics.node_id > nodes.id [delete: set null]
 Ref: metrics.organization_id > organizations.id [delete: cascade]
 Ref: model_lines.(branch_event_id, parent_line_id) > timeline_events.(id, line_id) [delete: restrict]
@@ -773,7 +763,6 @@ Ref: simulation_points.(simulation_id, organization_id) > simulations.(id, organ
 Ref: simulation_points.organization_id > organizations.id [delete: cascade]
 Ref: simulations.(line_id, model_id) > model_lines.(id, model_id) [delete: cascade]
 Ref: simulations.(model_id, organization_id) > models.(id, organization_id) [delete: cascade]
-Ref: simulations.(version_id, model_id) > model_versions.(id, model_id) [delete: cascade]
 Ref: simulations.organization_id > organizations.id [delete: cascade]
 Ref: stripe_webhook_events.organization_id > organizations.id [delete: set null]
 Ref: support_access_requests.organization_id > organizations.id [delete: cascade]

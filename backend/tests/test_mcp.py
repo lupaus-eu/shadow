@@ -259,14 +259,14 @@ def test_agents_work_with_models_through_the_same_rules(database_url: str) -> No
         assert failed and "name" in message
         ok, node = call(owner, bearer, "create_node", organization_id=organization_id, model_id=model_id, node_type_id=types["product"], name="App")
         assert not ok and node["result"]["name"] == "App"
-        _, metric = call(owner, bearer, "create_metric", organization_id=organization_id, model_id=model_id, version_id=version_id, key="revenue", name="Revenue")
+        _, metric = call(owner, bearer, "create_metric", organization_id=organization_id, model_id=model_id, line_id=version_id, key="revenue", name="Revenue")
         values = [{"period": f"2025-{month:02d}-01", "value": 100 + month * 10} for month in range(1, 13)]
-        assert not call(owner, bearer, "set_metric_values", organization_id=organization_id, model_id=model_id, version_id=version_id, metric_id=metric["result"]["id"], values=values)[0]
-        _, run = call(owner, bearer, "run_simulation", organization_id=organization_id, model_id=model_id, version_id=version_id, name="Plan", horizon_months=6)
+        assert not call(owner, bearer, "set_metric_values", organization_id=organization_id, model_id=model_id, line_id=version_id, metric_id=metric["result"]["id"], values=values)[0]
+        _, run = call(owner, bearer, "run_simulation", organization_id=organization_id, model_id=model_id, line_id=version_id, name="Plan", horizon_months=6)
         simulation_id = run["result"]["simulation"]["id"]
         _, analysis = call(owner, bearer, "generate_analysis", organization_id=organization_id, model_id=model_id, simulation_id=simulation_id)
         assert analysis["result"]["findings"]
-        _, series = call(owner, bearer, "get_metric_series", organization_id=organization_id, model_id=model_id, version_id=version_id, metric_id=metric["result"]["id"])
+        _, series = call(owner, bearer, "get_metric_series", organization_id=organization_id, model_id=model_id, line_id=version_id, metric_id=metric["result"]["id"])
         assert len(series["result"]["points"]) == 12
     audit = audit_rows(application, organization_id, "node.created")
     assert len(audit) == 1 and audit[0]["source"] == "mcp" and audit[0]["name"] == "App"
@@ -284,10 +284,10 @@ def test_agents_write_a_summary_and_proposals_under_their_own_label(database_url
         model_id = created["result"]["id"]
         _, graph = call(owner, bearer, "get_model", organization_id=organization_id, model_id=model_id)
         version_id = graph["result"]["version"]["id"]
-        _, metric = call(owner, bearer, "create_metric", organization_id=organization_id, model_id=model_id, version_id=version_id, key="revenue", name="Revenue")
+        _, metric = call(owner, bearer, "create_metric", organization_id=organization_id, model_id=model_id, line_id=version_id, key="revenue", name="Revenue")
         values = [{"period": f"2025-{month:02d}-01", "value": 100 - month * 3} for month in range(1, 13)]
-        call(owner, bearer, "set_metric_values", organization_id=organization_id, model_id=model_id, version_id=version_id, metric_id=metric["result"]["id"], values=values)
-        _, run = call(owner, bearer, "run_simulation", organization_id=organization_id, model_id=model_id, version_id=version_id, name="Plan", horizon_months=6)
+        call(owner, bearer, "set_metric_values", organization_id=organization_id, model_id=model_id, line_id=version_id, metric_id=metric["result"]["id"], values=values)
+        _, run = call(owner, bearer, "run_simulation", organization_id=organization_id, model_id=model_id, line_id=version_id, name="Plan", horizon_months=6)
         simulation_id = run["result"]["simulation"]["id"]
         failed, _ = call(owner, bearer, "set_analysis_summary", organization_id=organization_id, model_id=model_id, simulation_id=simulation_id, text="")
         assert failed

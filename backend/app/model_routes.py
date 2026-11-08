@@ -223,6 +223,15 @@ def version_of(session: Session, organization_id: UUID, model_id: UUID, version_
     return version
 
 
+def line_of(session: Session, organization_id: UUID, model_id: UUID, line_id: UUID, *, lock: bool = False) -> ModelLine:
+    """The line (Base line or Scenario) of the Model; 404 when it is not one of this Model's."""
+    statement = select(ModelLine).where(ModelLine.id == line_id, ModelLine.model_id == model_id, ModelLine.organization_id == organization_id)
+    line = session.scalar(statement.with_for_update() if lock else statement)
+    if line is None:
+        raise HTTPException(status_code=404, detail="Line not found")
+    return line
+
+
 def _stale(current: int, expected: int) -> None:
     if current != expected:
         raise HTTPException(status_code=409, detail={"latest_version": current})

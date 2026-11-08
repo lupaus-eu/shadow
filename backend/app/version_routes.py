@@ -1,7 +1,9 @@
 """Model versions: the baseline and versions forked from it (Shadow feature 2).
 
 A fork copies the base version's whole graph; every copied node remembers its origin, so the
-changes against the base (added, removed, changed nodes and connections) can be listed.
+changes against the base (added, removed, changed nodes and connections) can be listed. Until the
+model-timeline tickets 06 to 08 replace these routes, a fork also gets a Scenario line with the same id
+(ADR-0048) so its metrics, simulations and analysis hang off a line; deleting a version deletes its line.
 Every member can create and edit versions; Owners and Admins delete them. The baseline cannot
 be deleted.
 """
@@ -24,11 +26,12 @@ from app.model_routes import (
     _member_session,
     _model,
     _stale,
+    _today_in_organization,
     baseline_of,
     version_of,
 )
 from app.metric_routes import copy_metrics
-from app.models import Connection, ModelVersion, Node
+from app.models import Connection, ModelLine, ModelVersion, Node, TimelineEvent
 
 
 class VersionRequest(BaseModel):
@@ -147,11 +150,30 @@ def merge_version(session: Session, version: ModelVersion) -> MergeResponse:
     )
 
 
-def fork_version(session: Session, base: ModelVersion, name: str, description: str | None) -> ModelVersion:
-    """Copy ``base``'s graph into a new version that records where each node came from."""
+def _fork_line(session: Session, base: ModelVersion, fork: ModelVersion, created_by: UUID | None) -> None:
+    """Give the new version a Scenario line of the same id, branching from the base line's last event.
+
+    A base line without an event first gets an empty "Initial situation" event dated today (a Scenario must
+    branch from an event). The Scenario has no events yet, so it is dated on or after its branch event by
+    construction; the graph still lives in the old tables until ticket 08.
+    """
+    if session.get(ModelLine, base.id) is None:  # a version made before lines existed cannot be forked
+        raise HTTPException(status_code=409, detail={"reason": "no_line"})
+    branch = session.scalars(select(TimelineEvent).where(TimelineEvent.line_id == base.id).order_by(TimelineEvent.occurred_on.desc(), TimelineEvent.seq.desc()).limit(1)).first()
+    if branch is None:
+        branch = TimelineEvent(id=uuid4(), organization_id=base.organization_id, model_id=base.model_id, line_id=base.id, occurred_on=_today_in_organization(session, base.organization_id), title="Initial situation", created_by_user_account_id=created_by)
+        session.add(branch)
+        session.flush()
+    session.add(ModelLine(id=fork.id, organization_id=fork.organization_id, model_id=fork.model_id, name=fork.name, description=fork.description, kind="scenario", parent_line_id=base.id, branch_event_id=branch.id, created_by_user_account_id=created_by, version=1))
+    session.flush()
+
+
+def fork_version(session: Session, base: ModelVersion, name: str, description: str | None, created_by: UUID | None = None) -> ModelVersion:
+    """Copy ``base``'s graph into a new version that records where each node came from, with its Scenario line."""
     fork = ModelVersion(id=uuid4(), organization_id=base.organization_id, model_id=base.model_id, name=name, description=description, is_baseline=False, base_version_id=base.id, version=1)
     session.add(fork)
     session.flush()
+    _fork_line(session, base, fork, created_by)
     mapping: dict[UUID, UUID] = {}
     for node in session.scalars(select(Node).where(Node.version_id == base.id).order_by(Node.created_at, Node.id)).all():
         copy = Node(id=uuid4(), organization_id=node.organization_id, model_id=node.model_id, version_id=fork.id, origin_node_id=node.id, node_type_id=node.node_type_id, name=node.name, description=node.description, x=node.x, y=node.y, version=1)
@@ -216,7 +238,7 @@ def create_version_router(*, session_factory: sessionmaker[Session], authenticat
             base = version_of(session, organization_id, model.id, body.base_version_id)
             if session.scalar(select(ModelVersion.id).where(ModelVersion.model_id == model.id, func.lower(ModelVersion.name) == body.name.lower())) is not None:
                 raise HTTPException(status_code=409, detail={"reason": "duplicate_name"})
-            fork = fork_version(session, base, body.name, body.description)
+            fork = fork_version(session, base, body.name, body.description, user.account.id)
             _audit(session, request, "version.created", "model_version", fork.id, {"model_id": str(model.id), "name": fork.name, "base": base.name})
             return VersionResponse.model_validate(fork, from_attributes=True)
 
@@ -233,6 +255,8 @@ def create_version_router(*, session_factory: sessionmaker[Session], authenticat
             changes = {key: value for key, value in (("name", body.name), ("description", body.description)) if getattr(version, key) != value}
             version.name, version.description = body.name, body.description
             version.version += 1
+            if (line := session.get(ModelLine, version.id)) is not None:
+                line.name, line.description = body.name, body.description
             _audit(session, request, "version.updated", "model_version", version.id, changes)
             return VersionResponse.model_validate(version, from_attributes=True)
 
@@ -246,6 +270,9 @@ def create_version_router(*, session_factory: sessionmaker[Session], authenticat
             if session.scalar(select(ModelVersion.id).where(ModelVersion.base_version_id == version.id)) is not None:
                 raise HTTPException(status_code=409, detail={"reason": "has_forks"})
             _audit(session, request, "version.deleted", "model_version", version.id, {"name": version.name})
+            session.flush()
+            if (line := session.get(ModelLine, version.id)) is not None:
+                session.delete(line)  # takes its metrics, values, simulations, events and positions with it
             session.delete(version)
         return Response(status_code=204)
 

@@ -82,7 +82,7 @@ model {
       }
       metrics = component 'Metrics and formulas' {
         technology 'metric_routes, metric_engine, formulas'
-        description 'Metrics with monthly values per version, derived metrics from formulas evaluated in dependency order.'
+        description 'Metrics with monthly values per line (Base line or Scenario), derived metrics from formulas evaluated in dependency order.'
       }
       simulations = component 'Forecasts and simulations' {
         technology 'simulation_routes, forecasting'

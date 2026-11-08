@@ -1,4 +1,4 @@
-"""Metric series of a Model version: stored monthly values and values derived by formula."""
+"""Metric series of a line of a Model: stored monthly values and values derived by formula."""
 
 from datetime import date
 from uuid import UUID
@@ -54,12 +54,12 @@ def formula_order(metrics: dict[str, Metric]) -> list[str]:
     return ordered
 
 
-def series_of_version(session: Session, version_id: UUID) -> tuple[dict[str, Metric], dict[str, Series]]:
-    """Every metric of the version by key, with its series (derived ones computed)."""
-    metrics = {metric.key: metric for metric in session.scalars(select(Metric).where(Metric.version_id == version_id).order_by(Metric.key)).all()}
+def series_of_line(session: Session, line_id: UUID) -> tuple[dict[str, Metric], dict[str, Series]]:
+    """Every metric of the line by key, with its series (derived ones computed)."""
+    metrics = {metric.key: metric for metric in session.scalars(select(Metric).where(Metric.line_id == line_id).order_by(Metric.key)).all()}
     by_id = {metric.id: metric.key for metric in metrics.values()}
     series: dict[str, Series] = {key: {} for key in metrics}
-    for value in session.scalars(select(MetricValue).where(MetricValue.version_id == version_id)).all():
+    for value in session.scalars(select(MetricValue).where(MetricValue.line_id == line_id)).all():
         series[by_id[value.metric_id]][value.period] = value.value
     for key in formula_order(metrics):
         parsed = parse_formula(metrics[key].formula or "")

@@ -94,7 +94,7 @@ def _simulation(session: Session, model_id: UUID, simulation_id: UUID) -> Simula
 
 
 def _build(session: Session, simulation: Simulation, other: Simulation | None):
-    formulas = {metric.key: metric.formula for metric in session.scalars(select(Metric).where(Metric.version_id == simulation.version_id)).all() if metric.formula}
+    formulas = {metric.key: metric.formula for metric in session.scalars(select(Metric).where(Metric.line_id == simulation.line_id)).all() if metric.formula}
     return analyze(result_of(session, simulation), formulas, result_of(session, other) if other else None)
 
 
