@@ -11,7 +11,7 @@ Shadow uses the parties below to provide the service. Where Shadow is the proces
 
 | Party | Purpose | Data | Location and transfer basis |
 | --- | --- | --- | --- |
-| UpCloud | Hosting of the application, the databases, and the identity provider. | All data in the service. | `TODO(lawyer)` data centre location, agreement, and transfer basis (not stated in the repository). |
+| Hetzner | Hosting of the application, the databases, and the identity provider. | All data in the service. | `TODO(lawyer)` data centre location, agreement, and transfer basis (not stated in the repository). |
 | Stripe | Subscription billing and payment. | Billing name and email, address, tax identifiers, payment method, invoices. Shadow stores no card details. | `TODO(lawyer)` Stripe entity, location, and transfer basis. |
 | Scaleway (Transactional Email) | Sending Shadow and sign-in emails. | Recipient address and message content (never Event content, except the opt-in Summary of upcoming Events, which lists Event titles). | `TODO(lawyer)` region (the example configuration names `fr-par`, confirm the real one). |
 | Scaleway (Object Storage) | Encrypted off-host backups of the databases. | The databases, encrypted before upload with a key only the operator holds. | `TODO(lawyer)` region, and the project of its own for backups. |

@@ -12,7 +12,7 @@ folder in the operator's document system). This page holds the templates and the
 | --- | --- | --- |
 | Personal data breach register | Every breach, notified or not | 1 |
 | Data-subject request log | Each request, the answer, and the time | 2 |
-| Signed agreements | Copies of the agreements with Stripe, Scaleway, and UpCloud, and staff confidentiality undertakings | 3 |
+| Signed agreements | Copies of the agreements with Stripe, Scaleway, and Hetzner, and staff confidentiality undertakings | 3 |
 
 ## 1. Breach register (one row per breach)
 

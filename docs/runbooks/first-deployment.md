@@ -1,4 +1,4 @@
-# First deployment checklist (UpCloud host, GHCR images)
+# First deployment checklist (Hetzner host, GHCR images)
 
 Follows ADR-0035. Use it for the first start of the production stack; later
 releases only need section 6. Items marked **human** need an account, a console, or
@@ -38,19 +38,20 @@ The host downloads the private images, so it needs a credential.
 - [ ] **human** Store the token in the password manager. It is not a GitHub secret
   and never goes into the repository.
 
-## 3. UpCloud host
+## 3. Hetzner host
 
-- [ ] **human** Create the server: Ubuntu LTS, at least 2 GB / 2 CPU (4 GB / 2 CPU
-  recommended), with your SSH key. Do not allow password login.
-- [ ] **human** Firewall: allow inbound 22 (preferably only your address), 80, and
+- [ ] **human** Create the server in the Hetzner Cloud Console: Ubuntu LTS on an Intel/AMD
+  (x86-64) type (the images are `linux/amd64`, ADR-0053), at least 2 GB / 2 CPU (4 GB /
+  2 CPU recommended), with your SSH key. Do not allow password login.
+- [ ] **human** Firewall (a Hetzner Cloud Firewall in front of the host; ufw on the host is the second layer): allow inbound 22 (preferably only your address), 80, and
   443; nothing else.
 - [ ] **human** DNS: A (and AAAA) records for the application domain and the
   identity domain point at the host.
 - [ ] **Preferred:** paste [`scripts/ops/cloud-init.yml`](../../scripts/ops/cloud-init.yml)
-  into the *User data* field when creating the server. On first boot it updates
+  into the *Cloud config* (user data) field when creating the server. On first boot it updates
   Ubuntu and installs Docker with the Compose plugin, restic, git, make, fail2ban, and
   automatic security updates; adds 2 GB of swap; enables a ufw firewall for 22, 80,
-  and 443; and creates `/opt/yearclock`. Wait until `/var/lib/yearclock-init.done`
+  and 443; and creates `/opt/shadow`. Wait until `/var/lib/shadow-init.done`
   exists (`tail -f /var/log/cloud-init-output.log` shows progress), then skip the
   manual commands below, apart from the checks. It installs tools only: it holds no
   secret and does not start the stack.

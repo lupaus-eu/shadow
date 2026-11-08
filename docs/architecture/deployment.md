@@ -6,7 +6,7 @@
 - Domain: `yearclock.example.com` (placeholder; the production product name and
   domain are undecided)
 - Expected platform: a single Docker Compose host. The alpha and beta run on an
-  UpCloud cloud server (ADR-0035); Coolify or another Compose host also works.
+  Hetzner Cloud server on x86-64 (ADR-0035, ADR-0053); Coolify or another Compose host also works.
 - Images: built in CI, pushed to GHCR, and pulled on the host (ADR-0035).
 
 ## Services to deploy
@@ -94,13 +94,13 @@ are deployment secrets and never committed.
 - `Makefile.prod`, copied to the host as `Makefile`, wraps these commands (`make deploy`, `make tag TAG=…`, `make logs`, `make authentik-apply`, `make enroll-platform`); it is not used in development (`docs/runbooks/production-commands.md`).
 - Prune old tags in GHCR now and then; run `docker image prune -a` on the host.
 
-## Host size (UpCloud, ADR-0035)
+## Host size (Hetzner, ADR-0035)
 
 | Plan | Use |
 | --- | --- |
 | 1 GB | Not enough: Authentik alone needs about 1 to 1.5 GB |
-| 2 GB, 2 CPU (EUR 8 on 2026-11-03) | Minimum for the test phase; add 2 GB swap |
-| 4 GB, 2 CPU (EUR 12) | Recommended |
+| 2 GB, 2 CPU | Minimum for the test phase; add 2 GB swap |
+| 4 GB, 2 CPU | Recommended |
 
 `scripts/ops/cloud-init.yml` prepares a fresh Ubuntu host (Docker with Compose,
 restic, git, make, swap, ufw, automatic security updates) when pasted into the server's

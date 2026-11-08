@@ -17,8 +17,8 @@ The lists below collect what counsel must confirm before any document is set to 
 - [ ] VAT ID and registered address (`provider`). Known: Lupaus Palvelut Oy, business ID 2355166-5, registered office Helsinki.
 - [ ] The monitored support address and the legal and privacy contact (`LEGAL_CONTACT_EMAIL`).
 - [ ] The price, any beta price, and the notice period for changes (30 days, with a right to object, was decided).
-- [ ] The real hosting location (UpCloud), the Scaleway regions for email and backups, and the signed agreements with
-  Stripe, Scaleway, and UpCloud (`subprocessors`, `dpa`).
+- [ ] The real hosting location (Hetzner), the Scaleway regions for email and backups, and the signed agreements with
+  Stripe, Scaleway, and Hetzner (`subprocessors`, `dpa`).
 
 ## Decisions and wording for counsel
 

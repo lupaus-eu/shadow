@@ -30,4 +30,4 @@ The inventory of what is processed is in [README.md](README.md); this record arr
 | Categories of processing | Storing, displaying, exporting, and deleting the planning content a customer's people enter; agent access (MCP) at the person's own request |
 | Transfers outside the EU and EEA | `TODO(lawyer)` as above |
 | Security measures | As above |
-| Sub-processors | UpCloud (hosting), Stripe (billing, as a separate controller or processor `TODO(lawyer)`), Scaleway (email and encrypted backups) |
+| Sub-processors | Hetzner (hosting), Stripe (billing, as a separate controller or processor `TODO(lawyer)`), Scaleway (email and encrypted backups) |

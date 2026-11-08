@@ -26,7 +26,7 @@ deployment {
   }
 
   environment production 'Production' {
-    host composeHost 'Docker Compose host (UpCloud, 2 to 4 GB)' {
+    host composeHost 'Docker Compose host (Hetzner, x86-64, 2 to 4 GB)' {
       description 'docker-compose.prod.yml pulls the backend and frontend images from GHCR (built by .github/workflows/images.yml, ADR-0035); only Caddy is published (docs/architecture/deployment.md).'
       containerRuntime prodCompose 'Docker Compose' {
         edge = instanceOf shadow.edge {

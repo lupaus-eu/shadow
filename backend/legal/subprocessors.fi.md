@@ -11,7 +11,7 @@ Shadow käyttää alla lueteltuja tahoja palvelun tuottamiseen. Kun Shadow on su
 
 | Taho | Tarkoitus | Tiedot | Sijainti ja siirron peruste |
 | --- | --- | --- | --- |
-| UpCloud | Sovelluksen, tietokantojen ja identiteettipalvelun ylläpito. | Kaikki palvelun tiedot. | `TODO(lawyer)` konesalin sijainti, sopimus ja siirron peruste (ei ilmene repositoriosta). |
+| Hetzner | Sovelluksen, tietokantojen ja identiteettipalvelun ylläpito. | Kaikki palvelun tiedot. | `TODO(lawyer)` konesalin sijainti, sopimus ja siirron peruste (ei ilmene repositoriosta). |
 | Stripe | Tilauslaskutus ja maksu. | Laskutusnimi ja -sähköposti, osoite, verotunnisteet, maksutapa, laskut. Shadow ei tallenna korttitietoja. | `TODO(lawyer)` Stripen yhtiö, sijainti ja siirron peruste. |
 | Scaleway (Transactional Email) | Shadowin ja kirjautumisen sähköpostien lähetys. | Vastaanottajan osoite ja viestin sisältö (ei koskaan tapahtuman sisältöä, paitsi valinnainen yhteenveto tulevista tapahtumista, jossa on tapahtumien otsikot). | `TODO(lawyer)` alue (esimerkkiasetuksissa `fr-par`, vahvista todellinen). |
 | Scaleway (Object Storage) | Tietokantojen salatut varmuuskopiot palvelimen ulkopuolella. | Tietokannat, salattuna ennen lähetystä avaimella, joka on vain operaattorilla. | `TODO(lawyer)` alue ja varmuuskopioille oma projekti. |
