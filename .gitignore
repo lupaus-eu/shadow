@@ -19,3 +19,6 @@ test-results/
 
 # Local database dumps (scripts/ops/backup-databases.sh); never commit
 /backups/
+
+# Local scratch files that never enter the repository
+/WIP/
