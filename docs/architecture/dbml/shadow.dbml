@@ -1,5 +1,5 @@
 // Shadow PostgreSQL schema, generated from the migrated database by backend/app/dbml.py.
-// Alembic revision 0063. Do not edit by hand: run `UPDATE_DBML=1 pytest tests/test_dbml_model.py` in backend/.
+// Alembic revision 0064. Do not edit by hand: run `UPDATE_DBML=1 pytest tests/test_dbml_model.py` in backend/.
 
 Project shadow {
   database_type: 'PostgreSQL'
@@ -83,27 +83,6 @@ Table connection_types {
   }
 
   Note: 'RLS forced: connection_types_live_organization (restrictive) all, connection_types_policy all, connection_types_support_delete (restrictive) delete, connection_types_support_insert (restrictive) insert, connection_types_support_select (restrictive) select, connection_types_support_update (restrictive) update'
-}
-
-Table connections {
-  id uuid [pk]
-  organization_id uuid [not null]
-  model_id uuid [not null]
-  connection_type_id uuid [not null]
-  source_node_id uuid [not null]
-  target_node_id uuid [not null]
-  version integer [not null, default: `1`]
-  created_at "timestamp with time zone" [not null, default: `now()`]
-  version_id uuid [not null]
-
-  indexes {
-    (connection_type_id, source_node_id, target_node_id) [unique]
-    model_id [name: 'ix_connections_model_id']
-    organization_id [name: 'ix_connections_organization_id']
-    version_id [name: 'ix_connections_version_id']
-  }
-
-  Note: 'Checks: ck_connections_no_loop: source_node_id <> target_node_id. RLS forced: connections_live_organization (restrictive) all, connections_policy all, connections_support_delete (restrictive) delete, connections_support_insert (restrictive) insert, connections_support_select (restrictive) select, connections_support_update (restrictive) update'
 }
 
 Table event_changes {
@@ -236,28 +215,6 @@ Table model_lines {
   Note: 'Checks: ck_model_lines_kind: kind::text = \'base\'::text AND parent_line_id IS NULL AND branch_event_id IS NULL OR kind::text = \'scenario\'::text AND parent_line_id IS NOT NULL AND branch_event_id IS NOT NULL; ck_model_lines_name: length(btrim(name::text)) > 0. RLS forced: model_lines_live_organization (restrictive) all, model_lines_policy all, model_lines_support_delete (restrictive) delete, model_lines_support_insert (restrictive) insert, model_lines_support_select (restrictive) select, model_lines_support_update (restrictive) update'
 }
 
-Table model_versions {
-  id uuid [pk]
-  organization_id uuid [not null]
-  model_id uuid [not null]
-  name varchar(120) [not null]
-  description text
-  is_baseline boolean [not null, default: `false`]
-  base_version_id uuid
-  version integer [not null, default: `1`]
-  created_at "timestamp with time zone" [not null, default: `now()`]
-
-  indexes {
-    (id, model_id) [unique]
-    model_id [name: 'ix_model_versions_model_id']
-    organization_id [name: 'ix_model_versions_organization_id']
-    model_id [unique, name: 'uq_model_versions_baseline']
-    (`model_id`, `lower(name::text)`) [unique, name: 'uq_model_versions_name']
-  }
-
-  Note: 'Checks: ck_model_versions_name: length(btrim(name::text)) > 0. RLS forced: model_versions_live_organization (restrictive) all, model_versions_policy all, model_versions_support_delete (restrictive) delete, model_versions_support_insert (restrictive) insert, model_versions_support_select (restrictive) select, model_versions_support_update (restrictive) update'
-}
-
 Table models {
   id uuid [pk]
   organization_id uuid [not null]
@@ -309,31 +266,6 @@ Table node_types {
   }
 
   Note: 'Checks: ck_node_types_color: color::text ~ \'^#[0-9A-Fa-f]{6}$\'::text. RLS forced: node_types_live_organization (restrictive) all, node_types_policy all, node_types_support_delete (restrictive) delete, node_types_support_insert (restrictive) insert, node_types_support_select (restrictive) select, node_types_support_update (restrictive) update'
-}
-
-Table nodes {
-  id uuid [pk]
-  organization_id uuid [not null]
-  model_id uuid [not null]
-  node_type_id uuid [not null]
-  name varchar(120) [not null]
-  description text
-  x "double precision" [not null, default: `'0'::double precision`]
-  y "double precision" [not null, default: `'0'::double precision`]
-  version integer [not null, default: `1`]
-  created_at "timestamp with time zone" [not null, default: `now()`]
-  version_id uuid [not null]
-  origin_node_id uuid
-
-  indexes {
-    (id, model_id) [unique]
-    (id, version_id) [unique]
-    model_id [name: 'ix_nodes_model_id']
-    organization_id [name: 'ix_nodes_organization_id']
-    version_id [name: 'ix_nodes_version_id']
-  }
-
-  Note: 'Checks: ck_nodes_name: length(btrim(name::text)) > 0. RLS forced: nodes_live_organization (restrictive) all, nodes_policy all, nodes_support_delete (restrictive) delete, nodes_support_insert (restrictive) insert, nodes_support_select (restrictive) select, nodes_support_update (restrictive) update'
 }
 
 Table notification_preferences {
@@ -710,14 +642,6 @@ Ref: allowed_connections.(target_node_type_id, model_id) > node_types.(id, model
 Ref: allowed_connections.organization_id > organizations.id [delete: cascade]
 Ref: connection_types.(model_id, organization_id) > models.(id, organization_id) [delete: cascade]
 Ref: connection_types.organization_id > organizations.id [delete: cascade]
-Ref: connections.(connection_type_id, model_id) > connection_types.(id, model_id) [delete: restrict]
-Ref: connections.(model_id, organization_id) > models.(id, organization_id) [delete: cascade]
-Ref: connections.(source_node_id, model_id) > nodes.(id, model_id) [delete: cascade]
-Ref: connections.(source_node_id, version_id) > nodes.(id, version_id) [delete: cascade]
-Ref: connections.(target_node_id, model_id) > nodes.(id, model_id) [delete: cascade]
-Ref: connections.(target_node_id, version_id) > nodes.(id, version_id) [delete: cascade]
-Ref: connections.(version_id, model_id) > model_versions.(id, model_id) [delete: cascade]
-Ref: connections.organization_id > organizations.id [delete: cascade]
 Ref: event_changes.event_id > timeline_events.id [delete: cascade]
 Ref: event_changes.organization_id > organizations.id [delete: cascade]
 Ref: legal_acceptances.organization_id > organizations.id [delete: cascade]
@@ -731,17 +655,11 @@ Ref: model_lines.(branch_event_id, parent_line_id) > timeline_events.(id, line_i
 Ref: model_lines.(model_id, organization_id) > models.(id, organization_id) [delete: cascade]
 Ref: model_lines.(parent_line_id, model_id) > model_lines.(id, model_id) [delete: restrict]
 Ref: model_lines.organization_id > organizations.id [delete: cascade]
-Ref: model_versions.(model_id, organization_id) > models.(id, organization_id) [delete: cascade]
-Ref: model_versions.organization_id > organizations.id [delete: cascade]
 Ref: models.organization_id > organizations.id [delete: cascade]
 Ref: node_positions.(line_id, model_id) > model_lines.(id, model_id) [delete: cascade]
 Ref: node_positions.organization_id > organizations.id [delete: cascade]
 Ref: node_types.(model_id, organization_id) > models.(id, organization_id) [delete: cascade]
 Ref: node_types.organization_id > organizations.id [delete: cascade]
-Ref: nodes.(model_id, organization_id) > models.(id, organization_id) [delete: cascade]
-Ref: nodes.(node_type_id, model_id) > node_types.(id, model_id) [delete: restrict]
-Ref: nodes.(version_id, model_id) > model_versions.(id, model_id) [delete: cascade]
-Ref: nodes.organization_id > organizations.id [delete: cascade]
 Ref: notification_preferences.organization_id > organizations.id [delete: cascade]
 Ref: notification_preferences.user_id > user_accounts.id [delete: cascade]
 Ref: notifications.organization_id > organizations.id [delete: cascade]
@@ -797,9 +715,6 @@ TableGroup legal {
 
 TableGroup model_graph {
   models
-  model_versions
-  nodes
-  connections
 }
 
 TableGroup model_timeline {

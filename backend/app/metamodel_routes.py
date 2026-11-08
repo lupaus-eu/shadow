@@ -30,7 +30,7 @@ from app.model_routes import (
     _model,
     _stale,
 )
-from app.models import AllowedConnection, Connection, ConnectionType, EventChange, Node, NodeType, TimelineEvent
+from app.models import AllowedConnection, ConnectionType, EventChange, NodeType, TimelineEvent
 from app.timeline.chain import validate_lines
 from app.timeline.errors import ChainBroken
 from app.timeline.loader import load_timeline
@@ -157,7 +157,7 @@ def create_metamodel_router(*, session_factory: sessionmaker[Session], authentic
             _model(session, organization_id, model_id, lock=True)
             item = _type(session, NodeType, organization_id, model_id, type_id, lock=True)
             _stale(item.version, expected_version)
-            if _named_by_event(session, model_id, "node_type_id", item.id) or session.scalar(select(func.count()).select_from(Node).where(Node.node_type_id == item.id)):
+            if _named_by_event(session, model_id, "node_type_id", item.id):
                 raise HTTPException(status_code=409, detail={"reason": "in_use"})
             _audit(session, request, "node_type.deleted", "node_type", item.id, {"model_id": str(model_id), "name": item.name})
             session.delete(item)
@@ -200,7 +200,7 @@ def create_metamodel_router(*, session_factory: sessionmaker[Session], authentic
             _model(session, organization_id, model_id, lock=True)
             item = _type(session, ConnectionType, organization_id, model_id, type_id, lock=True)
             _stale(item.version, expected_version)
-            if _named_by_event(session, model_id, "connection_type_id", item.id) or session.scalar(select(func.count()).select_from(Connection).where(Connection.connection_type_id == item.id)):
+            if _named_by_event(session, model_id, "connection_type_id", item.id):
                 raise HTTPException(status_code=409, detail={"reason": "in_use"})
             _audit(session, request, "connection_type.deleted", "connection_type", item.id, {"model_id": str(model_id), "name": item.name})
             session.delete(item)
@@ -227,15 +227,7 @@ def create_metamodel_router(*, session_factory: sessionmaker[Session], authentic
             rule = session.scalar(select(AllowedConnection).where(AllowedConnection.model_id == model.id, AllowedConnection.connection_type_id == connection_type_id, AllowedConnection.source_node_type_id == source_node_type_id, AllowedConnection.target_node_type_id == target_node_type_id).with_for_update())
             if rule is None:
                 raise HTTPException(status_code=404, detail="Rule not found")
-            target = Node.__table__.alias("t")
-            used = session.scalar(
-                select(func.count())
-                .select_from(Connection)
-                .join(Node, Node.id == Connection.source_node_id)
-                .join(target, target.c.id == Connection.target_node_id)
-                .where(Connection.connection_type_id == connection_type_id, Node.node_type_id == source_node_type_id, target.c.node_type_id == target_node_type_id)
-            )
-            if used or _rule_needed_by_events(session, model.id, (connection_type_id, source_node_type_id, target_node_type_id)):
+            if _rule_needed_by_events(session, model.id, (connection_type_id, source_node_type_id, target_node_type_id)):
                 raise HTTPException(status_code=409, detail={"reason": "in_use"})
             _audit(session, request, "allowed_connection.deleted", "model", model.id, {"connection_type_id": str(connection_type_id)})
             session.delete(rule)

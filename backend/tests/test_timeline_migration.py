@@ -1,7 +1,8 @@
 """Migration 0061: versions, graphs, metrics and simulations become lines and events (model-timeline ticket 02).
 
-The seed is built through the application and by writing the old graph tables directly (the routes that wrote
-them were removed in ticket 07), the schema is moved back to 0060 and up to 0061 again, and the replayed state of every line is compared with the old graph.
+The Model, its metrics and a simulation are made through the application; the schema is then moved back to 0061 (0064
+recreates the old tables, with a version for every line), the old graph tables are written directly (the routes that wrote
+them are gone), the schema is moved back to 0060 and up to 0061 again, and the replayed state of every line is compared with the old graph.
 """
 from contextlib import ExitStack
 from datetime import datetime
@@ -57,6 +58,11 @@ class OldGraph:
         self.run("INSERT INTO connections (id, organization_id, model_id, version_id, connection_type_id, source_node_id, target_node_id) VALUES (:id, :org, :model, :version, :type, :source, :target)", id=connection_id, org=self.org, model=self.model, version=version_id, type=type_id, source=source, target=target)
         return connection_id
 
+    def version(self, name, base_version) -> UUID:
+        version_id = uuid4()
+        self.run("INSERT INTO model_versions (id, organization_id, model_id, name, is_baseline, base_version_id) VALUES (:id, :org, :model, :name, false, :base)", id=version_id, org=self.org, model=self.model, name=name, base=base_version)
+        return version_id
+
     def copy(self, base_version, fork_version) -> None:
         """What the old fork route did: copy the graph, every node remembering its origin."""
         mapping = {}
@@ -72,31 +78,35 @@ class OldGraph:
         return self.run("SELECT id FROM nodes WHERE version_id = :v AND name = :n", v=version_id, n=name).scalar_one()
 
 
-def _seed(owner, base, engine, organization_id) -> dict:
-    """A Model with a graph (in the old tables), metrics, a simulation and forks of every shape; returns the ids that matter."""
+def _seed_application(owner, base) -> dict:
+    """What the application writes today: a Model with metrics, values and a simulation on its Base line."""
     model_id = owner.post(f"{base}/models", json={"name": "Twin"}).json()["id"]
     path = f"{base}/models/{model_id}"
     types = _types(_graph(owner, base, model_id))
-    baseline = _graph(owner, base, model_id)["version"]["id"]
+    baseline = _graph(owner, base, model_id)["line"]["id"]
+    metrics = f"{path}/lines/{baseline}/metrics"
+    revenue = owner.post(metrics, json={"key": "revenue", "name": "Revenue", "unit": "EUR"}).json()
+    owner.post(metrics, json={"key": "double", "name": "Double", "formula": "revenue * 2"})
+    _values(owner, metrics, revenue["id"], [(f"2025-{m:02d}-01", 100 + m) for m in range(1, 13)])
+    assert owner.post(f"{path}/lines/{baseline}/simulations", json={"name": "Base run", "method": "linear", "horizon_months": 3}).status_code == 201
+    return {"org_model": model_id, "baseline": baseline, "types": types, "revenue": revenue["id"]}
+
+
+def _seed_old(engine, organization_id, seeded) -> dict:
+    """The old tables as the version routes left them (the schema is at 0061): a graph, forks of every shape and a metric of a fork."""
+    model_id, baseline, types = seeded["org_model"], seeded["baseline"], seeded["types"]
     old = OldGraph(engine, organization_id, model_id)
     app = old.node(baseline, types["product"], "App", description="The product", x=10, y=20)
     journey = old.node(baseline, types["journey"], "Onboarding", x=30, y=40)
     terms = old.node(baseline, types["contract"], "Terms")
     old.connection(baseline, types["c:features_in"], app["id"], journey["id"])
     old.connection(baseline, types["c:is_composed_of"], app["id"], terms["id"])
-    metrics = f"{path}/lines/{baseline}/metrics"
-    revenue = owner.post(metrics, json={"key": "revenue", "name": "Revenue", "unit": "EUR"}).json()
-    old.run("UPDATE metrics SET node_id = :node WHERE id = :id", node=app["id"], id=revenue["id"])  # the old nodes are no events' nodes: tie the metric the way the old routes did
-    owner.post(metrics, json={"key": "double", "name": "Double", "formula": "revenue * 2"})
-    _values(owner, metrics, revenue["id"], [(f"2025-{m:02d}-01", 100 + m) for m in range(1, 13)])
-    assert owner.post(f"{path}/lines/{baseline}/simulations", json={"name": "Base run", "method": "linear", "horizon_months": 3}).status_code == 201
+    old.run("UPDATE metrics SET node_id = :node WHERE id = :id", node=app["id"], id=seeded["revenue"])  # tie the metric the way the old routes did
 
     def fork(name, base_version=None):
-        body = {"name": name} | ({"base_version_id": base_version} if base_version else {})
-        created = owner.post(f"{path}/versions", json=body)
-        assert created.status_code == 201, created.text
-        old.copy(base_version or baseline, created.json()["id"])
-        return created.json()["id"]
+        created = old.version(name, base_version or baseline)
+        old.copy(base_version or baseline, created)
+        return str(created)
 
     # Growth: rename, move, drop one connection, add a node; it has a fork of its own.
     growth = fork("Growth")
@@ -115,7 +125,7 @@ def _seed(owner, base, engine, organization_id) -> dict:
     # Same as the baseline: no event of its own; a fork of it branches where it branches.
     unchanged = fork("Unchanged")
     below_unchanged = fork("Below unchanged", unchanged)
-    owner.post(f"{path}/lines/{below_unchanged}/metrics", json={"key": "own", "name": "Own"})
+    old.run("INSERT INTO metrics (id, organization_id, model_id, version_id, key, name) VALUES (:id, :org, :model, :version, 'own', 'Own')", id=uuid4(), org=organization_id, model=model_id, version=below_unchanged)
     return {"org_model": model_id, "baseline": baseline, "growth": growth, "deeper": deeper, "unchanged": unchanged, "below_unchanged": below_unchanged, "pruned": pruned}
 
 
@@ -197,25 +207,27 @@ def _assert_replay_equals_old_graph(data, version_id, model_id) -> None:
 def test_upgrade_converts_every_version_without_losing_anything_and_downgrade_is_clean(database_url: str, stack: ExitStack) -> None:
     application, owner, organization_id, base = _tenant(stack, database_url, "migration-lines")
     engine = create_engine(database_url)
-    seeded = _seed(owner, base, engine, organization_id)
-    model_id = UUID(seeded["org_model"])
+    application_seed = _seed_application(owner, base)
     empty_model = owner.post(f"{base}/models", json={"name": "No baseline"}).json()["id"]
     stack.close()
 
     config = _config(database_url)
-    with engine.begin() as connection:
-        connection.execute(text("DELETE FROM model_versions WHERE model_id = :id"), {"id": empty_model})
-        before = {
-            table: connection.execute(text(f"SELECT count(*) FROM {table}")).scalar_one()
-            for table in ("metrics", "metric_values", "simulations", "nodes", "connections", "model_versions")
-        }
-    command.downgrade(config, "0060")
-    with engine.connect() as connection:
-        assert connection.execute(text("SELECT count(*) FROM model_lines")).scalar_one() == 0
-        columns = {row[0] for row in connection.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name IN ('metrics', 'metric_values', 'simulations')"))}
-        assert "line_id" not in columns and "version_id" in columns
-    command.upgrade(config, "0061")
     try:
+        command.downgrade(config, "0061")  # 0064 gives the old tables back, with a version for every line
+        seeded = _seed_old(engine, organization_id, application_seed)
+        model_id = UUID(seeded["org_model"])
+        with engine.begin() as connection:
+            connection.execute(text("DELETE FROM model_versions WHERE model_id = :id"), {"id": empty_model})
+            before = {
+                table: connection.execute(text(f"SELECT count(*) FROM {table}")).scalar_one()
+                for table in ("metrics", "metric_values", "simulations", "nodes", "connections", "model_versions")
+            }
+        command.downgrade(config, "0060")
+        with engine.connect() as connection:
+            assert connection.execute(text("SELECT count(*) FROM model_lines")).scalar_one() == 0
+            columns = {row[0] for row in connection.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name IN ('metrics', 'metric_values', 'simulations')"))}
+            assert "line_id" not in columns and "version_id" in columns
+        command.upgrade(config, "0061")
         data = _load(engine)
         with engine.connect() as connection:
             after = {table: connection.execute(text(f"SELECT count(*) FROM {table}")).scalar_one() for table in before}
@@ -280,7 +292,7 @@ def test_a_new_model_has_a_base_line_with_an_empty_initial_situation(database_ur
     created = owner.post(f"{base}/models", json={"name": "Fresh"})
     assert created.status_code == 201
     model_id = UUID(created.json()["id"])
-    baseline = UUID(_graph(owner, base, str(model_id))["version"]["id"])
+    baseline = UUID(_graph(owner, base, str(model_id))["line"]["id"])
     engine = create_engine(database_url)
     with engine.connect() as connection:
         zone = connection.execute(text("SELECT time_zone FROM organizations WHERE id = :id"), {"id": organization_id}).scalar_one()
@@ -297,4 +309,45 @@ def test_a_new_model_has_a_base_line_with_an_empty_initial_situation(database_ur
     with engine.connect() as connection:
         assert connection.execute(text("SELECT count(*) FROM model_lines WHERE model_id = :id"), {"id": model_id}).scalar_one() == 0
         assert connection.execute(text("SELECT count(*) FROM timeline_events WHERE model_id = :id"), {"id": model_id}).scalar_one() == 0
+    engine.dispose()
+
+
+def test_migration_0064_drops_the_version_tables_and_downgrade_recreates_them_from_the_lines(database_url: str, stack: ExitStack) -> None:
+    _, owner, organization_id, base = _tenant(stack, database_url, "migration-0064")
+    model_id = owner.post(f"{base}/models", json={"name": "Twin"}).json()["id"]
+    path = f"{base}/models/{model_id}"
+    types = _types(_graph(owner, base, model_id))
+    baseline = _graph(owner, base, model_id)["line"]["id"]
+    event = owner.get(f"{path}/lines/{baseline}/events").json()[-1]["id"]
+    owner.post(f"{path}/events/{event}/nodes", json={"node_type_id": types["product"], "name": "App"})
+    scenario = owner.post(f"{path}/lines", json={"name": "What if", "description": "Later", "branch_event_id": event}).json()["id"]
+    owner.post(f"{path}/lines/{baseline}/metrics", json={"key": "revenue", "name": "Revenue"})
+    stack.close()
+    engine = create_engine(database_url)
+    config = _config(database_url)
+    tables = lambda: {row[0] for row in engine.connect().execute(text("SELECT tablename FROM pg_tables WHERE schemaname = 'public'"))}  # noqa: E731
+    try:
+        assert not tables() & {"model_versions", "nodes", "connections"}  # gone at head
+        command.downgrade(config, "0063")
+        assert {"model_versions", "nodes", "connections"} <= tables()
+        with engine.connect() as connection:
+            versions = {str(row.id): row for row in connection.execute(text("SELECT * FROM model_versions WHERE model_id = :id"), {"id": model_id})}
+            assert set(versions) == {baseline, scenario}  # one version per line, with the line's id
+            assert versions[baseline].is_baseline and versions[baseline].base_version_id is None and versions[baseline].name == "Baseline"
+            assert not versions[scenario].is_baseline and str(versions[scenario].base_version_id) == baseline and versions[scenario].description == "Later"
+            assert connection.execute(text("SELECT count(*) FROM nodes WHERE model_id = :id"), {"id": model_id}).scalar_one() == 0  # the timeline is the source: no graph is rebuilt
+            assert connection.execute(text("SELECT count(*) FROM connections WHERE model_id = :id"), {"id": model_id}).scalar_one() == 0
+            policies = {row[0] for row in connection.execute(text("SELECT tablename FROM pg_policies WHERE tablename IN ('nodes', 'connections', 'model_versions')"))}
+            forced = connection.execute(text("SELECT count(*) FROM pg_class WHERE relname IN ('nodes', 'connections', 'model_versions') AND relforcerowsecurity")).scalar_one()
+        assert policies == {"nodes", "connections", "model_versions"} and forced == 3
+        command.downgrade(config, "0061")  # the older migrations still find their versions and keep the metrics
+        with engine.connect() as connection:
+            assert connection.execute(text("SELECT count(*) FROM metrics WHERE model_id = :id AND version_id = :line"), {"id": model_id, "line": baseline}).scalar_one() == 1
+    finally:
+        command.upgrade(config, "head")
+        engine.dispose()
+    engine = create_engine(database_url)
+    with engine.connect() as connection:
+        assert not {row[0] for row in connection.execute(text("SELECT tablename FROM pg_tables WHERE schemaname = 'public'"))} & {"model_versions", "nodes", "connections"}
+        assert connection.execute(text("SELECT count(*) FROM metrics WHERE model_id = :id AND line_id = :line"), {"id": model_id, "line": baseline}).scalar_one() == 1
     engine.dispose()

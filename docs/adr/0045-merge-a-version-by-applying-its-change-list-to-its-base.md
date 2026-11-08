@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: superseded
 ---
 
 # Merge a version by applying its change list to its base
@@ -20,4 +20,4 @@ A Version could show its change list against the base, but the changes could not
 - A node that the base lost after the fork returns to the base as a new node.
 - Metric differences between a Version and its base stay as they are and need manual work.
 
-ADR-0050 replaces this decision, together with ADR-0048, when ticket 08 of the model timeline lands.
+Superseded by ADR-0050 (adoption of a Scenario replaces merge) together with ADR-0048 (events on lines replace versions); both landed with the model timeline, ticket 08.

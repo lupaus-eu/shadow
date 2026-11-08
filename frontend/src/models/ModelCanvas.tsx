@@ -29,8 +29,8 @@ function edgePoint(node: GraphNode, to: { x: number; y: number }) {
 /** `/organizations/:organizationId/models/:modelId`: the nodes and connections of a line on a canvas. Edits are changes of the line's last event (ticket 09 of the model timeline adds the event list and the choice of event). */
 export function ModelCanvas() {
   const { locale } = useOrganization();
-  const { organizationId, modelId, version, writable } = useModel();
-  const lineId = version.id; // a line has the id of its version
+  const { organizationId, modelId, line, writable } = useModel();
+  const lineId = line.id;
   const text = modelMessages(locale);
   const [graph, setGraph] = useState<Graph | null>(null);
   const [failed, setFailed] = useState(false);

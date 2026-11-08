@@ -1,10 +1,9 @@
-"""Models (digital twins) and their graph: nodes and connections (Shadow feature 1).
+"""Models (digital twins): the Model, its metamodel and the graph a line shows (Shadow feature 1, model timeline).
 
-A Model belongs to an Organization. Every member can read and edit the graph; Owners and
-Admins create, rename, and delete Models. A new Model starts with the default metamodel:
-node types, connection types, and which types may connect. Writes carry ``expected_version``
-(409 on a stale one) and are audited. Row-level security keeps every row inside its
-Organization; the composite foreign keys keep a graph inside its Model.
+A Model belongs to an Organization. Every member can read the graph; the graph itself is a replay of the events of
+a line (``timeline_*`` routes). Owners and Admins create, rename, and delete Models. A new Model starts with the
+default metamodel and a Base line holding an empty "Initial situation" event. Writes carry ``expected_version``
+(409 on a stale one) and are audited. Row-level security keeps every row inside its Organization.
 """
 
 import json
@@ -27,7 +26,6 @@ from app.models import (
     AllowedConnection,
     ConnectionType,
     ModelLine,
-    ModelVersion,
     NodeType,
     Organization,
     OrganizationMembership,
@@ -67,15 +65,7 @@ class ModelResponse(BaseModel):
     description: str | None
     version: int
     nodes: int = 0
-
-
-class VersionResponse(BaseModel):
-    id: UUID
-    name: str
-    description: str | None
-    is_baseline: bool
-    base_version_id: UUID | None
-    version: int
+    base_line_id: UUID | None = None  # the Base line: GET /lines lists the others
 
 
 class NodeResponse(BaseModel):
@@ -128,10 +118,25 @@ class AllowedConnectionResponse(BaseModel):
     target_node_type_id: UUID
 
 
+class LineResponse(BaseModel):
+    id: UUID
+    name: str
+    description: str | None
+    kind: str
+    parent_line_id: UUID | None
+    branch_event_id: UUID | None
+    start_changed_at: datetime | None
+    created_by_user_account_id: UUID | None
+    version: int
+    created_at: datetime
+    event_count: int
+    latest_event_date: date | None
+
+
 class GraphResponse(BaseModel):
     model: ModelResponse
-    version: VersionResponse
-    versions: list[VersionResponse]
+    line: LineResponse  # the line whose graph is shown (the Base line unless a line_id is given)
+    lines: list[LineResponse]  # the Base line first, then the Scenarios
     node_types: list[NodeTypeResponse]
     connection_types: list[ConnectionTypeResponse]
     allowed_connections: list[AllowedConnectionResponse]
@@ -188,21 +193,6 @@ def _model(session: Session, organization_id: UUID, model_id: UUID, *, lock: boo
     return model
 
 
-def baseline_of(session: Session, model_id: UUID) -> ModelVersion:
-    return session.scalars(select(ModelVersion).where(ModelVersion.model_id == model_id, ModelVersion.is_baseline.is_(True))).one()
-
-
-def version_of(session: Session, organization_id: UUID, model_id: UUID, version_id: UUID | None, *, lock: bool = False) -> ModelVersion:
-    """The requested version of the Model, or its baseline."""
-    if version_id is None:
-        return baseline_of(session, model_id)
-    statement = select(ModelVersion).where(ModelVersion.id == version_id, ModelVersion.model_id == model_id, ModelVersion.organization_id == organization_id)
-    version = session.scalar(statement.with_for_update() if lock else statement)
-    if version is None:
-        raise HTTPException(status_code=404, detail="Version not found")
-    return version
-
-
 def line_of(session: Session, organization_id: UUID, model_id: UUID, line_id: UUID, *, lock: bool = False) -> ModelLine:
     """The line (Base line or Scenario) of the Model; 404 when it is not one of this Model's."""
     statement = select(ModelLine).where(ModelLine.id == line_id, ModelLine.model_id == model_id, ModelLine.organization_id == organization_id)
@@ -231,7 +221,7 @@ def _model_response(session: Session, model: TwinModel, timeline: ModelTimeline 
     """``nodes`` counts the Base line's graph after its last event, which takes one replay of the Model's timeline."""
     base = session.scalar(select(ModelLine.id).where(ModelLine.model_id == model.id, ModelLine.kind == "base"))
     nodes = len(_latest_state(timeline or load_timeline(session, model.id), base)[0].nodes) if base is not None else 0
-    return ModelResponse(id=model.id, name=model.name, description=model.description, version=model.version, nodes=nodes)
+    return ModelResponse(id=model.id, name=model.name, description=model.description, version=model.version, nodes=nodes, base_line_id=base)
 
 
 def seed_metamodel(session: Session, model: TwinModel) -> None:
@@ -253,22 +243,25 @@ def models_of(session_factory: sessionmaker[Session], organization_id: UUID, use
         return [_model_response(session, model) for model in models]
 
 
-def graph_of(session_factory: sessionmaker[Session], organization_id: UUID, model_id: UUID, user: AuthenticatedUser, version_id: UUID | None = None) -> GraphResponse:
-    """The Model with the graph of one version's line (the Base line unless given) after its last event."""
-    from app.timeline_routes import _resolve_positions  # a function-level import: timeline_routes imports this module
+def graph_of(session_factory: sessionmaker[Session], organization_id: UUID, model_id: UUID, user: AuthenticatedUser, line_id: UUID | None = None) -> GraphResponse:
+    """The Model with the lines and the graph of one line (the Base line unless given) after its last event."""
+    from app.timeline_routes import _line_response, _resolve_positions  # a function-level import: timeline_routes imports this module
 
     with _member_session(session_factory, organization_id, user) as (session, _membership):
         model = _model(session, organization_id, model_id)
-        version = version_of(session, organization_id, model.id, version_id)
-        by_model = lambda entity: select(entity).where(entity.model_id == model.id)  # noqa: E731
-        versions = session.scalars(by_model(ModelVersion).order_by(ModelVersion.is_baseline.desc(), ModelVersion.created_at)).all()
         timeline = load_timeline(session, model.id)
-        state, latest = _latest_state(timeline, version.id)
-        drawn = _resolve_positions(session, timeline, version.id, state) if version.id in timeline.lines else {}
+        if line_id is not None:
+            shown = line_of(session, organization_id, model.id, line_id).id
+        else:
+            shown = next(row.id for row in timeline.line_rows.values() if row.kind == "base")
+        by_model = lambda entity: select(entity).where(entity.model_id == model.id)  # noqa: E731
+        ordered = sorted(timeline.line_rows.values(), key=lambda row: (row.kind != "base", row.created_at, row.id))
+        state, latest = _latest_state(timeline, shown)
+        drawn = _resolve_positions(session, timeline, shown, state)
         return GraphResponse(
             model=_model_response(session, model, timeline),
-            version=VersionResponse.model_validate(version, from_attributes=True),
-            versions=[VersionResponse.model_validate(item, from_attributes=True) for item in versions],
+            line=_line_response(timeline, shown),
+            lines=[_line_response(timeline, row.id) for row in ordered],
             node_types=[NodeTypeResponse.model_validate(item, from_attributes=True) for item in session.scalars(by_model(NodeType).order_by(NodeType.name)).all()],
             connection_types=[ConnectionTypeResponse.model_validate(item, from_attributes=True) for item in session.scalars(by_model(ConnectionType).order_by(ConnectionType.name)).all()],
             allowed_connections=[AllowedConnectionResponse.model_validate(item, from_attributes=True) for item in session.scalars(by_model(AllowedConnection)).all()],
@@ -293,9 +286,7 @@ def create_model_router(*, session_factory: sessionmaker[Session], authenticated
             model = TwinModel(id=uuid4(), organization_id=organization_id, name=body.name, description=body.description, version=1)
             session.add(model)
             session.flush()
-            # The Base line shares its id with the baseline version, as migration 0061 does for existing Models (ticket 04 drops the version).
             baseline_id = uuid4()
-            session.add(ModelVersion(id=baseline_id, organization_id=organization_id, model_id=model.id, name="Baseline", is_baseline=True, version=1))
             session.add(ModelLine(id=baseline_id, organization_id=organization_id, model_id=model.id, name="Baseline", kind="base", created_by_user_account_id=user.account.id, version=1))
             session.flush()
             # Rule 1 of the domain model: every Model has a Base line with an empty "Initial situation" event dated the creation day.
@@ -305,8 +296,8 @@ def create_model_router(*, session_factory: sessionmaker[Session], authenticated
             return _model_response(session, model)
 
     @router.get("/{organization_id}/models/{model_id}", response_model=GraphResponse)
-    def read_graph(organization_id: UUID, model_id: UUID, version_id: UUID | None = None, user: AuthenticatedUser = Depends(authenticated_user_dependency)) -> GraphResponse:
-        return graph_of(session_factory, organization_id, model_id, user, version_id)
+    def read_graph(organization_id: UUID, model_id: UUID, line_id: UUID | None = None, user: AuthenticatedUser = Depends(authenticated_user_dependency)) -> GraphResponse:
+        return graph_of(session_factory, organization_id, model_id, user, line_id)
 
     @router.patch("/{organization_id}/models/{model_id}", response_model=ModelResponse)
     def update_model(organization_id: UUID, model_id: UUID, body: ModelUpdate, request: Request, user: AuthenticatedUser = Depends(authenticated_user_dependency)) -> ModelResponse:

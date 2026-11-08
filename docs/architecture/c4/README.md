@@ -18,7 +18,7 @@ the C4 levels.
 | 2 · Containers | `containers` | Edge proxy, web application, API, background worker, migration job, Shadow database, and the systems around them |
 | 2 · Containers | `identity` | Authentik's server, worker, and database next to Shadow |
 | 3 · Components | `webAppComponents` | Sign-in shell, Organization workspace, Model workspace, operator console, API clients, localization |
-| 3 · Components | `apiComponents` | Authentication, Organizations, billing, the access rule, models and versions, metrics, forecasts and simulations, analysis, import and export, MCP, Support Access, audit, persistence |
+| 3 · Components | `apiComponents` | Authentication, Organizations, billing, the access rule, models and the timeline of lines and events, metrics, forecasts and simulations, analysis, import and export, MCP, Support Access, audit, persistence |
 | 3 · Components | `workerComponents` | Scheduler, job runner, email delivery |
 | Dynamic | `signIn`, `invitation`, `billingWebhook`, `canvasEdit`, `agentAnalysis` | Key flows step by step |
 | Deployment | `localDeployment`, `productionDeployment` | Where each container runs |

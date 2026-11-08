@@ -6,10 +6,11 @@ export type ConnectionType = { id: string; key: string; name: string; style: str
 export type AllowedConnection = { connection_type_id: string; source_node_type_id: string; target_node_type_id: string };
 export type GraphNode = { id: string; node_type_id: string; name: string; description: string | null; x: number; y: number };
 export type GraphConnection = { id: string; connection_type_id: string; source_node_id: string; target_node_id: string };
-export type ModelVersion = { id: string; name: string; description: string | null; is_baseline: boolean; base_version_id: string | null; version: number };
+/** The Base line or a Scenario of a model (`GET …/lines`); `version` is the stale check of a rename or delete. */
+export type ModelLine = { id: string; name: string; description: string | null; kind: "base" | "scenario"; parent_line_id: string | null; branch_event_id: string | null; version: number; event_count: number; latest_event_date: string | null };
 /** An event of a line; `version` is what a canvas edit sends as `expected_version`. */
 export type LineEvent = { id: string; line_id: string; occurred_on: string; title: string; version: number; planned: boolean; change_count: number };
-/** The graph a line shows after its last event (a line has the id of the version it came from until the line picker arrives, ticket 09 of the model timeline). */
+/** The graph a line shows after its last event. */
 export type Graph = { event: LineEvent | null; node_types: NodeType[]; connection_types: ConnectionType[]; allowed_connections: AllowedConnection[]; nodes: GraphNode[]; connections: GraphConnection[] };
 
 /** A write was refused because the row changed since it was read (HTTP 409 with `latest_version`). */
@@ -74,12 +75,22 @@ export async function createEditsEvent(organizationId: string, modelId: string, 
   return (await call(`${modelsUrl(organizationId)}/${modelId}/lines/${lineId}/events`, { method: "POST", ...json({ occurred_on: occurredOn, title, changes: [] }) })).json();
 }
 
-export async function createVersion(organizationId: string, modelId: string, name: string, baseVersionId: string | null): Promise<ModelVersion> {
-  return (await call(`${modelsUrl(organizationId)}/${modelId}/versions`, { method: "POST", ...json({ name, base_version_id: baseVersionId }) })).json();
+export async function loadLines(organizationId: string, modelId: string): Promise<ModelLine[]> {
+  return (await call(`${modelsUrl(organizationId)}/${modelId}/lines`)).json();
 }
 
-export async function deleteVersion(organizationId: string, modelId: string, version: ModelVersion): Promise<void> {
-  await call(`${modelsUrl(organizationId)}/${modelId}/versions/${version.id}?expected_version=${version.version}`, { method: "DELETE" });
+/** The event a new Scenario starts from when it starts "from here": the line's last event, or where a line without events of its own starts. */
+export async function startingEvent(organizationId: string, modelId: string, line: ModelLine): Promise<string | null> {
+  const events: LineEvent[] = await (await call(`${modelsUrl(organizationId)}/${modelId}/lines/${line.id}/events`)).json();
+  return events[events.length - 1]?.id ?? line.branch_event_id;
+}
+
+export async function createScenario(organizationId: string, modelId: string, name: string, branchEventId: string): Promise<ModelLine> {
+  return (await call(`${modelsUrl(organizationId)}/${modelId}/lines`, { method: "POST", ...json({ name, branch_event_id: branchEventId }) })).json();
+}
+
+export async function deleteLine(organizationId: string, modelId: string, line: ModelLine): Promise<void> {
+  await call(`${modelsUrl(organizationId)}/${modelId}/lines/${line.id}?expected_version=${line.version}`, { method: "DELETE" });
 }
 
 // Canvas edits are changes inside an event; `event.version` is the stale check. Moving a node is a position of the line, not an edit.
@@ -109,16 +120,11 @@ export async function saveNodePositions(organizationId: string, modelId: string,
   await call(`${modelsUrl(organizationId)}/${modelId}/lines/${lineId}/positions`, { method: "PUT", ...json(positions) });
 }
 
-export async function loadVersions(organizationId: string, modelId: string): Promise<ModelVersion[]> {
-  return (await call(`${modelsUrl(organizationId)}/${modelId}/versions`)).json();
-}
-
 export type Metric = { id: string; key: string; name: string; unit: string | null; node_id: string | null; formula: string | null; derived: boolean; version: number; values: number };
 export type MetricInput = { key: string; name: string; unit: string | null; node_id: string | null; formula: string | null };
 export type SeriesPoint = { period: string; value: number | null };
 export type Series = { metric: Metric; points: SeriesPoint[] };
 
-// A line has the id of the version it came from (model timeline ticket 04), so the tabs pass the selected version id until the line picker arrives (ticket 09).
 const metricsUrl = (organizationId: string, modelId: string, lineId: string) => `${modelsUrl(organizationId)}/${modelId}/lines/${lineId}/metrics`;
 
 export async function loadMetrics(organizationId: string, modelId: string, lineId: string): Promise<Metric[]> {

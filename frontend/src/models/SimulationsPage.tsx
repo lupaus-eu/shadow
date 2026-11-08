@@ -7,10 +7,10 @@ import { ForecastChart } from "./ForecastChart";
 import { modelMessages } from "./messages";
 import { useModel } from "./ModelShell";
 
-/** `…/models/:modelId/simulations`: forecast runs of the version, with what-if changes. */
+/** `…/models/:modelId/simulations`: forecast runs of the line, with what-if changes. */
 export function SimulationsPage() {
   const { locale } = useOrganization();
-  const { organizationId, modelId, version, writable } = useModel();
+  const { organizationId, modelId, line, writable } = useModel();
   const text = modelMessages(locale);
   const confirm = useConfirm();
   const [runs, setRuns] = useState<Simulation[] | null>(null);
@@ -25,18 +25,18 @@ export function SimulationsPage() {
 
   const reload = useCallback(async () => {
     try {
-      const [list, metrics] = await Promise.all([loadSimulations(organizationId, modelId, version.id), loadMetrics(organizationId, modelId, version.id)]);
+      const [list, metrics] = await Promise.all([loadSimulations(organizationId, modelId, line.id), loadMetrics(organizationId, modelId, line.id)]);
       setRuns(list);
       setInputs(metrics.filter((metric) => !metric.derived));
     } catch { setError(text.failed); }
-  }, [organizationId, modelId, version.id, text.failed]);
+  }, [organizationId, modelId, line.id, text.failed]);
   useEffect(() => { setResult(null); void reload(); }, [reload]);
 
   async function run() {
     setBusy(true);
     setError(null);
     const adjustments = Object.entries(changes).map(([metric_key, raw]) => ({ metric_key, change_pct: Number(raw.replace(",", ".")) })).filter((item) => Number.isFinite(item.change_pct) && item.change_pct !== 0);
-    try { setResult(await runSimulation(organizationId, modelId, version.id, { name, method, horizon_months: horizon, adjustments })); setName(""); } catch { setError(text.runFailed); }
+    try { setResult(await runSimulation(organizationId, modelId, line.id, { name, method, horizon_months: horizon, adjustments })); setName(""); } catch { setError(text.runFailed); }
     setBusy(false);
     await reload();
   }
@@ -50,11 +50,11 @@ export function SimulationsPage() {
         <ul className="m-0 flex list-none flex-col gap-1 p-0">
           {(runs ?? []).map((item) => (
             <li key={item.id} className="flex items-center gap-2 rounded-[8px] border border-line bg-surface px-3 py-2 text-[13px]">
-              <button type="button" className="flex min-w-0 flex-1 cursor-pointer flex-col border-0 bg-transparent p-0 text-left" onClick={() => void loadSimulation(organizationId, modelId, version.id, item.id).then(setResult).catch(() => setError(text.failed))}>
+              <button type="button" className="flex min-w-0 flex-1 cursor-pointer flex-col border-0 bg-transparent p-0 text-left" onClick={() => void loadSimulation(organizationId, modelId, line.id, item.id).then(setResult).catch(() => setError(text.failed))}>
                 <strong className="truncate">{item.name}</strong>
                 <span className="text-xs text-ink-muted">{text.methods[item.method]} · {item.horizon_months}</span>
               </button>
-              {writable ? <Button size="sm" variant="ghost-danger" onClick={() => void (async () => { if (await confirm({ title: item.name, confirmLabel: text.delete, destructive: true })) { await deleteSimulation(organizationId, modelId, version.id, item.id); if (result?.simulation.id === item.id) setResult(null); await reload(); } })()}>{text.delete}</Button> : null}
+              {writable ? <Button size="sm" variant="ghost-danger" onClick={() => void (async () => { if (await confirm({ title: item.name, confirmLabel: text.delete, destructive: true })) { await deleteSimulation(organizationId, modelId, line.id, item.id); if (result?.simulation.id === item.id) setResult(null); await reload(); } })()}>{text.delete}</Button> : null}
             </li>
           ))}
         </ul>

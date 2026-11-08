@@ -253,7 +253,7 @@ def test_agents_work_with_models_through_the_same_rules(database_url: str) -> No
         _, created = call(owner, bearer, "create_model", organization_id=organization_id, name="Agent twin")
         model_id = created["result"]["id"]
         _, graph = call(owner, bearer, "get_model", organization_id=organization_id, model_id=model_id)
-        version_id = graph["result"]["version"]["id"]
+        version_id = graph["result"]["line"]["id"]
         types = {item["key"]: item["id"] for item in graph["result"]["node_types"]} | {f"c:{item['key']}": item["id"] for item in graph["result"]["connection_types"]}
         event = graph["result"]["latest_event"]
         failed, message = call(owner, bearer, "create_node", organization_id=organization_id, model_id=model_id, event_id=event["id"], node_type_id=types["product"], name="  ")
@@ -284,6 +284,86 @@ def test_agents_work_with_models_through_the_same_rules(database_url: str) -> No
     assert audit[-1]["change_counts"] == {"add_connection": 1, "add_node": 2} and "App" not in json.dumps(audit)
 
 
+def test_agents_read_and_write_lines_events_and_adopt_scenarios_under_the_same_rules(database_url: str) -> None:
+    application, verifier = make_app(database_url, "mcp-lines")
+    with TestClient(application) as owner:
+        login(owner)
+        organization_id = active_org(owner, verifier, seats=3)
+        join(application, owner, organization_id, subject="mcp-lines-member", email="mcp-lines-member@example.com")
+        bearer, member = token("mcp-lines"), token("mcp-lines-member")
+        names = {tool["name"] for tool in rpc(owner, bearer, "tools/list").json()["result"]["tools"]}
+        assert {"list_lines", "list_events", "get_state", "create_scenario", "add_event", "update_event", "delete_event", "adopt_scenario"} <= names
+        assert not names & {"create_version", "merge_version", "get_version_changes"}
+        _, created = call(owner, bearer, "create_model", organization_id=organization_id, name="Line twin")
+        model_id = created["result"]["id"]
+        with application.state.database_engine.begin() as connection:  # the initial event is dated the creation day; the agent writes earlier history
+            connection.execute(text("UPDATE timeline_events SET occurred_on = '2025-12-31' WHERE model_id = :id"), {"id": model_id})
+        _, graph = call(owner, bearer, "get_model", organization_id=organization_id, model_id=model_id)
+        types = {item["key"]: item["id"] for item in graph["result"]["node_types"]} | {f"c:{item['key']}": item["id"] for item in graph["result"]["connection_types"]}
+        _, listed = call(owner, bearer, "list_lines", organization_id=organization_id, model_id=model_id)
+        base = listed["result"][0]
+        assert [item["kind"] for item in listed["result"]] == ["base"] and base["id"] == graph["result"]["line"]["id"] == created["result"]["base_line_id"]
+        node = lambda name, kind="product": {"op": "add_node", "payload": {"node_type_id": types[kind], "name": name}}  # noqa: E731
+        # Writes follow the roles: Members do not write the Base line, the Owner does; a broken chain is refused with its reason.
+        denied, message = call(owner, member, "add_event", organization_id=organization_id, model_id=model_id, line_id=base["id"], occurred_on="2026-01-10", title="Member try", changes=[node("Nope")])
+        assert denied and "403" in message
+        broken, message = call(owner, bearer, "add_event", organization_id=organization_id, model_id=model_id, line_id=base["id"], occurred_on="2026-01-10", title="Broken", changes=[{"op": "update_node", "element_id": "00000000-0000-0000-0000-0000000000aa", "payload": {"name": "Ghost"}}])
+        assert broken and "chain_broken" in message and "missing_element" in message
+        ok, start = call(owner, bearer, "add_event", organization_id=organization_id, model_id=model_id, line_id=base["id"], occurred_on="2026-01-10", title="Start", note="First", changes=[node("App"), node("Onboarding", "journey")])
+        assert not ok and start["result"]["title"] == "Start" and start["result"]["change_counts"] == {"add_node": 2}
+        _, events = call(owner, bearer, "list_events", organization_id=organization_id, model_id=model_id, line_id=base["id"])
+        assert [item["title"] for item in events["result"]] == ["Initial situation", "Start"] and events["result"][1]["planned"] is False
+        _, by_event = call(owner, bearer, "get_state", organization_id=organization_id, model_id=model_id, line_id=base["id"], event_id=start["result"]["id"])
+        assert {item["name"] for item in by_event["result"]["nodes"]} == {"App", "Onboarding"} and len(by_event["result"]["added"]["nodes"]) == 2
+        _, before = call(owner, bearer, "get_state", organization_id=organization_id, model_id=model_id, line_id=base["id"], as_of="2026-01-09")
+        _, after = call(owner, bearer, "get_state", organization_id=organization_id, model_id=model_id, line_id=base["id"], as_of="2026-01-10")
+        assert before["result"]["nodes"] == [] and len(after["result"]["nodes"]) == 2
+        both, message = call(owner, bearer, "get_state", organization_id=organization_id, model_id=model_id, line_id=base["id"], event_id=start["result"]["id"], as_of="2026-01-10")
+        assert both and "event_id_and_as_of" in message
+        # A Member makes a Scenario and writes to it; a stale update is refused; events can be changed and deleted.
+        ok, scenario = call(owner, member, "create_scenario", organization_id=organization_id, model_id=model_id, name="Grow", branch_event_id=start["result"]["id"])
+        assert not ok and scenario["result"]["kind"] == "scenario" and scenario["result"]["parent_line_id"] == base["id"]
+        ok, plan = call(owner, member, "add_event", organization_id=organization_id, model_id=model_id, line_id=scenario["result"]["id"], occurred_on="2026-03-01", title="Hire", changes=[node("Ada", "person")])
+        assert not ok
+        ok, extra = call(owner, member, "add_event", organization_id=organization_id, model_id=model_id, line_id=scenario["result"]["id"], occurred_on="2026-04-01", title="Extra", changes=[])
+        stale, message = call(owner, member, "update_event", organization_id=organization_id, model_id=model_id, event_id=plan["result"]["id"], expected_version=7, title="Hire people")
+        assert stale and "409" in message
+        ok, renamed = call(owner, member, "update_event", organization_id=organization_id, model_id=model_id, event_id=plan["result"]["id"], expected_version=1, title="Hire people", note="")
+        assert not ok and renamed["result"]["title"] == "Hire people" and renamed["result"]["note"] is None and renamed["result"]["version"] == 2
+        ok, moved = call(owner, member, "update_event", organization_id=organization_id, model_id=model_id, event_id=extra["result"]["id"], expected_version=1, occurred_on="2026-05-01")
+        assert not ok and moved["result"]["occurred_on"] == "2026-05-01"
+        branch_blocked, message = call(owner, bearer, "delete_event", organization_id=organization_id, model_id=model_id, event_id=start["result"]["id"], expected_version=1)
+        assert branch_blocked and "branch_point" in message  # the Scenario starts from it
+        ok, deleted = call(owner, member, "delete_event", organization_id=organization_id, model_id=model_id, event_id=extra["result"]["id"], expected_version=2)
+        assert not ok and deleted["result"] == {"deleted_event_id": extra["result"]["id"]}
+        # Adopting into the Base line is for Owners and Admins; refused data comes back readable; the Scenario goes away.
+        member_adopt, message = call(owner, member, "adopt_scenario", organization_id=organization_id, model_id=model_id, line_id=scenario["result"]["id"])
+        assert member_adopt and "403" in message
+        ok, adopted = call(owner, bearer, "adopt_scenario", organization_id=organization_id, model_id=model_id, line_id=scenario["result"]["id"], expected_version=1)
+        assert not ok and adopted["result"]["scenario"] is None and [item["title"] for item in adopted["result"]["adopted_events"]] == ["Hire people"]
+        _, lines_after = call(owner, bearer, "list_lines", organization_id=organization_id, model_id=model_id)
+        assert [item["id"] for item in lines_after["result"]] == [base["id"]] and lines_after["result"][0]["event_count"] == 3
+        _, present = call(owner, bearer, "get_state", organization_id=organization_id, model_id=model_id, line_id=base["id"])
+        assert {item["name"] for item in present["result"]["nodes"]} == {"App", "Onboarding", "Ada"}
+        # A read-only Organization can still be read through the tools but not written.
+        with application.state.database_engine.begin() as connection:
+            connection.execute(text("UPDATE organizations SET subscription_access_state = 'canceled' WHERE id = :id"), {"id": organization_id})
+        blocked, message = call(owner, bearer, "add_event", organization_id=organization_id, model_id=model_id, line_id=base["id"], occurred_on="2026-06-01", title="Blocked")
+        assert blocked and "read-only" in message
+        blocked_scenario, _ = call(owner, bearer, "create_scenario", organization_id=organization_id, model_id=model_id, name="Blocked", branch_event_id=start["result"]["id"])
+        assert blocked_scenario and not call(owner, bearer, "list_events", organization_id=organization_id, model_id=model_id, line_id=base["id"])[0]
+    for action, count in (("event.created", 3), ("event.updated", 2), ("event.deleted", 1), ("line.created", 1), ("line.adopted", 1)):
+        rows = audit_rows(application, organization_id, action)
+        assert len(rows) == count and all(row["source"] == "mcp" for row in rows), action
+    assert "Secret" not in json.dumps(audit_rows(application, organization_id, "line.adopted"))
+    rows = call_rows(application, organization_id)
+    kinds = {row["tool"]: row["kind"] for row in rows}
+    assert kinds["list_lines"] == kinds["list_events"] == kinds["get_state"] == "read"
+    assert kinds["create_scenario"] == kinds["add_event"] == kinds["update_event"] == kinds["delete_event"] == kinds["adopt_scenario"] == "write"
+    assert ("add_event", "refused", "read_only") in {(row["tool"], row["outcome"], row["reason"]) for row in rows} and ("add_event", "refused", "forbidden") in {(row["tool"], row["outcome"], row["reason"]) for row in rows}
+    assert "Grow" not in json.dumps(rows) and "Hire" not in json.dumps(rows)
+
+
 def test_agents_write_a_summary_and_proposals_under_their_own_label(database_url: str) -> None:
     application, verifier = make_app(database_url, "mcp-analysis")
     with TestClient(application) as owner:
@@ -295,7 +375,7 @@ def test_agents_write_a_summary_and_proposals_under_their_own_label(database_url
         _, created = call(owner, bearer, "create_model", organization_id=organization_id, name="Agent twin")
         model_id = created["result"]["id"]
         _, graph = call(owner, bearer, "get_model", organization_id=organization_id, model_id=model_id)
-        version_id = graph["result"]["version"]["id"]
+        version_id = graph["result"]["line"]["id"]
         _, metric = call(owner, bearer, "create_metric", organization_id=organization_id, model_id=model_id, line_id=version_id, key="revenue", name="Revenue")
         values = [{"period": f"2025-{month:02d}-01", "value": 100 - month * 3} for month in range(1, 13)]
         call(owner, bearer, "set_metric_values", organization_id=organization_id, model_id=model_id, line_id=version_id, metric_id=metric["result"]["id"], values=values)

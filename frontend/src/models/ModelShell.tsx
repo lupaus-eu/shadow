@@ -5,15 +5,15 @@ import { usePageTitle } from "../shell/AppShell";
 import { modelHref, modelsHref } from "../shell/nav";
 import { useOrganization } from "../shell/organization-outlet";
 import { Alert, Button, Field, Select, useConfirm } from "../ui";
-import { createVersion, deleteVersion, loadModels, loadVersions, RuleError, type ModelSummary, type ModelVersion } from "./client";
+import { createScenario, deleteLine, loadLines, loadModels, RuleError, startingEvent, type ModelLine, type ModelSummary } from "./client";
 import { modelMessages } from "./messages";
 
-export type ModelOutlet = { organizationId: string; modelId: string; model: ModelSummary; version: ModelVersion; versions: ModelVersion[]; writable: boolean; reloadVersions: () => Promise<void> };
+export type ModelOutlet = { organizationId: string; modelId: string; model: ModelSummary; line: ModelLine; lines: ModelLine[]; writable: boolean; reloadLines: () => Promise<void> };
 export const useModel = () => useOutletContext<ModelOutlet>();
 
 const TAB = "inline-flex h-9 items-center rounded-[8px] px-3 text-[13px] font-medium text-ink-muted no-underline hover:bg-surface-sunken aria-[current=page]:bg-accent-soft aria-[current=page]:text-accent";
 
-/** `/organizations/:organizationId/models/:modelId/*`: the model's tabs and the version everything below shows. */
+/** `/organizations/:organizationId/models/:modelId/*`: the model's tabs and the line (Base line or Scenario) everything below shows. */
 export function ModelShell() {
   const { workspace, locale } = useOrganization();
   const { modelId = "" } = useParams();
@@ -23,54 +23,61 @@ export function ModelShell() {
   const writable = workspace.subscription.writable;
   const confirm = useConfirm();
   const [model, setModel] = useState<ModelSummary | null>(null);
-  const [versions, setVersions] = useState<ModelVersion[] | null>(null);
+  const [lines, setLines] = useState<ModelLine[] | null>(null);
   const [failed, setFailed] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   usePageTitle(model?.name ?? text.title);
 
-  const reloadVersions = useCallback(async () => {
+  const reloadLines = useCallback(async () => {
     try {
-      const [models, loaded] = await Promise.all([loadModels(organizationId), loadVersions(organizationId, modelId)]);
+      const [models, loaded] = await Promise.all([loadModels(organizationId), loadLines(organizationId, modelId)]);
       setModel(models.find((item) => item.id === modelId) ?? null);
-      setVersions(loaded);
+      setLines(loaded);
       setFailed(false);
     } catch { setFailed(true); }
   }, [organizationId, modelId]);
-  useEffect(() => { void reloadVersions(); }, [reloadVersions]);
+  useEffect(() => { void reloadLines(); }, [reloadLines]);
 
-  const requested = search.get("version");
-  const version = versions?.find((item) => item.id === requested) ?? versions?.find((item) => item.is_baseline);
-  const select = (id: string | null) => setSearch(id ? { version: id } : {});
+  // The selected line is the `line` search parameter (the Base line when absent). Ticket 09 of the model timeline replaces this picker.
+  const requested = search.get("line");
+  const line = lines?.find((item) => item.id === requested) ?? lines?.find((item) => item.kind === "base");
+  const select = (id: string | null) => setSearch(id ? { line: id } : {});
 
   async function fork() {
-    const name = window.prompt(text.versionName, "");
-    if (!name?.trim() || !version) return;
+    const name = window.prompt(text.scenarioName, "");
+    if (!name?.trim() || !line) return;
     setNotice(null);
-    try { const created = await createVersion(organizationId, modelId, name.trim(), version.id); await reloadVersions(); select(created.id); } catch (cause) {
-      setNotice(cause instanceof RuleError ? text.versionDuplicate : text.failed);
+    try {
+      const branchEventId = await startingEvent(organizationId, modelId, line);
+      if (!branchEventId) { setNotice(text.failed); return; }
+      const created = await createScenario(organizationId, modelId, name.trim(), branchEventId);
+      await reloadLines();
+      select(created.id);
+    } catch (cause) {
+      setNotice(cause instanceof RuleError ? text.scenarioDuplicate : text.failed);
     }
   }
   async function remove() {
-    if (!version || version.is_baseline) return;
-    if (!(await confirm({ title: text.deleteVersionConfirm(version.name), confirmLabel: text.deleteVersion, destructive: true }))) return;
+    if (!line || line.kind === "base") return;
+    if (!(await confirm({ title: text.deleteScenarioConfirm(line.name), confirmLabel: text.deleteScenario, destructive: true }))) return;
     setNotice(null);
-    try { await deleteVersion(organizationId, modelId, version); select(null); await reloadVersions(); } catch (cause) {
-      setNotice(cause instanceof RuleError ? text.versionHasForks : text.failed);
+    try { await deleteLine(organizationId, modelId, line); select(null); await reloadLines(); } catch (cause) {
+      setNotice(cause instanceof RuleError ? text.scenarioHasChildren : text.failed);
     }
   }
 
   if (failed) return <Alert tone="danger" role="alert">{text.failed}</Alert>;
-  if (!model || !versions || !version) return <p role="status" className="text-ink-muted">{text.loading}</p>;
-  const suffix = version.is_baseline ? "" : `?version=${version.id}`;
+  if (!model || !lines || !line) return <p role="status" className="text-ink-muted">{text.loading}</p>;
+  const suffix = line.kind === "base" ? "" : `?line=${line.id}`;
   const tab = (path: string, label: string, end = false) => <NavLink end={end} className={TAB} to={`${modelHref(organizationId, modelId)}${path}${suffix}`}>{label}</NavLink>;
   return (
     <div className="flex flex-col gap-4">
       <Link className="inline-flex w-fit text-[13px] text-ink-muted" to={modelsHref(organizationId)}>{text.back}</Link>
       <h1 className="m-0 text-xl font-semibold">{model.name}</h1>
       <div className="flex flex-wrap items-end gap-3">
-        <Field label={text.version} className="w-56">{(control) => <Select {...control} value={version.id} onChange={(event) => select(versions.find((item) => item.id === event.target.value)?.is_baseline ? null : event.target.value)}>{versions.map((item) => <option key={item.id} value={item.id}>{item.is_baseline ? text.baseline : item.name}</option>)}</Select>}</Field>
-        {writable ? <Button onClick={() => void fork()}>{text.newVersion}</Button> : null}
-        {writable && !version.is_baseline ? <Button variant="ghost-danger" onClick={() => void remove()}>{text.deleteVersion}</Button> : null}
+        <Field label={text.line} className="w-56">{(control) => <Select {...control} value={line.id} onChange={(event) => select(lines.find((item) => item.id === event.target.value)?.kind === "base" ? null : event.target.value)}>{lines.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</Select>}</Field>
+        {writable ? <Button onClick={() => void fork()}>{text.newScenario}</Button> : null}
+        {writable && line.kind !== "base" ? <Button variant="ghost-danger" onClick={() => void remove()}>{text.deleteScenario}</Button> : null}
       </div>
       <nav aria-label={model.name} className="flex flex-wrap gap-1 border-b border-line pb-2">
         {tab("", text.tabs.structure, true)}
@@ -80,7 +87,7 @@ export function ModelShell() {
         {tab("/analysis", text.tabs.analysis)}
       </nav>
       {notice ? <Alert tone="danger" role="alert">{notice}</Alert> : null}
-      <Outlet context={{ organizationId, modelId, model, version, versions, writable, reloadVersions } satisfies ModelOutlet} />
+      <Outlet context={{ organizationId, modelId, model, line, lines, writable, reloadLines } satisfies ModelOutlet} />
     </div>
   );
 }

@@ -227,9 +227,9 @@ Every write is audited.
 
 | Method and path | Purpose |
 | --- | --- |
-| `GET`, `POST` `/models` | List and create models; a new model gets the default metamodel and a base version |
-| `GET`, `PATCH`, `DELETE` `/models/{model_id}` | Read (with types and rules; `?version_id=` picks the line of that version), rename, delete. The graph is the replayed state after the line's last event, with `latest_event` (`id`, `version`, `occurred_on`, `title`); nodes and connections carry no `version`. Until ticket 08 retires the route, prefer `GET .../lines/{line_id}/state` |
-| `POST`, `PATCH`, `DELETE` `.../node-types[/{type_id}]` | Node types; deleting one that any event change names (or an old `nodes` row) answers 409 `in_use` |
+| `GET`, `POST` `/models` | List and create models (`base_line_id` names the Base line); a new model gets the default metamodel, a Base line and an empty "Initial situation" event |
+| `GET`, `PATCH`, `DELETE` `/models/{model_id}` | Read (the model, `line` and `lines` (the Base line first, then the Scenarios, as `GET /lines` shows them), the metamodel and the graph of one line; `?line_id=` picks it, the Base line by default), rename, delete. The graph is the replayed state after the line's last event, with `latest_event` (`id`, `version`, `occurred_on`, `title`); nodes and connections carry no `version`. For another event or a date use `GET .../lines/{line_id}/state` |
+| `POST`, `PATCH`, `DELETE` `.../node-types[/{type_id}]` | Node types; deleting one that any event change names answers 409 `in_use` |
 | `POST`, `PATCH`, `DELETE` `.../connection-types[/{type_id}]` | Connection types; the same rule |
 | `POST`, `DELETE` `.../allowed-connections` | Add or remove a rule allowing a connection type between two node types; removing one that some chain of the Model needs to replay (an event adds or re-routes a connection by it, in any line) answers 409 `in_use` |
 
@@ -237,26 +237,17 @@ The routes `POST`, `PATCH`, `DELETE` `.../nodes` and `.../connections` (version-
 model-timeline ticket 07; canvas edits are changes inside an event (below). The node-type, connection-type and
 rule deletes lock the Model row like event writes, so an event cannot start using a type while it is deleted.
 
-## Versions (ADR-0045)
-
-| Method and path | Purpose |
-| --- | --- |
-| `GET`, `POST` `/models/{model_id}/versions` | List and fork a version from a base; a fork also creates the Scenario line of the same id (branching from the base line's last event) and copies the base line's metrics |
-| `PATCH`, `DELETE` `.../versions/{version_id}` | Rename, delete; the line of the same id is renamed or deleted with it |
-
-The change list (`GET .../versions/{id}/changes`) and merge (`POST .../versions/{id}/merge`) routes were removed with
-ticket 07 of the model timeline: graphs live in events now (ADR-0048) and ADR-0050 replaces merge with adoption of
-a Scenario. A fork starts from the base line's graph (it branches from its last event, so it copies no nodes);
-ticket 08 retires the remaining version routes.
+The version routes (`/versions`, list, fork, rename, delete) and the `nodes`, `connections` and `model_versions` tables
+were removed with ticket 08 of the model timeline: a version is a line now (ADR-0048), merge is adoption of a Scenario
+(ADR-0050) and the change list is gone.
 
 ## Lines, events and state (model timeline; ADR-0048, ADR-0049)
 
 Routes under `/models/{model_id}/lines` and `/models/{model_id}/events`. Reads are in
 `backend/app/timeline_routes.py` (loading and the planned rule are in `backend/app/timeline/loader.py`) and
 need any membership; they work while the Organization is read-only. Event writes are in
-`backend/app/timeline_event_routes.py`. Another Organization, an unknown Model, line or event answers 404. A
-line's id equals its former version id. Scenario and position writes are in `backend/app/timeline_line_routes.py`
-(below); canvas edits are in `backend/app/timeline_edit_routes.py` (below); adoption arrives with ticket 08.
+`backend/app/timeline_event_routes.py`. Another Organization, an unknown Model, line or event answers 404. Scenario, adoption and position writes are in `backend/app/timeline_line_routes.py`
+(below); canvas edits are in `backend/app/timeline_edit_routes.py` (below).
 
 | Method and path | Purpose |
 | --- | --- |
@@ -270,6 +261,7 @@ line's id equals its former version id. Scenario and position writes are in `bac
 | `POST` `/lines` | Create a Scenario (see below) |
 | `PATCH` `/lines/{line_id}` | Rename and set the description (see below) |
 | `DELETE` `/lines/{line_id}` | Delete a Scenario (see below) |
+| `POST` `/lines/{line_id}/adopt` | Adopt a Scenario into its parent line (see below) |
 | `POST` `/lines/{line_id}/acknowledge-start` | Clear `start_changed_at` |
 | `PUT` `/lines/{line_id}/positions` | Write node positions for one line |
 
@@ -388,13 +380,41 @@ added with.
 
 Audit actions `line.created` (`model_id`, `line_id`, `parent_line_id`, `branch_event_id`), `line.renamed` (ids and
 the `fields` changed) and `line.deleted` (ids, `parent_line_id`, `event_count`) never hold names or descriptions
-(`audit.md`). Until ticket 08 retires the version routes, renaming or deleting a Scenario that came from a fork also
-updates or removes its old version row so both route families agree.
+(`audit.md`).
+
+### Adopting a Scenario (ADR-0050)
+
+`POST /lines/{line_id}/adopt` (body optional: `{expected_version}` of the Scenario) appends the Scenario's own events to
+its parent line. The events are created again in the parent, in order, with new ids and entry numbers, the same date,
+title, note and changes (element ids stay, so the nodes are the same nodes); the positions drawn on the Scenario for
+the nodes it added are copied to the parent line; metrics, values and simulations are not adopted. It needs the parent to
+have no events after the Scenario's branch point (a fast-forward) and no Scenario event dated before the parent's last
+event; the Model row is locked, the chain is replayed as for an event write, and nothing is saved on a refusal. Afterwards
+a Scenario with no child Scenarios is deleted with its metrics and simulations. One with children stays: it has no events
+of its own, its branch point is the last adopted event, and its child Scenarios now branch from the parent line at the
+adopted copies of the events they branched from (their states do not change). Owners and Admins adopt into the Base line;
+into a Scenario parent any Member may (the write rule of the parent line). Answers 200
+`{line, scenario, adopted_events, moved_scenarios}`: the parent line, the Scenario if it was kept (else null), the new
+events and the number of child Scenarios moved.
+
+| Answer | When |
+| --- | --- |
+| 403 | A Member adopts into the Base line, or the Organization is read-only |
+| 404 | Unknown Model or line, or another Organization's |
+| 409 `{latest_version}` | `expected_version` is stale |
+| 409 `{reason: "parent_moved_on", parent_line_id, parent_name, parent_kind, events_after, events[], suggestion}` | The parent has events after the branch point; `events` lists up to 20 of them (`id`, `title`, `occurred_on`); `suggestion` is `{action: "create_scenario", parent_line_id, branch_event_id, branch_event_title, branch_event_date}`: create a new Scenario from the parent's latest event and redo the differing changes |
+| 409 `{reason: "limit_reached", limit: "events_per_line"}` | The parent would exceed `LIMIT_EVENTS_PER_LINE` |
+| 422 `{reason: "dates_precede", parent_last_event_id, parent_last_event_title, parent_last_event_date, events[], suggestion}` | A Scenario event is dated before the parent's last event; `suggestion` is `{action: "move_events_after", date}`. Writes keep Scenario events on or after the branch event, so this only follows data changed outside the application |
+| 422 `{reason: "base_line"}` | The line is the Base line |
+| 422 `{reason: "nothing_to_adopt"}` | The Scenario has no events of its own |
+| 422 `{reason: "chain_broken", ...}` | The adopted chain would not replay (as for event writes) |
+
+The audit action `line.adopted` holds the ids, `event_count`, `change_counts`, `scenario_kept` and `moved_scenarios`,
+never names, titles or notes (`audit.md`).
 
 ## Metrics
 
-Under `/models/{model_id}/lines/{line_id}/metrics` (a line is the Base line or a Scenario; until ticket 09 the web
-application passes the id of the selected version, which is also the id of its line). Keys, formulas and derived
+Under `/models/{model_id}/lines/{line_id}/metrics` (a line is the Base line or a Scenario). Keys, formulas and derived
 metrics are scoped to one line; an unknown line, or one of another Model, answers 404. A metric's `node_id` is a
 node's element id (migration 0063 dropped the foreign key to the old `nodes` table); creating or changing a metric
 accepts a node of the line's current state (after its last event), otherwise 422, and a metric that already has a node
@@ -575,15 +595,16 @@ Protocol. The endpoint is off unless `MCP_ENABLED=true`.
   belong to an existing customer User Account; MCP never creates an account.
 - Tools (every Organization-scoped tool takes `organization_id`):
   - Organizations: `list_organizations`, `get_organization`.
-  - Reads: `list_models`, `get_model` (nodes, connections, metamodel and `latest_event`, the event `create_node` and `create_connection` write into),
+  - Reads: `list_models` (with `base_line_id`), `get_model` (the lines, the metamodel and the nodes and connections of one line after its last event, with `latest_event`, the event `create_node` and `create_connection` write into; `line_id` picks the line), `list_lines`, `list_events` (a line's own events), `get_state` (the graph after an `event_id` or on an `as_of` date),
     `list_metrics`, `get_metric_series`, `list_simulations`, `get_simulation` (these four take `line_id`), `get_analysis`.
-  - Writes: `create_model`, `create_node` and `create_connection` (these two take `event_id`, as changes inside that event,
-    and an optional `expected_version` of the event), `create_version`,
+  - Writes: `create_model`, `create_scenario` (from a `branch_event_id`), `add_event`, `update_event` (`expected_version`), `delete_event`
+    (destructive), `adopt_scenario` (destructive: it can delete the Scenario), `create_node` and `create_connection` (these two take `event_id`, as changes inside that event,
+    and an optional `expected_version` of the event),
     `create_metric`, `set_metric_values`, `run_simulation` (these three take `line_id`), `generate_analysis`,
-    `set_analysis_summary`, `add_proposal` (the agent's own analysis, ADR-0047). `get_version_changes` and
-    `merge_version` were removed with ticket 07 of the model timeline.
-  - There are no delete tools; Shadow itself calls no model (ADR-0047); metamodel editing, import, and
-    export stay in the web application (ADR-0046).
+    `set_analysis_summary`, `add_proposal` (the agent's own analysis, ADR-0047). The version tools (`create_version`,
+    `merge_version`, `get_version_changes`) were removed in model-timeline tickets 07 and 08.
+  - Deleting is limited to events (`delete_event`, a correction of recorded history) and adopting a Scenario; Shadow itself
+    calls no model (ADR-0047); metamodel editing, import, and export stay in the web application (ADR-0046).
   Tools call the same endpoint functions as the REST API, so roles, `expected_version`,
   the read-only state, and audit are identical. Writes are saved at once and carry the MCP
   tool annotations (`readOnlyHint`, `destructiveHint`) so the client can ask the person

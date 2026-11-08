@@ -17,18 +17,6 @@ def stack():
         yield clients
 
 
-@pytest.fixture(autouse=True)
-def _no_versionless_metrics(database_url: str):
-    """Metrics of a Scenario made by the new route have no old version row; 0062's downgrade drops them, and the
-    migration test counts every row of the shared test database, so leave none behind."""
-    yield
-    engine = create_engine(database_url)
-    with engine.begin() as connection:
-        for table in ("metric_values", "metrics", "simulations"):
-            connection.execute(text(f"DELETE FROM {table} WHERE line_id NOT IN (SELECT id FROM model_versions)"))
-    engine.dispose()
-
-
 def create(world: World, name: str, branch_event: str, client=None, **extra):
     return (client or world.owner).post(f"{world.path}/lines", json={"name": name, "branch_event_id": branch_event, **extra})
 

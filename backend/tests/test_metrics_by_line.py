@@ -24,10 +24,10 @@ def stack():
 def _model(stack, database_url, subject):
     _, owner, organization_id, base = _tenant(stack, database_url, subject)
     model_id = owner.post(f"{base}/models", json={"name": "Twin"}).json()["id"]
-    return owner, UUID(organization_id), base, model_id, _graph(owner, base, model_id)["version"]["id"]
+    return owner, UUID(organization_id), base, model_id, _graph(owner, base, model_id)["line"]["id"]
 
 
-def test_the_old_fork_route_creates_a_scenario_line_and_copies_metrics_line_wise(database_url: str, stack: ExitStack) -> None:
+def test_a_scenario_copies_metrics_and_they_stay_line_wise(database_url: str, stack: ExitStack) -> None:
     owner, _, base, model_id, baseline = _model(stack, database_url, "lines-fork")
     path = f"{base}/models/{model_id}"
     lines = lambda: owner.get(f"{path}/lines").json()  # noqa: E731
@@ -36,10 +36,10 @@ def test_the_old_fork_route_creates_a_scenario_line_and_copies_metrics_line_wise
     revenue = owner.post(metrics, json={"key": "revenue", "name": "Revenue"}).json()
     owner.post(metrics, json={"key": "double", "name": "Double", "formula": "revenue * 2"})
     assert _values(owner, metrics, revenue["id"], MONTHS).status_code == 200
-    fork = owner.post(f"{path}/versions", json={"name": "Scenario", "description": "What if"}).json()
-    scenario = next(line for line in lines() if line["id"] == fork["id"])  # a line with the id of the version
+    fork = owner.post(f"{path}/lines", json={"name": "Scenario", "description": "What if", "branch_event_id": base_events[-1]["id"]}).json()
+    scenario = next(line for line in lines() if line["id"] == fork["id"])
     assert scenario["kind"] == "scenario" and scenario["parent_line_id"] == baseline and scenario["name"] == "Scenario"
-    assert scenario["branch_event_id"] == base_events[-1]["id"]  # the Base line's last event; none was added
+    assert scenario["branch_event_id"] == base_events[-1]["id"]  # the Base line's last event
     copies = {m["key"]: m for m in owner.get(f"{path}/lines/{fork['id']}/metrics").json()}
     assert set(copies) == {"revenue", "double"} and copies["revenue"]["values"] == 12
     # Scoped to the line: same keys in both lines, edits and formulas stay inside one.
@@ -55,11 +55,11 @@ def test_the_old_fork_route_creates_a_scenario_line_and_copies_metrics_line_wise
     assert owner.get(f"{path}/lines/{baseline}/simulations").json() == []
     assert owner.get(f"{path}/lines/{baseline}/simulations/{run.json()['simulation']['id']}").status_code == 404
     # Rename follows; the base line keeps its events (no extra Initial situation event when one exists).
-    assert owner.patch(f"{path}/versions/{fork['id']}", json={"name": "Renamed", "description": None, "expected_version": 1}).status_code == 200
+    assert owner.patch(f"{path}/lines/{fork['id']}", json={"name": "Renamed", "description": None, "expected_version": 1}).status_code == 200
     assert next(line for line in lines() if line["id"] == fork["id"])["name"] == "Renamed"
     assert len(owner.get(f"{path}/lines/{baseline}/events").json()) == len(base_events)
-    # Deleting the version deletes its line, metrics and simulations.
-    assert owner.delete(f"{path}/versions/{fork['id']}", params={"expected_version": 2}).status_code == 204
+    # Deleting the Scenario deletes its metrics and simulations.
+    assert owner.delete(f"{path}/lines/{fork['id']}", params={"expected_version": 2}).status_code == 204
     assert [line["id"] for line in lines()] == [baseline]
     assert owner.get(f"{path}/lines/{fork['id']}/metrics").status_code == 404
     engine = create_engine(database_url)
@@ -67,22 +67,6 @@ def test_the_old_fork_route_creates_a_scenario_line_and_copies_metrics_line_wise
         left = connection.execute(text("SELECT (SELECT count(*) FROM metrics WHERE line_id = :id) + (SELECT count(*) FROM metric_values WHERE line_id = :id) + (SELECT count(*) FROM simulations WHERE line_id = :id)"), {"id": UUID(fork["id"])}).scalar_one()
     engine.dispose()
     assert left == 0
-
-
-def test_a_base_line_without_events_gets_an_initial_situation_when_forked(database_url: str, stack: ExitStack) -> None:
-    owner, _, base, model_id, baseline = _model(stack, database_url, "lines-fork-empty")
-    path = f"{base}/models/{model_id}"
-    engine = create_engine(database_url)
-    with engine.begin() as connection:
-        connection.execute(text("DELETE FROM timeline_events WHERE line_id = :id"), {"id": UUID(baseline)})
-    engine.dispose()
-    assert owner.get(f"{path}/lines/{baseline}/events").json() == []
-    fork = owner.post(f"{path}/versions", json={"name": "Scenario"})
-    assert fork.status_code == 201
-    events = owner.get(f"{path}/lines/{baseline}/events").json()
-    assert [(event["title"], event["change_count"]) for event in events] == [("Initial situation", 0)]
-    scenario = next(line for line in owner.get(f"{path}/lines").json() if line["id"] == fork.json()["id"])
-    assert scenario["branch_event_id"] == events[0]["id"]
 
 
 def test_unknown_lines_answer_404_and_other_models_lines_are_not_reachable(database_url: str, stack: ExitStack) -> None:
@@ -122,11 +106,11 @@ def test_metrics_can_point_at_a_node_of_the_lines_current_graph(database_url: st
     assert cleared.status_code == 200 and cleared.json()["node_id"] is None
 
 
-def test_the_old_metric_node_foreign_key_is_gone(database_url: str, stack: ExitStack) -> None:
+def test_metrics_have_no_foreign_key_to_a_nodes_table(database_url: str, stack: ExitStack) -> None:
     owner, _, base, model_id, baseline = _model(stack, database_url, "lines-node-fk")
     engine = create_engine(database_url)
     with engine.connect() as connection:
-        references = connection.execute(text("SELECT count(*) FROM pg_constraint WHERE conrelid = 'metrics'::regclass AND contype = 'f' AND confrelid = 'nodes'::regclass")).scalar_one()
+        references = connection.execute(text("SELECT count(*) FROM pg_constraint WHERE conrelid = 'metrics'::regclass AND contype = 'f' AND confrelid::regclass::text = 'nodes'")).scalar_one()
     engine.dispose()
     assert references == 0
 
@@ -142,7 +126,7 @@ def test_migration_0062_makes_line_id_required_and_drops_version_id(database_url
     path = f"{base}/models/{model_id}"
     kept = owner.post(f"{path}/lines/{baseline}/metrics", json={"key": "kept", "name": "Kept"}).json()
     assert _values(owner, f"{path}/lines/{baseline}/metrics", kept["id"], MONTHS[:2]).status_code == 200
-    fork = owner.post(f"{path}/versions", json={"name": "Scenario"}).json()["id"]
+    fork = owner.post(f"{path}/lines", json={"name": "Scenario", "branch_event_id": _latest_event(owner, path)["id"]}).json()["id"]
     stack.close()
     engine = create_engine(database_url)
     config = _config(database_url)
@@ -185,7 +169,7 @@ def test_migration_0063_remaps_metric_nodes_to_element_ids_and_drops_the_foreign
     shared, own = uuid4(), uuid4()  # a baseline node a fork copied, and a node only the fork has
     created = owner.post(f"{path}/lines/{baseline}/events", json={"occurred_on": "2099-01-01", "title": "Nodes", "changes": [{"op": "add_node", "element_id": str(shared), "payload": {"node_type_id": types["product"], "name": "Shared"}}]})
     assert created.status_code == 201 and event
-    fork = owner.post(f"{path}/versions", json={"name": "Fork"}).json()["id"]
+    fork = owner.post(f"{path}/lines", json={"name": "Fork", "branch_event_id": created.json()["id"]}).json()["id"]
     fork_event = owner.post(f"{path}/lines/{fork}/events", json={"occurred_on": "2099-02-01", "title": "Own", "changes": [{"op": "add_node", "element_id": str(own), "payload": {"node_type_id": types["goal"], "name": "Own"}}]})
     assert fork_event.status_code == 201, fork_event.text
     metrics = {key: owner.post(f"{path}/lines/{line}/metrics", json={"key": key, "name": key}).json()["id"] for key, line in (("on_base", baseline), ("on_copy", fork), ("on_own", fork), ("on_stale", baseline))}

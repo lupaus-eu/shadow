@@ -12,10 +12,10 @@ const addMonths = (start: string, count: number) => {
   return monthKey(new Date(year, month - 1 + count, 1));
 };
 
-/** `…/models/:modelId/metrics`: the version's KPIs, their formulas and monthly values. */
+/** `…/models/:modelId/metrics`: the line's KPIs, their formulas and monthly values. */
 export function MetricsPage() {
   const { locale } = useOrganization();
-  const { organizationId, modelId, version, writable } = useModel();
+  const { organizationId, modelId, line, writable } = useModel();
   const text = modelMessages(locale);
   const confirm = useConfirm();
   const [metrics, setMetrics] = useState<Metric[] | null>(null);
@@ -30,22 +30,22 @@ export function MetricsPage() {
     setError(null);
     setInfo(null);
     try {
-      const report = await importValues(organizationId, modelId, version.id, file);
+      const report = await importValues(organizationId, modelId, line.id, file);
       setInfo([text.importDone(report.values, report.metrics), text.importSkipped(report.unknown_metrics, report.derived_metrics, report.invalid_cells)].filter(Boolean).join(" "));
     } catch (cause) { setError(cause instanceof RuleError ? `${text.importFailed} ${cause.message}` : text.importFailed); }
     await reload();
   }
   async function exportAs(format: "csv" | "xlsx") {
-    try { await exportValues(organizationId, modelId, version.id, format); } catch { setError(text.failed); }
+    try { await exportValues(organizationId, modelId, line.id, format); } catch { setError(text.failed); }
   }
 
   const reload = useCallback(async () => {
     try {
-      const [list, graph] = await Promise.all([loadMetrics(organizationId, modelId, version.id), loadGraph(organizationId, modelId, version.id)]);
+      const [list, graph] = await Promise.all([loadMetrics(organizationId, modelId, line.id), loadGraph(organizationId, modelId, line.id)]);
       setMetrics(list);
       setNodes(graph.nodes);
     } catch { setError(text.failed); }
-  }, [organizationId, modelId, version.id, text.failed]);
+  }, [organizationId, modelId, line.id, text.failed]);
   useEffect(() => { setSelectedId(null); void reload(); }, [reload]);
 
   const selected = metrics?.find((item) => item.id === selectedId) ?? null;
@@ -83,7 +83,7 @@ export function MetricsPage() {
           ))}
         </ul>
         {writable ? (
-          <form className="flex flex-col gap-2 rounded-[var(--radius-card)] border border-line bg-surface p-3" onSubmit={(event) => { event.preventDefault(); void act(async () => { const created = await createMetric(organizationId, modelId, version.id, { key: draft.key, name: draft.name, unit: null, node_id: null, formula: null }); setDraft({ key: "", name: "" }); setSelectedId(created.id); }); }}>
+          <form className="flex flex-col gap-2 rounded-[var(--radius-card)] border border-line bg-surface p-3" onSubmit={(event) => { event.preventDefault(); void act(async () => { const created = await createMetric(organizationId, modelId, line.id, { key: draft.key, name: draft.name, unit: null, node_id: null, formula: null }); setDraft({ key: "", name: "" }); setSelectedId(created.id); }); }}>
             <h3 className="m-0 text-[13px] font-semibold">{text.newMetric}</h3>
             <Field label={text.metricName}>{(control) => <TextInput {...control} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />}</Field>
             <Field label={text.metricKey} hint={text.metricKeyHint}>{(control) => <TextInput {...control} value={draft.key} onChange={(event) => setDraft({ ...draft, key: event.target.value })} />}</Field>
@@ -95,10 +95,10 @@ export function MetricsPage() {
         {error ? <Alert tone="danger" role="alert">{error}</Alert> : null}
         {selected ? (
           <MetricEditor key={`${selected.id}-${selected.version}`} metric={selected} nodes={nodes} writable={writable} text={text}
-            onSave={(input) => act(() => updateMetric(organizationId, modelId, version.id, selected, input))}
-            onDelete={async () => { if (await confirm({ title: selected.name, confirmLabel: text.delete, destructive: true })) { setSelectedId(null); await act(() => deleteMetric(organizationId, modelId, version.id, selected), text.metricReadByFormulas(metrics?.filter((item) => item.formula?.includes(selected.key)).map((item) => item.key).join(", ") ?? "")); } }}
-            loadSeries={() => loadSeries(organizationId, modelId, version.id, selected.id)}
-            saveValues={(values) => saveValues(organizationId, modelId, version.id, selected.id, values)} />
+            onSave={(input) => act(() => updateMetric(organizationId, modelId, line.id, selected, input))}
+            onDelete={async () => { if (await confirm({ title: selected.name, confirmLabel: text.delete, destructive: true })) { setSelectedId(null); await act(() => deleteMetric(organizationId, modelId, line.id, selected), text.metricReadByFormulas(metrics?.filter((item) => item.formula?.includes(selected.key)).map((item) => item.key).join(", ") ?? "")); } }}
+            loadSeries={() => loadSeries(organizationId, modelId, line.id, selected.id)}
+            saveValues={(values) => saveValues(organizationId, modelId, line.id, selected.id, values)} />
         ) : <p className="m-0 text-[13px] text-ink-muted">{text.noSelection}</p>}
       </section>
     </div>

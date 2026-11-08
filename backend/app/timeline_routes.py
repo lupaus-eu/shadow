@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.auth import AuthenticatedUser, Clock
 from app.auth_routes import AuthenticatedUserDependency
 from app.model_routes import (
+    LineResponse,
     AllowedConnectionResponse,
     ConnectionTypeResponse,
     NodeTypeResponse,
@@ -29,21 +30,6 @@ from app.timeline.chain import chain_events, replay, state_as_of
 from app.timeline.errors import ChainBroken
 from app.timeline.loader import ModelTimeline, is_planned, load_timeline, today_in_organization
 from app.timeline.state import ConnectionState, NodeState, State
-
-
-class LineResponse(BaseModel):
-    id: UUID
-    name: str
-    description: str | None
-    kind: str
-    parent_line_id: UUID | None
-    branch_event_id: UUID | None
-    start_changed_at: datetime | None
-    created_by_user_account_id: UUID | None
-    version: int
-    created_at: datetime
-    event_count: int
-    latest_event_date: date | None
 
 
 class BranchResponse(BaseModel):

@@ -1,4 +1,4 @@
-"""Model tools for agents: models, versions, canvas edits in events, metrics, simulations and analysis.
+"""Model tools for agents: models, lines and their events, scenarios, canvas edits in events, metrics, simulations and analysis.
 
 Each tool calls the same endpoint function the REST API serves, so the rules, the roles, the
 read-only subscription block and the audit entries are the REST API's own. The endpoint
@@ -6,7 +6,7 @@ functions are taken from the routers, not copied.
 """
 
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from types import SimpleNamespace
 from typing import Any
 from uuid import UUID
@@ -18,12 +18,14 @@ from pydantic import BaseModel, ValidationError
 
 from app.analysis_routes import ProposalRequest, SummaryRequest, create_analysis_router
 from app.mcp_server.runtime import ToolRuntime
-from app.mcp_server.tools import READ_ONLY, UNTRUSTED, WRITES
+from app.mcp_server.tools import DELETES, READ_ONLY, UNTRUSTED, WRITES
 from app.metric_routes import MetricRequest, ValuesRequest, create_metric_router
 from app.model_routes import ModelRequest, create_model_router
 from app.simulation_routes import SimulationRequest, create_simulation_router
 from app.timeline_edit_routes import ConnectionCreate, NodeCreate, create_timeline_edit_router
-from app.version_routes import VersionRequest, create_version_router
+from app.timeline_event_routes import EventRequest, EventUpdate, create_timeline_event_router
+from app.timeline_line_routes import AdoptRequest, ScenarioRequest, create_timeline_line_router
+from app.timeline_routes import create_timeline_router
 
 REQUEST = SimpleNamespace(headers={})  # the audit entry takes only a request id from it
 
@@ -46,8 +48,11 @@ def register_model_tools(server: MCPServer, runtime: ToolRuntime) -> None:
         raise RuntimeError
 
     models = _endpoints(create_model_router(session_factory=factory, authenticated_user_dependency=dependency))
-    versions = _endpoints(create_version_router(session_factory=factory, authenticated_user_dependency=dependency))
-    edits = _endpoints(create_timeline_edit_router(session_factory=factory, authenticated_user_dependency=dependency, clock=lambda: datetime.now(UTC)))
+    clock = lambda: datetime.now(UTC)  # noqa: E731
+    timeline = _endpoints(create_timeline_router(session_factory=factory, authenticated_user_dependency=dependency, clock=clock))
+    lines = _endpoints(create_timeline_line_router(session_factory=factory, authenticated_user_dependency=dependency, clock=clock))
+    events = _endpoints(create_timeline_event_router(session_factory=factory, authenticated_user_dependency=dependency, clock=clock))
+    edits = _endpoints(create_timeline_edit_router(session_factory=factory, authenticated_user_dependency=dependency, clock=clock))
     metrics = _endpoints(create_metric_router(session_factory=factory, authenticated_user_dependency=dependency))
     simulations = _endpoints(create_simulation_router(session_factory=factory, authenticated_user_dependency=dependency))
     analysis = _endpoints(create_analysis_router(session_factory=factory, authenticated_user_dependency=dependency))
@@ -66,13 +71,28 @@ def register_model_tools(server: MCPServer, runtime: ToolRuntime) -> None:
         return await read(organization_id, models["list_models"])
 
     @server.tool(title="Get a model graph", annotations=READ_ONLY)
-    async def get_model(organization_id: UUID, model_id: UUID, version_id: UUID | None = None) -> dict:
-        """Get a model's versions, its node and connection types, and the nodes and connections of one version (the baseline unless version_id is given) after its last event. latest_event is the event that create_node and create_connection write into (null while the line has no events yet): pass its id (and, if you want a stale-write check, its version). version_id is also the id of the version's line."""
-        return await read(organization_id, models["read_graph"], model_id=model_id, version_id=version_id)
+    async def get_model(organization_id: UUID, model_id: UUID, line_id: UUID | None = None) -> dict:
+        """Get a model's lines (the Base line first, then the Scenarios), its node and connection types, and the nodes and connections of one line (the Base line unless line_id is given) after its last event. latest_event is the event that create_node and create_connection write into (null while the line has no events yet): pass its id (and, if you want a stale-write check, its version). For another event or a date use get_state."""
+        return await read(organization_id, models["read_graph"], model_id=model_id, line_id=line_id)
+
+    @server.tool(title="List the lines of a model", annotations=READ_ONLY)
+    async def list_lines(organization_id: UUID, model_id: UUID) -> dict:
+        """List a model's lines: the Base line (what has really happened; its present state is the company's present state) first, then the Scenarios (what-ifs, each with a parent line and a branch_event_id it starts from). Every line has an event_count and latest_event_date."""
+        return await read(organization_id, timeline["list_lines"], model_id=model_id)
+
+    @server.tool(title="List the events of a line", annotations=READ_ONLY)
+    async def list_events(organization_id: UUID, model_id: UUID, line_id: UUID) -> dict:
+        """List a line's own events in order (date, then entry order): id, date, title, note, whether it is planned (dated after today), change counts and the Scenarios that branch from it. A Scenario's list holds only its own events, not those of its parent line."""
+        return await read(organization_id, timeline["list_events"], model_id=model_id, line_id=line_id)
+
+    @server.tool(title="Get the state of a line", annotations=READ_ONLY)
+    async def get_state(organization_id: UUID, model_id: UUID, line_id: UUID, event_id: UUID | None = None, as_of: date | None = None) -> dict:
+        """Get the graph of a line after one event (event_id) or on a date (as_of, YYYY-MM-DD: after the last event dated on or before it); with neither, the present state. Returns nodes, connections, positions and, for the shown event, the elements it added, updated and removed. Give event_id or as_of, not both."""
+        return await read(organization_id, timeline["read_state"], model_id=model_id, line_id=line_id, event_id=event_id, as_of=as_of)
 
     @server.tool(title="List the metrics of a line", annotations=READ_ONLY)
     async def list_metrics(organization_id: UUID, model_id: UUID, line_id: UUID) -> dict:
-        """List the metrics (KPIs) of a line (the Base line or a Scenario; the line id is the id of a version listed by get_model). A derived metric has a formula over other metric keys."""
+        """List the metrics (KPIs) of a line (the Base line or a Scenario; list the lines with list_lines). A derived metric has a formula over other metric keys."""
         return await read(organization_id, metrics["list_metrics"], model_id=model_id, line_id=line_id)
 
     @server.tool(title="Get a metric's monthly values", annotations=READ_ONLY)
@@ -112,11 +132,40 @@ def register_model_tools(server: MCPServer, runtime: ToolRuntime) -> None:
         body = _body(ConnectionCreate, {"expected_version": expected_version, "connection_type_id": connection_type_id, "source_node_id": source_node_id, "target_node_id": target_node_id})
         return await write(organization_id, edits["create_connection"], model_id=model_id, event_id=event_id, body=body)
 
-    @server.tool(title="Create a version", annotations=WRITES)
-    async def create_version(organization_id: UUID, model_id: UUID, name: str, base_version_id: UUID | None = None, description: str | None = None) -> dict:
-        """Fork a version (the baseline unless base_version_id is given): the new version copies the graph and the metrics."""
-        body = _body(VersionRequest, {"name": name, "description": description, "base_version_id": base_version_id})
-        return await write(organization_id, versions["create_version"], model_id=model_id, body=body)
+    @server.tool(title="Create a scenario", annotations=WRITES)
+    async def create_scenario(organization_id: UUID, model_id: UUID, name: str, branch_event_id: UUID, description: str | None = None) -> dict:
+        """Create a Scenario (a what-if line) that starts from the state after branch_event_id, an event of any line (use list_events; the latest event of a line starts from its present state). The Scenario gets a copy of that line's metrics and no events of its own; add them with add_event."""
+        body = _body(ScenarioRequest, {"name": name, "description": description, "branch_event_id": branch_event_id})
+        return await write(organization_id, lines["create_scenario"], model_id=model_id, body=body)
+
+    @server.tool(title="Add an event", annotations=WRITES)
+    async def add_event(organization_id: UUID, model_id: UUID, line_id: UUID, occurred_on: date, title: str, note: str | None = None, changes: list[dict] | None = None) -> dict:
+        """Record a dated event on a line (Owner or Admin on the Base line; any member on a Scenario). occurred_on is YYYY-MM-DD; a date after today makes it planned. changes is the ordered list of {"op", "element_id", "payload"}: add_node (payload node_type_id, name, description, x, y; element_id optional), remove_node, update_node (payload any of name, description, node_type_id), add_connection (payload connection_type_id, source_node_id, target_node_id; element_id optional), remove_connection, reroute_connection (payload source_node_id and/or target_node_id), change_connection_type (payload connection_type_id). element_id is the node or connection id. The whole chain, including every Scenario that branches from the line, is replayed first; if it would break nothing is saved and the refusal names the event, the element and the cause."""
+        body = _body(EventRequest, {"occurred_on": occurred_on, "title": title, "note": note, "changes": changes or []})
+        return await write(organization_id, events["create_event"], model_id=model_id, line_id=line_id, body=body)
+
+    @server.tool(title="Update an event", annotations=WRITES)
+    async def update_event(organization_id: UUID, model_id: UUID, event_id: UUID, expected_version: int, occurred_on: date | None = None, title: str | None = None, note: str | None = None, changes: list[dict] | None = None) -> dict:
+        """Change an event: only the arguments you give change; changes (same shape as in add_event) replaces the whole list; an empty note clears the note. expected_version is the event's current version (list_events); a stale one is refused with a conflict. The chain is replayed first and a break refuses the change."""
+        data: dict = {"expected_version": expected_version}
+        for key, value in (("occurred_on", occurred_on), ("title", title), ("changes", changes)):
+            if value is not None:
+                data[key] = value
+        if note is not None:
+            data["note"] = note or None
+        return await write(organization_id, events["update_event"], model_id=model_id, event_id=event_id, body=_body(EventUpdate, data))
+
+    @server.tool(title="Delete an event", annotations=DELETES)
+    async def delete_event(organization_id: UUID, model_id: UUID, event_id: UUID, expected_version: int) -> dict:
+        """Delete an event (a correction of a recorded history). Refused when another line branches from it, or when a later event or Scenario depends on what it did (the refusal says which). expected_version is the event's current version."""
+        await write(organization_id, events["delete_event"], model_id=model_id, event_id=event_id, expected_version=expected_version)
+        return {"result": {"deleted_event_id": str(event_id)}, "notice": UNTRUSTED}
+
+    @server.tool(title="Adopt a scenario", annotations=DELETES)
+    async def adopt_scenario(organization_id: UUID, model_id: UUID, line_id: UUID, expected_version: int | None = None) -> dict:
+        """Adopt a Scenario into its parent line: its own events are appended to the parent with their titles, notes, changes and dates (metrics are not adopted). Only possible when the parent has no events after the Scenario's branch point and none of the Scenario's dates precede the parent's last event; otherwise it is refused with parent_moved_on or dates_precede and a suggestion (create a new Scenario from the parent's latest event and redo the differences). Owner or Admin for the Base line; a member for a Scenario. Afterwards the Scenario is deleted, unless other Scenarios branch from it: then it stays without events and they move to the parent line."""
+        body = _body(AdoptRequest, {"expected_version": expected_version})
+        return await write(organization_id, lines["adopt_scenario"], model_id=model_id, line_id=line_id, body=body)
 
     @server.tool(title="Create a metric", annotations=WRITES)
     async def create_metric(organization_id: UUID, model_id: UUID, line_id: UUID, key: str, name: str, unit: str | None = None, formula: str | None = None, node_id: UUID | None = None) -> dict:

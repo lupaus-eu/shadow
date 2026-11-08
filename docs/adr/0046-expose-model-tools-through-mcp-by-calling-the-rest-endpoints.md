@@ -11,8 +11,8 @@ MCP offered only organization tools. Agents should read and run models, versions
 ## Decision
 
 - `mcp_server/model_tools.py` maps each router's route names to their endpoint functions and calls them with the signed-in user and a stub request. Roles, the read-only state, `expected_version`, limits, and audit (`source: "mcp"`) are therefore the REST rules, not copies of them.
-- Reads and writes are separate tools with MCP annotations; `merge_version` is marked destructive. Validation errors come back as readable tool errors.
-- No delete tools, no metamodel editing, no import or export, are offered to agents. (ADR-0047 adds `set_analysis_summary` and `add_proposal`, so agents write their own analysis.)
+- Reads and writes are separate tools with MCP annotations; the deleting tools are marked destructive. Validation errors come back as readable tool errors.
+- Agents get no metamodel editing and no import or export. The only deleting tools are `delete_event` (a correction of a recorded history, refused when the chain would break) and `adopt_scenario` (it can delete the adopted Scenario); both are marked destructive (ADR-0048, ADR-0050). (ADR-0047 adds `set_analysis_summary` and `add_proposal`, so agents write their own analysis.)
 
 ## Consequences
 

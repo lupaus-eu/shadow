@@ -14,7 +14,7 @@ const percent = (value: number | null) => (value === null ? "–" : `${value > 0
 export function AnalysisPage() {
   const { locale, workspace } = useOrganization();
   const canOpenAgents = workspace.membership.role === "owner" || workspace.membership.role === "admin";
-  const { organizationId, modelId, version, writable } = useModel();
+  const { organizationId, modelId, line, writable } = useModel();
   const text = modelMessages(locale);
   const [runs, setRuns] = useState<Simulation[] | null>(null);
   const [runId, setRunId] = useState("");
@@ -23,8 +23,8 @@ export function AnalysisPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    void loadSimulations(organizationId, modelId, version.id).then((list) => { setRuns(list); setRunId(list[0]?.id ?? ""); setCompareId(""); }).catch(() => setError(text.failed));
-  }, [organizationId, modelId, version.id, text.failed]);
+    void loadSimulations(organizationId, modelId, line.id).then((list) => { setRuns(list); setRunId(list[0]?.id ?? ""); setCompareId(""); }).catch(() => setError(text.failed));
+  }, [organizationId, modelId, line.id, text.failed]);
 
   const load = useCallback(async () => {
     if (!runId) { setAnalysis(null); return; }

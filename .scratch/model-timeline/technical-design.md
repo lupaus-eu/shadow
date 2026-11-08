@@ -46,10 +46,12 @@ Alembic migrations 0060 onward; every table has `organization_id`, row-level sec
   `node_positions`; each fork becomes a Scenario branching from that event, with one event holding the
   difference to its base (add, remove, update, re-route), dated the fork's creation day; element ids are
   kept so metrics' `node_id` still match. A fork of a fork branches from its base fork's last event; a fork with no difference gets no event, and a fork of it branches where it does. A line takes the id of its version, and a new Model gets a Base line (with an empty "Initial situation" event) when it is created, in the same request as the baseline version, until ticket 04.
-- Ticket 04's migration (0062) sets `line_id` required and drops `version_id`; ticket 07's migration (0063) drops the foreign key `metrics.node_id` → `nodes.id` and remaps the column to element ids (the 0061 rules); retirement (0064, in ticket 08): drop `nodes`, `connections`, `model_versions` after the code no longer
-  reads them. Downgrade rebuilds them from the present state of each line (the latest state, including
-  planned events) so the CI upgrade/downgrade check passes; planned-event dates and history are lost on
-  downgrade, which the migration docstring states.
+- Ticket 04's migration (0062) sets `line_id` required and drops `version_id`; ticket 07's migration (0063) drops the foreign key `metrics.node_id` → `nodes.id` and remaps the column to element ids (the 0061 rules); retirement (0064, ticket 08) drops `nodes`, `connections` and `model_versions` (no other table references them; their
+  `version_id` and `origin_node_id` columns go with them). Downgrade recreates the three tables with their old structure and
+  policies and refills `model_versions` from the lines (one version per line, same id, so the older migrations keep every
+  metric and simulation), but leaves `nodes` and `connections` empty: the timeline is the source, so no graph is rebuilt, and
+  planned-event dates and history are not in the old tables. (The first draft rebuilt the graphs from the latest state; an
+  empty graph is enough for the CI upgrade/downgrade check and the migration tests that need the old tables write them directly.)
 - DBML (`make dbml`) and the C4 model are regenerated in the same tickets.
 
 ### Replay engine (`backend/app/timeline/`)
@@ -93,14 +95,21 @@ All under `/api/v1/organizations/{org}/models/{model}`; errors are `{detail: {re
   that leaves the state as it was. A connection re-typed and re-routed together is tried in both orders and refused if
   only the pair is allowed.
 - `PUT /lines/{line}/positions` (`[{node_id, x, y}]`): writes positions only, no event, no audit.
-- `POST /lines/{line}/adopt` (Scenario into parent; ADR-0050).
+- `POST /lines/{line}/adopt` (Scenario into parent; ADR-0050): optional `expected_version`; refusals are structured
+  (409 `parent_moved_on` with the later events and a `create_scenario` suggestion, 422 `dates_precede`, 422
+  `nothing_to_adopt`, 422 `chain_broken`). The Scenario's events are created again in the parent (new ids and entry
+  numbers), positions drawn for its added nodes are copied to the parent, metrics are not adopted. A Scenario without
+  children is deleted; one with children stays without events at the last adopted event, and its children are
+  re-attached to the parent line at the adopted copies of the events they branched from (their states do not change).
+- `GET /models/{id}` stays: the model, `line` and `lines`, the metamodel and the graph after a line's last event
+  (`?line_id=`, Base line by default); the `version_id` parameter and the version list are gone.
 - Metric, simulation and analysis routes take `line_id` in place of `version_id`.
 - Audit actions: `line.created`, `line.renamed`, `line.deleted`, `line.adopted`, `event.created`, `event.updated`,
   `event.deleted`. Summaries carry model, line, event, date, op counts; never element names or note text.
 
 ### MCP tools
 
-Reads `list_lines`, `list_events`, `get_state`; writes `create_scenario`, `add_event`, `update_event`,
+Reads `list_lines`, `list_events`, `get_state` (and `get_model` with `line_id`, `list_models` with `base_line_id`); writes `create_scenario`, `add_event`, `update_event`,
 `delete_event`, `adopt_scenario`. `create_node` and `create_connection` take `event_id`; the metric, simulation and
 analysis tools take `line_id`. `create_version`, `merge_version` and `get_version_changes` are removed. Tools
 call the same endpoint functions (ADR-0046).
@@ -160,11 +169,11 @@ the new tables in the models group. The worker is not involved (planned events a
 ## Documentation effects
 
 - [ ] Update `docs/user/` and `docs/admin/` (ticket 11)
-- [ ] Update `docs/operations/` (limits; ticket 05) and `docs/runbooks/mcp-interface.md` (ticket 08)
+- [ ] Update `docs/operations/` (limits; ticket 05) and [x] `docs/runbooks/mcp-interface.md` (ticket 08)
 - [ ] Update `docs/gdpr/` (audit carries no names; evaluated in ticket 05)
 - [ ] Update `docs/architecture/` (database, api, audit, stack, C4, DBML; per ticket)
 - [ ] Update `docs/design/` (ticket 09)
-- [ ] Accept ADR-0048, ADR-0049 and ADR-0050 and supersede ADR-0045 (ticket 08)
+- [x] Accept ADR-0048, ADR-0049 and ADR-0050 and supersede ADR-0045 (ticket 08)
 - [ ] Update `CONTEXT.md` (ticket 11)
 - [ ] Update `.env.example` and `.env.production.example` (ticket 05)
 

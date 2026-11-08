@@ -9,7 +9,7 @@ import { useModel } from "./ModelShell";
 /** `…/models/:modelId/types`: the Model's node types, connection types, and the rules for connecting them. */
 export function TypesPage() {
   const { locale } = useOrganization();
-  const { organizationId, modelId, version, writable } = useModel();
+  const { organizationId, modelId, line, writable } = useModel();
   const text = modelMessages(locale);
   const confirm = useConfirm();
   const [graph, setGraph] = useState<Graph | null>(null);
@@ -19,8 +19,8 @@ export function TypesPage() {
   const [rule, setRule] = useState({ connection_type_id: "", source_node_type_id: "", target_node_type_id: "" });
 
   const reload = useCallback(async () => {
-    try { setGraph(await loadGraph(organizationId, modelId, version.id)); } catch { setError(text.failed); }
-  }, [organizationId, modelId, version.id, text.failed]);
+    try { setGraph(await loadGraph(organizationId, modelId, line.id)); } catch { setError(text.failed); }
+  }, [organizationId, modelId, line.id, text.failed]);
   useEffect(() => { void reload(); }, [reload]);
 
   async function act(action: () => Promise<unknown>) {
