@@ -6,7 +6,7 @@
 | --- | --- | ---: | --- | --- |
 | [Feature: All AI use happens in the user's own agent](agent-owned-ai/PRD.md) | implemented | 5/5 | — | — |
 | [Feature: Sign in with Authentik](authentik-sign-in/PRD.md) | implemented | 5/5 | — | — |
-| [Feature: Model timeline (Base line, events and scenarios)](model-timeline/PRD.md) | ready for implementation | 8/11 | [09 frontend event list and scenario picker](model-timeline/issues/09-frontend-event-list-and-scenario-picker.md) — ready-for-agent | — |
+| [Feature: Model timeline (Base line, events and scenarios)](model-timeline/PRD.md) | ready for implementation | 9/11 | [10 performance and limits](model-timeline/issues/10-performance-and-limits.md) — ready-for-agent | — |
 | [Feature: Shadow models (digital twin of an organisation)](shadow-models/PRD.md) | implemented (written after the fact, 2026-11-07; the features were built in | 0/0 | — | — |
 | [Feature: Structure canvas (full-width drawing tool)](structure-canvas/PRD.md) | ready for implementation | 7/9 | [08 Time control (scenario picker, event list, edits into the selected event)](structure-canvas/issues/08-time-control.md) — ready-for-agent | — |
 | [Feature: Companies (tenants) and roles](tenants-and-roles/PRD.md) | wontfix | 2/11 | — | — |
@@ -28,9 +28,8 @@
 
 | Ticket | Tila | Avoimia kriteerejä | Aloitettavissa | Odottaa ticketejä |
 | --- | --- | ---: | --- | --- |
-| [09 frontend event list and scenario picker](model-timeline/issues/09-frontend-event-list-and-scenario-picker.md) | ready-for-agent | 3 | kyllä | — |
 | [10 performance and limits](model-timeline/issues/10-performance-and-limits.md) | ready-for-agent | 2 | kyllä | — |
-| [11 documentation and vocabulary](model-timeline/issues/11-documentation-and-vocabulary.md) | ready-for-agent | 1 | ei | 09 |
+| [11 documentation and vocabulary](model-timeline/issues/11-documentation-and-vocabulary.md) | ready-for-agent | 1 | kyllä | — |
 
 ### Feature: Structure canvas (full-width drawing tool)
 

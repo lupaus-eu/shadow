@@ -464,3 +464,35 @@ Organizations in scope, a *Download CSV* action, and an import in three steps: c
 (a table of new, changed, and unchanged rows per Organization and kind, a warning when Events changed after the
 export, and a problem table with row numbers), then an explicit *Save import* that stays disabled while any
 problem remains. Messages are plain language and never show ids except as the offending value.
+
+## Model lines, event list and event editor (model timeline ticket 09)
+
+Code: `frontend/src/models/ModelShell.tsx`, `timeline.ts` (pure rules and refusal wording), `timeline-messages.ts`, `timeline/`
+(`LineBar`, `EventPanel`, `EventEditor`, `refusals.ts`). A model has one **Base line** (what has really happened) and any
+number of **Scenarios** (what-if copies of a line). The shown line is `?line=` (the Base line when absent), the shown event
+`?event=` (the line's last event when absent); both are carried by the tab links.
+
+- **Line bar.** A select lists the Base line first and each Scenario right under the line it starts from (indented, with
+  an arrow). The kind is always a word and a colour: the bar and badge are teal for the Base line and blue for a Scenario.
+  Buttons appear only when the person may use them: *New scenario from here* (any Member; starts from the shown event and
+  asks a name in a dialog that keeps the typed name when the name is taken), *Rename* (Base line: Owner or Admin; Scenario:
+  its creator, an Owner or an Admin), *Adopt into parent line* (the parent's write rule, confirmed first), *Delete scenario*
+  (confirmed first). A 403 from the server is still handled and says the role does not allow it.
+- **Start changed.** A Scenario whose starting state changed shows a warning with *I have checked it* (acknowledge).
+- **Event list** (Structure tab). A column beside the canvas, oldest first, opened with the *Events (n)* button in the line bar (open by itself only on screens at least 1600 px wide, so it never squeezes the drawing). Each event shows date, title, number of
+  changes and, for a Scenario that starts from it, a small badge that opens the Scenario. A **planned** event (dated after
+  today) has the word *Planned*, a dashed amber frame and an amber fill: never colour alone. A *Now* divider sits between the
+  last event that has happened and the first planned one (at the end when nothing is planned). Choosing an event shows the
+  state after it on the canvas (`useGraphState` with that event id); the chosen event is `aria-current`.
+- **Past events are read-only.** While an event other than the line's last is shown the canvas is read-only and says so,
+  with *Show the latest event*. A planned event shows a notice that it is not part of the present state.
+- **Event editor** (dialog, labelled): title, date, note, and for an existing event the ordered changes in words with element
+  names resolved (read-only here; changes are drawn on the canvas), *Delete event* (confirmed), and for a new event a date
+  that suggests today; a later date makes it planned and the dialog says so. The form keeps what was typed when a write
+  is refused.
+- **Refusals** are built from the structured answer, never the server's text, in Finnish and English (`chainBrokenMessage`):
+  where it breaks (event, date, Scenario when it is in another line), which element, type or ends, why, and what to do
+  first, for each of the nine causes; a delete of a branch point names the Scenario; adopt says why (`parent_moved_on`,
+  `dates_precede`, `nothing_to_adopt`) and suggests recreating the differences in a new Scenario from the parent's latest state;
+  delete of a line with Scenarios says to delete them first.
+- The **Types** tab says the types are shared by every line. Metrics, Simulations and Analysis follow the selected line.

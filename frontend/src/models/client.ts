@@ -1,4 +1,5 @@
 import { apiBaseUrl, AuthenticationRequiredError } from "../auth-client";
+import type { ChainHint, Refusal } from "./timeline";
 
 export type ModelSummary = { id: string; name: string; description: string | null; version: number; nodes: number };
 export type NodeType = { id: string; key: string; name: string; color: string; shape: string; version: number };
@@ -7,19 +8,33 @@ export type AllowedConnection = { connection_type_id: string; source_node_type_i
 export type GraphNode = { id: string; node_type_id: string; name: string; description: string | null; x: number; y: number };
 export type GraphConnection = { id: string; connection_type_id: string; source_node_id: string; target_node_id: string };
 /** The Base line or a Scenario of a model (`GET …/lines`); `version` is the stale check of a rename or delete. */
-export type ModelLine = { id: string; name: string; description: string | null; kind: "base" | "scenario"; parent_line_id: string | null; branch_event_id: string | null; version: number; event_count: number; latest_event_date: string | null };
+export type ModelLine = {
+  id: string; name: string; description: string | null; kind: "base" | "scenario"; parent_line_id: string | null; branch_event_id: string | null; version: number; event_count: number; latest_event_date: string | null;
+  /** Set when the state a Scenario starts from changed; cleared by `acknowledgeStart`. */
+  start_changed_at?: string | null; created_by_user_account_id?: string | null;
+};
 /** An event of a line; `version` is what a canvas edit sends as `expected_version`. */
-export type LineEvent = { id: string; line_id: string; occurred_on: string; title: string; version: number; planned: boolean; change_count: number };
+export type LineEvent = {
+  id: string; line_id: string; occurred_on: string; title: string; version: number; planned: boolean; change_count: number;
+  note?: string | null; change_counts?: Record<string, number>; /** Scenarios that start from this event. */ branches?: { line_id: string; name: string }[];
+};
+/** One change of an event, in order. */
+export type EventChange = { position: number; op: string; element_id: string | null; payload: Record<string, unknown> };
 /** The graph a line shows after its last event. */
 export type Graph = { event: LineEvent | null; node_types: NodeType[]; connection_types: ConnectionType[]; allowed_connections: AllowedConnection[]; nodes: GraphNode[]; connections: GraphConnection[] };
 
 /** A write was refused because the row changed since it was read (HTTP 409 with `latest_version`). */
 export class StaleVersionError extends Error {}
-/** A write was refused by a rule of the model (HTTP 409 duplicate or 422). */
-export class RuleError extends Error {}
-/** An edit would break a later event or Scenario (HTTP 422 `chain_broken`); `cause` is the machine-readable reason. The edit was not saved. */
+/** A write was refused by a rule of the model (HTTP 409 duplicate or 422); `detail` is the structured answer (`reason` and its fields). */
+export class RuleError extends Error {
+  constructor(message: string, readonly detail: Refusal = {}) { super(message); }
+  get reason(): string | undefined { return this.detail.reason; }
+}
+/** The person's role does not allow the write (HTTP 403). */
+export class ForbiddenError extends Error {}
+/** An edit would break a later event or Scenario (HTTP 422 `chain_broken`); `cause` is the machine-readable reason and `hint` the structured explanation. The edit was not saved. */
 export class ChainBrokenError extends RuleError {
-  constructor(readonly cause: string) { super("chain_broken"); }
+  constructor(readonly cause: string, readonly hint: ChainHint | null = null, detail: Refusal = { reason: "chain_broken" }) { super("chain_broken", detail); }
 }
 
 const modelsUrl = (organizationId: string) => `${apiBaseUrl}/api/v1/organizations/${organizationId}/models`;
@@ -27,13 +42,15 @@ const modelsUrl = (organizationId: string) => `${apiBaseUrl}/api/v1/organization
 async function call(url: string, init?: RequestInit): Promise<Response> {
   const response = await fetch(url, { credentials: "include", ...init, headers: { "Content-Type": "application/json", ...init?.headers } });
   if (response.status === 401) throw new AuthenticationRequiredError();
+  if (response.status === 403) throw new ForbiddenError("forbidden");
   if (response.status === 409) {
-    const detail = ((await response.json().catch(() => null)) as { detail?: { latest_version?: number } } | null)?.detail;
-    throw detail?.latest_version !== undefined ? new StaleVersionError() : new RuleError("conflict");
+    const detail = ((await response.json().catch(() => null)) as { detail?: Refusal & { latest_version?: number } } | null)?.detail;
+    throw detail?.latest_version !== undefined ? new StaleVersionError() : new RuleError("conflict", typeof detail === "object" && detail ? detail : {});
   }
   if (response.status === 422) {
-    const detail = ((await response.json().catch(() => null)) as { detail?: { reason?: string; cause?: string } } | null)?.detail;
-    throw detail?.reason === "chain_broken" ? new ChainBrokenError(detail.cause ?? "unknown") : new RuleError("rule");
+    const detail = ((await response.json().catch(() => null)) as { detail?: Refusal & { cause?: string; hint?: ChainHint } } | null)?.detail;
+    const body = typeof detail === "object" && detail ? detail : {};
+    throw body.reason === "chain_broken" ? new ChainBrokenError(body.cause ?? "unknown", body.hint ?? null, body) : new RuleError("rule", body);
   }
   if (!response.ok) throw new Error(`Request failed (${response.status})`);
   return response;
@@ -100,14 +117,62 @@ export async function loadLines(organizationId: string, modelId: string): Promis
   return (await call(`${modelsUrl(organizationId)}/${modelId}/lines`)).json();
 }
 
-/** The event a new Scenario starts from when it starts "from here": the line's last event, or where a line without events of its own starts. */
-export async function startingEvent(organizationId: string, modelId: string, line: ModelLine): Promise<string | null> {
-  const events: LineEvent[] = await (await call(`${modelsUrl(organizationId)}/${modelId}/lines/${line.id}/events`)).json();
-  return events[events.length - 1]?.id ?? line.branch_event_id;
-}
-
 export async function createScenario(organizationId: string, modelId: string, name: string, branchEventId: string): Promise<ModelLine> {
   return (await call(`${modelsUrl(organizationId)}/${modelId}/lines`, { method: "POST", ...json({ name, branch_event_id: branchEventId }) })).json();
+}
+
+export async function loadEvents(organizationId: string, modelId: string, lineId: string, signal?: AbortSignal): Promise<LineEvent[]> {
+  return (await call(`${modelsUrl(organizationId)}/${modelId}/lines/${lineId}/events`, { signal })).json();
+}
+
+export async function renameLine(organizationId: string, modelId: string, line: ModelLine, name: string): Promise<ModelLine> {
+  return (await call(`${modelsUrl(organizationId)}/${modelId}/lines/${line.id}`, { method: "PATCH", ...json({ name, expected_version: line.version }) })).json();
+}
+
+/** Clears the Scenario's "its start changed" notice. */
+export async function acknowledgeStart(organizationId: string, modelId: string, line: ModelLine): Promise<ModelLine> {
+  return (await call(`${modelsUrl(organizationId)}/${modelId}/lines/${line.id}/acknowledge-start`, { method: "POST" })).json();
+}
+
+export type AdoptResult = { line: ModelLine; scenario: ModelLine | null; adopted_events: unknown[] | number; moved_scenarios: number };
+
+export async function adoptLine(organizationId: string, modelId: string, line: ModelLine): Promise<AdoptResult> {
+  return (await call(`${modelsUrl(organizationId)}/${modelId}/lines/${line.id}/adopt`, { method: "POST", ...json({ expected_version: line.version }) })).json();
+}
+
+export type EventInput = { occurred_on: string; title: string; note: string | null };
+export type EventDetail = { event: LineEvent; changes: EventChange[]; names: Map<string, string> };
+
+/** One event with its ordered changes, and the names of the elements they refer to (from the state after the event, incl. what it removed, and its own payloads). */
+export async function loadEventDetail(organizationId: string, modelId: string, lineId: string, eventId: string): Promise<EventDetail> {
+  const base = modelsUrl(organizationId);
+  const [event, state] = await Promise.all([
+    call(`${base}/${modelId}/events/${eventId}`).then((response) => response.json() as Promise<LineEvent & { changes: EventChange[] }>),
+    call(`${base}/${modelId}/lines/${lineId}/state?event_id=${eventId}`).then((response) => response.json() as Promise<{ nodes?: GraphNode[]; node_types?: NodeType[]; connection_types?: ConnectionType[]; removed?: { nodes?: { node: GraphNode }[] }; updated?: { nodes?: { previous?: GraphNode | null }[] } }>),
+  ]);
+  const names = new Map<string, string>();
+  for (const node of state.nodes ?? []) names.set(node.id, node.name);
+  for (const item of state.removed?.nodes ?? []) names.set(item.node.id, item.node.name);
+  for (const item of state.updated?.nodes ?? []) if (item.previous && !names.has(item.previous.id)) names.set(item.previous.id, item.previous.name);
+  for (const type of [...(state.node_types ?? []), ...(state.connection_types ?? [])]) names.set(type.id, type.name);
+  for (const change of event.changes) {
+    const name = change.payload.name;
+    if (change.element_id && typeof name === "string" && !names.has(change.element_id)) names.set(change.element_id, name);
+  }
+  const { changes, ...summary } = event;
+  return { event: summary, changes: [...changes].sort((a, b) => a.position - b.position), names };
+}
+
+export async function createEvent(organizationId: string, modelId: string, lineId: string, input: EventInput): Promise<LineEvent> {
+  return (await call(`${modelsUrl(organizationId)}/${modelId}/lines/${lineId}/events`, { method: "POST", ...json({ ...input, changes: [] }) })).json();
+}
+
+export async function updateEvent(organizationId: string, modelId: string, event: LineEvent, input: EventInput): Promise<LineEvent> {
+  return (await call(`${eventUrl(organizationId, modelId, event)}`, { method: "PATCH", ...json({ ...input, expected_version: event.version }) })).json();
+}
+
+export async function deleteEvent(organizationId: string, modelId: string, event: LineEvent): Promise<void> {
+  await call(`${eventUrl(organizationId, modelId, event)}?expected_version=${event.version}`, { method: "DELETE" });
 }
 
 export async function deleteLine(organizationId: string, modelId: string, line: ModelLine): Promise<void> {

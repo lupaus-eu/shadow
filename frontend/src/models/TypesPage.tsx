@@ -4,6 +4,7 @@ import { useOrganization } from "../shell/organization-outlet";
 import { Alert, Button, Field, Select, TextInput, useConfirm } from "../ui";
 import { allowConnection, createConnectionType, createNodeType, deleteConnectionType, deleteNodeType, disallowConnection, loadGraph, RuleError, StaleVersionError, updateConnectionType, updateNodeType, type Graph } from "./client";
 import { modelMessages } from "./messages";
+import { timelineMessages } from "./timeline-messages";
 import { useModel } from "./ModelShell";
 
 /** `…/models/:modelId/types`: the Model's node types, connection types, and the rules for connecting them. */
@@ -37,6 +38,7 @@ export function TypesPage() {
   return (
     <div className="flex flex-col gap-6">
       <p className="m-0 text-[13px] text-ink-muted">{text.typesDescription}</p>
+      <Alert tone="info">{timelineMessages(locale).sharedTypes}</Alert>
       {error ? <Alert tone="danger" role="alert">{error}</Alert> : null}
 
       <section className="flex flex-col gap-3" aria-label={text.nodeTypes}>

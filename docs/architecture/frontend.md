@@ -271,3 +271,14 @@ canvas is one `Diagram` created once in `ShadowCanvas.tsx` and never recreated o
 - diagram-js modules in use: `modeling`, `selection`, `move`, `outline`, `movecanvas`, `zoomscroll`, `keyboard`, `hand-tool`, `connect`, `connection-preview`, `context-pad`, `lasso-tool`, `overlays`, `align-elements` and `grid-snapping`; its CSS is imported
   into `theme.css` (layer `components`) and its `--bio-*` variables are defined from Shadow's colour tokens, so the canvas
   follows the theme. The remaining modules the design expects were verified to exist (ADR-0051).
+
+## Model lines and events (model timeline ticket 09)
+
+`ModelShell` reads the model, its lines (`GET .../lines`) and the events of the selected line (`GET .../lines/{line}/events`), and hands
+them to the pages through the outlet context: `line`, `lines`, `events`, `event` (the shown event: `?event=`, else the line's last),
+`eventIsLast`, `reloadEvents`, `role` and `canWriteLine`. `ModelCanvas` passes `event.id` to `useGraphState` and is read-only while
+`eventIsLast` is false (ticket 08 of the structure canvas enables drawing into the shown event; until then edits go into the last event as
+before) and calls `reloadEvents` after each write so the list's counts stay current. The line and event are URL parameters, so a reload and a shared
+link show the same thing; no browser storage is used. `models/timeline.ts` holds the pure rules (line tree order, who may rename, delete,
+adopt and write, event rows with the Now divider, `chainBrokenMessage` and the adopt and delete messages); `client.ts` keeps the structured
+answer of a refusal on `RuleError.detail` and `ChainBrokenError.hint`, and answers 403 as `ForbiddenError`.

@@ -1,14 +1,14 @@
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 
-import { Link } from "react-router";
+import { Link, useSearchParams } from "react-router";
 
 import { modelHref } from "../shell/nav";
 import { useOrganization } from "../shell/organization-outlet";
 import { useModel } from "./ModelShell";
 import { Alert, Button, Dialog, Field, IconButton, Select, TextArea, TextInput, cx, useConfirm } from "../ui";
 import {
-  ChainBrokenError, createConnection, createEditsEvent, createNode, deleteConnection, deleteNode, RuleError, saveNodePositions, StaleVersionError, updateConnection, updateNode,
+  ChainBrokenError, ForbiddenError, createConnection, createEditsEvent, createNode, deleteConnection, deleteNode, RuleError, saveNodePositions, StaleVersionError, updateConnection, updateNode,
   type GraphConnection, type GraphNode, type LineEvent,
 } from "./client";
 import { EditRefused } from "./canvas/diagram";
@@ -24,6 +24,8 @@ import { formatMetricValue, periodLabel } from "./canvas/node-metrics";
 import { useGraphState } from "./canvas/useGraphState";
 import { useNodeMetrics, type NodeMetricsState } from "./useNodeMetrics";
 import { modelMessages } from "./messages";
+import { chainBrokenMessage } from "./timeline";
+import { timelineMessages } from "./timeline-messages";
 import { readPanels, writePanels, type PanelState } from "./panel-state";
 import { readSnap, writeSnap } from "./canvas/snap";
 
@@ -63,10 +65,14 @@ function useIsPhone() {
 /** `/organizations/:organizationId/models/:modelId`: the nodes and connections of a line on a canvas. Edits are changes of the line's last event (ticket 09 of the model timeline adds the event list and the choice of event). */
 export function ModelCanvas() {
   const { locale } = useOrganization();
-  const { organizationId, modelId, model, line, writable } = useModel();
+  const { organizationId, modelId, model, line, writable: subscriptionWritable, event: shownEventRow, eventIsLast, reloadEvents, canWriteLine } = useModel();
+  // An event before the line's last one is shown read-only; so is a line the person's role may not write.
+  const writable = subscriptionWritable && eventIsLast && canWriteLine;
   const lineId = line.id;
   const text = modelMessages(locale);
-  const source = useMemo(() => ({ organizationId, modelId, lineId }), [organizationId, modelId, lineId]);
+  // Without a chosen event the canvas shows the line's last one (the one an edit goes into), which it finds itself.
+  const shownId = eventIsLast ? null : shownEventRow?.id ?? null;
+  const source = useMemo(() => ({ organizationId, modelId, lineId, eventId: shownId }), [organizationId, modelId, lineId, shownId]);
   const { graph, event, status, reload } = useGraphState(source);
   // The view (pan and zoom) is kept while this line stays open on this tab; another line or another tab starts fresh.
   const view = useCanvasView(`${organizationId}|${modelId}|${lineId}`);
@@ -80,6 +86,7 @@ export function ModelCanvas() {
   const [picker, setPicker] = useState<{ sourceId: string; targetId: string; types: { id: string; name: string }[] } | null>(null);
   const [announcement, setAnnouncement] = useState("");
   const confirm = useConfirm();
+  const [, setSearch] = useSearchParams();
   const canvas = useRef<ShadowCanvasHandle>(null);
   const area = useRef<HTMLDivElement>(null);
   const phone = useIsPhone();
@@ -114,7 +121,7 @@ export function ModelCanvas() {
   const selectedConnection = selectedId && !selectedNode ? graph?.connections.find((item) => item.id === selectedId) : undefined;
 
   const noticeFor = (cause: unknown, rule: string) =>
-    cause instanceof StaleVersionError ? text.stale : cause instanceof ChainBrokenError ? text.chainBroken : cause instanceof RuleError ? rule : text.failed;
+    cause instanceof StaleVersionError ? text.stale : cause instanceof ChainBrokenError ? (cause.hint ? chainBrokenMessage(cause.hint, locale) : text.chainBroken) : cause instanceof ForbiddenError ? timelineMessages(locale).forbidden : cause instanceof RuleError ? rule : text.failed;
 
   /** The canvas calls this for every edit it has already drawn; a rejection makes it undo the drawing. The server's answer is then loaded. */
   const send = (edit: GraphEdit): Promise<EditResult> => {
@@ -150,6 +157,7 @@ export function ModelCanvas() {
       } finally {
         const loaded = await reload();
         if (loaded) editTarget.current = loaded.event;
+        void reloadEvents();
       }
     };
     const next = queue.current.then(run, run);
@@ -326,7 +334,9 @@ export function ModelCanvas() {
 
   return (
     <div className="flex flex-col gap-3">
-      {!writable ? <Alert tone="warning">{text.readOnly}</Alert> : null}
+      {!subscriptionWritable ? <Alert tone="warning">{text.readOnly}</Alert> : null}
+      {subscriptionWritable && !eventIsLast && shownEventRow ? <Alert tone="info" role="status" action={<Button size="sm" onClick={() => setSearch((old) => { const next = new URLSearchParams(old); next.delete("event"); return next; })}>{timelineMessages(locale).showLatest}</Button>}>{timelineMessages(locale).pastNotice(shownEventRow.title, shownEventRow.occurred_on)}</Alert> : null}
+      {shownEventRow?.planned ? <Alert tone="warning">{timelineMessages(locale).plannedNotice}</Alert> : null}
       {notice ? <Alert tone="danger" role="alert">{notice}</Alert> : null}
       <div role="status" aria-live="polite" className="sr-only">{announcement}</div>
       <Dialog open={picker !== null} onOpenChange={(open) => { if (!open) setPicker(null); }} title={text.chooseConnection}
