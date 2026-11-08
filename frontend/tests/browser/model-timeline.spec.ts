@@ -109,14 +109,13 @@ test("marks planned events with a label and a frame and puts the Now divider bef
   await expect(page.getByText("This event is planned", { exact: false })).toBeVisible();
 });
 
-test("choosing an earlier event redraws that state and keeps the canvas read-only", async ({ page }) => {
+test("choosing an earlier event redraws that state and the canvas edits that event", async ({ page }) => {
   await open(page);
   await list(page).getByRole("button", { name: /^\d{4}-\d\d-\d\d Initial situation/ }).click();
   await expect(page).toHaveURL(new RegExp(`event=${E1}`));
   await expect(node(page, "Sales")).toBeVisible();
   await expect(node(page, "Support")).toHaveCount(0);
-  await expect(page.getByText("It is read-only", { exact: false })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Add node" })).toHaveCount(0);
+  await expect(page.getByText("Drawing changes this event, not the latest one.", { exact: false })).toBeVisible();
   await page.getByRole("button", { name: "Show the latest event" }).click();
   await expect(node(page, "Growth")).toBeVisible();
   await expect(page).not.toHaveURL(/event=/);

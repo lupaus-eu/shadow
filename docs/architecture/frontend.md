@@ -218,6 +218,9 @@ canvas is one `Diagram` created once in `ShadowCanvas.tsx` and never recreated o
   (`GET .../lines/{line}/state`, with `?event_id=` for a chosen event, otherwise the line's last event) and returns plain
   `GraphData` (nodes, connections, types, allowed connections and the change markers `added`, `updated`, `removed`), the event,
   a status and `reload`. Nothing under `canvas/` imports line, event or version types.
+- `ghosts.ts` draws what the shown event **removed** (the state route's `removed`, with data and last place) as dashed outlines in a layer
+  of its own under the diagram, called by the importer: they are not diagram elements, so they cannot be selected, moved, connected or
+  deleted. `GraphData.ghosts` carries them.
 - `diagram/GraphImporter` turns the data into shapes and connections and diffs against what is drawn: new elements are
   added, gone ones removed, only changed ones redrawn, so zoom, scroll and selection survive every load.
 - `diagram/GraphRenderer` draws a node's shape from `node_types.shape` (rectangle, round rectangle, ellipse, diamond,
@@ -276,9 +279,14 @@ canvas is one `Diagram` created once in `ShadowCanvas.tsx` and never recreated o
 
 `ModelShell` reads the model, its lines (`GET .../lines`) and the events of the selected line (`GET .../lines/{line}/events`), and hands
 them to the pages through the outlet context: `line`, `lines`, `events`, `event` (the shown event: `?event=`, else the line's last),
-`eventIsLast`, `reloadEvents`, `role` and `canWriteLine`. `ModelCanvas` passes `event.id` to `useGraphState` and is read-only while
-`eventIsLast` is false (ticket 08 of the structure canvas enables drawing into the shown event; until then edits go into the last event as
-before) and calls `reloadEvents` after each write so the list's counts stay current. The line and event are URL parameters, so a reload and a shared
+`eventIsLast`, `reloadEvents`, `role` and `canWriteLine`. `ModelCanvas` passes `event.id` to `useGraphState` (the line's last event is
+asked for without an id) and draws **into the shown event, whichever it is** (ticket 08 of the structure canvas): `canvas/edit-target.ts`
+holds the pure rules (`canvasWritable` is the subscription and the role only, `sourceEventId`, `shouldClearHistory`, `markCounts`). Every
+write goes to `/events/{shown event}/...` with the event's own `version` (read again from the state route after each write, edits run
+one after another); node moves write positions only. A refused edit (409 stale, 422 `chain_broken`, 409 `branch_point`, 403) is reverted on
+the canvas and shown with `timeline/refusals.ts` (`chainBrokenMessage` names event and element and what to do first); the person's other
+work stays. The undo history is dropped when the shown event or line changes (the canvas is rebuilt when its source changes). It also calls
+`reloadEvents` after each write so the list's counts stay current. The line and event are URL parameters, so a reload and a shared
 link show the same thing; no browser storage is used. `models/timeline.ts` holds the pure rules (line tree order, who may rename, delete,
 adopt and write, event rows with the Now divider, `chainBrokenMessage` and the adopt and delete messages); `client.ts` keeps the structured
 answer of a refusal on `RuleError.detail` and `ChainBrokenError.hint`, and answers 403 as `ForbiddenError`.

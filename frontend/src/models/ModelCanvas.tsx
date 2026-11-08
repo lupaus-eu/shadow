@@ -24,10 +24,13 @@ import { formatMetricValue, periodLabel } from "./canvas/node-metrics";
 import { useGraphState } from "./canvas/useGraphState";
 import { useNodeMetrics, type NodeMetricsState } from "./useNodeMetrics";
 import { modelMessages } from "./messages";
-import { chainBrokenMessage } from "./timeline";
+import type { Locale } from "../i18n";
 import { timelineMessages } from "./timeline-messages";
 import { readPanels, writePanels, type PanelState } from "./panel-state";
 import { readSnap, writeSnap } from "./canvas/snap";
+import { canvasWritable, markCounts, shouldClearHistory, sourceEventId } from "./canvas/edit-target";
+import { ghostSummary } from "./canvas/ghosts";
+import { refusalMessage } from "./timeline/refusals";
 
 const MIN_CANVAS_HEIGHT = 320;
 const SHEET_HANDLE = 48;
@@ -66,12 +69,12 @@ function useIsPhone() {
 export function ModelCanvas() {
   const { locale } = useOrganization();
   const { organizationId, modelId, model, line, writable: subscriptionWritable, event: shownEventRow, eventIsLast, reloadEvents, canWriteLine } = useModel();
-  // An event before the line's last one is shown read-only; so is a line the person's role may not write.
-  const writable = subscriptionWritable && eventIsLast && canWriteLine;
+  // Drawing edits the shown event, whichever it is; a line the person's role may not write (Members on the Base line) and a read-only subscription show the canvas read-only.
+  const writable = canvasWritable({ subscriptionWritable, canWriteLine });
   const lineId = line.id;
   const text = modelMessages(locale);
   // Without a chosen event the canvas shows the line's last one (the one an edit goes into), which it finds itself.
-  const shownId = eventIsLast ? null : shownEventRow?.id ?? null;
+  const shownId = sourceEventId(eventIsLast, shownEventRow);
   const source = useMemo(() => ({ organizationId, modelId, lineId, eventId: shownId }), [organizationId, modelId, lineId, shownId]);
   const { graph, event, status, reload } = useGraphState(source);
   // The view (pan and zoom) is kept while this line stays open on this tab; another line or another tab starts fresh.
@@ -120,8 +123,12 @@ export function ModelCanvas() {
   const nodeMetrics = useNodeMetrics(source, selectedNode?.id ?? null);
   const selectedConnection = selectedId && !selectedNode ? graph?.connections.find((item) => item.id === selectedId) : undefined;
 
+  // A refused edit says why in words: stale, a chain that would break (naming event and element and what to do first), a branch point, a role that may not write.
   const noticeFor = (cause: unknown, rule: string) =>
-    cause instanceof StaleVersionError ? text.stale : cause instanceof ChainBrokenError ? (cause.hint ? chainBrokenMessage(cause.hint, locale) : text.chainBroken) : cause instanceof ForbiddenError ? timelineMessages(locale).forbidden : cause instanceof RuleError ? rule : text.failed;
+    cause instanceof StaleVersionError ? text.stale
+      : cause instanceof ChainBrokenError && !cause.hint ? text.chainBroken
+      : cause instanceof ChainBrokenError || cause instanceof ForbiddenError || (cause instanceof RuleError && cause.reason === "branch_point") ? refusalMessage(cause, locale)
+      : cause instanceof RuleError ? rule : text.failed;
 
   /** The canvas calls this for every edit it has already drawn; a rejection makes it undo the drawing. The server's answer is then loaded. */
   const send = (edit: GraphEdit): Promise<EditResult> => {
@@ -281,7 +288,7 @@ export function ModelCanvas() {
   const eventId = event?.id ?? null;
   const lastEvent = useRef<string | null>(null);
   useEffect(() => {
-    if (lastEvent.current && eventId && lastEvent.current !== eventId) canvas.current?.clearHistory();
+    if (shouldClearHistory(lastEvent.current, eventId)) canvas.current?.clearHistory();
     if (eventId) lastEvent.current = eventId;
   }, [eventId]);
   useEffect(() => { lastEvent.current = null; }, [lineId]);
@@ -330,12 +337,13 @@ export function ModelCanvas() {
       onSelectNode={(id) => { setSelectedId(id); canvas.current?.centreOnNode(id, { zoom: true }); }}
     />
   );
-  const rightContent = <>{addNode}{details}</>;
+  const ghosts = ghostSummary(graph);
+  const rightContent = <>{addNode}{details}<GhostList locale={locale} ghosts={ghosts} /></>;
 
   return (
     <div className="flex flex-col gap-3">
       {!subscriptionWritable ? <Alert tone="warning">{text.readOnly}</Alert> : null}
-      {subscriptionWritable && !eventIsLast && shownEventRow ? <Alert tone="info" role="status" action={<Button size="sm" onClick={() => setSearch((old) => { const next = new URLSearchParams(old); next.delete("event"); return next; })}>{timelineMessages(locale).showLatest}</Button>}>{timelineMessages(locale).pastNotice(shownEventRow.title, shownEventRow.occurred_on)}</Alert> : null}
+      {subscriptionWritable && !eventIsLast && shownEventRow ? <Alert tone="info" role="status" action={<Button size="sm" onClick={() => setSearch((old) => { const next = new URLSearchParams(old); next.delete("event"); return next; })}>{timelineMessages(locale).showLatest}</Button>}>{timelineMessages(locale).pastNotice(shownEventRow.title, shownEventRow.occurred_on, writable)}</Alert> : null}
       {shownEventRow?.planned ? <Alert tone="warning">{timelineMessages(locale).plannedNotice}</Alert> : null}
       {notice ? <Alert tone="danger" role="alert">{notice}</Alert> : null}
       <div role="status" aria-live="polite" className="sr-only">{announcement}</div>
@@ -350,12 +358,13 @@ export function ModelCanvas() {
       </Dialog>
       <div ref={area} style={{ height: areaHeight }} className="flex min-h-0 gap-3">
         {phone ? null : <Panel side="left" title={text.panelNodes} collapsed={panels.left} onToggle={() => toggle("left")} text={text}>{nodeList}</Panel>}
-        <div className="min-w-0 flex-1 overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface">
+        <div className="relative min-w-0 flex-1 overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface">
           <ShadowCanvas ref={canvas} graph={graph} readOnly={!writable} selectedIds={selectedIds} onSelect={setSelectedIds}
             drawing={{ connect: (a, b) => requestConnection(a, b), remove: (ids) => void requestDelete(ids), create: (input) => { say(text.nodeAdded); void edit({ kind: "node.create", nodeTypeId: input.nodeTypeId, name: input.name, x: input.x, y: input.y }); }, rename: (id, name) => { const node = byId.get(id); void edit({ kind: "node.update", id, name, description: node?.description ?? null }); } }}
             drawingTexts={{ connect: text.padConnect, remove: text.padRemove, nodeName: text.nodeName, namePlaceholder: text.namePlaceholder }}
-            readGraph={readGraph} isRefusal={(error) => error instanceof StaleVersionError || error instanceof RuleError} onHistory={onHistory}
+            readGraph={readGraph} isRefusal={(error) => error instanceof StaleVersionError || error instanceof RuleError || error instanceof ForbiddenError} onHistory={onHistory}
             onToggleConnect={() => setConnecting((old) => (old ? null : { sourceId: null, connectionTypeId: null }))} onElementClick={onElementClick} send={send} connecting={connecting !== null} onEscape={cancelConnect} view={view} filter={filter} keyBindings={keyBindings} snap={snap} onSnapChange={changeSnap} exportName={{ model: model.name, line: line.name }} onToolResult={onToolResult} toolbarTexts={toolbarTexts} label={text.canvasLabel} />
+          <CanvasCaption locale={locale} kind={line.kind} lineName={line.name} event={shownEventRow} markers={graph.markers} />
         </div>
         {phone ? null : <Panel side="right" title={text.panelDetails} collapsed={panels.right} onToggle={() => toggle("right")} text={text}>{rightContent}</Panel>}
       </div>
@@ -371,6 +380,47 @@ export function ModelCanvas() {
           </div>
         </section>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * A small label over the corner of the canvas (it takes no room and lets clicks through): which line and event the canvas shows (Base line and
+ * Scenario look different; a planned event says so) and what the event changed: + added, ~ changed or re-routed, \u2212 removed. The marks on
+ * the elements carry the same signs, so nothing relies on colour alone.
+ */
+function CanvasCaption({ locale, kind, lineName, event, markers }: { locale: Locale; kind: "base" | "scenario"; lineName: string; event: LineEvent | null; markers: GraphData["markers"] }) {
+  const words = timelineMessages(locale);
+  const counts = markCounts(markers);
+  return (
+    <div data-testid="canvas-caption" data-caption-kind={kind} className={cx("pointer-events-none absolute bottom-2 left-2 z-10 flex max-w-[calc(100%-1rem)] flex-col gap-0.5 rounded-[var(--radius-control)] border border-l-4 bg-surface px-2 py-1 text-[12px] shadow-[var(--shadow-overlay)]", kind === "base" ? "border-line border-l-accent" : "border-line border-l-info-ink")}>
+      <p className="m-0 flex flex-wrap items-center gap-x-2 font-medium">
+        <span>{words.shownOn(lineName, event?.title ?? null, event?.occurred_on ?? null)}</span>
+        <span className="text-ink-muted">{kind === "base" ? words.baseLine : words.scenario}</span>
+        {event?.planned ? <span className="rounded-full border border-warning-ink px-2 text-warning-ink">{words.planned}</span> : null}
+      </p>
+      {counts.any ? (
+        <p className="m-0 flex flex-wrap gap-x-3 text-ink-muted" data-testid="canvas-legend">
+          <span className="font-medium text-ink">{words.legendTitle}:</span>
+          {counts.added ? <span>{words.legendAdded(counts.added)}</span> : null}
+          {counts.updated ? <span>{words.legendUpdated(counts.updated)}</span> : null}
+          {counts.removed ? <span>{words.legendRemoved(counts.removed)}</span> : null}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+/** What the shown event removed, as text (the same elements are drawn as dashed outlines on the canvas, which cannot be selected or edited). */
+function GhostList({ locale, ghosts }: { locale: Locale; ghosts: ReturnType<typeof ghostSummary> }) {
+  const words = timelineMessages(locale);
+  const items = [...ghosts.nodes, ...ghosts.connections];
+  if (items.length === 0) return null;
+  return (
+    <div className="flex flex-col gap-1 rounded-[var(--radius-card)] border border-line bg-surface p-3 text-[13px]" data-testid="ghost-list">
+      <h2 className="m-0 text-[14px] font-semibold">{words.legendRemoved(items.length)}</h2>
+      <p className="m-0 text-ink-muted">{words.ghostNote}</p>
+      <ul className="m-0 list-disc pl-5">{items.map((item, index) => <li key={`${index}-${item}`}>{item}</li>)}</ul>
     </div>
   );
 }

@@ -9,6 +9,7 @@ import type { GraphModeling } from "./GraphModeling";
 import { pairKey, parallelConnections } from "./GraphLayouter";
 import { isConnectionElement, isNodeElement, type ChangeMark, type ConnectionObject, type GraphElement, type NodeObject, type RegistryLike } from "./model";
 import { NODE_HEIGHT, NODE_WIDTH } from "./shapes";
+import { drawGhosts } from "../ghosts";
 
 type Layouter = { layoutConnection(connection: unknown): { x: number; y: number }[] };
 
@@ -138,6 +139,7 @@ export class GraphImporter {
     }
     if (changed.size > 0) this.eventBus.fire("elements.changed", { elements: [...changed] });
     this.applyMarkers(marks);
+    drawGhosts(this.canvas.getLayer("shadow-ghosts", -1) as SVGElement, data);
     return summary;
   }
 

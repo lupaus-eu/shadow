@@ -12,6 +12,9 @@ export type GraphMarkers = {
   removed: string[];
 };
 
+/** Nodes and connections the shown state removed, with their data and last drawn place; drawn as outlines that cannot be edited. */
+export type Ghosts = { nodes: GraphNode[]; connections: GraphConnection[] };
+
 export type GraphData = {
   nodes: GraphNode[];
   connections: GraphConnection[];
@@ -19,6 +22,7 @@ export type GraphData = {
   connectionTypes: ConnectionType[];
   allowedConnections: AllowedConnection[];
   markers: GraphMarkers;
+  ghosts?: Ghosts;
 };
 
 /**

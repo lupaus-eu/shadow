@@ -37,6 +37,9 @@ export function exportStyles(tokens: ExportTokens): string {
     `.shadow-connection-label{fill:${tokens.inkMuted};stroke:${tokens.surface};stroke-width:3px;paint-order:stroke}`,
     `.shadow-change-badge circle{fill:${tokens.surface};stroke:${tokens.ink};stroke-width:1.5}`,
     `.shadow-change-badge text{fill:${tokens.ink}}`,
+    `.shadow-ghost-body{fill:${tokens.surface};stroke:${tokens.inkMuted};stroke-width:1.5;stroke-dasharray:5 4}`,
+    `.shadow-ghost-line{stroke:${tokens.inkMuted};stroke-width:1.5;stroke-dasharray:5 4}`,
+    `.shadow-ghost-label{fill:${tokens.inkMuted};stroke:${tokens.surface};stroke-width:3px;paint-order:stroke}`,
   ].join("\n");
 }
 

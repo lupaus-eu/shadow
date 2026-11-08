@@ -339,6 +339,17 @@ keep the reading column. `OrganizationLayout` turns `wide` on for that route.
   | Space + drag | Pan (on a focused node Space selects it, like Enter) |
   | `Enter` / Space on a focused node | Select it |
 
+- **Time control** (ticket 08 of the Structure canvas). The canvas shows the state after the chosen event of the chosen line and **drawing edits that
+  event**, whichever it is (an earlier one, the last, a planned one): the edit goes to that event with its own version, and only the
+  subscription and the role (Members on the Base line may not write it) make the canvas read-only. The notice for an earlier event says that drawing
+  changes it. A small label over the bottom-left corner of the canvas (it lets clicks through) says which line and event are shown: a Base
+  line border in the accent colour, a Scenario border in the info colour, the line kind as text, and "Planned" for a planned event.
+  **Marks** show what the shown event changed, never by colour alone: `+` badge on an added node or connection label, `~` on a changed or
+  re-routed one, and removed ones drawn as **dashed outlines with a `-` badge** (ghosts: no pointer events, not selectable or editable). The label
+  also counts them ("+ 2 added, ~ 1 changed or re-routed, - 1 removed") and the details panel lists the removed elements as text with a note.
+  Nothing animates for the marks, so reduced motion needs no variant. A refused edit (stale, a chain that would break, a branch point, 403) is
+  reverted and explained in an alert in words naming the event and element and what to do first (`chainBrokenMessage`); the person's other
+  work stays on the canvas. "New event" and "New scenario from here" stay in the line bar and the event list of the model page above the canvas.
 - A click on the element that is already the only selection keeps it selected (diagram-js would toggle it off); a click on
   the background clears the selection.
 

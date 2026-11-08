@@ -517,6 +517,24 @@
   .shadow-change-badge text {
     fill: var(--color-ink);
   }
+  .shadow-ghost-body {
+    fill: var(--color-surface);
+    stroke: var(--color-ink-muted);
+    stroke-width: 1.5;
+    stroke-dasharray: 5 4;
+  }
+  .shadow-ghost-line {
+    stroke: var(--color-ink-muted);
+    stroke-width: 1.5;
+    stroke-dasharray: 5 4;
+  }
+  .shadow-ghost-label {
+    fill: var(--color-ink-muted);
+    stroke: var(--color-surface);
+    stroke-width: 3px;
+    paint-order: stroke;
+    user-select: none;
+  }
   @media (prefers-reduced-motion: reduce) {
     .shadow-canvas * {
       transition: none !important;

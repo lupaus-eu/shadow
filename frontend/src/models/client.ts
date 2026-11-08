@@ -74,11 +74,13 @@ export async function deleteModel(organizationId: string, model: ModelSummary): 
   await call(`${modelsUrl(organizationId)}/${model.id}?expected_version=${model.version}`, { method: "DELETE" });
 }
 
-type ElementList = { nodes?: { node: { id: string } }[]; connections?: { connection: { id: string } }[] };
+type ElementList = { nodes?: { node: GraphNode }[]; connections?: { connection: GraphConnection }[] };
 type LineStateResponse = Omit<Graph, "event"> & { event: LineEvent | null; added?: ElementList; updated?: ElementList; removed?: ElementList };
 /** Ids of the nodes and connections the shown event added, updated and removed (the state route's `added`, `updated` and `removed`). */
 export type StateChanges = { added: string[]; updated: string[]; removed: string[] };
-export type LineState = Graph & { changes: StateChanges };
+/** The elements the shown event removed, with their data. */
+export type StateGhosts = { nodes: GraphNode[]; connections: GraphConnection[] };
+export type LineState = Graph & { changes: StateChanges; ghosts?: StateGhosts };
 
 const changeIds = (list: ElementList | undefined) => [...(list?.nodes ?? []).map((item) => item.node.id), ...(list?.connections ?? []).map((item) => item.connection.id)];
 
@@ -97,12 +99,13 @@ export async function loadLineState(organizationId: string, modelId: string, lin
   return {
     event: state.event, node_types: state.node_types, connection_types: state.connection_types, allowed_connections: state.allowed_connections, nodes: state.nodes, connections: state.connections,
     changes: { added: changeIds(state.added), updated: changeIds(state.updated), removed: changeIds(state.removed) },
+    ghosts: { nodes: (state.removed?.nodes ?? []).map((item) => item.node), connections: (state.removed?.connections ?? []).map((item) => item.connection) },
   };
 }
 
 /** The graph after the line's last event. */
 export async function loadGraph(organizationId: string, modelId: string, lineId: string, signal?: AbortSignal): Promise<Graph> {
-  const { changes: _changes, ...graph } = await loadLineState(organizationId, modelId, lineId, null, signal);
+  const { changes: _changes, ghosts: _ghosts, ...graph } = await loadLineState(organizationId, modelId, lineId, null, signal);
   return graph;
 }
 

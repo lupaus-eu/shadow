@@ -23,6 +23,7 @@ export function toGraphData(state: LineState): LoadedGraph {
       connectionTypes: state.connection_types,
       allowedConnections: state.allowed_connections,
       markers: state.changes ?? noMarkers,
+      ghosts: state.ghosts,
     },
   };
 }
