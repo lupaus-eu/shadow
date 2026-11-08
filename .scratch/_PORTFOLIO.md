@@ -6,7 +6,7 @@
 | --- | --- | ---: | --- | --- |
 | [Feature: All AI use happens in the user's own agent](agent-owned-ai/PRD.md) | implemented | 5/5 | — | — |
 | [Feature: Sign in with Authentik](authentik-sign-in/PRD.md) | implemented | 5/5 | — | — |
-| [Feature: Model timeline (Base line, events and scenarios)](model-timeline/PRD.md) | ready for implementation | 5/11 | [06 scenarios and positions](model-timeline/issues/06-scenarios-and-positions.md) — ready-for-agent | — |
+| [Feature: Model timeline (Base line, events and scenarios)](model-timeline/PRD.md) | ready for implementation | 6/11 | [07 canvas edit routes and in use](model-timeline/issues/07-canvas-edit-routes-and-in-use.md) — ready-for-agent | — |
 | [Feature: Shadow models (digital twin of an organisation)](shadow-models/PRD.md) | implemented (written after the fact, 2026-11-07; the features were built in | 0/0 | — | — |
 | [Feature: Structure canvas (full-width drawing tool)](structure-canvas/PRD.md) | ready for implementation | 0/9 | [01 Full-width layout and collapsible panels](structure-canvas/issues/01-full-width-layout.md) — ready-for-agent | — |
 | [Feature: Companies (tenants) and roles](tenants-and-roles/PRD.md) | needs decision | 2/11 | [03 Company access, session and sign-in accounts (080C)](tenants-and-roles/issues/03-tenant-access.md) — needs-info | — |
@@ -28,11 +28,10 @@
 
 | Ticket | Tila | Avoimia kriteerejä | Aloitettavissa | Odottaa ticketejä |
 | --- | --- | ---: | --- | --- |
-| [06 scenarios and positions](model-timeline/issues/06-scenarios-and-positions.md) | ready-for-agent | 3 | kyllä | — |
 | [07 canvas edit routes and in use](model-timeline/issues/07-canvas-edit-routes-and-in-use.md) | ready-for-agent | 3 | kyllä | — |
-| [08 adopt scenario mcp tools and retire versions](model-timeline/issues/08-adopt-scenario-mcp-tools-and-retire-versions.md) | ready-for-agent | 3 | ei | 06, 07 |
-| [09 frontend event list and scenario picker](model-timeline/issues/09-frontend-event-list-and-scenario-picker.md) | ready-for-agent | 3 | ei | 06, 07 |
-| [10 performance and limits](model-timeline/issues/10-performance-and-limits.md) | ready-for-agent | 2 | ei | 06 |
+| [08 adopt scenario mcp tools and retire versions](model-timeline/issues/08-adopt-scenario-mcp-tools-and-retire-versions.md) | ready-for-agent | 3 | ei | 07 |
+| [09 frontend event list and scenario picker](model-timeline/issues/09-frontend-event-list-and-scenario-picker.md) | ready-for-agent | 3 | ei | 07 |
+| [10 performance and limits](model-timeline/issues/10-performance-and-limits.md) | ready-for-agent | 2 | kyllä | — |
 | [11 documentation and vocabulary](model-timeline/issues/11-documentation-and-vocabulary.md) | ready-for-agent | 1 | ei | 08, 09 |
 
 ### Feature: Structure canvas (full-width drawing tool)

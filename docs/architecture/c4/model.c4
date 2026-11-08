@@ -81,8 +81,8 @@ model {
         description 'Models with nodes and connections, the per-model metamodel (node types, connection types, allowed connections; ADR-0043), versions with a baseline, change lists and merge into the base (ADR-0045), optimistic concurrency (ADR-0018).'
       }
       timeline = component 'Model timeline' {
-        technology 'timeline_routes, timeline_event_routes, timeline/ (state, chain, validate, loader, payloads, compact)'
-        description 'Lines (the Base line and Scenarios) hold dated events of changes (ADR-0048). A pure replay engine computes the state after any event; every event write locks the Model row, replays the changed line and every Scenario that branches from it, and refuses a broken chain with a structured 422 (ADR-0049). Reads need membership; Owners and Admins write the Base line, Members write Scenarios.'
+        technology 'timeline_routes, timeline_event_routes, timeline_line_routes, timeline/ (state, chain, validate, loader, payloads, compact)'
+        description 'Lines (the Base line and Scenarios) hold dated events of changes (ADR-0048). A pure replay engine computes the state after any event; every event write locks the Model row, replays the changed line and every Scenario that branches from it, and refuses a broken chain with a structured 422 (ADR-0049). Scenarios are created from any event and copy the parent line metrics; positions are stored per line. Reads need membership; Owners and Admins write the Base line, Members write Scenarios.'
       }
       metrics = component 'Metrics and formulas' {
         technology 'metric_routes, metric_engine, formulas'

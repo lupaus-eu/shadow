@@ -22,6 +22,7 @@ Audit Events never contain credentials, tokens, payment details, MFA material, o
 - Organization creation, ownership, role, invitation, and membership changes
 - Yearclock, Lane, Category, Event, Series, and Occurrence mutations
 - Events of a Model's timeline (`event.created`, `event.updated`, `event.deleted`): the Model, line and event ids, the event date, the operations changed and how many of each (`change_counts`, and for an update the `fields` that changed, the previous date and the previous counts); never an element name, an event title or a note, which are customer content
+- Lines of a Model's timeline (`line.created`, `line.renamed`, `line.deleted`): the Model, line, parent line and branch event ids, the fields a rename changed, and the number of events a deleted Scenario held; never a line name or description. Moving nodes (positions) and acknowledging a changed start are drawing and notice state and are not audited
 - Recommendation decisions when that future capability is implemented
 - Support Access grants, use, and revocation
 - Stripe subscription projection changes

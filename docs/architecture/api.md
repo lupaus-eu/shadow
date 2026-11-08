@@ -250,17 +250,23 @@ Routes under `/models/{model_id}/lines` and `/models/{model_id}/events`. Reads a
 `backend/app/timeline_routes.py` (loading and the planned rule are in `backend/app/timeline/loader.py`) and
 need any membership; they work while the Organization is read-only. Event writes are in
 `backend/app/timeline_event_routes.py`. Another Organization, an unknown Model, line or event answers 404. A
-line's id equals its former version id. Scenario and position routes arrive with later tickets.
+line's id equals its former version id. Scenario and position writes are in `backend/app/timeline_line_routes.py`
+(below); adoption arrives with ticket 08.
 
 | Method and path | Purpose |
 | --- | --- |
-| `GET` `/lines` | Lines, Base first: `kind`, `parent_line_id`, `branch_event_id`, `start_changed_at`, `version`, `event_count`, `latest_event_date` |
+| `GET` `/lines` | Lines, Base first: `kind`, `parent_line_id`, `branch_event_id`, `start_changed_at`, `created_by_user_account_id`, `version`, `event_count`, `latest_event_date` (the state's `line` carries the same fields) |
 | `GET` `.../lines/{line_id}/events` | The line's own events by date then entry order: `occurred_on`, `title`, `note`, `planned`, `change_count`, `change_counts` per operation, `branches` (Scenarios that branch from the event) |
 | `GET` `.../lines/{line_id}/state` | The graph after `?event_id=` (an event of that line) or on `?as_of=YYYY-MM-DD` (the last event dated that day or earlier); with neither, the present state (`as_of` = today). Both together answer 422 `event_id_and_as_of` |
 | `GET` `/events/{event_id}` | One event with its ordered `changes` (`position`, `op`, `element_id`, `payload`) |
 | `POST` `/lines/{line_id}/events` | Add an event: `occurred_on`, `title`, `note`, `changes[]` (`op`, `element_id`, `payload`); answers 201 with the event and its changes |
 | `PATCH` `/events/{event_id}` | Change `title`, `note`, `occurred_on`, or replace `changes`; only the fields sent change; `expected_version` required; a patch that changes nothing answers 200 without a new version |
 | `DELETE` `/events/{event_id}?expected_version=` | Delete an event; answers 204 |
+| `POST` `/lines` | Create a Scenario (see below) |
+| `PATCH` `/lines/{line_id}` | Rename and set the description (see below) |
+| `DELETE` `/lines/{line_id}` | Delete a Scenario (see below) |
+| `POST` `/lines/{line_id}/acknowledge-start` | Clear `start_changed_at` |
+| `PUT` `/lines/{line_id}/positions` | Write node positions for one line |
 
 The state answers the graph in the shape of `GET /models/{model_id}` (`nodes`, `connections`, `node_types`,
 `connection_types`, `allowed_connections`; nodes carry no `version`) plus `line`, `event` (null before the
@@ -313,6 +319,45 @@ After a successful write, each Scenario below the changed line whose starting po
 removed or moved before its branch point, or the content of one of those events replaced) gets
 `start_changed_at` set. Audit actions `event.created`, `event.updated` and `event.deleted` hold ids, the event
 date and change counts per operation, never names, titles or notes (`audit.md`).
+
+### Scenarios and positions (ADR-0048)
+
+`POST /lines` takes `name` (trimmed, at most 120, unique per Model ignoring case, the Base line's name counts),
+`description` (optional) and `branch_event_id`: any event of any line of the Model, so a Scenario of a Scenario
+works to any depth. The parent line is the line that holds the event. The Scenario starts from the parent's state
+after that event, and gets a copy of the parent's metrics and stored values as they are now (a metric keeps its
+`node_id` only while that node exists in the state at the branch point); afterwards the lines are independent.
+Answers 201 with the line. Any Member may create a Scenario. The Model row is locked while it is created.
+
+`PATCH /lines/{line_id}` takes `name`, `description` (replaced; null clears it) and `expected_version`; a patch that
+changes nothing answers 200 without a new version. `DELETE /lines/{line_id}` answers 204 and takes the line's events,
+changes, positions, metrics, values and simulations with it (optional `?expected_version=`). Rename and delete: the
+Base line needs an Owner or Admin (the Base line cannot be deleted); a Scenario needs its creator, an Owner or an
+Admin. `POST .../acknowledge-start` clears `start_changed_at` for anyone who may write the line (Base line Owner or
+Admin, a Scenario any Member) and answers the line without a new version.
+
+`PUT /lines/{line_id}/positions` takes `[{node_id, x, y}]` (at most 5000, finite numbers; a node named twice takes its
+last entry) and upserts the line's own positions, all or nothing; answers the positions written. Moving nodes is part
+of drawing, so it follows the line's write rule (Base line Owner or Admin; Scenario any Member). It writes no event,
+no audit entry and no version. A node must exist in the line's state at its latest event (including planned ones).
+The state read resolves a position as the line's own, else the nearest ancestor's, else the position the node was
+added with.
+
+| Answer | When |
+| --- | --- |
+| 403 | A role is not enough (see above), or the Organization is read-only |
+| 404 | Unknown Model, line or branch event, or another Organization's (also an event of another Model) |
+| 409 `{reason: "duplicate_name"}` | Another line of the Model has the name (create, rename) |
+| 409 `{latest_version}` | `expected_version` is stale |
+| 409 `{reason: "limit_reached", limit: "lines_per_model", maximum}` | The Model holds `LIMIT_LINES_PER_MODEL` lines (create only) |
+| 409 `{reason: "has_children", children}` | Scenarios branch from the line (delete); the count only, no names |
+| 422 `{reason: "base_line"}` | Delete of the Base line |
+| 422 `{reason: "unknown_node", node_ids}` | A position names a node the line does not have |
+
+Audit actions `line.created` (`model_id`, `line_id`, `parent_line_id`, `branch_event_id`), `line.renamed` (ids and
+the `fields` changed) and `line.deleted` (ids, `parent_line_id`, `event_count`) never hold names or descriptions
+(`audit.md`). Until ticket 08 retires the version routes, renaming or deleting a Scenario that came from a fork also
+updates or removes its old version row so both route families agree.
 
 ## Metrics
 
