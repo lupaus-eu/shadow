@@ -1,5 +1,5 @@
 // Shadow PostgreSQL schema, generated from the migrated database by backend/app/dbml.py.
-// Alembic revision 0059. Do not edit by hand: run `UPDATE_DBML=1 pytest tests/test_dbml_model.py` in backend/.
+// Alembic revision 0060. Do not edit by hand: run `UPDATE_DBML=1 pytest tests/test_dbml_model.py` in backend/.
 
 Project shadow {
   database_type: 'PostgreSQL'
@@ -106,6 +106,23 @@ Table connections {
   Note: 'Checks: ck_connections_no_loop: source_node_id <> target_node_id. RLS forced: connections_live_organization (restrictive) all, connections_policy all, connections_support_delete (restrictive) delete, connections_support_insert (restrictive) insert, connections_support_select (restrictive) select, connections_support_update (restrictive) update'
 }
 
+Table event_changes {
+  id uuid [pk]
+  organization_id uuid [not null]
+  event_id uuid [not null]
+  position integer [not null]
+  op varchar(30) [not null]
+  element_id uuid [not null]
+  payload jsonb [not null, default: `'{}'::jsonb`]
+
+  indexes {
+    (event_id, position) [unique]
+    organization_id [name: 'ix_event_changes_organization_id']
+  }
+
+  Note: 'Checks: ck_event_changes_op: op::text = ANY (ARRAY[\'add_node\'::character varying, \'remove_node\'::character varying, \'update_node\'::character varying, \'add_connection\'::character varying, \'remove_connection\'::character varying, \'reroute_connection\'::character varying, \'change_connection_type\'::character varying]::text[]); ck_event_changes_position: "position" >= 0. RLS forced: event_changes_live_organization (restrictive) all, event_changes_policy all, event_changes_support_delete (restrictive) delete, event_changes_support_insert (restrictive) insert, event_changes_support_select (restrictive) select, event_changes_support_update (restrictive) update'
+}
+
 Table legal_acceptances {
   id uuid [pk]
   organization_id uuid [not null]
@@ -194,6 +211,31 @@ Table metrics {
   Note: 'Checks: ck_metrics_key: key::text ~ \'^[a-z][a-z0-9_]{0,39}$\'::text; ck_metrics_name: length(btrim(name::text)) > 0. RLS forced: metrics_live_organization (restrictive) all, metrics_policy all, metrics_support_delete (restrictive) delete, metrics_support_insert (restrictive) insert, metrics_support_select (restrictive) select, metrics_support_update (restrictive) update'
 }
 
+Table model_lines {
+  id uuid [pk]
+  organization_id uuid [not null]
+  model_id uuid [not null]
+  name varchar(120) [not null]
+  description text
+  kind varchar(10) [not null]
+  parent_line_id uuid
+  branch_event_id uuid
+  start_changed_at "timestamp with time zone"
+  created_by_user_account_id uuid
+  version integer [not null, default: `1`]
+  created_at "timestamp with time zone" [not null, default: `now()`]
+
+  indexes {
+    (id, model_id) [unique]
+    model_id [name: 'ix_model_lines_model_id']
+    organization_id [name: 'ix_model_lines_organization_id']
+    model_id [unique, name: 'uq_model_lines_base']
+    (`model_id`, `lower(name::text)`) [unique, name: 'uq_model_lines_name']
+  }
+
+  Note: 'Checks: ck_model_lines_kind: kind::text = \'base\'::text AND parent_line_id IS NULL AND branch_event_id IS NULL OR kind::text = \'scenario\'::text AND parent_line_id IS NOT NULL AND branch_event_id IS NOT NULL; ck_model_lines_name: length(btrim(name::text)) > 0. RLS forced: model_lines_live_organization (restrictive) all, model_lines_policy all, model_lines_support_delete (restrictive) delete, model_lines_support_insert (restrictive) insert, model_lines_support_select (restrictive) select, model_lines_support_update (restrictive) update'
+}
+
 Table model_versions {
   id uuid [pk]
   organization_id uuid [not null]
@@ -231,6 +273,22 @@ Table models {
   }
 
   Note: 'Checks: ck_models_name: length(btrim(name::text)) > 0. RLS forced: models_live_organization (restrictive) all, models_policy all, models_support_delete (restrictive) delete, models_support_insert (restrictive) insert, models_support_select (restrictive) select, models_support_update (restrictive) update'
+}
+
+Table node_positions {
+  line_id uuid
+  node_id uuid
+  organization_id uuid [not null]
+  model_id uuid [not null]
+  x "double precision" [not null]
+  y "double precision" [not null]
+
+  indexes {
+    (line_id, node_id) [pk]
+    organization_id [name: 'ix_node_positions_organization_id']
+  }
+
+  Note: 'RLS forced: node_positions_live_organization (restrictive) all, node_positions_policy all, node_positions_support_delete (restrictive) delete, node_positions_support_insert (restrictive) insert, node_positions_support_select (restrictive) select, node_positions_support_update (restrictive) update'
 }
 
 Table node_types {
@@ -588,6 +646,30 @@ Table support_access_requests {
   Note: 'Checks: ck_support_access_hours: requested_hours >= 1 AND requested_hours <= 24; ck_support_access_scope: scope::text = ANY (ARRAY[\'read\'::character varying, \'write\'::character varying]::text[]); ck_support_access_status: status::text = ANY (ARRAY[\'pending\'::character varying, \'approved\'::character varying, \'rejected\'::character varying, \'revoked\'::character varying, \'expired\'::character varying]::text[]). RLS forced: support_access_requests_insert insert, support_access_requests_purge delete, support_access_requests_select select, support_access_requests_update update'
 }
 
+Table timeline_events {
+  id uuid [pk]
+  organization_id uuid [not null]
+  model_id uuid [not null]
+  line_id uuid [not null]
+  occurred_on date [not null]
+  seq bigint [not null]
+  title varchar(200) [not null]
+  note text
+  version integer [not null, default: `1`]
+  created_by_user_account_id uuid
+  created_at "timestamp with time zone" [not null, default: `now()`]
+  updated_at "timestamp with time zone" [not null, default: `now()`]
+
+  indexes {
+    (id, line_id) [unique]
+    (line_id, occurred_on, seq) [name: 'ix_timeline_events_line_order']
+    model_id [name: 'ix_timeline_events_model_id']
+    organization_id [name: 'ix_timeline_events_organization_id']
+  }
+
+  Note: 'Checks: ck_timeline_events_title: length(btrim(title::text)) > 0. RLS forced: timeline_events_live_organization (restrictive) all, timeline_events_policy all, timeline_events_support_delete (restrictive) delete, timeline_events_support_insert (restrictive) insert, timeline_events_support_select (restrictive) select, timeline_events_support_update (restrictive) update'
+}
+
 Table user_accounts {
   id uuid [pk]
   oidc_issuer varchar(500) [not null]
@@ -636,6 +718,8 @@ Ref: connections.(target_node_id, model_id) > nodes.(id, model_id) [delete: casc
 Ref: connections.(target_node_id, version_id) > nodes.(id, version_id) [delete: cascade]
 Ref: connections.(version_id, model_id) > model_versions.(id, model_id) [delete: cascade]
 Ref: connections.organization_id > organizations.id [delete: cascade]
+Ref: event_changes.event_id > timeline_events.id [delete: cascade]
+Ref: event_changes.organization_id > organizations.id [delete: cascade]
 Ref: legal_acceptances.organization_id > organizations.id [delete: cascade]
 Ref: legal_acceptances.user_account_id > user_accounts.id [delete: set null]
 Ref: metric_values.(metric_id, version_id) > metrics.(id, version_id) [delete: cascade]
@@ -644,9 +728,15 @@ Ref: metrics.(model_id, organization_id) > models.(id, organization_id) [delete:
 Ref: metrics.(version_id, model_id) > model_versions.(id, model_id) [delete: cascade]
 Ref: metrics.node_id > nodes.id [delete: set null]
 Ref: metrics.organization_id > organizations.id [delete: cascade]
+Ref: model_lines.(branch_event_id, parent_line_id) > timeline_events.(id, line_id) [delete: restrict]
+Ref: model_lines.(model_id, organization_id) > models.(id, organization_id) [delete: cascade]
+Ref: model_lines.(parent_line_id, model_id) > model_lines.(id, model_id) [delete: restrict]
+Ref: model_lines.organization_id > organizations.id [delete: cascade]
 Ref: model_versions.(model_id, organization_id) > models.(id, organization_id) [delete: cascade]
 Ref: model_versions.organization_id > organizations.id [delete: cascade]
 Ref: models.organization_id > organizations.id [delete: cascade]
+Ref: node_positions.(line_id, model_id) > model_lines.(id, model_id) [delete: cascade]
+Ref: node_positions.organization_id > organizations.id [delete: cascade]
 Ref: node_types.(model_id, organization_id) > models.(id, organization_id) [delete: cascade]
 Ref: node_types.organization_id > organizations.id [delete: cascade]
 Ref: nodes.(model_id, organization_id) > models.(id, organization_id) [delete: cascade]
@@ -677,6 +767,8 @@ Ref: simulations.organization_id > organizations.id [delete: cascade]
 Ref: stripe_webhook_events.organization_id > organizations.id [delete: set null]
 Ref: support_access_requests.organization_id > organizations.id [delete: cascade]
 Ref: support_access_requests.requested_by_user_account_id > user_accounts.id
+Ref: timeline_events.(line_id, model_id) > model_lines.(id, model_id) [delete: cascade]
+Ref: timeline_events.organization_id > organizations.id [delete: cascade]
 Ref: user_sessions.user_account_id > user_accounts.id [delete: cascade]
 
 TableGroup identity {
@@ -709,6 +801,13 @@ TableGroup model_graph {
   model_versions
   nodes
   connections
+}
+
+TableGroup model_timeline {
+  model_lines
+  timeline_events
+  event_changes
+  node_positions
 }
 
 TableGroup metamodel {

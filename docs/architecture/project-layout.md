@@ -9,7 +9,7 @@
 ├── docker-compose.dev.yml
 ├── frontend/
 ├── backend/
-│   ├── app/
+│   ├── app/                  # includes timeline/: the pure replay engine for events on lines
 │   ├── migrations/
 │   └── tests/
 ├── authentik/

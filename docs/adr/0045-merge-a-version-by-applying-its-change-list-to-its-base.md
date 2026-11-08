@@ -19,3 +19,5 @@ A Version could show its change list against the base, but the changes could not
 
 - A node that the base lost after the fork returns to the base as a new node.
 - Metric differences between a Version and its base stay as they are and need manual work.
+
+ADR-0050 replaces this decision, together with ADR-0048, when ticket 08 of the model timeline lands.

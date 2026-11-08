@@ -19,3 +19,5 @@ Node types, connection types, and allowed connections came from one fixed defaul
 
 - Changing a type affects every Version of the Model at once.
 - Types are not shared between Models; copying types between Models is not supported.
+
+ADR-0048 keeps the metamodel per model and shared by every line.
