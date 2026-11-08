@@ -35,7 +35,7 @@
 
 ## Ownership
 
-- `frontend/` owns browser UI and client-side state. `frontend/src/models/canvas/` is the Structure canvas: `useGraphState.ts` (the one seam that knows lines and events), `ShadowCanvas.tsx` (one diagram-js `Diagram`), `CanvasToolbar.tsx`, `view.ts`, `useCanvasView.ts` and `keymap.ts` (navigation), and `diagram/` (the Shadow domain layer: importer, renderer, layouter, rules, modeling, navigation, keys). It receives plain graph data and reports edits. Its tests are `frontend/tests/canvas/` (Vitest, jsdom).
+- `frontend/` owns browser UI and client-side state. `frontend/src/models/canvas/` is the Structure canvas: `useGraphState.ts` (the one seam that knows lines and events), `ShadowCanvas.tsx` (one diagram-js `Diagram`), `CanvasToolbar.tsx`, `view.ts`, `useCanvasView.ts` and `keymap.ts` (navigation), the tidying and output code (`snap.ts`, `arrange.ts`, `layout.ts` with `elkjs` loaded on request, `export.ts`, and `minimap.ts`, which is the only file that imports `diagram-js-minimap` and is loaded when the minimap is first opened), and `diagram/` (the Shadow domain layer: importer, renderer, layouter, rules, modeling, navigation, keys, popover, tools). It receives plain graph data and reports edits. Its tests are `frontend/tests/canvas/` (Vitest, jsdom).
 - `backend/` owns HTTP API behavior.
 - `backend/migrations/` owns the Yearclock Alembic history.
 - `backend/tests/` owns API and persistence integration tests.

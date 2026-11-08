@@ -64,13 +64,13 @@ All edits go through one function, `applyEdit(command)`, which wraps `modeling` 
 
 **Layout and navigation.** `moveCanvas` and `zoomScroll` provide background-drag pan and wheel/pinch zoom around the pointer; our toolbar reads and sets `canvas.viewbox()` and `canvas.zoom()`. Reduced motion: `zoomScroll`/`canvas` animations and our centring use no transition under `prefers-reduced-motion`.
 
-**Lasso, move, align, snap.** Selection by shift-click and the lasso tool; `move` moves a selection together as one command; `align-elements` and `distribute-elements` are configuration plus toolbar buttons; `grid-snapping` is toggled by our `shadow.canvas.snap` key. Each is one command-stack entry.
+**Lasso, move, align, snap.** Selection by shift-click and the lasso tool; `move` moves a selection together as one command; `align-elements` is configuration plus toolbar buttons; distribute is our own arithmetic (`canvas/arrange.ts`, because the library's leaves unequal gaps with four or more nodes); `grid-snapping` supplies the on/off state and is finished by `GraphTools.snapMove`, toggled by our `shadow.canvas.snap` key. Each tool is one command, one positions write and one history entry (ADR-0051).
 
 **Hover popovers (as built, ticket 06).** `diagram/GraphPopover.ts` adds the popover (name, type, description) as an `overlays` overlay beside the shape, on the side with room (`canvas/popover.ts`); the layer follows pan and zoom, the popover is removed on leave, on focus loss, on Esc, on a pan and while dragging, and opens on keyboard focus. The draft node and the naming input are ignored. **Node metrics** are read by `models/useNodeMetrics.ts` (outside `canvas/`, which may not call the server) when a node is selected: the line's metric list and each series once per page, latest non-empty month shown with the unit in the details panel, with a link to `.../metrics?line=`.
 
-**Minimap.** `diagram-js-minimap` (a separate package; ticket 07), collapsible, with our CSS.
+**Minimap (as built, ticket 07).** `diagram-js-minimap` 5.6, attached by `canvas/minimap.ts` when the person first opens it (its code is a lazy chunk; the package's stylesheet is part of `theme.css`). Closed to begin with, toggled by a toolbar button, `aria-hidden`; its view moves go through `GraphNavigation.setView` and nodes of a hidden type are left out. Details and findings: ADR-0051.
 
-**Auto layout.** `elkjs` (layered algorithm), loaded only when the person asks; the result is applied as one `elements.move` command and therefore one undo step; nothing rearranges on its own.
+**Auto layout (as built, ticket 07).** `elkjs` 0.12 (EPL-2.0, taken under that licence; ADR-0051), the layered algorithm, loaded only when the person asks (`canvas/layout.ts`). The result is applied as one Shadow command (`shadow.arrange`, which moves each node inside one command; one `elements.move` cannot give nodes different distances), one `positions` write and one history entry; nothing rearranges on its own.
 
 **Export.** SVG: serialise the canvas `<svg>` with inlined styles and the current visibility (hidden types stay hidden); PNG: draw that SVG onto a `<canvas>` at scale 2. Both are our code (ticket 07).
 

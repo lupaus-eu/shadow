@@ -27,6 +27,11 @@
       "key": "shadow.canvas.typeCollapse",
       "purpose": "Remembers, per model, which node type groups of the Structure canvas list you collapsed or opened on this device.",
       "lifetime": "Until the person clears site data."
+    },
+    {
+      "key": "shadow.canvas.snap",
+      "purpose": "Remembers whether snap to grid is on for the model Structure canvas on this device.",
+      "lifetime": "Until the person clears site data."
     }
   ],
   "sessionStorage": [

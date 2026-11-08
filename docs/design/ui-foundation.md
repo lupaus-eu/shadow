@@ -242,6 +242,24 @@ keep the reading column. `OrganizationLayout` turns `wide` on for that route.
   and a filled background, never colour alone. Every control is a labelled button (Finnish and English texts in
   `models/messages.ts`; Fit is "Fit the whole graph in view" / "Sovita koko kaavio näkymään"); the readout is a plain
   `<output>` that is not announced on every change. Zoom out and in disable at the limits.
+  After another separator, on a writable model: **Snap nodes to the grid** (toggle; the choice is remembered per person
+  in `shadow.canvas.snap`; holding Ctrl or Cmd while dragging turns it off for that drag), four align buttons (left
+  edges, centres, top edges, middles; enabled with two or more nodes selected), two distribute buttons (horizontally,
+  vertically, equal gaps; three or more selected) and **Arrange the graph automatically** (layered layout of every
+  node, on request only, then Fit; Undo puts the nodes back). Then, also on a read-only model, the **Minimap** toggle
+  and the **Export the canvas** menu (**Export as SVG**, **Export as PNG**; file name `model-line`, sanitised). Each
+  tool is one history step; its result is announced ("Nodes aligned.", "Graph arranged. Undo puts the nodes back.",
+  "The file was downloaded.") and a failure is a notice that says nothing was changed. The buttons are labelled with
+  what they do and what they need ("... (select three or more nodes)"). The toolbar wraps onto more rows when the canvas
+  is narrow.
+- **Minimap** (a small picture at the bottom right of the canvas, opened and closed by the toolbar toggle, closed when
+  the page opens). It shows every shown node and connection and a frame for what is in view; a click centres the view
+  there and dragging the frame pans, with the zoom unchanged. Nodes of a hidden type are not in it. It is decorative
+  (`aria-hidden`): the node list in the left panel is the text alternative, and every action it offers (moving the view)
+  has a keyboard way (arrows, `F`, selecting a row in the list). It is not focusable.
+- **Export.** The image shows what the canvas shows: hidden types and their connections are left out, a search keeps its
+  dimming, selection and hover are not drawn. The SVG is self-contained (its own `<style>`, white background and a title);
+  the PNG is the same drawing at twice the size.
 - **Drawing** (ticket 05 of the Structure canvas; none of it exists on a read-only model, apart from selecting).
   - **New node.** "+" in the type panel, or **Add** in the details panel for the chosen type, draws an empty node at the
     centre of what is in view (at any zoom and pan; moved 24 px aside while another node is on that spot) and opens its name

@@ -1,6 +1,8 @@
+import AlignElementsModule from "diagram-js/lib/features/align-elements/index.js";
 import ConnectModule from "diagram-js/lib/features/connect/index.js";
 import ConnectionPreviewModule from "diagram-js/lib/features/connection-preview/index.js";
 import ContextPadModule from "diagram-js/lib/features/context-pad/index.js";
+import GridSnappingModule from "diagram-js/lib/features/grid-snapping/index.js";
 import HandToolModule from "diagram-js/lib/features/hand-tool/index.js";
 import KeyboardModule from "diagram-js/lib/features/keyboard/index.js";
 import LassoToolModule from "diagram-js/lib/features/lasso-tool/index.js";
@@ -23,6 +25,7 @@ import { GraphModeling } from "./GraphModeling";
 import { GraphNavigation } from "./GraphNavigation";
 import { GraphPopover } from "./GraphPopover";
 import { GraphRenderer } from "./GraphRenderer";
+import { GraphTools } from "./GraphTools";
 import { GraphContext, GraphRules } from "./GraphRules";
 
 /** Keeps a dragged node on the page instead of dropping it into the node under the pointer: nodes never contain other nodes. */
@@ -37,12 +40,14 @@ GraphMoveTarget.$inject = ["eventBus", "canvas"];
  * The Shadow graph domain layer for diagram-js: how nodes and connections look (`graphRenderer`), where connections run (`layouter`,
  * `connectionDocking`), what is allowed (`graphRules`), how plain data becomes shapes (`graphImporter`) and how edits reach the server
  * (`graphModeling`), how the view moves (`graphNavigation`), which keys do what (`graphKeys`), what the type panel hides or dims (`graphFilter`), and the pointer drawing: connect, lasso, the context pad and naming in place (`graphDrawing`, `graphContextPad`), and the hover popover of a node (`graphPopover`). The library's own modules supply selection,
- * move, background drag and space + drag panning, the keyboard service, the command stack and the rules registry;
- * create, palette, align, snapping, editor actions and the minimap join in the tickets that need them.
+ * move, background drag and space + drag panning, the keyboard service, the command stack and the rules registry, and `align-elements`
+ * and `grid-snapping`, which `graphTools` drives together with our own distribute and the automatic layout. Create, palette and editor
+ * actions join in the tickets that need them; the minimap is added after load by `attachMinimap` (`../minimap.ts`) so its code is a chunk of its own.
+ * A Diagram made from this module should be given `gridSnapping: { active: false }`: snapping is off until the person turns it on.
  */
 export const shadowGraphModule = {
-  __depends__: [ModelingModule, SelectionModule, MoveModule, OutlineModule, MoveCanvasModule, ZoomScrollModule, KeyboardModule, HandToolModule, ConnectModule, ConnectionPreviewModule, ContextPadModule, LassoToolModule, OverlaysModule],
-  __init__: ["graphRenderer", "graphRules", "graphModeling", "graphMoveTarget", "graphNavigation", "graphDrawing", "graphContextPad", "graphKeys", "graphPopover"],
+  __depends__: [ModelingModule, SelectionModule, MoveModule, OutlineModule, MoveCanvasModule, ZoomScrollModule, KeyboardModule, HandToolModule, ConnectModule, ConnectionPreviewModule, ContextPadModule, LassoToolModule, OverlaysModule, AlignElementsModule, GridSnappingModule],
+  __init__: ["graphRenderer", "graphRules", "graphModeling", "graphMoveTarget", "graphNavigation", "graphDrawing", "graphContextPad", "graphKeys", "graphPopover", "graphTools"],
   graphContext: ["type", GraphContext],
   graphRenderer: ["type", GraphRenderer],
   graphRules: ["type", GraphRules],
@@ -55,6 +60,7 @@ export const shadowGraphModule = {
   graphContextPad: ["type", GraphContextPad],
   graphKeys: ["type", GraphKeys],
   graphPopover: ["type", GraphPopover],
+  graphTools: ["type", GraphTools],
   layouter: ["type", GraphLayouter],
   connectionDocking: ["type", CroppingConnectionDocking],
 };

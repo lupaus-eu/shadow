@@ -40,6 +40,19 @@ export class UpdateNodeHandler implements Handler {
   }
 }
 
+type ArrangeContext = { moves: { shape: GraphElement; delta: Place }[] };
+
+/** The second command Shadow adds: moving several nodes by different amounts (auto layout) is one command, so it is one entry on the stack and one batch of moves. */
+export class ArrangeHandler {
+  static $inject = ["modeling"];
+
+  constructor(private readonly modeling: Modeling) {}
+
+  preExecute(context: ArrangeContext) {
+    for (const { shape, delta } of context.moves) this.modeling.moveElements([shape] as never[], delta, shape.parent as never);
+  }
+}
+
 /**
  * The single seam between the diagram and the server. `applyEdit` runs the change on the command stack at once (so the person sees it),
  * sends the same change through the sender, and when the sender rejects undoes the change and passes the error on. The sender is where
@@ -74,7 +87,10 @@ export class GraphModeling {
     private readonly context: GraphContext,
     private readonly rules: GraphRules,
   ) {
-    eventBus.on("diagram.init", () => commandStack.registerHandler("shadow.node.update", UpdateNodeHandler as never));
+    eventBus.on("diagram.init", () => {
+      commandStack.registerHandler("shadow.node.update", UpdateNodeHandler as never);
+      commandStack.registerHandler("shadow.arrange", ArrangeHandler as never);
+    });
     eventBus.on("commandStack.elements.move.postExecuted", (event: { context: { shapes: GraphElement[]; delta: Place } }) => {
       for (const shape of event.context.shapes) {
         if (!isNodeElement(shape)) continue;
@@ -142,6 +158,21 @@ export class GraphModeling {
     } catch {
       this.rollback(batch.before, batch.after);
     }
+  }
+
+  /**
+   * Moves nodes to given places as one command, and saves them at once as one write and one history entry (align, distribute, auto
+   * layout). Ids that are not drawn, or that are waiting for the server's id, are skipped. Rejects when the canvas is read-only.
+   */
+  async arrange(places: readonly { id: string; x: number; y: number }[]): Promise<void> {
+    if (this.context.readOnly) throw new EditRefused("read_only");
+    const moves = places.flatMap((place) => {
+      const shape = this.registry.get(place.id);
+      return shape && isNodeElement(shape) && !isPendingId(shape.id) ? [{ shape, delta: { x: place.x - shape.x, y: place.y - shape.y } }] : [];
+    }).filter((move) => move.delta.x !== 0 || move.delta.y !== 0);
+    if (moves.length === 0) return;
+    this.commandStack.execute("shadow.arrange", { moves });
+    return this.flush();
   }
 
   /** Runs an edit optimistically and sends it; rejects when it is refused (before sending, or by the server, in which case the change was undone). */

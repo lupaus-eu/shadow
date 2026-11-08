@@ -25,6 +25,7 @@ This list is kept equal to the code by automated tests (`backend/legal/browser-s
 | `shadow.locale` | Remembers your language. | Until you clear site data. |
 | `shadow.canvas.panels` | Remembers which canvas panels you collapsed. | Until you clear site data. |
 | `shadow.canvas.typeCollapse` | Remembers which node type groups of the canvas list you collapsed. | Until you clear site data. |
+| `shadow.canvas.snap` | Remembers whether nodes snap to the grid on the canvas. | Until you clear site data. |
 | `shadow.had-session` (session storage) | Lets the sign-in page say that your session ended. | Until you close the tab. |
 | `shadow.signed-out` (session storage) | Lets the sign-in page confirm your sign-out once. | Removed after one use. |
 

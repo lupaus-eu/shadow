@@ -10,6 +10,7 @@
 @import "tailwindcss/utilities.css" layer(utilities);
 /* The Structure canvas toolkit (ADR-0051). Its variables are mapped to the tokens below, so a dark theme reaches it too. */
 @import "diagram-js/assets/diagram-js.css" layer(components);
+@import "diagram-js-minimap/assets/diagram-js-minimap.css" layer(components);
 
 @page {
   size: A4 landscape;
@@ -410,6 +411,13 @@
     cursor: crosshair;
   }
   /* Context pad: the buttons beside the selected element (connect, delete). */
+  /* Minimap (diagram-js-minimap, attached by canvas/minimap.ts): a decorative aria-hidden picture at the bottom right (the toolbar is at the top), opened and closed by
+     the toolbar button, so the library's own toggle (English text only) is hidden. The viewport frame is the accent colour. */
+  .shadow-canvas .djs-minimap { top: auto; bottom: 8px; right: 8px; --minimap-viewport-border-color: var(--color-accent); --minimap-border-radius: var(--radius-control); }
+  .shadow-canvas .djs-minimap .toggle { display: none; }
+  .shadow-canvas .djs-minimap:not(.open) { display: none; }
+  .shadow-canvas .djs-minimap .map { width: 240px; height: 150px; }
+  @media (max-width: 767px) { .shadow-canvas .djs-minimap .map { width: 160px; height: 100px; } }
   .shadow-canvas .djs-context-pad { width: auto; display: none; }
   .shadow-canvas .djs-context-pad.open { display: flex; flex-direction: column; gap: 4px; }
   .shadow-canvas .djs-context-pad .entry.shadow-pad-entry {

@@ -9,8 +9,12 @@
   SVG drawing calls. diagram-js brings `didi`, `min-dom`, `min-dash`,
   `inherits-browser`, `object-refs` and `path-intersection` as its own
   dependencies and ships its types (`lib/**/*.d.ts`) and `assets/diagram-js.css`.
-  Still to come: `diagram-js-minimap` 5.6 (MIT, a separate package) and `elkjs`
-  (lazy loaded) in structure-canvas ticket 07
+  Also `diagram-js-minimap` 5.6 (MIT; the minimap, its code loaded when the minimap is first opened; it ships no
+  types, so `canvas/diagram-js-minimap.d.ts` declares it; its stylesheet is imported into `theme.css`) and `elkjs`
+  0.12 (automatic layout, the layered algorithm; loaded only when the person asks for a layout, as a chunk of its own
+  of about 1.5 MB, 450 kB gzipped). `elkjs` is licensed **EPL-2.0 OR GPL-3.0-or-later**; Shadow takes it under
+  EPL-2.0 (ADR-0051), unmodified, from npm, and ships its own licence file with the package. The Structure canvas
+  tests run it in Vitest (jsdom), where it works without a worker
 - Backend: FastAPI, Python
 - Legal texts: Markdown files in `backend/legal/`, served by the backend (ADR-0041); the frontend renders them with `react-markdown` and `remark-gfm` (added with the public pages)
 - Reverse proxy: Caddy

@@ -4,6 +4,7 @@ import { shadowGraphModule } from "../../src/models/canvas/diagram/index.ts";
 import type { GraphData } from "../../src/models/canvas/graph-types.ts";
 import type { GraphEdit } from "../../src/models/canvas/graph-types.ts";
 import type { GraphImporter } from "../../src/models/canvas/diagram/GraphImporter.ts";
+import type { GraphTools } from "../../src/models/canvas/diagram/GraphTools.ts";
 import type { GraphModeling } from "../../src/models/canvas/diagram/GraphModeling.ts";
 import type { GraphRules } from "../../src/models/canvas/diagram/GraphRules.ts";
 
@@ -27,7 +28,7 @@ export function graph(overrides: Partial<GraphData> = {}): GraphData {
 export function createDiagram() {
   const host = document.createElement("div");
   document.body.append(host);
-  const diagram = new Diagram({ canvas: { container: host }, modules: [shadowGraphModule] });
+  const diagram = new Diagram({ canvas: { container: host }, gridSnapping: { active: false }, modules: [shadowGraphModule] });
   const get = <T,>(name: string) => diagram.get(name) as T;
   return {
     diagram,
@@ -35,6 +36,8 @@ export function createDiagram() {
     importer: get<GraphImporter>("graphImporter"),
     modeling: get<GraphModeling>("graphModeling"),
     rules: get<GraphRules>("graphRules"),
+    tools: get<GraphTools>("graphTools"),
+    selection: get<{ select(elements: unknown): void; get(): any[] }>("selection"),
     registry: get<{ get(id: string): any; filter(fn: (element: any) => boolean): any[] }>("elementRegistry"),
     commandStack: get<{ canUndo(): boolean; undo(): void; clear(): void }>("commandStack"),
     canvas: get<{ hasMarker(element: unknown, name: string): boolean }>("canvas"),

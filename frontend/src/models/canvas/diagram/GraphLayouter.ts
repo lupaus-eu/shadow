@@ -4,6 +4,7 @@ import { getMid } from "diagram-js/lib/layout/LayoutUtil.js";
 import type { GraphElement } from "./model";
 import { parallelShift } from "./shapes";
 
+type Point = { x: number; y: number };
 type Docking = { getCroppedWaypoints(connection: unknown): { x: number; y: number }[] };
 
 /** The key of a pair of nodes, the same for both directions. */
@@ -27,14 +28,20 @@ export class GraphLayouter extends BaseLayouter {
     super();
   }
 
-  layoutConnection(connection: never, hints?: { source?: never; target?: never; connectionStart?: never; connectionEnd?: never }) {
+  layoutConnection(connection: never, // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  hints?: { source?: any; target?: any; connectionStart?: any; connectionEnd?: any }) {
     const link = connection as unknown as GraphElement;
-    const source = hints?.source ?? (link.source as never);
-    const target = hints?.target ?? (link.target as never);
-    let start = hints?.connectionStart ?? getMid(source);
-    let end = hints?.connectionEnd ?? getMid(target);
-    // A connection being drawn by hand (no hints about the pair, or an end that is not a node's centre) is left straight.
-    if (!hints?.connectionStart && !hints?.connectionEnd && link.source && link.target) {
+    const source = hints?.source ?? link.source;
+    const target = hints?.target ?? link.target;
+    // The library passes `false` for the end it did not move, and the moved end's new anchor; only a real point counts as a hint.
+    const given = (hint: unknown): Point | undefined => (hint && typeof hint === "object" && Number.isFinite((hint as Point).x) && Number.isFinite((hint as Point).y) ? (hint as Point) : undefined);
+    const startHint = given(hints?.connectionStart);
+    const endHint = given(hints?.connectionEnd);
+    let start = startHint ?? getMid(source);
+    let end = endHint ?? getMid(target);
+    // A connection being drawn by hand (an end that is not a node's centre) is left straight. A moved node's anchor is its new centre, so that is no reason to skip the sideways shift.
+    const atCentre = (hint: Point | undefined, node: unknown) => !hint || (!!node && Math.hypot(hint.x - getMid(node as never).x, hint.y - getMid(node as never).y) < 1);
+    if (atCentre(startHint, link.source) && atCentre(endHint, link.target) && link.source && link.target) {
       const siblings = parallelConnections(link.source, link.target);
       const index = siblings.indexOf(link);
       if (siblings.length > 1 && index >= 0) {

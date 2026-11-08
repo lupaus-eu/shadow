@@ -25,6 +25,7 @@ Automaattiset testit pitävät tämän luettelon samana kuin koodi (`backend/leg
 | `shadow.locale` | Muistaa kielesi. | Kunnes tyhjennät sivuston tiedot. |
 | `shadow.canvas.panels` | Muistaa, mitkä kanvaksen sivupaneelit olet piilottanut. | Kunnes tyhjennät sivuston tiedot. |
 | `shadow.canvas.typeCollapse` | Muistaa, mitkä kanvaksen nodetyyppiryhmät olet tiivistänyt. | Kunnes tyhjennät sivuston tiedot. |
+| `shadow.canvas.snap` | Muistaa, kohdistuvatko nodet kanvaksella ruudukkoon. | Kunnes tyhjennät sivuston tiedot. |
 | `shadow.had-session` (istuntotallennus) | Antaa kirjautumissivun kertoa, että istuntosi päättyi. | Kunnes suljet välilehden. |
 | `shadow.signed-out` (istuntotallennus) | Antaa kirjautumissivun vahvistaa uloskirjautumisesi kerran. | Poistetaan yhden käytön jälkeen. |
 

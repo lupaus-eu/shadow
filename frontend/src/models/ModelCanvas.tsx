@@ -15,7 +15,7 @@ import { EditRefused } from "./canvas/diagram";
 import { deleteSummary, planConnection } from "./canvas/draw";
 import type { HistoryOutcome } from "./canvas/history";
 import type { EditResult, GraphData, GraphEdit } from "./canvas/graph-types";
-import { ShadowCanvas, type CanvasTarget, type ShadowCanvasHandle } from "./canvas/ShadowCanvas";
+import { ShadowCanvas, type CanvasTarget, type ShadowCanvasHandle, type ToolResult } from "./canvas/ShadowCanvas";
 import { useCanvasView } from "./canvas/useCanvasView";
 import { TypePanel } from "./canvas/TypePanel";
 import { readTypeCollapse, writeTypeCollapse, type TypeCollapse } from "./canvas/type-collapse";
@@ -25,6 +25,7 @@ import { useGraphState } from "./canvas/useGraphState";
 import { useNodeMetrics, type NodeMetricsState } from "./useNodeMetrics";
 import { modelMessages } from "./messages";
 import { readPanels, writePanels, type PanelState } from "./panel-state";
+import { readSnap, writeSnap } from "./canvas/snap";
 
 const MIN_CANVAS_HEIGHT = 320;
 const SHEET_HANDLE = 48;
@@ -62,7 +63,7 @@ function useIsPhone() {
 /** `/organizations/:organizationId/models/:modelId`: the nodes and connections of a line on a canvas. Edits are changes of the line's last event (ticket 09 of the model timeline adds the event list and the choice of event). */
 export function ModelCanvas() {
   const { locale } = useOrganization();
-  const { organizationId, modelId, line, writable } = useModel();
+  const { organizationId, modelId, model, line, writable } = useModel();
   const lineId = line.id;
   const text = modelMessages(locale);
   const source = useMemo(() => ({ organizationId, modelId, lineId }), [organizationId, modelId, lineId]);
@@ -84,6 +85,9 @@ export function ModelCanvas() {
   const phone = useIsPhone();
   const [panels, setPanels] = useState<PanelState>(() => readPanels());
   const [sheetOpen, setSheetOpen] = useState(false);
+  // Snap to the grid is a per-person choice kept in the browser.
+  const [snap, setSnap] = useState(() => readSnap());
+  const changeSnap = (on: boolean) => { setSnap(on); writeSnap(on); };
   const areaHeight = useFillHeight(area, phone ? SHEET_HANDLE : 0);
   // The type panel: which types are hidden and the search live in memory; the collapse choices are remembered per model.
   const [hiddenTypes, setHiddenTypes] = useState<ReadonlySet<string>>(() => new Set());
@@ -235,6 +239,11 @@ export function ModelCanvas() {
     }
     refuse(noticeFor(outcome.error, text.failed));
   }
+  /** What a tidying tool or an export came to: said in a sentence; a failure is also a notice (the canvas has already put the positions back). */
+  function onToolResult(result: ToolResult) {
+    if (result.ok) { setNotice(null); say({ align: text.aligned, distribute: text.distributed, layout: text.laidOut, export: text.exported, minimap: "" }[result.tool]); return; }
+    refuse({ align: text.alignFailed, distribute: text.alignFailed, layout: text.layoutFailed, export: text.exportFailed, minimap: text.minimapFailed }[result.tool]);
+  }
   const readGraph = async () => {
     const loaded = await new Promise<Awaited<ReturnType<typeof reload>>>((resolve) => {
       const run = async () => { const result = await reload(); if (result) editTarget.current = result.event; resolve(result); };
@@ -242,7 +251,9 @@ export function ModelCanvas() {
     });
     return loaded?.graph ?? null;
   };
-  const toolbarTexts = { toolbar: text.zoomToolbar, zoomIn: text.zoomIn, zoomOut: text.zoomOut, fit: text.zoomFit, actualSize: text.zoomActual, zoomLevel: text.zoomLevel, undo: text.undo, redo: text.redo, connect: text.connectMode, lasso: text.lassoTool };
+  const toolbarTexts = { toolbar: text.zoomToolbar, zoomIn: text.zoomIn, zoomOut: text.zoomOut, fit: text.zoomFit, actualSize: text.zoomActual, zoomLevel: text.zoomLevel, undo: text.undo, redo: text.redo, connect: text.connectMode, lasso: text.lassoTool,
+    snap: text.snapToGrid, alignLeft: text.alignLeft, alignCentre: text.alignCentre, alignTop: text.alignTop, alignMiddle: text.alignMiddle, distributeHorizontal: text.distributeHorizontal, distributeVertical: text.distributeVertical,
+    autoLayout: text.autoLayout, minimap: text.minimapToggle, exportMenu: text.exportMenu, exportSvg: text.exportSvg, exportPng: text.exportPng };
 
   // "/" focuses the search box (the canvas keymap only delivers keys while focus is in the drawing and not in a text field).
   // The drawing keys read refs, because the canvas registers them once when its diagram is created.
@@ -334,7 +345,7 @@ export function ModelCanvas() {
             drawing={{ connect: (a, b) => requestConnection(a, b), remove: (ids) => void requestDelete(ids), create: (input) => { say(text.nodeAdded); void edit({ kind: "node.create", nodeTypeId: input.nodeTypeId, name: input.name, x: input.x, y: input.y }); }, rename: (id, name) => { const node = byId.get(id); void edit({ kind: "node.update", id, name, description: node?.description ?? null }); } }}
             drawingTexts={{ connect: text.padConnect, remove: text.padRemove, nodeName: text.nodeName, namePlaceholder: text.namePlaceholder }}
             readGraph={readGraph} isRefusal={(error) => error instanceof StaleVersionError || error instanceof RuleError} onHistory={onHistory}
-            onToggleConnect={() => setConnecting((old) => (old ? null : { sourceId: null, connectionTypeId: null }))} onElementClick={onElementClick} send={send} connecting={connecting !== null} onEscape={cancelConnect} view={view} filter={filter} keyBindings={keyBindings} toolbarTexts={toolbarTexts} label={text.canvasLabel} />
+            onToggleConnect={() => setConnecting((old) => (old ? null : { sourceId: null, connectionTypeId: null }))} onElementClick={onElementClick} send={send} connecting={connecting !== null} onEscape={cancelConnect} view={view} filter={filter} keyBindings={keyBindings} snap={snap} onSnapChange={changeSnap} exportName={{ model: model.name, line: line.name }} onToolResult={onToolResult} toolbarTexts={toolbarTexts} label={text.canvasLabel} />
         </div>
         {phone ? null : <Panel side="right" title={text.panelDetails} collapsed={panels.right} onToggle={() => toggle("right")} text={text}>{rightContent}</Panel>}
       </div>
