@@ -30,20 +30,20 @@ Do this once, on the machine that has data. Commands run from the repository roo
    make dev-down
    ```
 
-3. **Start only the database** (a fresh PostgreSQL 18 cluster in the new volume; the init scripts
+3. **Define a shortcut for the dev Compose files** (a function works in both bash and zsh; a variable holding the command does not work in zsh), then **start only the database** (a fresh PostgreSQL 18 cluster in the new volume; the init scripts
    create the test database and the Authentik role) and create the Authentik database:
 
    ```bash
-   COMPOSE="docker compose -f docker-compose.yml -f docker-compose.dev.yml"
-   $COMPOSE up -d --wait db
-   $COMPOSE run --rm authentik-db-init
+   dc() { docker compose -f docker-compose.yml -f docker-compose.dev.yml "$@"; }
+   dc up -d --wait db
+   dc run --rm authentik-db-init
    ```
 
 4. **Create the application role** that the migrations normally create, because the dump holds
    only its grants (roles belong to the cluster, not to a database):
 
    ```bash
-   $COMPOSE exec -T db psql -v ON_ERROR_STOP=1 -U shadow -d shadow \
+   dc exec -T db psql -v ON_ERROR_STOP=1 -U shadow -d shadow \
      -c "CREATE ROLE shadow_app NOLOGIN NOSUPERUSER NOBYPASSRLS" -c "GRANT shadow_app TO shadow"
    ```
 
@@ -51,8 +51,8 @@ Do this once, on the machine that has data. Commands run from the repository roo
    the `authentik` role):
 
    ```bash
-   $COMPOSE exec -T db pg_restore --clean --if-exists --no-owner --role=shadow -U shadow -d shadow < backups/shadow-<stamp>.dump
-   $COMPOSE exec -T db pg_restore --clean --if-exists --no-owner --role=authentik -U shadow -d authentik < backups/authentik-<stamp>.dump
+   dc exec -T db pg_restore --clean --if-exists --no-owner --role=shadow -U shadow -d shadow < backups/shadow-<stamp>.dump
+   dc exec -T db pg_restore --clean --if-exists --no-owner --role=authentik -U shadow -d authentik < backups/authentik-<stamp>.dump
    ```
 
    No output means no errors.
@@ -62,7 +62,7 @@ Do this once, on the machine that has data. Commands run from the repository roo
    make dev
    ```
 
-7. **Check:** sign in at http://localhost:8173 and open your model; `docker compose ... exec db psql -U shadow -d shadow -tAc "show server_version"` shows 18.x.
+7. **Check:** sign in at http://localhost:8173 and open your model; `dc exec db psql -U shadow -d shadow -tAc "show server_version"` shows 18.x.
 8. **Clean up** after a few days, when you are sure: `docker volume rm shadow_postgres_data` and
    delete the files in `backups/`.
 
