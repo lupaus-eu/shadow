@@ -28,6 +28,8 @@ cannot overshoot (tested with 12 parallel creates against a limit of 5).
 | `import_rows` | `LIMIT_IMPORT_ROWS` | 1000 | Data rows in one import file (refused with 422) |
 | — | `IMPORT_MAX_BYTES` | 2097152 | Size of an import file (refused with 413) |
 | `billing_contact_changes_per_day` | `LIMIT_BILLING_CONTACT_CHANGES_PER_DAY` | 5 | Billing contact changes per Organization in 24 hours (refused with 429; counted from the Audit Log) |
+| `events_per_line` | `LIMIT_EVENTS_PER_LINE` | 5000 | Events in one line of a Model (Base line or Scenario); refused on event create with `limit_reached`, counted under the Model row lock; changing or deleting an event is never refused for it (model timeline, ADR-0049) |
+| `lines_per_model` | `LIMIT_LINES_PER_MODEL` | 200 | Lines (the Base line and its Scenarios) of one Model; enforced where Scenarios are created (model-timeline ticket 06) |
 | `notification_emails_per_day` | `LIMIT_NOTIFICATION_EMAILS_PER_DAY` | 10 | Notification emails per recipient in 24 hours; further notifications stay in the app |
 | — | `NOTIFICATION_RETENTION_DAYS` | 90 | Age at which the daily cleanup job deletes notifications |
 | — | `LIMIT_REVISIONS_PER_EVENT` | 100 | Event Revisions kept per Event; older ones are pruned, nothing is refused |

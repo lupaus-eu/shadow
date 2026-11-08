@@ -246,16 +246,21 @@ Every write is audited.
 
 ## Lines, events and state (model timeline; ADR-0048, ADR-0049)
 
-Read-only routes under `/models/{model_id}/lines` (`backend/app/timeline_routes.py`; loading and the
-planned rule are in `backend/app/timeline/loader.py`). Reading needs any membership and works while the
-Organization is read-only; another Organization, an unknown Model, line or event answers 404. A line's
-id equals its former version id. Writes arrive with later tickets.
+Routes under `/models/{model_id}/lines` and `/models/{model_id}/events`. Reads are in
+`backend/app/timeline_routes.py` (loading and the planned rule are in `backend/app/timeline/loader.py`) and
+need any membership; they work while the Organization is read-only. Event writes are in
+`backend/app/timeline_event_routes.py`. Another Organization, an unknown Model, line or event answers 404. A
+line's id equals its former version id. Scenario and position routes arrive with later tickets.
 
 | Method and path | Purpose |
 | --- | --- |
 | `GET` `/lines` | Lines, Base first: `kind`, `parent_line_id`, `branch_event_id`, `start_changed_at`, `version`, `event_count`, `latest_event_date` |
 | `GET` `.../lines/{line_id}/events` | The line's own events by date then entry order: `occurred_on`, `title`, `note`, `planned`, `change_count`, `change_counts` per operation, `branches` (Scenarios that branch from the event) |
 | `GET` `.../lines/{line_id}/state` | The graph after `?event_id=` (an event of that line) or on `?as_of=YYYY-MM-DD` (the last event dated that day or earlier); with neither, the present state (`as_of` = today). Both together answer 422 `event_id_and_as_of` |
+| `GET` `/events/{event_id}` | One event with its ordered `changes` (`position`, `op`, `element_id`, `payload`) |
+| `POST` `/lines/{line_id}/events` | Add an event: `occurred_on`, `title`, `note`, `changes[]` (`op`, `element_id`, `payload`); answers 201 with the event and its changes |
+| `PATCH` `/events/{event_id}` | Change `title`, `note`, `occurred_on`, or replace `changes`; only the fields sent change; `expected_version` required; a patch that changes nothing answers 200 without a new version |
+| `DELETE` `/events/{event_id}?expected_version=` | Delete an event; answers 204 |
 
 The state answers the graph in the shape of `GET /models/{model_id}` (`nodes`, `connections`, `node_types`,
 `connection_types`, `allowed_connections`; nodes carry no `version`) plus `line`, `event` (null before the
@@ -266,6 +271,48 @@ resolved position), and, for the shown event, `added`, `updated` (with `previous
 the shown event is dated after today in the Organization's time zone; the present state ignores such events,
 but a planned event's own state can be read by `event_id`. A chain that cannot be replayed answers 422
 `chain_broken` with `line_id`, `event_id`, `position`, `cause`, `element`.
+
+### Writing events (ADR-0049)
+
+A change is `{op, element_id, payload}`; `payload` is validated by the Pydantic payloads in
+`backend/app/timeline/payloads.py` (`add_node`: `node_type_id`, `name`, `description`, `x`, `y`; `remove_node`: none;
+`update_node`: any of `name`, `description`, `node_type_id`; `add_connection`: `connection_type_id`,
+`source_node_id`, `target_node_id`; `remove_connection`: none; `reroute_connection`: `source_node_id` and/or
+`target_node_id`; `change_connection_type`: `connection_type_id`). `element_id` names the node or connection; an
+`add_node` or `add_connection` may leave it out and the server generates one (a client that wants a later change
+in the same event to refer to it supplies its own). Changes are stored in the order sent, numbered
+`position` 0..n-1; a bad shape answers the usual 422 validation list. Titles are trimmed (at most 200 characters).
+A node added by a change gets a drawn position on the line (from `x`, `y`) unless the line already has one for it;
+deleting or rewriting the event that added a node drops that position when no event adds the node any more.
+
+Every write locks the Model row (`SELECT ... FOR UPDATE`), loads the whole timeline, applies the change in memory
+and replays the changed line and every Scenario that branches from it, directly or through other Scenarios
+(`backend/app/timeline/validate.py`). Nothing is saved unless every replay is valid.
+
+| Answer | When |
+| --- | --- |
+| 403 | A Member writes the Base line (Owners and Admins write it; any Member writes a Scenario), or the Organization is read-only |
+| 404 | Unknown Model, line or event, or another Organization's |
+| 409 `{latest_version}` | `expected_version` is stale |
+| 409 `{reason: "branch_point", line, line_id, lines}` | The event to delete is the branch point of another line; `line` is that Scenario's name. Checked before the chain |
+| 409 `{reason: "limit_reached", limit: "events_per_line", maximum}` | The line holds `LIMIT_EVENTS_PER_LINE` events (create only) |
+| 422 `{reason: "chain_broken", event, line, position, element, cause, hint}` | Some chain would not replay |
+
+`chain_broken` carries ids for the machine (`event` is the event that fails, which may be in another line;
+`line` the line it is in; `position` the change number, null for the date rule; `element` the node, connection or
+type id) and `cause`, one of `missing_element`, `duplicate_element`, `missing_type`, `connection_not_allowed`,
+`missing_endpoint`, `self_connection`, `duplicate_connection`, `missing_branch_event`, `before_branch_event`. `hint`
+is structured data for the interface to word in Finnish and English, never prose: `code` (what to do first:
+`add_element_before`, `remove_duplicate_add`, `choose_existing_type`, `choose_allowed_connection`, `add_endpoint_before`,
+`choose_different_ends`, `remove_duplicate_connection`, `restore_branch_event`, `move_after_branch_event`), `event_title`,
+`event_date`, `op`, `line_name`, `line_kind`, `scenario_name` (set when the failing line is a Scenario),
+`in_other_line` (true when the failing event is not in the line that was written), `element_kind`, `element_name`
+(where known), `type_name`, `source_name`, `target_name`, `branch_event_title` and `branch_event_date`.
+
+After a successful write, each Scenario below the changed line whose starting point changed (an event inserted,
+removed or moved before its branch point, or the content of one of those events replaced) gets
+`start_changed_at` set. Audit actions `event.created`, `event.updated` and `event.deleted` hold ids, the event
+date and change counts per operation, never names, titles or notes (`audit.md`).
 
 ## Metrics
 

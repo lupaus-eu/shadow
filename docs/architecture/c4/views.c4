@@ -104,6 +104,17 @@ views {
     autoLayout LeftRight
   }
 
+  dynamic view eventWrite {
+    title 'Flow · Record an event on a line'
+    organizationMember -> shadow.webApp.modelWorkspace 'saves an event with its changes'
+    shadow.webApp.modelWorkspace -> shadow.webApp.apiClients 'POST /lines/{line}/events'
+    shadow.webApp.apiClients -> shadow.api.timeline 'validates the changed line and every Scenario below it'
+    shadow.api.timeline -> shadow.api.accessRule 'Base line needs Owner or Admin'
+    shadow.api.timeline -> shadow.api.persistence 'locks the Model, saves the event and its changes'
+    shadow.api.timeline -> shadow.api.audit 'records event.created'
+    autoLayout LeftRight
+  }
+
   dynamic view agentAnalysis {
     title 'Flow · An agent analyses a simulation'
     organizationMember -> aiAgent 'asks it to analyse a simulation'

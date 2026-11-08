@@ -24,6 +24,7 @@ before launch (PRD, *Further Notes*).
 | Support case reference, requesting agent, approver, scope, duration, decision times | `support_access_requests` | Controlled support; each use is audited in `audit_events` with the grant id |
 | Titles, descriptions, locations, links, and other planning content | Yearclock content tables | The service itself; may contain personal data entered by customers |
 | Earlier states of each Event with the changing account, time, and reason | `event_revisions` (Yearclock V2) | Event history and restore for everyone who may read the Yearclock; the account is shown by name only while it is a member, otherwise as "Former member" |
+| Model timeline writes (`event.created`, `event.updated`, `event.deleted`) | `audit_events` (change summary) | Accountability. The summary holds ids, the event date and the number of changes per operation, never names of nodes, event titles or notes, so the Audit Log copies no personal data that people type into a Model (checked in `backend/tests/test_timeline_events.py`) |
 | Source (`mcp`) and OAuth client id of changes made by an agent | `audit_events` (change summary), `event_revisions` (reason) | Show that a change came through the MCP interface and under whose sign-in; no agent prompts or conversations are stored |
 
 Agent access (MCP): a person who connects an agent has it read and change what they could read and
