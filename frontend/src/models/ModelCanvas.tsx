@@ -1,18 +1,20 @@
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp } from "lucide-react";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 
 import { useOrganization } from "../shell/organization-outlet";
 import { useModel } from "./ModelShell";
 import { Alert, Button, Field, IconButton, Select, TextArea, TextInput, cx } from "../ui";
 import {
-  ChainBrokenError, createConnection, createEditsEvent, createNode, deleteConnection, deleteNode, loadGraph, RuleError, saveNodePositions, StaleVersionError, updateNode,
-  type Graph, type GraphConnection, type GraphNode, type LineEvent,
+  ChainBrokenError, createConnection, createEditsEvent, createNode, deleteConnection, deleteNode, RuleError, saveNodePositions, StaleVersionError, updateNode,
+  type GraphConnection, type GraphNode, type LineEvent,
 } from "./client";
+import { EditRefused } from "./canvas/diagram";
+import type { GraphData, GraphEdit } from "./canvas/graph-types";
+import { ShadowCanvas, type CanvasTarget, type ShadowCanvasHandle } from "./canvas/ShadowCanvas";
+import { useGraphState } from "./canvas/useGraphState";
 import { modelMessages } from "./messages";
 import { readPanels, writePanels, type PanelState } from "./panel-state";
 
-const NODE_WIDTH = 150;
-const NODE_HEIGHT = 46;
 const MIN_CANVAS_HEIGHT = 320;
 const SHEET_HANDLE = 48;
 
@@ -34,21 +36,6 @@ function useFillHeight(ref: RefObject<HTMLElement | null>, reserve: number) {
   return height;
 }
 
-/** The size of an element, kept up to date; the SVG viewBox follows it so one unit is one pixel. */
-function useElementSize(ref: RefObject<HTMLElement | null>) {
-  const [size, setSize] = useState({ width: 900, height: 480 });
-  useLayoutEffect(() => {
-    const element = ref.current;
-    if (!element) return;
-    const update = () => setSize((old) => (old.width === element.clientWidth && old.height === element.clientHeight ? old : { width: element.clientWidth, height: element.clientHeight }));
-    update();
-    const observer = new ResizeObserver(update);
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [ref]);
-  return size;
-}
-
 function useIsPhone() {
   const query = "(max-width: 767px)";
   const [phone, setPhone] = useState(() => typeof window !== "undefined" && window.matchMedia(query).matches);
@@ -61,121 +48,102 @@ function useIsPhone() {
   return phone;
 }
 
-const centre = (node: GraphNode) => ({ x: node.x + NODE_WIDTH / 2, y: node.y + NODE_HEIGHT / 2 });
-
-/** The point where the line from this node's centre towards `to` leaves the node's rectangle. */
-function edgePoint(node: GraphNode, to: { x: number; y: number }) {
-  const from = centre(node);
-  const dx = to.x - from.x;
-  const dy = to.y - from.y;
-  if (dx === 0 && dy === 0) return from;
-  const scale = Math.min(NODE_WIDTH / 2 / Math.abs(dx || 1e-9), NODE_HEIGHT / 2 / Math.abs(dy || 1e-9));
-  return { x: from.x + dx * scale, y: from.y + dy * scale };
-}
-
 /** `/organizations/:organizationId/models/:modelId`: the nodes and connections of a line on a canvas. Edits are changes of the line's last event (ticket 09 of the model timeline adds the event list and the choice of event). */
 export function ModelCanvas() {
   const { locale } = useOrganization();
   const { organizationId, modelId, line, writable } = useModel();
   const lineId = line.id;
   const text = modelMessages(locale);
-  const [graph, setGraph] = useState<Graph | null>(null);
-  const [failed, setFailed] = useState(false);
+  const source = useMemo(() => ({ organizationId, modelId, lineId }), [organizationId, modelId, lineId]);
+  const { graph, event, status, reload } = useGraphState(source);
   const [notice, setNotice] = useState<string | null>(null);
-  const [selected, setSelected] = useState<{ kind: "node" | "connection"; id: string } | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [connecting, setConnecting] = useState<{ sourceId: string; connectionTypeId: string } | null>(null);
-  const [drag, setDrag] = useState<{ id: string; dx: number; dy: number; moved: boolean } | null>(null);
-  const svg = useRef<SVGSVGElement>(null);
+  const canvas = useRef<ShadowCanvasHandle>(null);
   const area = useRef<HTMLDivElement>(null);
-  const stage = useRef<HTMLDivElement>(null);
   const phone = useIsPhone();
   const [panels, setPanels] = useState<PanelState>(() => readPanels());
   const [sheetOpen, setSheetOpen] = useState(false);
   const areaHeight = useFillHeight(area, phone ? SHEET_HANDLE : 0);
-  const size = useElementSize(stage);
   const toggle = (side: keyof PanelState) => setPanels((old) => { const next = { ...old, [side]: !old[side] }; writePanels(next); return next; });
 
-  const reload = useCallback(async () => {
-    try {
-      setGraph(await loadGraph(organizationId, modelId, lineId));
-      setFailed(false);
-    } catch { setFailed(true); }
-  }, [organizationId, modelId, lineId]);
-  useEffect(() => { void reload(); }, [reload]);
+  // Edits of an event go one after the other, each against the event's current version, which is read again after every write.
+  const editTarget = useRef<LineEvent | null>(null);
+  editTarget.current = event;
+  const queue = useRef<Promise<unknown>>(Promise.resolve());
 
   const nodes = graph?.nodes ?? [];
   const byId = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
-  const types = useMemo(() => new Map((graph?.node_types ?? []).map((type) => [type.id, type])), [graph]);
-  const connectionTypes = useMemo(() => new Map((graph?.connection_types ?? []).map((type) => [type.id, type])), [graph]);
-  const selectedNode = selected?.kind === "node" ? byId.get(selected.id) : undefined;
-  const selectedConnection = selected?.kind === "connection" ? graph?.connections.find((item) => item.id === selected.id) : undefined;
+  const types = useMemo(() => new Map((graph?.nodeTypes ?? []).map((type) => [type.id, type])), [graph]);
+  const connectionTypes = useMemo(() => new Map((graph?.connectionTypes ?? []).map((type) => [type.id, type])), [graph]);
+  const selectedNode = selectedId ? byId.get(selectedId) : undefined;
+  const selectedConnection = selectedId && !selectedNode ? graph?.connections.find((item) => item.id === selectedId) : undefined;
 
-  async function act(action: () => Promise<unknown>, rule = text.failed) {
-    setNotice(null);
-    try { await action(); } catch (cause) {
-      setNotice(cause instanceof StaleVersionError ? text.stale : cause instanceof ChainBrokenError ? text.chainBroken : cause instanceof RuleError ? rule : text.failed);
-    }
-    await reload();
-  }
+  const noticeFor = (cause: unknown, rule: string) =>
+    cause instanceof StaleVersionError ? text.stale : cause instanceof ChainBrokenError ? text.chainBroken : cause instanceof RuleError ? rule : text.failed;
 
-  /** An edit goes into the line's last event; a line that has none yet gets an "Edits" event first. */
-  const edit = (action: (event: LineEvent) => Promise<unknown>, rule = text.failed) => act(async () => action(graph?.event ?? await createEditsEvent(organizationId, modelId, lineId, text.editsEvent)), rule);
+  /** The canvas calls this for every edit it has already drawn; a rejection makes it undo the drawing. The server's answer is then loaded. */
+  const send = (edit: GraphEdit): Promise<void> => {
+    const run = async () => {
+      setNotice(null);
+      try {
+        if (edit.kind === "node.move") {
+          // A move is a position of the line, not an edit of an event.
+          await saveNodePositions(organizationId, modelId, lineId, edit.moves.map((move) => ({ node_id: move.id, x: move.x, y: move.y })));
+          return;
+        }
+        // A line that has no event yet gets an "Edits" event first.
+        const target = editTarget.current ?? await createEditsEvent(organizationId, modelId, lineId, text.editsEvent);
+        switch (edit.kind) {
+          case "node.create": await createNode(organizationId, modelId, target, { node_type_id: edit.nodeTypeId, name: edit.name, x: edit.x, y: edit.y }); break;
+          case "node.update": await updateNode(organizationId, modelId, target, byId.get(edit.id) ?? ({ id: edit.id } as GraphNode), { name: edit.name, description: edit.description }); break;
+          case "node.delete": await deleteNode(organizationId, modelId, target, { id: edit.id } as GraphNode); break;
+          case "connection.create": await createConnection(organizationId, modelId, target, { connection_type_id: edit.connectionTypeId, source_node_id: edit.sourceId, target_node_id: edit.targetId }); break;
+          case "connection.delete": await deleteConnection(organizationId, modelId, target, { id: edit.id } as GraphConnection); break;
+        }
+      } catch (cause) {
+        setNotice(noticeFor(cause, edit.kind === "connection.create" ? text.notAllowed : text.failed));
+        throw cause;
+      } finally {
+        const loaded = await reload();
+        if (loaded) editTarget.current = loaded.event;
+      }
+    };
+    const next = queue.current.then(run, run);
+    queue.current = next.catch(() => undefined);
+    return next;
+  };
 
-  function pointer(event: React.PointerEvent) {
-    const box = svg.current?.getBoundingClientRect();
-    // The viewBox is the container size, so a client pixel is one canvas unit.
-    return { x: event.clientX - (box?.left ?? 0), y: event.clientY - (box?.top ?? 0) };
-  }
+  /** Draws an edit and sends it. A refusal before sending (read-only, a rule) gets its notice here; a refused write got its notice in `send`. */
+  const edit = (change: GraphEdit): Promise<void> =>
+    (canvas.current?.applyEdit(change) ?? Promise.resolve()).catch((cause) => {
+      if (cause instanceof EditRefused) setNotice(cause.cause === "read_only" ? text.readOnly : cause.cause === "missing" ? text.failed : cause.cause === "duplicate" ? text.connectionDuplicate : text.notAllowed);
+    });
 
-  function startDrag(event: React.PointerEvent, node: GraphNode) {
-    if (!writable || connecting) return;
-    const at = pointer(event);
-    (event.target as Element).setPointerCapture?.(event.pointerId);
-    setDrag({ id: node.id, dx: at.x - node.x, dy: at.y - node.y, moved: false });
-  }
-
-  function moveDrag(event: React.PointerEvent) {
-    if (!drag || !graph) return;
-    const at = pointer(event);
-    const x = at.x - drag.dx;
-    const y = at.y - drag.dy;
-    setGraph({ ...graph, nodes: graph.nodes.map((node) => (node.id === drag.id ? { ...node, x, y } : node)) });
-    if (!drag.moved) setDrag({ ...drag, moved: true });
-  }
-
-  function endDrag() {
-    if (!drag) return;
-    const node = byId.get(drag.id);
-    const moved = drag.moved;
-    setDrag(null);
-    if (!node || !moved) return;
-    // A move is a position of the line, not an edit of an event.
-    void act(() => saveNodePositions(organizationId, modelId, lineId, [{ node_id: node.id, x: Math.round(node.x), y: Math.round(node.y) }]));
-  }
-
-  function clickNode(node: GraphNode) {
-    if (!connecting) { setSelected({ kind: "node", id: node.id }); return; }
-    const source = byId.get(connecting.sourceId);
+  function onElementClick(target: CanvasTarget): boolean {
+    if (target.kind === "root") { setConnecting(null); return false; }
+    if (!connecting || target.kind !== "node") return false;
+    const sourceId = connecting.sourceId;
     setConnecting(null);
-    if (!source || source.id === node.id) return;
-    void edit((event) => createConnection(organizationId, modelId, event, { connection_type_id: connecting.connectionTypeId, source_node_id: source.id, target_node_id: node.id }), text.notAllowed);
+    if (sourceId !== target.id) void edit({ kind: "connection.create", connectionTypeId: connecting.connectionTypeId, sourceId, targetId: target.id });
+    return true;
   }
 
-  if (failed) return <Alert tone="danger" role="alert">{text.failed}</Alert>;
+  if (status === "failed") return <Alert tone="danger" role="alert">{text.failed}</Alert>;
   if (!graph) return <p role="status" className="text-ink-muted">{text.loading}</p>;
 
-  const addNode = writable ? <AddNode graph={graph} onAdd={(input) => edit((event) => createNode(organizationId, modelId, event, input))} text={text} count={nodes.length} /> : null;
+  const addNode = writable ? <AddNode graph={graph} onAdd={(input) => edit({ kind: "node.create", nodeTypeId: input.node_type_id, name: input.name, x: input.x, y: input.y })} text={text} count={nodes.length} /> : null;
   const details = (
     <>
       {selectedNode ? (
         <NodePanel key={`${selectedNode.id}-${selectedNode.name}-${selectedNode.description ?? ""}`} graph={graph} node={selectedNode} writable={writable} connecting={connecting !== null} text={text}
-          onSave={(changes) => edit((event) => updateNode(organizationId, modelId, event, selectedNode, changes))}
-          onDelete={() => { setSelected(null); void edit((event) => deleteNode(organizationId, modelId, event, selectedNode)); }}
+          onSave={(changes) => void edit({ kind: "node.update", id: selectedNode.id, name: changes.name, description: changes.description })}
+          onDelete={() => { setSelectedId(null); void edit({ kind: "node.delete", id: selectedNode.id }); }}
           onConnect={(connectionTypeId) => setConnecting({ sourceId: selectedNode.id, connectionTypeId })}
           onCancel={() => setConnecting(null)} />
       ) : selectedConnection ? (
         <ConnectionPanel connection={selectedConnection} writable={writable} byId={byId} connectionTypes={connectionTypes} text={text}
-          onDelete={() => { setSelected(null); void edit((event) => deleteConnection(organizationId, modelId, event, selectedConnection)); }} />
+          onDelete={() => { setSelectedId(null); void edit({ kind: "connection.delete", id: selectedConnection.id }); }} />
       ) : <p className="m-0 text-[13px] text-ink-muted">{text.noSelection}</p>}
       {connecting ? <Alert tone="info" role="status">{text.connectHint}</Alert> : null}
     </>
@@ -185,7 +153,7 @@ export function ModelCanvas() {
       {nodes.length === 0 ? <li className="text-[13px] text-ink-muted">{text.noNodes}</li> : null}
       {nodes.map((node) => (
         <li key={node.id}>
-          <button type="button" aria-pressed={selected?.kind === "node" && selected.id === node.id} onClick={() => setSelected({ kind: "node", id: node.id })} className="flex min-h-8 w-full cursor-pointer items-center gap-2 rounded-[6px] border-0 bg-transparent px-2 py-1 text-left text-[13px] text-ink hover:bg-surface-sunken aria-pressed:bg-accent-soft pointer-coarse:min-h-11">
+          <button type="button" aria-pressed={selectedId === node.id} onClick={() => setSelectedId(node.id)} className="flex min-h-8 w-full cursor-pointer items-center gap-2 rounded-[6px] border-0 bg-transparent px-2 py-1 text-left text-[13px] text-ink hover:bg-surface-sunken aria-pressed:bg-accent-soft pointer-coarse:min-h-11">
             <span aria-hidden="true" className="size-3 shrink-0 rounded-[3px] border border-line" style={{ background: types.get(node.node_type_id)?.color ?? "#ddd" }} />
             <span className="min-w-0 flex-1 truncate">{node.name}</span>
             <span className="shrink-0 text-xs text-ink-muted">{types.get(node.node_type_id)?.name}</span>
@@ -202,39 +170,8 @@ export function ModelCanvas() {
       {notice ? <Alert tone="danger" role="alert">{notice}</Alert> : null}
       <div ref={area} style={{ height: areaHeight }} className="flex min-h-0 gap-3">
         {phone ? null : <Panel side="left" title={text.panelNodes} collapsed={panels.left} onToggle={() => toggle("left")} text={text}>{nodeList}</Panel>}
-        <div ref={stage} className="min-w-0 flex-1 overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface">
-          <svg ref={svg} role="group" aria-label={text.canvasLabel} viewBox={`0 0 ${size.width} ${size.height}`} width="100%" height="100%" style={{ display: "block", touchAction: "none" }} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag} onPointerDown={(event) => { if (event.target === event.currentTarget) { setSelected(null); setConnecting(null); } }}>
-            <defs>
-              <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="currentColor" /></marker>
-            </defs>
-            {graph.connections.map((connection) => {
-              const source = byId.get(connection.source_node_id);
-              const target = byId.get(connection.target_node_id);
-              const type = connectionTypes.get(connection.connection_type_id);
-              if (!source || !target || !type) return null;
-              const a = edgePoint(source, centre(target));
-              const b = edgePoint(target, centre(source));
-              const active = selected?.kind === "connection" && selected.id === connection.id;
-              return (
-                <g key={connection.id} className="cursor-pointer text-ink-muted" color={active ? "var(--color-accent)" : undefined} onClick={() => setSelected({ kind: "connection", id: connection.id })}>
-                  <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="transparent" strokeWidth={14} />
-                  <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="currentColor" strokeWidth={active ? 3 : 1.5} strokeDasharray={type.style === "dashed" ? "6 4" : undefined} markerEnd={type.target_end === "arrow" ? "url(#arrow)" : undefined} markerStart={type.source_end === "arrow" ? "url(#arrow)" : undefined} />
-                  <text x={(a.x + b.x) / 2} y={(a.y + b.y) / 2 - 6} textAnchor="middle" fontSize={11} fill="currentColor">{type.name}</text>
-                </g>
-              );
-            })}
-            {nodes.map((node) => {
-              const type = types.get(node.node_type_id);
-              const active = selected?.kind === "node" && selected.id === node.id;
-              return (
-                <g key={node.id} transform={`translate(${node.x} ${node.y})`} className={connecting ? "cursor-crosshair" : "cursor-grab"} onPointerDown={(event) => startDrag(event, node)} onClick={() => clickNode(node)} tabIndex={0} role="button" aria-label={`${node.name} (${type?.name ?? ""})`} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") clickNode(node); }}>
-                  <rect width={NODE_WIDTH} height={NODE_HEIGHT} rx={8} fill={type?.color ?? "#ddd"} stroke={active ? "var(--color-accent)" : "#555"} strokeWidth={active ? 3 : 1} />
-                  <text x={NODE_WIDTH / 2} y={19} textAnchor="middle" fontSize={13} fontWeight={600} fill="#111">{node.name.length > 20 ? `${node.name.slice(0, 19)}…` : node.name}</text>
-                  <text x={NODE_WIDTH / 2} y={35} textAnchor="middle" fontSize={10} fill="#333">{type?.name}</text>
-                </g>
-              );
-            })}
-          </svg>
+        <div className="min-w-0 flex-1 overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface">
+          <ShadowCanvas ref={canvas} graph={graph} readOnly={!writable} selectedId={selectedId} onSelect={setSelectedId} onElementClick={onElementClick} send={send} connecting={connecting !== null} label={text.canvasLabel} />
         </div>
         {phone ? null : <Panel side="right" title={text.panelDetails} collapsed={panels.right} onToggle={() => toggle("right")} text={text}>{rightContent}</Panel>}
       </div>
@@ -274,26 +211,26 @@ function Panel({ side, title, collapsed, onToggle, text, children }: { side: "le
 
 type Text = ReturnType<typeof modelMessages>;
 
-function AddNode({ graph, onAdd, text, count }: { graph: Graph; onAdd: (input: { node_type_id: string; name: string; x: number; y: number }) => Promise<void>; text: Text; count: number }) {
-  const [typeId, setTypeId] = useState(graph.node_types[0]?.id ?? "");
+function AddNode({ graph, onAdd, text, count }: { graph: GraphData; onAdd: (input: { node_type_id: string; name: string; x: number; y: number }) => Promise<void>; text: Text; count: number }) {
+  const [typeId, setTypeId] = useState(graph.nodeTypes[0]?.id ?? "");
   const [name, setName] = useState("");
   const column = count % 8;
   const row = Math.floor(count / 8) % 14;
   return (
     <form className="flex flex-col gap-3 rounded-[var(--radius-card)] border border-line bg-surface p-4" onSubmit={(event) => { event.preventDefault(); if (name.trim() && typeId) void onAdd({ node_type_id: typeId, name, x: 30 + column * 170, y: 30 + row * 60 }).then(() => setName("")); }}>
       <h2 className="m-0 text-[14px] font-semibold">{text.addNode}</h2>
-      <Field label={text.nodeType}>{(control) => <Select {...control} value={typeId} onChange={(event) => setTypeId(event.target.value)}>{graph.node_types.map((type) => <option key={type.id} value={type.id}>{type.name}</option>)}</Select>}</Field>
+      <Field label={text.nodeType}>{(control) => <Select {...control} value={typeId} onChange={(event) => setTypeId(event.target.value)}>{graph.nodeTypes.map((type) => <option key={type.id} value={type.id}>{type.name}</option>)}</Select>}</Field>
       <Field label={text.nodeName}>{(control) => <TextInput {...control} value={name} onChange={(event) => setName(event.target.value)} />}</Field>
       <Button type="submit" variant="primary" disabled={!name.trim()}>{text.add}</Button>
     </form>
   );
 }
 
-function NodePanel({ graph, node, writable, connecting, text, onSave, onDelete, onConnect, onCancel }: { graph: Graph; node: GraphNode; writable: boolean; connecting: boolean; text: Text; onSave: (changes: { name: string; description: string | null }) => void; onDelete: () => void; onConnect: (connectionTypeId: string) => void; onCancel: () => void }) {
+function NodePanel({ graph, node, writable, connecting, text, onSave, onDelete, onConnect, onCancel }: { graph: GraphData; node: GraphNode; writable: boolean; connecting: boolean; text: Text; onSave: (changes: { name: string; description: string | null }) => void; onDelete: () => void; onConnect: (connectionTypeId: string) => void; onCancel: () => void }) {
   const [name, setName] = useState(node.name);
   const [description, setDescription] = useState(node.description ?? "");
-  const options = graph.allowed_connections.filter((item) => item.source_node_type_id === node.node_type_id).map((item) => item.connection_type_id);
-  const available = graph.connection_types.filter((type) => options.includes(type.id));
+  const options = graph.allowedConnections.filter((item) => item.source_node_type_id === node.node_type_id).map((item) => item.connection_type_id);
+  const available = graph.connectionTypes.filter((type) => options.includes(type.id));
   const [connectionTypeId, setConnectionTypeId] = useState(available[0]?.id ?? "");
   const related = graph.connections.filter((item) => item.source_node_id === node.id || item.target_node_id === node.id);
   return (

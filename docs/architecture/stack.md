@@ -5,6 +5,12 @@
 - Frontend: Vite, React, TypeScript; Tailwind CSS v4, Radix primitives,
   React Router v7, lucide-react, and self-hosted Inter (ADR-0028,
   `docs/design/ui-foundation.md`)
+- Structure canvas: `diagram-js` 15.28 (MIT; ADR-0051) with `tiny-svg` for the
+  SVG drawing calls. diagram-js brings `didi`, `min-dom`, `min-dash`,
+  `inherits-browser`, `object-refs` and `path-intersection` as its own
+  dependencies and ships its types (`lib/**/*.d.ts`) and `assets/diagram-js.css`.
+  Still to come: `diagram-js-minimap` 5.6 (MIT, a separate package) and `elkjs`
+  (lazy loaded) in structure-canvas ticket 07
 - Backend: FastAPI, Python
 - Legal texts: Markdown files in `backend/legal/`, served by the backend (ADR-0041); the frontend renders them with `react-markdown` and `remark-gfm` (added with the public pages)
 - Reverse proxy: Caddy
@@ -22,7 +28,8 @@
 - Local orchestration: Docker Compose
 - CI: GitHub Actions
 - Tests: pytest (backend), Node's built-in test runner for pure frontend
-  modules, Playwright with `@axe-core/playwright` for browser and automated
+  modules, Vitest with jsdom for frontend modules that need a DOM (the
+  Structure canvas, `frontend/tests/canvas/`), Playwright with `@axe-core/playwright` for browser and automated
   accessibility checks
 
 ## Defaults

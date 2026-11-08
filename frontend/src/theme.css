@@ -8,6 +8,8 @@
 @layer theme, base, components, utilities;
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css" layer(utilities);
+/* The Structure canvas toolkit (ADR-0051). Its variables are mapped to the tokens below, so a dark theme reaches it too. */
+@import "diagram-js/assets/diagram-js.css" layer(components);
 
 @page {
   size: A4 landscape;
@@ -350,6 +352,111 @@
     }
     tr {
       break-inside: avoid;
+    }
+  }
+}
+
+/*
+ * The Structure canvas (diagram-js, ADR-0051). diagram-js ships its own variables (--bio-*); they are defined here from Shadow's tokens
+ * so the canvas follows the theme. The Shadow shapes use classes because state (selected, hover, changed) combines with the drawing.
+ */
+@layer components {
+  :root {
+    --bio-surface: var(--color-surface);
+    --bio-surface-overlay: var(--color-surface);
+    --bio-surface-subtle: var(--color-surface-subtle);
+    --bio-surface-medium: var(--color-surface-sunken);
+    --bio-surface-inverted: var(--color-sidebar);
+    --bio-surface-inverted-subtle: var(--color-sidebar-raised);
+    --bio-text: var(--color-ink);
+    --bio-text-subtle: var(--color-ink-muted);
+    --bio-text-subtlest: var(--color-ink-muted);
+    --bio-text-on-inverted: var(--color-sidebar-ink);
+    --bio-border: var(--color-line-strong);
+    --bio-border-disabled: var(--color-line);
+    --bio-primary: var(--color-accent);
+    --bio-primary-surface: var(--color-accent-soft);
+    --bio-danger: var(--color-danger);
+    --bio-danger-surface-subtle: var(--color-danger-soft);
+    --bio-selected-surface: var(--color-accent-soft);
+    --bio-selected-text: var(--color-ink);
+    --bio-focus: var(--color-accent);
+    --bio-focus-surface: var(--color-accent-soft);
+    --bio-canvas-accent: var(--color-accent);
+    --bio-canvas-accent-subtle: var(--color-accent-soft);
+    --bio-shadow: rgb(16 24 40 / 0.3);
+    --bio-shadow-subtle: rgb(16 24 40 / 0.1);
+  }
+  .shadow-canvas {
+    position: relative;
+    overflow: hidden;
+    font-family: var(--font-sans);
+  }
+  .shadow-canvas .djs-container,
+  .shadow-canvas .djs-container > svg {
+    width: 100%;
+    height: 100%;
+  }
+  .shadow-canvas[data-connecting] .djs-element,
+  .shadow-canvas[data-connecting] .djs-hit {
+    cursor: crosshair;
+  }
+  .shadow-canvas .djs-element[role="button"] {
+    outline: none;
+  }
+  .shadow-canvas .djs-element[role="button"]:focus-visible .shadow-node-body {
+    stroke: var(--color-accent);
+    stroke-width: 3;
+  }
+  .shadow-node-body {
+    stroke: #4b5563;
+    stroke-width: 1;
+  }
+  .shadow-canvas .selected .shadow-node-body {
+    stroke: var(--color-accent);
+    stroke-width: 3;
+  }
+  .shadow-canvas .shadow-added .shadow-node-body,
+  .shadow-canvas .shadow-updated .shadow-node-body {
+    stroke-dasharray: 5 3;
+  }
+  .shadow-node-label {
+    user-select: none;
+  }
+  .shadow-connection-line {
+    stroke: var(--color-ink-muted);
+    stroke-width: 1.5;
+  }
+  .shadow-connection-arrow {
+    fill: var(--color-ink-muted);
+    stroke: none;
+  }
+  .shadow-connection-label {
+    fill: var(--color-ink-muted);
+    stroke: var(--color-surface);
+    stroke-width: 3px;
+    paint-order: stroke;
+    user-select: none;
+  }
+  .shadow-canvas .selected .shadow-connection-line {
+    stroke: var(--color-accent);
+    stroke-width: 3;
+  }
+  .shadow-canvas .selected .shadow-connection-arrow {
+    fill: var(--color-accent);
+  }
+  .shadow-change-badge circle {
+    fill: var(--color-surface);
+    stroke: var(--color-ink);
+    stroke-width: 1.5;
+  }
+  .shadow-change-badge text {
+    fill: var(--color-ink);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .shadow-canvas * {
+      transition: none !important;
+      animation: none !important;
     }
   }
 }

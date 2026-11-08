@@ -57,15 +57,36 @@ export async function deleteModel(organizationId: string, model: ModelSummary): 
   await call(`${modelsUrl(organizationId)}/${model.id}?expected_version=${model.version}`, { method: "DELETE" });
 }
 
-type LineState = Omit<Graph, "event"> & { event: LineEvent | null };
+type ElementList = { nodes?: { node: { id: string } }[]; connections?: { connection: { id: string } }[] };
+type LineStateResponse = Omit<Graph, "event"> & { event: LineEvent | null; added?: ElementList; updated?: ElementList; removed?: ElementList };
+/** Ids of the nodes and connections the shown event added, updated and removed (the state route's `added`, `updated` and `removed`). */
+export type StateChanges = { added: string[]; updated: string[]; removed: string[] };
+export type LineState = Graph & { changes: StateChanges };
 
-/** The graph after the line's last event (any event, planned or not, as that is the one a canvas edit changes). */
-export async function loadGraph(organizationId: string, modelId: string, lineId: string, signal?: AbortSignal): Promise<Graph> {
+const changeIds = (list: ElementList | undefined) => [...(list?.nodes ?? []).map((item) => item.node.id), ...(list?.connections ?? []).map((item) => item.connection.id)];
+
+/**
+ * The graph of a line after one event (`eventId`), or after the line's last event when none is given (any event, planned or not, as that
+ * is the one a canvas edit changes), with the ids the event changed.
+ */
+export async function loadLineState(organizationId: string, modelId: string, lineId: string, eventId?: string | null, signal?: AbortSignal): Promise<LineState> {
   const line = `${modelsUrl(organizationId)}/${modelId}/lines/${lineId}`;
-  const events: LineEvent[] = await (await call(`${line}/events`, { signal })).json();
-  const last = events[events.length - 1];
-  const state: LineState = await (await call(`${line}/state${last ? `?event_id=${last.id}` : ""}`, { signal })).json();
-  return { event: state.event, node_types: state.node_types, connection_types: state.connection_types, allowed_connections: state.allowed_connections, nodes: state.nodes, connections: state.connections };
+  let shown = eventId ?? null;
+  if (!shown) {
+    const events: LineEvent[] = await (await call(`${line}/events`, { signal })).json();
+    shown = events[events.length - 1]?.id ?? null;
+  }
+  const state: LineStateResponse = await (await call(`${line}/state${shown ? `?event_id=${shown}` : ""}`, { signal })).json();
+  return {
+    event: state.event, node_types: state.node_types, connection_types: state.connection_types, allowed_connections: state.allowed_connections, nodes: state.nodes, connections: state.connections,
+    changes: { added: changeIds(state.added), updated: changeIds(state.updated), removed: changeIds(state.removed) },
+  };
+}
+
+/** The graph after the line's last event. */
+export async function loadGraph(organizationId: string, modelId: string, lineId: string, signal?: AbortSignal): Promise<Graph> {
+  const { changes: _changes, ...graph } = await loadLineState(organizationId, modelId, lineId, null, signal);
+  return graph;
 }
 
 /** A line with no events yet (a new Scenario) gets one to hold the canvas edits; the date is today. */

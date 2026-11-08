@@ -8,7 +8,7 @@
 | [Feature: Sign in with Authentik](authentik-sign-in/PRD.md) | implemented | 5/5 | — | — |
 | [Feature: Model timeline (Base line, events and scenarios)](model-timeline/PRD.md) | ready for implementation | 8/11 | [09 frontend event list and scenario picker](model-timeline/issues/09-frontend-event-list-and-scenario-picker.md) — ready-for-agent | — |
 | [Feature: Shadow models (digital twin of an organisation)](shadow-models/PRD.md) | implemented (written after the fact, 2026-11-07; the features were built in | 0/0 | — | — |
-| [Feature: Structure canvas (full-width drawing tool)](structure-canvas/PRD.md) | ready for implementation | 1/9 | [02 Adopt diagram-js with the graph domain layer and useGraphState](structure-canvas/issues/02-adopt-diagram-js.md) — ready-for-agent | — |
+| [Feature: Structure canvas (full-width drawing tool)](structure-canvas/PRD.md) | ready for implementation | 2/9 | [03 Navigation (zoom, fit, pan, keyboard)](structure-canvas/issues/03-navigation.md) — ready-for-agent | — |
 | [Feature: Companies (tenants) and roles](tenants-and-roles/PRD.md) | needs decision | 2/11 | [03 Company access, session and sign-in accounts (080C)](tenants-and-roles/issues/03-tenant-access.md) — needs-info | — |
 
 ## Tekniset työt
@@ -36,14 +36,13 @@
 
 | Ticket | Tila | Avoimia kriteerejä | Aloitettavissa | Odottaa ticketejä |
 | --- | --- | ---: | --- | --- |
-| [02 Adopt diagram-js with the graph domain layer and useGraphState](structure-canvas/issues/02-adopt-diagram-js.md) | ready-for-agent | 7 | kyllä | — |
-| [03 Navigation (zoom, fit, pan, keyboard)](structure-canvas/issues/03-navigation.md) | ready-for-agent | 5 | ei | 02 |
-| [04 Type list, filter and search](structure-canvas/issues/04-type-list-and-filter.md) | ready-for-agent | 6 | ei | 02, 03 |
+| [03 Navigation (zoom, fit, pan, keyboard)](structure-canvas/issues/03-navigation.md) | ready-for-agent | 5 | kyllä | — |
+| [04 Type list, filter and search](structure-canvas/issues/04-type-list-and-filter.md) | ready-for-agent | 6 | ei | 03 |
 | [05 Drawing (new nodes, connecting, deleting, multi-select, undo and redo)](structure-canvas/issues/05-drawing.md) | ready-for-agent | 8 | ei | 03, 04 |
-| [06 Hover popovers, label shortening and node metrics](structure-canvas/issues/06-hover-labels-and-metrics.md) | ready-for-agent | 4 | ei | 02 |
+| [06 Hover popovers, label shortening and node metrics](structure-canvas/issues/06-hover-labels-and-metrics.md) | ready-for-agent | 4 | kyllä | — |
 | [07 Snap, align, auto layout, minimap and export](structure-canvas/issues/07-layout-tools-minimap-export.md) | ready-for-agent | 5 | ei | 05 |
-| [08 Time control (scenario picker, event list, edits into the selected event)](structure-canvas/issues/08-time-control.md) | ready-for-agent | 6 | ei | 02, 05 |
-| [09 Accessibility, texts, browser test and documentation](structure-canvas/issues/09-accessibility-texts-docs.md) | ready-for-agent | 5 | ei | 02, 03, 04, 05, 06, 07 |
+| [08 Time control (scenario picker, event list, edits into the selected event)](structure-canvas/issues/08-time-control.md) | ready-for-agent | 6 | ei | 05 |
+| [09 Accessibility, texts, browser test and documentation](structure-canvas/issues/09-accessibility-texts-docs.md) | ready-for-agent | 5 | ei | 03, 04, 05, 06, 07 |
 
 ### Feature: Companies (tenants) and roles
 

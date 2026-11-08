@@ -9,7 +9,7 @@ Each Yearclock in the Organization workspace is a `YearclockPlanner`
 synchronized semantic summary, a details panel, the Event form, and the Lane
 and Category structure editor. `geometry.ts` holds the pure date-to-angle,
 range, month-scale, Lane-band, and today calculations and is unit tested with
-`npm run test:unit` (Node's test runner, no extra dependency). Interaction and
+`npm run test:unit` (Node's test runner, no extra dependency; code that needs a DOM runs in Vitest with jsdom, in the same command). Interaction and
 visual rules are in `docs/design/README.md`.
 
 - Months form the outer temporal scale.
@@ -208,3 +208,32 @@ the Organization settings page (`admin/SettingsPage.tsx`, `exportOrganization`).
 - `@fontsource-variable/inter` bundles the font into the build, so CSP keeps
   `font-src 'self'`.
 
+
+## Structure canvas (model Structure tab)
+
+The graph is drawn by diagram-js (ADR-0051) in `frontend/src/models/canvas/`. React renders the panels and forms; the
+canvas is one `Diagram` created once in `ShadowCanvas.tsx` and never recreated on a render.
+
+- `useGraphState(source)` is the only code that knows lines and events. It reads the state route
+  (`GET .../lines/{line}/state`, with `?event_id=` for a chosen event, otherwise the line's last event) and returns plain
+  `GraphData` (nodes, connections, types, allowed connections and the change markers `added`, `updated`, `removed`), the event,
+  a status and `reload`. Nothing under `canvas/` imports line, event or version types.
+- `diagram/GraphImporter` turns the data into shapes and connections and diffs against what is drawn: new elements are
+  added, gone ones removed, only changed ones redrawn, so zoom, scroll and selection survive every load.
+- `diagram/GraphRenderer` draws a node's shape from `node_types.shape` (rectangle, round rectangle, ellipse, diamond,
+  hexagon; anything else is a round rectangle), its fill from the type colour with text in the more contrasting of dark and
+  white, and a connection as a solid or dashed line with arrowheads from `source_end` and `target_end` and the type name as
+  label. Names over 60 code points are shortened with an ellipsis in labels. Changed elements get a "+" or "~" badge and a
+  CSS class, never colour alone.
+- `diagram/GraphRules` encodes the Metamodel: a connection needs an allowed (connection type, source node type, target
+  node type), may not join a node to itself and may not repeat a type between the same two nodes (the refusal cause is
+  `self`, `not_allowed` or `duplicate`); a read-only Organization has no editing rules at all.
+- `diagram/GraphModeling.applyEdit(edit)` is the one seam to the server. The change runs on the command stack at once,
+  the sender (in `ModelCanvas.tsx`, using the existing event edit routes and the positions route) writes it, and when the
+  server refuses (stale version, `chain_broken`, a rule, a network error) the change is undone with
+  `commandStack.undo()` and the person gets the readable notice. Moves made with the mouse are collected and saved in
+  one positions write 400 ms after the last one. Edits are sent one after the other, each against the event's freshly
+  loaded version. After every write the state is loaded again, which replaces optimistic elements with the real ones.
+- diagram-js modules in use: `modeling`, `selection`, `move`, `outline`, `movecanvas` and `zoomscroll`; its CSS is imported
+  into `theme.css` (layer `components`) and its `--bio-*` variables are defined from Shadow's colour tokens, so the canvas
+  follows the theme. The remaining modules the design expects were verified to exist (ADR-0051).

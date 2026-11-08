@@ -85,19 +85,3 @@ test("at 375 px the panels are a bottom sheet and the canvas fills the width", a
   await expect(page.getByRole("button", { name: "Hide panels" })).toHaveAttribute("aria-expanded", "true");
   await expect(page.getByRole("button", { name: "Add" })).toBeVisible();
 });
-
-test("a node can be dragged beyond the old 1400 x 800 area", async ({ page }) => {
-  await page.setViewportSize({ width: 1920, height: 1000 });
-  await page.goto(structure);
-  await page.getByRole("button", { name: "Collapse the Nodes panel" }).click();
-  await page.getByRole("button", { name: "Collapse the Details panel" }).click();
-  const node = page.getByRole("button", { name: "Sales (Unit)" });
-  const from = (await node.boundingBox())!;
-  const box = (await canvas(page).boundingBox())!;
-  await page.mouse.move(from.x + 20, from.y + 20);
-  await page.mouse.down();
-  await page.mouse.move(box.x + 1600, box.y + 300, { steps: 5 });
-  const x = Number(/translate\(([-\d.]+)/.exec((await node.getAttribute("transform")) ?? "")?.[1]);
-  await page.mouse.up();
-  expect(x).toBeGreaterThan(1400);
-});

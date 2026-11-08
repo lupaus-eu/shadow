@@ -203,7 +203,8 @@ keep the reading column. `OrganizationLayout` turns `wide` on for that route.
 
 - The canvas area ends at the bottom of the window (`window.innerHeight` minus
   its measured top, minimum 320 px), so the page does not scroll while drawing;
-  the SVG `viewBox` is the container size (one unit is one pixel).
+  the diagram fills that area and follows its size (a `ResizeObserver` calls `canvas.resized()`); at the default view one
+  unit is one pixel and positions are not clamped to a fixed area.
 - Side panels sit beside the canvas: **Nodes** left (220 px), **Details** right
   (280 px, add node, selection, changes). Each collapses to a 40 px rail with
   one icon button (label **Collapse/Expand the ... panel**, `aria-expanded`,
@@ -213,6 +214,13 @@ keep the reading column. `OrganizationLayout` turns `wide` on for that route.
 - Below 768 px the panels become a bottom sheet: a 48 px handle button
   (**Show/Hide panels**, `aria-expanded`) fixed to the bottom, with the details
   and the node list in a scrolling sheet of at most 55 % of the height.
+- The drawing is diagram-js (ADR-0051). Its stylesheet is part of `theme.css`, imported into the `components` layer, and the
+  variables it reads (`--bio-*`) are defined there from the tokens (`surface`, `ink`, `accent`, `line-strong` and so on), so a
+  dark theme redefines the tokens and the canvas follows. Canvas colours are never hard-coded except a node's own type colour,
+  which is data. Selection is a heavier accent outline, a node with keyboard focus the same, and an element the shown state
+  added or changed carries a "+" or "~" badge and a dashed outline: nothing is shown by colour alone.
+- A click on the element that is already the only selection keeps it selected (diagram-js would toggle it off); a click on
+  the background clears the selection.
 
 ## The Authentik sign-in pages (ADR-0039)
 
