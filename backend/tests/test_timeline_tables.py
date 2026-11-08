@@ -22,6 +22,8 @@ def _seed(stack: ExitStack, database_url: str, subject: str):
     application, owner, organization_id, base = _tenant(stack, database_url, subject)
     model_id = owner.post(f"{base}/models", json={"name": "Timeline"}).json()["id"]
     factory = create_session_factory(application.state.database_engine)
+    with transaction_session(factory, RequestContext(organization_id=organization_id)) as session:  # a new Model comes with a Base line (ticket 02); these tests build their own
+        session.execute(text("DELETE FROM model_lines WHERE model_id = :id"), {"id": model_id})
     return factory, application, organization_id, model_id
 
 

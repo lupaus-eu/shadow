@@ -609,6 +609,7 @@ class Metric(Base):
     organization_id: Mapped[UUID] = mapped_column(Uuid, index=True)
     model_id: Mapped[UUID] = mapped_column(Uuid, index=True)
     version_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    line_id: Mapped[UUID | None] = mapped_column(Uuid, index=True)  # replaces version_id in ticket 04 (model-timeline)
     node_id: Mapped[UUID | None] = mapped_column(Uuid)
     key: Mapped[str] = mapped_column(String(40))
     name: Mapped[str] = mapped_column(String(120))
@@ -624,6 +625,7 @@ class MetricValue(Base):
     period: Mapped[date] = mapped_column(Date, primary_key=True)
     organization_id: Mapped[UUID] = mapped_column(Uuid, index=True)
     version_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    line_id: Mapped[UUID | None] = mapped_column(Uuid, index=True)
     value: Mapped[float] = mapped_column(Float)
 
 
@@ -635,6 +637,7 @@ class Simulation(Base):
     organization_id: Mapped[UUID] = mapped_column(Uuid, index=True)
     model_id: Mapped[UUID] = mapped_column(Uuid, index=True)
     version_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    line_id: Mapped[UUID | None] = mapped_column(Uuid, index=True)
     name: Mapped[str] = mapped_column(String(120))
     method: Mapped[str] = mapped_column(String(20))
     horizon_months: Mapped[int] = mapped_column(Integer)

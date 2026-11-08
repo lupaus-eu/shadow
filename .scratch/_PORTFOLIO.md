@@ -6,7 +6,7 @@
 | --- | --- | ---: | --- | --- |
 | [Feature: All AI use happens in the user's own agent](agent-owned-ai/PRD.md) | implemented | 5/5 | — | — |
 | [Feature: Sign in with Authentik](authentik-sign-in/PRD.md) | implemented | 5/5 | — | — |
-| [Feature: Model timeline (Base line, events and scenarios)](model-timeline/PRD.md) | ready for implementation | 1/11 | [02 migrate versions to lines](model-timeline/issues/02-migrate-versions-to-lines.md) — ready-for-agent | — |
+| [Feature: Model timeline (Base line, events and scenarios)](model-timeline/PRD.md) | ready for implementation | 2/11 | [03 read api lines events state](model-timeline/issues/03-read-api-lines-events-state.md) — ready-for-agent | — |
 | [Feature: Shadow models (digital twin of an organisation)](shadow-models/PRD.md) | implemented (written after the fact, 2026-11-07; the features were built in | 0/0 | — | — |
 | [Feature: Structure canvas (full-width drawing tool)](structure-canvas/PRD.md) | ready for implementation | 0/9 | [01 Full-width layout and collapsible panels](structure-canvas/issues/01-full-width-layout.md) — ready-for-agent | — |
 | [Feature: Companies (tenants) and roles](tenants-and-roles/PRD.md) | needs decision | 2/11 | [03 Company access, session and sign-in accounts (080C)](tenants-and-roles/issues/03-tenant-access.md) — needs-info | — |
@@ -28,8 +28,7 @@
 
 | Ticket | Tila | Avoimia kriteerejä | Aloitettavissa | Odottaa ticketejä |
 | --- | --- | ---: | --- | --- |
-| [02 migrate versions to lines](model-timeline/issues/02-migrate-versions-to-lines.md) | ready-for-agent | 3 | kyllä | — |
-| [03 read api lines events state](model-timeline/issues/03-read-api-lines-events-state.md) | ready-for-agent | 3 | ei | 02 |
+| [03 read api lines events state](model-timeline/issues/03-read-api-lines-events-state.md) | ready-for-agent | 3 | kyllä | — |
 | [04 metrics simulations analysis by line](model-timeline/issues/04-metrics-simulations-analysis-by-line.md) | ready-for-agent | 3 | ei | 03 |
 | [05 event write routes with chain validation](model-timeline/issues/05-event-write-routes-with-chain-validation.md) | ready-for-agent | 4 | ei | 03 |
 | [06 scenarios and positions](model-timeline/issues/06-scenarios-and-positions.md) | ready-for-agent | 3 | ei | 05 |

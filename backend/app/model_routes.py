@@ -9,8 +9,10 @@ Organization; the composite foreign keys keep a graph inside its Model.
 
 import json
 from contextlib import contextmanager
+from datetime import datetime
 from pathlib import Path
 from uuid import UUID, uuid4
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field, field_validator
@@ -25,11 +27,14 @@ from app.models import (
     AllowedConnection,
     Connection,
     ConnectionType,
+    ModelLine,
     ModelVersion,
     Node,
     NodeType,
+    Organization,
     OrganizationMembership,
     OrganizationRole,
+    TimelineEvent,
     TwinModel,
 )
 from app.subscription_access import require_organization_mutation_access
@@ -185,6 +190,16 @@ def _audit(session: Session, request: Request, action: str, target_type: str, ta
     record_audit_event(session, AuditEventDraft(action=action, target_type=target_type, target_id=target_id, request_id=(request.headers.get("X-Request-ID") or str(uuid4()))[:120], change_summary=summary))
 
 
+def _today_in_organization(session: Session, organization_id: UUID):
+    """Today's date in the Organization's time zone (UTC if the zone is unknown)."""
+    name = session.scalar(select(Organization.time_zone).where(Organization.id == organization_id))
+    try:
+        zone = ZoneInfo(name) if name else ZoneInfo("UTC")
+    except ZoneInfoNotFoundError:
+        zone = ZoneInfo("UTC")
+    return datetime.now(zone).date()
+
+
 def _model(session: Session, organization_id: UUID, model_id: UUID, *, lock: bool = False) -> TwinModel:
     statement = select(TwinModel).where(TwinModel.id == model_id, TwinModel.organization_id == organization_id)
     model = session.scalar(statement.with_for_update() if lock else statement)
@@ -271,7 +286,13 @@ def create_model_router(*, session_factory: sessionmaker[Session], authenticated
             model = TwinModel(id=uuid4(), organization_id=organization_id, name=body.name, description=body.description, version=1)
             session.add(model)
             session.flush()
-            session.add(ModelVersion(id=uuid4(), organization_id=organization_id, model_id=model.id, name="Baseline", is_baseline=True, version=1))
+            # The Base line shares its id with the baseline version, as migration 0061 does for existing Models (ticket 04 drops the version).
+            baseline_id = uuid4()
+            session.add(ModelVersion(id=baseline_id, organization_id=organization_id, model_id=model.id, name="Baseline", is_baseline=True, version=1))
+            session.add(ModelLine(id=baseline_id, organization_id=organization_id, model_id=model.id, name="Baseline", kind="base", created_by_user_account_id=user.account.id, version=1))
+            session.flush()
+            # Rule 1 of the domain model: every Model has a Base line with an empty "Initial situation" event dated the creation day.
+            session.add(TimelineEvent(id=uuid4(), organization_id=organization_id, model_id=model.id, line_id=baseline_id, occurred_on=_today_in_organization(session, organization_id), title="Initial situation", created_by_user_account_id=user.account.id))
             seed_metamodel(session, model)
             _audit(session, request, "model.created", "model", model.id, {"name": model.name})
             return _model_response(session, model)

@@ -1,5 +1,5 @@
 // Shadow PostgreSQL schema, generated from the migrated database by backend/app/dbml.py.
-// Alembic revision 0060. Do not edit by hand: run `UPDATE_DBML=1 pytest tests/test_dbml_model.py` in backend/.
+// Alembic revision 0061. Do not edit by hand: run `UPDATE_DBML=1 pytest tests/test_dbml_model.py` in backend/.
 
 Project shadow {
   database_type: 'PostgreSQL'
@@ -177,9 +177,11 @@ Table metric_values {
   organization_id uuid [not null]
   version_id uuid [not null]
   value "double precision" [not null]
+  line_id uuid
 
   indexes {
     (metric_id, period) [pk]
+    line_id [name: 'ix_metric_values_line_id']
     organization_id [name: 'ix_metric_values_organization_id']
     version_id [name: 'ix_metric_values_version_id']
   }
@@ -199,10 +201,14 @@ Table metrics {
   formula text
   version integer [not null, default: `1`]
   created_at "timestamp with time zone" [not null, default: `now()`]
+  line_id uuid
 
   indexes {
+    (id, line_id) [unique]
     (id, version_id) [unique]
+    (line_id, key) [unique]
     (version_id, key) [unique]
+    line_id [name: 'ix_metrics_line_id']
     model_id [name: 'ix_metrics_model_id']
     organization_id [name: 'ix_metrics_organization_id']
     version_id [name: 'ix_metrics_version_id']
@@ -606,9 +612,11 @@ Table simulations {
   analysis_summary text
   analysis_summary_at "timestamp with time zone"
   analysis_summary_author text
+  line_id uuid
 
   indexes {
     (id, organization_id) [unique]
+    line_id [name: 'ix_simulations_line_id']
     model_id [name: 'ix_simulations_model_id']
     organization_id [name: 'ix_simulations_organization_id']
     version_id [name: 'ix_simulations_version_id']
@@ -722,8 +730,10 @@ Ref: event_changes.event_id > timeline_events.id [delete: cascade]
 Ref: event_changes.organization_id > organizations.id [delete: cascade]
 Ref: legal_acceptances.organization_id > organizations.id [delete: cascade]
 Ref: legal_acceptances.user_account_id > user_accounts.id [delete: set null]
+Ref: metric_values.(metric_id, line_id) > metrics.(id, line_id) [delete: cascade]
 Ref: metric_values.(metric_id, version_id) > metrics.(id, version_id) [delete: cascade]
 Ref: metric_values.organization_id > organizations.id [delete: cascade]
+Ref: metrics.(line_id, model_id) > model_lines.(id, model_id) [delete: cascade]
 Ref: metrics.(model_id, organization_id) > models.(id, organization_id) [delete: cascade]
 Ref: metrics.(version_id, model_id) > model_versions.(id, model_id) [delete: cascade]
 Ref: metrics.node_id > nodes.id [delete: set null]
@@ -761,6 +771,7 @@ Ref: recommendations.(simulation_id, organization_id) > simulations.(id, organiz
 Ref: recommendations.organization_id > organizations.id [delete: cascade]
 Ref: simulation_points.(simulation_id, organization_id) > simulations.(id, organization_id) [delete: cascade]
 Ref: simulation_points.organization_id > organizations.id [delete: cascade]
+Ref: simulations.(line_id, model_id) > model_lines.(id, model_id) [delete: cascade]
 Ref: simulations.(model_id, organization_id) > models.(id, organization_id) [delete: cascade]
 Ref: simulations.(version_id, model_id) > model_versions.(id, model_id) [delete: cascade]
 Ref: simulations.organization_id > organizations.id [delete: cascade]
