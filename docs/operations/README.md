@@ -85,9 +85,9 @@ Every MCP call is recorded without content in `mcp_calls` (migration `0059`, ADR
 
 ### Model timeline limits
 
-- `LIMIT_CHANGES_PER_LINE` (default 5000) caps the events of one line of a Model and
+- `LIMIT_CHANGES_PER_LINE` (default 5000) caps the changes of one line of a Model and
   `LIMIT_LINES_PER_MODEL` (default 200) the lines of one Model; a create beyond either answers
-  409 `limit_reached`. Every event write locks the Model and replays the changed line and the Scenarios
+  409 `limit_reached`. Every change write locks the Model and replays the changed line and the Scenarios
   that branch from it, so the cost of a write grows with these numbers; lower them if writes slow down.
   Raising a limit takes effect at the next backend start.
 

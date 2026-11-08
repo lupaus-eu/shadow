@@ -14,7 +14,7 @@ feature-specific and changing plans.
   [organization authorization](organization-authorization-matrix.md)
 - [Frontend](frontend.md), [events](events.md), [recurrence](recurrence.md),
   [date and time](date-and-time.md), and [localization](localization.md)
-- The Model timeline (lines, events, replayed states, ADR-0048 to ADR-0050): the
+- The Model timeline (lines, changes, replayed states, ADR-0048 to ADR-0050): the
   `timeline` component in the [C4 model](c4/README.md), the tables in
   [database](database.md), the routes in [API](api.md), the audit actions in
   [audit](audit.md), and the canvas in [frontend](frontend.md).

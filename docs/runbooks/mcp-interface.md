@@ -65,21 +65,21 @@ Run the backend tests on Python 3.12 (for example a venv made with `python3.12 -
 
 ## Tools for models
 
-Agents that work with a model use these tools (every one takes `organization_id`; ADR-0046). They call the same functions as the web application, so roles, the read-only state, `expected_version`, limits and audit apply, and every call appears in the call log. A refusal comes back as a readable tool error that carries the reason (for example `chain_broken` with the event, element and cause, or `parent_moved_on` with the suggestion).
+Agents that work with a model use these tools (every one takes `organization_id`; ADR-0046). They call the same functions as the web application, so roles, the read-only state, `expected_version`, limits and audit apply, and every call appears in the call log. A refusal comes back as a readable tool error that carries the reason (for example `chain_broken` with the change, element and cause, or `parent_moved_on` with the suggestion).
 
 | Tool | Arguments | What it does |
 | --- | --- | --- |
 | `list_models` | | The models, with `base_line_id` |
-| `get_model` | `model_id`, `line_id?` | The lines, the metamodel and the nodes and connections of one line (the Base line by default) after its last event; `latest_event` is the event `create_node` writes into |
-| `list_lines` | `model_id` | The Base line first, then the Scenarios, each with its parent and branch event |
-| `list_events` | `model_id`, `line_id` | The line's own events in order: date, title, note, planned, change counts, branching Scenarios |
-| `get_state` | `model_id`, `line_id`, `event_id?` or `as_of?` (YYYY-MM-DD) | The graph after an event or on a date (the present state when neither is given), with what the event added, updated and removed |
-| `create_scenario` | `model_id`, `name`, `branch_event_id`, `description?` | A Scenario from the state after any event; copies that line's metrics |
-| `add_event` | `model_id`, `line_id`, `occurred_on`, `title`, `note?`, `changes?` | A dated event with ordered changes (`add_node`, `remove_node`, `update_node`, `add_connection`, `remove_connection`, `reroute_connection`, `change_connection_type`); Base line: Owner or Admin |
-| `update_event` | `model_id`, `event_id`, `expected_version`, `occurred_on?`, `title?`, `note?`, `changes?` | Changes the fields given; `changes` replaces the list; an empty `note` clears it |
-| `delete_event` | `model_id`, `event_id`, `expected_version` | Deletes an event (destructive); refused when another line branches from it or the chain would break |
-| `adopt_scenario` | `model_id`, `line_id`, `expected_version?` | Appends the Scenario's events to its parent (destructive: the Scenario is deleted unless it has child Scenarios); Owner or Admin for the Base line |
-| `create_node`, `create_connection` | `model_id`, `event_id`, ... | Canvas edits as changes inside an event |
+| `get_model` | `model_id`, `line_id?` | The lines, the metamodel and the nodes and connections of one line (the Base line by default) after its last change; `latest_change` is the change `create_node` writes into |
+| `list_lines` | `model_id` | The Base line first, then the Scenarios, each with its parent and branch change |
+| `list_changes` | `model_id`, `line_id` | The line's own changes in order: date, title, note, planned, edit counts, branching Scenarios |
+| `get_state` | `model_id`, `line_id`, `change_id?` or `as_of?` (YYYY-MM-DD) | The graph after a change or on a date (the present state when neither is given), with what the change added, updated and removed |
+| `create_scenario` | `model_id`, `name`, `branch_change_id`, `description?` | A Scenario from the state after any change; copies that line's metrics |
+| `add_change` | `model_id`, `line_id`, `occurred_on`, `title`, `note?`, `edits?` | A dated change with ordered edits (`add_node`, `remove_node`, `update_node`, `add_connection`, `remove_connection`, `reroute_connection`, `change_connection_type`); Base line: Owner or Admin |
+| `update_change` | `model_id`, `change_id`, `expected_version`, `occurred_on?`, `title?`, `note?`, `edits?` | Changes the fields given; `edits` replaces the list; an empty `note` clears it |
+| `delete_change` | `model_id`, `change_id`, `expected_version` | Deletes a change (destructive); refused when another line branches from it or the chain would break |
+| `adopt_scenario` | `model_id`, `line_id`, `expected_version?` | Appends the Scenario's changes to its parent (destructive: the Scenario is deleted unless it has child Scenarios); Owner or Admin for the Base line |
+| `create_node`, `create_connection` | `model_id`, `change_id`, ... | Canvas edits as Edits inside a Change |
 | `create_model`, `create_metric`, `set_metric_values`, `run_simulation`, `generate_analysis`, `set_analysis_summary`, `add_proposal`, `list_metrics`, `get_metric_series`, `list_simulations`, `get_simulation`, `get_analysis` | as before; the metric and simulation tools take `line_id` | |
 
 The version tools (`create_version`, `merge_version`, `get_version_changes`) no longer exist; a connector that remembered them must refresh its tool list.

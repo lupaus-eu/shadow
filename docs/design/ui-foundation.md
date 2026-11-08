@@ -293,9 +293,9 @@ keep the reading column. `OrganizationLayout` turns `wide` on for that route.
     what goes: "Delete the node \u201CSales\u201D? Its 2 connections will also be deleted: Sales \u2192 Support (Reports to), ...
     You can undo this." (three names, then "and N more"). A set is deleted as one step.
   - **Undo and redo** (`Ctrl/Cmd+Z`, `Shift+Ctrl/Cmd+Z` or `Ctrl/Cmd+Y`, and the toolbar buttons) cover the person's own steps
-    in this session, for this line and event: create, delete (the same name, description, type and place, and its
+    in this session, for this line and change: create, delete (the same name, description, type and place, and its
     connections, as a new element), rename, connect, re-route (the details panel's From and To) and move. The history is in
-    memory only; it is cleared when the line or event changes and on reload. Each undo is an ordinary write after a fresh
+    memory only; it is cleared when the line or change changes and on reload. Each undo is an ordinary write after a fresh
     read: if the element is gone or somebody changed it since, or the server answers 409 or 422, the step is refused and
     dropped with a readable notice and the other steps stay. Keys act only while focus is inside the drawing.
   - Every outcome of undo, redo, delete and a refusal is also said in a polite live region.
@@ -361,7 +361,7 @@ keep the reading column. `OrganizationLayout` turns `wide` on for that route.
     first node, Tab to the second, Enter (a choice of types is a dialog). Select a connection (to re-route or delete it): the
     selected node's **Connections** list in the details panel (one button per connection; focus moves to the connection's details).
     Delete: `Delete` with a confirmation. Rename: `F2`. Lasso: `L` or the toolbar toggle. Align, distribute, Arrange, snap, minimap,
-    export, undo, redo, zoom and Fit are toolbar buttons (and keys where listed above). Events and scenarios are controls of the model
+    export, undo, redo, zoom and Fit are toolbar buttons (and keys where listed above). Changes and scenarios are controls of the model
     page above the canvas. Not possible without a pointer: dragging a node by an arbitrary distance (arrows move 10 px steps), the library's
     drag from the context pad (the connect key replaces it), and moving a connection's end (re-route is a select in the details).
   - *Live region* (`role="status"`, polite, `canvas/a11y.ts` `nextAnnouncement` makes a repeated sentence audible again). It says:
@@ -370,7 +370,7 @@ keep the reading column. `OrganizationLayout` turns `wide` on for that route.
   - *Focus.* After a confirmation or the connection-type dialog closes, focus returns to where it was; when that element is gone (a
     deleted node) it returns to the canvas (`ShadowCanvasHandle.focus`: the selected node, else the first drawn node, else the drawing).
   - *Marks never rely on colour alone.* Added, changed and removed are the glyphs `+`, `~` and `−` on a badge (and a dashed outline for
-    removed), with text in the legend and the lists; a planned event says "Planned" in words; a hidden type is not drawn, a search
+    removed), with text in the legend and the lists; a planned change says "Planned" in words; a hidden type is not drawn, a search
     match has a heavier outline and the rest are dimmed (opacity plus the outline), selection and keyboard focus are a heavier outline,
     and a pressed toolbar toggle has `aria-pressed` and a filled background. Base line and Scenario differ by words as well as by the
     accent of the caption.
@@ -382,17 +382,17 @@ keep the reading column. `OrganizationLayout` turns `wide` on for that route.
   - *Phones.* Under 768 px the panels are a bottom sheet (it closes when a node is added, so the node being named is not covered);
     the toolbar wraps inside the canvas; with a coarse pointer buttons are 44 px.
 
-- **Time control** (ticket 08 of the Structure canvas). The canvas shows the state after the chosen event of the chosen line and **drawing edits that
-  event**, whichever it is (an earlier one, the last, a planned one): the edit goes to that event with its own version, and only the
-  subscription and the role (Members on the Base line may not write it) make the canvas read-only. The notice for an earlier event says that drawing
-  changes it. A small label over the bottom-left corner of the canvas (it lets clicks through) says which line and event are shown: a Base
-  line border in the accent colour, a Scenario border in the info colour, the line kind as text, and "Planned" for a planned event.
-  **Marks** show what the shown event changed, never by colour alone: `+` badge on an added node or connection label, `~` on a changed or
+- **Time control** (ticket 08 of the Structure canvas). The canvas shows the state after the chosen change of the chosen line and **drawing edits that
+  change**, whichever it is (an earlier one, the last, a planned one): the edit goes to that change with its own version, and only the
+  subscription and the role (Members on the Base line may not write it) make the canvas read-only. The notice for an earlier change says that drawing
+  edits it. A small label over the bottom-left corner of the canvas (it lets clicks through) says which line and change are shown: a Base
+  line border in the accent colour, a Scenario border in the info colour, the line kind as text, and "Planned" for a planned change.
+  **Marks** show what the shown Change edited, never by colour alone: `+` badge on an added node or connection label, `~` on a changed or
   re-routed one, and removed ones drawn as **dashed outlines with a `-` badge** (ghosts: no pointer events, not selectable or editable). The label
   also counts them ("+ 2 added, ~ 1 changed or re-routed, - 1 removed") and the details panel lists the removed elements as text with a note.
   Nothing animates for the marks, so reduced motion needs no variant. A refused edit (stale, a chain that would break, a branch point, 403) is
-  reverted and explained in an alert in words naming the event and element and what to do first (`chainBrokenMessage`); the person's other
-  work stays on the canvas. "New event" and "New scenario from here" stay in the line bar and the event list of the model page above the canvas.
+  reverted and explained in an alert in words naming the change and element and what to do first (`chainBrokenMessage`); the person's other
+  work stays on the canvas. "New change" and "New scenario from here" stay in the line bar and the change list of the model page above the canvas.
 - **Start row (model timeline ticket 12).** The change list of a Scenario begins with a fixed row **Start** (Finnish "Lähtötilanne") in the info
   colour: "Starts from: <parent line>, after the change <title> (<date>)", the parent line and the Change being links. It is a button with
   `aria-current` when selected (URL `?change=start`), reachable by keyboard; it is not a Change (no date edit, no delete, not in the change count,

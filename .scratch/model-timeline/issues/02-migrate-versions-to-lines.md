@@ -4,23 +4,23 @@ Status: implemented
 
 ## Goal
 
-Convert existing versions, graphs, metrics and simulations to lines and events.
+Convert existing versions, graphs, metrics and simulations to lines and changes.
 
 ## Implementation
 
-- Migration 0061: baseline version to Base line with one "Initial situation" event (dated the Model's creation day in the Organization's time zone); each fork to a Scenario with one difference event (dated the fork's creation day, never before its branch event; none when there is no difference); positions to `node_positions`; a Base line for every Model, also one with no baseline version.
+- Migration 0061: baseline version to Base line with one "Initial situation" change (dated the Model's creation day in the Organization's time zone); each fork to a Scenario with one difference change (dated the fork's creation day, never before its branch change; none when there is no difference); positions to `node_positions`; a Base line for every Model, also one with no baseline version.
 - `line_id` is ADDED to `metrics`, `metric_values` and `simulations` (nullable, backfilled from `version_id`, indexed, foreign keys to `model_lines`). `version_id` is NOT dropped here: existing routes still use it and the whole backend suite stays green; ticket 04 makes `line_id` required and drops `version_id`.
 - A line takes its version's id. Element ids are preserved: baseline nodes and connections keep theirs, fork nodes and connections that exist in the base reuse the base's element id, so replayed states can be compared with the old graphs. `metrics.node_id` is untouched (ticket 08 remaps it before dropping `nodes`).
-- New Models: model creation (`backend/app/model_routes.py`) creates a Base line (same id as the baseline version) with an empty "Initial situation" event dated today in the Organization's time zone, next to the old baseline version, so rule 1 holds from now on.
+- New Models: model creation (`backend/app/model_routes.py`) creates a Base line (same id as the baseline version) with an empty "Initial situation" change dated today in the Organization's time zone, next to the old baseline version, so rule 1 holds from now on.
 - Not done: other routes and frontend; `nodes`, `connections`, `model_versions` stay until ticket 08.
-- Downgrade drops the `line_id` columns and the generated lines, events and positions (the old tables are intact, so nothing needs rebuilding).
+- Downgrade drops the `line_id` columns and the generated lines, changes and positions (the old tables are intact, so nothing needs rebuilding).
 
 ## Acceptance criteria
 
 - [x] A database with versions, forks, graphs, metrics and simulations upgrades with nothing lost: replayed states equal the old graphs.
-- [x] Fork of a fork branches from its base fork's last event.
-- [x] Downgrade drops the `line_id` columns and the generated lines, events and positions; `model_versions`, `nodes` and `connections` are intact (they are not dropped until ticket 08).
-- [x] A new Model gets a Base line with an empty "Initial situation" event at creation.
+- [x] Fork of a fork branches from its base fork's last change.
+- [x] Downgrade drops the `line_id` columns and the generated lines, changes and positions; `model_versions`, `nodes` and `connections` are intact (they are not dropped until ticket 08).
+- [x] A new Model gets a Base line with an empty "Initial situation" change at creation.
 
 ## Testing
 

@@ -8,7 +8,7 @@ Update the glossary and the user and admin guides for the timeline.
 
 ## Implementation
 
-- `CONTEXT.md`: Base line, Scenario, Line, Event, Change, Planned event, Present state, Branch point, State, Chain, Adopt; retire Version, Baseline, Change list, Merge.
+- `CONTEXT.md`: Base line, Scenario, Line, Change, Edit, Planned change, Present state, Branch point, State, Chain, Adopt; retire Version, Baseline, Change list, Merge.
 - `docs/user/README.md`, `docs/admin/README.md`, `docs/architecture/` overview, C4 views; PRD checkboxes ticked after testing.
 
 ## Acceptance criteria
@@ -34,10 +34,10 @@ Update the glossary and the user and admin guides for the timeline.
 
 ## Documentation effects
 
-- [x] Update `docs/user/`: `docs/user/README.md` (timeline, Scenarios, planned events, correcting history, chain-broken refusals, starting a Scenario, adoption, Structure canvas)
+- [x] Update `docs/user/`: `docs/user/README.md` (timeline, Scenarios, planned changes, correcting history, chain-broken refusals, starting a Scenario, adoption, Structure canvas)
 - [x] Update `docs/admin/`: `docs/admin/README.md` (who writes the Base line, Scenarios, adoption, limits, agent tools)
 - [x] Update architecture or ADR: `docs/architecture/README.md` (timeline pointers). The C4 model already holds the Model timeline component, its relationships and the `eventWrite` flows (tickets 05 and 06), so `docs/architecture/c4/` needed no change; the DBML was current from ticket 08.
-- [x] Update `CONTEXT.md`: Line, Base line, Scenario, Event, Change, Planned event, State, Present state, Branch point, Chain, Adopt, Position, Canvas and View added; Version, Baseline, Change list and Merge marked retired with pointers; stale Version wording removed from Model, Node, Connection, Metric, Simulation, Import, Agent tool and Organization Admin. Also updated `.scratch/model-timeline/PRD.md` and `.scratch/structure-canvas/PRD.md`.
+- [x] Update `CONTEXT.md`: Line, Base line, Scenario, Change, Edit, Planned change, State, Present state, Branch point, Chain, Adopt, Position, Canvas and View added; Version, Baseline, Change list and Merge marked retired with pointers; stale Version wording removed from Model, Node, Connection, Metric, Simulation, Import, Agent tool and Organization Admin. Also updated `.scratch/model-timeline/PRD.md` and `.scratch/structure-canvas/PRD.md`.
 - `docs/legal/`: evaluated, no change. Audit entries carry ids and counts only, no element names or note text; the new tables hold the same kind of Organization content as the former model tables, so the privacy notice, processing records and storage notice remain accurate. No new cookie or storage key.
 
 Record exact updated file paths and explain every "No documentation effect"

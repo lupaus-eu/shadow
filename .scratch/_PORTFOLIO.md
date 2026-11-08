@@ -6,7 +6,7 @@
 | --- | --- | ---: | --- | --- |
 | [Feature: All AI use happens in the user's own agent](agent-owned-ai/PRD.md) | implemented | 5/5 | — | — |
 | [Feature: Sign in with Authentik](authentik-sign-in/PRD.md) | implemented | 5/5 | — | — |
-| [Feature: Model timeline (Base line, events and scenarios)](model-timeline/PRD.md) | implemented | 12/12 | — | — |
+| [Feature: Model timeline (Base line, changes and scenarios)](model-timeline/PRD.md) | implemented | 12/12 | — | — |
 | [Feature: Shadow models (digital twin of an organisation)](shadow-models/PRD.md) | implemented (written after the fact, 2026-11-07; the features were built in | 0/0 | — | — |
 | [Feature: Structure canvas (full-width drawing tool)](structure-canvas/PRD.md) | implemented | 9/9 | — | — |
 | [Feature: Companies (tenants) and roles](tenants-and-roles/PRD.md) | wontfix | 2/11 | — | — |
@@ -17,7 +17,7 @@
 
 | Tekninen työ | Toteutustila | Ticketit | Seuraava ticket | Odottaa ticketejä |
 | --- | --- | ---: | --- | --- |
-| [Technical design: Change terminology (rename event to Change, change to Edit)](tech-change-terminology/technical-design.md) | ready for implementation | 2/3 | [03 documents and vocabulary sweep](tech-change-terminology/issues/03-documents-and-vocabulary-sweep.md) — ready-for-agent | — |
+| [Technical design: Change terminology (rename event to Change, change to Edit)](tech-change-terminology/technical-design.md) | implemented | 3/3 | — | — |
 | [Technical design: Compose file for local development with live reload](tech-dev-compose/technical-design.md) | implemented | 1/1 | — | — |
 | [Technical design: Platform foundation (backend)](tech-platform-foundation/technical-design.md) | implemented | 4/4 | — | — |
 
@@ -25,11 +25,7 @@
 
 > *Aloitettavissa* tarkoittaa, että kaikki ticketin estäjät ovat `implemented` tai `resolved`. *Avoimia kriteerejä* laskee ticketin rastittamattomat hyväksymiskriteerit.
 
-### Technical design: Change terminology (rename event to Change, change to Edit)
-
-| Ticket | Tila | Avoimia kriteerejä | Aloitettavissa | Odottaa ticketejä |
-| --- | --- | ---: | --- | --- |
-| [03 documents and vocabulary sweep](tech-change-terminology/issues/03-documents-and-vocabulary-sweep.md) | ready-for-agent | 2 | kyllä | — |
+Ei avoimia ticketejä.
 
 ## Tilan tulkinta
 

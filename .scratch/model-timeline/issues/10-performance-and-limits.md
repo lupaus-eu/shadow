@@ -4,16 +4,16 @@ Status: implemented
 
 ## Goal
 
-Measure the state read, event list and writes at the target size and record the result.
+Measure the state read, change list and writes at the target size and record the result.
 
 ## Implementation
 
-- A script that builds a model with 2000 events and 500 nodes and times `state`, `events` and a validated write on the development stack.
+- A script that builds a model with 2000 changes and 500 nodes and times `state`, `changes` and a validated write on the development stack.
 - Not done: caching; added only if the numbers fail.
 
 ## Acceptance criteria
 
-- [x] Each of state and event list loads in under two seconds; the numbers are written into the technical design.
+- [x] Each of state and change list loads in under two seconds; the numbers are written into the technical design.
 - [x] If a number fails, a follow-up ticket for snapshots exists. (No number failed; no follow-up ticket was needed.)
 
 ## Testing

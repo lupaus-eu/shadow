@@ -1,5 +1,7 @@
 # Feature: Structure canvas (full-width drawing tool)
 
+> Vocabulary renamed by ADR-0052 on 2026-11-08: event is now Change, change (a step) is now Edit.
+
 Status: accepted
 
 ## Goal
@@ -62,8 +64,8 @@ this version" with what replaces them.
    a refused connection says why.
 6. They move, rename, delete and re-type elements; undo and redo step back through their own
    edits in this session.
-7. They move along the timeline, see what each event changed, start a scenario from a moment, and
-   export the view as PNG or SVG. (Until the event timeline exists, they compare a forked version
+7. They move along the timeline, see what each Change edited, start a scenario from a moment, and
+   export the view as PNG or SVG. (Until the change timeline exists, they compare a forked version
    with its base as today.)
 
 ## Acceptance criteria
@@ -103,7 +105,7 @@ this version" with what replaces them.
 - [ ] Snap-to-grid toggle and align/distribute for a selection (left, centre, top, equal gaps).
 - [ ] Undo and redo (Ctrl/Cmd+Z, Shift+Ctrl/Cmd+Z) for create, move, rename, delete and connect,
       limited to the current session and the current version; each step is one server write and
-      an audited event, as for any other edit.
+      an audited change, as for any other edit.
 - [ ] "Auto layout" arranges the graph (hierarchical or force-directed) on request, as one undoable
       step; nothing rearranges on its own.
 - [ ] Concurrent edits still give a stale-version notice and a reload, never a silent overwrite.
@@ -133,79 +135,79 @@ this version" with what replaces them.
 - [x] Frontend unit tests for geometry, filtering, undo and layout helpers; a browser test for
       zoom, fit, add, connect and filter; typecheck and build pass.
 
-## Time and events (direction set by the product owner)
+## Time and changes (direction set by the product owner)
 
 Every Organization has one **Base line** (nameable). It always describes what has really happened
 to the company, and its goal is to describe the company's present state at all times. It is built
-from a starting situation and **events**; every event has a date, always. An event dated in the future
-is a **planned event**: something already known (a team to be founded on 1 January) is recorded
+from a starting situation and **changes**; every change has a date, always. A change dated in the future
+is a **planned change**: something already known (a team to be founded on 1 January) is recorded
 in advance and becomes part of the present state when its date arrives. The Base line's present state is
-the state after the last event dated today or earlier. Choosing an event from the
-list on the timeline shows the situation as it was after that event, so the past can be read.
+the state after the last change dated today or earlier. Choosing a change from the
+list on the timeline shows the situation as it was after that change, so the past can be read.
 
 A **Scenario** is a "what could happen" model. There can be any number of them. A scenario starts
-from a **branch point**, which is a state: after a chosen event of the Base line, or after a chosen
-event of another scenario. The branch point may lie in the past of the Base line, to model what
+from a **branch point**, which is a state: after a chosen change of the Base line, or after a chosen
+change of another scenario. The branch point may lie in the past of the Base line, to model what
 would have happened if, for example, a team had not been founded a year ago and the old way had
-continued. From the branch point the scenario has events of its own.
+continued. From the branch point the scenario has changes of its own.
 
-An **event** is a change set at a date: it may add or remove elements, re-route connections, rename,
-re-type, or anything else the graph allows. The state after an event is the starting situation plus
-all events up to and including it, in date order (and entry order within one date), along the chain
+A **Change** is a set of edits at a date: it may add or remove elements, re-route connections, rename,
+re-type, or anything else the graph allows. The state after a change is the starting situation plus
+all changes up to and including it, in date order (and entry order within one date), along the chain
 of branch points of its scenario.
 
 How this relates to what exists today: a Version is a full copy of the graph with no time, and the
 change list is a computed difference between a version and its base. Neither records when something
-happens, and neither can start from a point in the past. The event timeline replaces both; the
+happens, and neither can start from a point in the past. The change timeline replaces both; the
 existing versions, merge and change list stay until the timeline feature replaces them.
 
 For the Structure canvas this means:
 
-- [ ] The canvas shows one scenario (or the Base line) at one event. A scenario picker and an event
+- [ ] The canvas shows one scenario (or the Base line) at one change. A scenario picker and a change
       list (with dates) sit on the canvas; the default is the latest state of the Base line.
-- [ ] The canvas reads a state through one function (`state after event E in scenario S`), so it
-      works today with versions and later with events without redrawing the tool.
-- [ ] Drawing edits the event that is shown: each canvas edit (add, remove, rename, re-type, re-route)
-      adds to or amends that event's changes, as one validated write. "New event" asks for a title and a date
-      (the Base line suggests today; a later date makes it a planned event), creates it at the end of that
+- [ ] The canvas reads a state through one function (`state after change E in scenario S`), so it
+      works today with versions and later with changes without redrawing the tool.
+- [ ] Drawing edits the Change that is shown: each canvas edit (add, remove, rename, re-type, re-route)
+      adds to or amends that Change's Edits, as one validated write. "New change" asks for a title and a date
+      (the Base line suggests today; a later date makes it a planned change), creates it at the end of that
       date and selects it. Moving a node is not an edit: it changes only the drawing.
-- [ ] Edits to an event that other events or Scenarios depend on are checked against the whole chain; a
-      refusal says which event and element would break and what to do first, and the canvas keeps the
+- [ ] Edits to a change that other changes or Scenarios depend on are checked against the whole chain; a
+      refusal says which change and element would break and what to do first, and the canvas keeps the
       person's work on screen.
-- [ ] Edits within one event are kept tidy: adding and then removing the same element in one event leaves no
+- [ ] Edits within one change are kept tidy: adding and then removing the same element in one change leaves no
       trace; renaming twice leaves one change.
-- [ ] In the event list planned events are marked by a different colour and a "Planned" label (not
+- [ ] In the change list planned changes are marked by a different colour and a "Planned" label (not
       by colour alone), and they are clickable like the others: choosing one shows the state as it
-      will be after it. The list also marks "Now" between the last happened and the first planned event. Drawing on an earlier event of a line is refused with a reason: start a
-      scenario from there instead (or correct history through a dated event, see open questions).
-- [ ] Elements added, removed or re-routed by the shown event are marked on the canvas; this replaces
+      will be after it. The list also marks "Now" between the last happened and the first planned change. Drawing on an earlier change of a line is refused with a reason: start a
+      scenario from there instead (or correct history through a dated change, see open questions).
+- [ ] Elements added, removed or re-routed by the shown change are marked on the canvas; this replaces
       "ends in this state" from the first attempt.
 - [ ] "New scenario from here" starts a scenario at the shown state, on the Base line or on another
       scenario, in the past or the present.
-- [ ] Every event can be changed or deleted afterwards (date, content, even re-ordering), because
+- [ ] Every Change can be edited or deleted afterwards (date, content, even re-ordering), because
       records contain mistakes. The Base line's present state and all scenarios are recomputed from
-      the corrected events.
-- [ ] A change that would break the chain is refused. Examples: deleting an event that adds an element
-      later events use; moving an event before the event it depends on; removing a connection type or
-      node that a later event or a scenario branched after it still needs; adding a connection the
+      the corrected changes.
+- [ ] A change that would break the chain is refused. Examples: deleting a change that adds an element
+      later changes use; moving a change before the change it depends on; removing a connection type or
+      node that a later change or a scenario branched after it still needs; adding a connection the
       metamodel does not allow. The check replays the whole affected chain, including scenarios that
       branch from it, and nothing is saved if any step fails.
-- [ ] The refusal is a readable message that names the event and element that would break, says
-      why, and tells the person what to do (for example "Event 'Team founded' 1 Jan adds 'Support';
-      the later event 'Move Ada to Support' needs it. Change or remove that event first, or move
-      this event to a date before it."). No raw server text reaches the page, and the form keeps
+- [ ] The refusal is a readable message that names the change and element that would break, says
+      why, and tells the person what to do (for example "Change 'Team founded' 1 Jan adds 'Support';
+      the later change 'Move Ada to Support' needs it. Edit or remove that change first, or move
+      this change to a date before it."). No raw server text reaches the page, and the form keeps
       the person's input.
 - [ ] The Base line is visibly different from scenarios (name, colour, label) so that nobody mistakes a
       what-if for what has happened.
 
-The event store, scenarios, branching rules, permissions and the timeline UI are a feature of their
+The change store, scenarios, branching rules, permissions and the timeline UI are a feature of their
 own and get their own PRD and domain model in `.scratch/model-timeline/`. This PRD covers the drawing
-tool and its time control, not the event store.
+tool and its time control, not the change store.
 
 ## Not in this version
 
-- **Org-state lifetimes** (`createDate`/`deleteDate`, "ends in this state"): replaced by the event
-  timeline described under "Time and events", not by Versions alone.
+- **Org-state lifetimes** (`createDate`/`deleteDate`, "ends in this state"): replaced by the change
+  timeline described under "Time and changes", not by Versions alone.
 - **Timeserie mode and its panel** (linking, creating and deleting timeseries on a node): metrics
   are managed on the Metrics tab; the canvas only shows a node's attached metrics.
 - **AI Assistant mode**: it was a placeholder; the user's own agent works through MCP (ADR-0047).
@@ -217,7 +219,7 @@ tool and its time control, not the event store.
 
 ## Domain terms
 
-Defined in `CONTEXT.md`: **Node**, **Connection**, **Metamodel**, and the timeline terms **Line**, **Event** and **State** (they replaced **Version** and **Change list**).
+Defined in `CONTEXT.md`: **Node**, **Connection**, **Metamodel**, and the timeline terms **Line**, **Change** and **State** (they replaced **Version** and **Change list**).
 New: **Canvas** (the drawing surface of the Structure tab), **View** (the current pan and zoom;
 never stored on the server).
 
@@ -235,19 +237,19 @@ Criteria in the sections above stay unticked on purpose: their only evidence is 
 
 ## Open questions
 
-- Can the Base line receive an event dated in the past (a late record of something that happened)? [Yes,
-  history must be correctable; events sort by date. Future-dated (planned) events are allowed
+- Can the Base line receive a change dated in the past (a late record of something that happened)? [Yes,
+  history must be correctable; changes sort by date. Future-dated (planned) changes are allowed
   on the Base line for known changes; what-if plans stay in scenarios.]
-- Does a planned event that does not happen need a way to be cancelled? [Delete or move it like any
-  event; no separate "cancelled" state at first.]
-- When a past event is added to a line, do scenarios branched after it change? [Yes, they follow the
+- Does a planned change that does not happen need a way to be cancelled? [Delete or move it like any
+  change; no separate "cancelled" state at first.]
+- When a past change is added to a line, do scenarios branched after it change? [Yes, they follow the
   corrected history, and their owners see a notice that the start changed; a branch is a reference to an
-  event, not a copy.]
-- Who sees that a planned event's date has passed without anyone confirming it? [Nothing special: once the
+  change, not a copy.]
+- Who sees that a planned change's date has passed without anyone confirming it? [Nothing special: once the
   date arrives it is part of the present state; a person corrects it if reality differed.]
-- Time granularity of events: day or month? [Day for events; metrics stay monthly.]
+- Time granularity of changes: day or month? [Day for changes; metrics stay monthly.]
 - What happens to existing versions and merge? [Versions become scenarios; whether a scenario can be
-  adopted into the Base line (as events dated today) is decided in the model-timeline domain model.]
+  adopted into the Base line (as changes dated today) is decided in the model-timeline domain model.]
 - Who may create scenarios and who may write to the Base line? [Members write scenarios; Owners and
   Admins (or a chosen role) write the Base line, since it claims to be the truth.]
 - A limit on scenarios per Organization, and deleting a scenario that others branch from? [No limit at first;

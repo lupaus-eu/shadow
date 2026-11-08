@@ -214,11 +214,11 @@ the Organization settings page (`admin/SettingsPage.tsx`, `exportOrganization`).
 The graph is drawn by diagram-js (ADR-0051) in `frontend/src/models/canvas/`. React renders the panels and forms; the
 canvas is one `Diagram` created once in `ShadowCanvas.tsx` and never recreated on a render.
 
-- `useGraphState(source)` is the only code that knows lines and events. It reads the state route
-  (`GET .../lines/{line}/state`, with `?event_id=` for a chosen event, otherwise the line's last event) and returns plain
-  `GraphData` (nodes, connections, types, allowed connections and the change markers `added`, `updated`, `removed`), the event,
-  a status and `reload`. Nothing under `canvas/` imports line, event or version types.
-- `ghosts.ts` draws what the shown event **removed** (the state route's `removed`, with data and last place) as dashed outlines in a layer
+- `useGraphState(source)` is the only code that knows lines and changes. It reads the state route
+  (`GET .../lines/{line}/state`, with `?change_id=` for a chosen change, otherwise the line's last change) and returns plain
+  `GraphData` (nodes, connections, types, allowed connections and the change markers `added`, `updated`, `removed`), the change,
+  a status and `reload`. Nothing under `canvas/` imports line, change or version types.
+- `ghosts.ts` draws what the shown change **removed** (the state route's `removed`, with data and last place) as dashed outlines in a layer
   of its own under the diagram, called by the importer: they are not diagram elements, so they cannot be selected, moved, connected or
   deleted. `GraphData.ghosts` carries them.
 - `diagram/GraphImporter` turns the data into shapes and connections and diffs against what is drawn: new elements are
@@ -232,10 +232,10 @@ canvas is one `Diagram` created once in `ShadowCanvas.tsx` and never recreated o
   node type), may not join a node to itself and may not repeat a type between the same two nodes (the refusal cause is
   `self`, `not_allowed` or `duplicate`); a read-only Organization has no editing rules at all.
 - `diagram/GraphModeling.applyEdit(edit)` is the one seam to the server. The change runs on the command stack at once,
-  the sender (in `ModelCanvas.tsx`, using the existing event edit routes and the positions route) writes it, and when the
+  the sender (in `ModelCanvas.tsx`, using the existing change edit routes and the positions route) writes it, and when the
   server refuses (stale version, `chain_broken`, a rule, a network error) the change is undone with
   `commandStack.undo()` and the person gets the readable notice. Moves made with the mouse are collected and saved in
-  one positions write 400 ms after the last one. Edits are sent one after the other, each against the event's freshly
+  one positions write 400 ms after the last one. Edits are sent one after the other, each against the change's freshly
   loaded version. After every write the state is loaded again, which replaces optimistic elements with the real ones.
 - Navigation (ticket 03): `diagram/GraphNavigation` is the one place that moves the view (`setView` clamps the zoom to
   10 %-400 %): wheel and pinch (ctrl + wheel) zoom around the pointer, touch pan (one finger on the background) and pinch,
@@ -260,8 +260,8 @@ canvas is one `Diagram` created once in `ShadowCanvas.tsx` and never recreated o
   ids; before running, the state is read afresh and the steps are checked against it (the element exists and is as the entry left it);
   then each step is one ordinary write. A refusal, a 409 or a 422 drops the entry; a network failure before the first write keeps it.
   Ctrl/Cmd+Z chords are on the library's `keyboard` service (`GraphKeys`); the single-key bindings (`C`, `L`, `Delete`, `F2`) come from
-  `ModelCanvas` through the `keyBindings` prop. Positions are not event edits: a move is a positions write without a version, so only
-  event edits can be stale.
+  `ModelCanvas` through the `keyBindings` prop. Positions are not change edits: a move is a positions write without a version, so only
+  change edits can be stale.
 - **Reading (ticket 06).** `diagram/GraphPopover.ts` is the hover and focus popover, an `overlays` overlay placed by `canvas/popover.ts` (`placePopover`, pure
   screen-pixel arithmetic: right, left, below, above, then clamped into the drawing area); it listens to `element.hover` and `element.out`,
   `focusin` and `focusout` on the diagram container, `drag.init`, `canvas.viewbox.changing` (a pan, meaning an unchanged scale, closes it) and
@@ -276,20 +276,20 @@ canvas is one `Diagram` created once in `ShadowCanvas.tsx` and never recreated o
   into `theme.css` (layer `components`) and its `--bio-*` variables are defined from Shadow's colour tokens, so the canvas
   follows the theme. The remaining modules the design expects were verified to exist (ADR-0051).
 
-## Model lines and events (model timeline ticket 09)
+## Model lines and changes (model timeline ticket 09)
 
-`ModelShell` reads the model, its lines (`GET .../lines`) and the events of the selected line (`GET .../lines/{line}/events`), and hands
-them to the pages through the outlet context: `line`, `lines`, `events`, `event` (the shown event: `?event=`, else the line's last),
-`eventIsLast`, `reloadEvents`, `role` and `canWriteLine`. `ModelCanvas` passes `event.id` to `useGraphState` (the line's last event is
-asked for without an id) and draws **into the shown event, whichever it is** (ticket 08 of the structure canvas): `canvas/edit-target.ts`
-holds the pure rules (`canvasWritable` is the subscription and the role only, `sourceEventId`, `shouldClearHistory`, `markCounts`). Every
-write goes to `/events/{shown event}/...` with the event's own `version` (read again from the state route after each write, edits run
+`ModelShell` reads the model, its lines (`GET .../lines`) and the changes of the selected line (`GET .../lines/{line}/changes`), and hands
+them to the pages through the outlet context: `line`, `lines`, `changes`, `change` (the shown change: `?change=`, else the line's last),
+`changeIsLast`, `reloadChanges`, `role` and `canWriteLine`. `ModelCanvas` passes `change.id` to `useGraphState` (the line's last change is
+asked for without an id) and draws **into the shown change, whichever it is** (ticket 08 of the structure canvas): `canvas/edit-target.ts`
+holds the pure rules (`canvasWritable` is the subscription and the role only, `sourceChangeId`, `shouldClearHistory`, `markCounts`). Every
+write goes to `/changes/{shown change}/...` with the change's own `version` (read again from the state route after each write, edits run
 one after another); node moves write positions only. A refused edit (409 stale, 422 `chain_broken`, 409 `branch_point`, 403) is reverted on
-the canvas and shown with `timeline/refusals.ts` (`chainBrokenMessage` names event and element and what to do first); the person's other
-work stays. The undo history is dropped when the shown event or line changes (the canvas is rebuilt when its source changes). It also calls
-`reloadEvents` after each write so the list's counts stay current. The line and event are URL parameters, so a reload and a shared
+the canvas and shown with `timeline/refusals.ts` (`chainBrokenMessage` names change and element and what to do first); the person's other
+work stays. The undo history is dropped when the shown change or line changes (the canvas is rebuilt when its source changes). It also calls
+`reloadChanges` after each write so the list's counts stay current. The line and change are URL parameters, so a reload and a shared
 link show the same thing; no browser storage is used. `models/timeline.ts` holds the pure rules (line tree order, who may rename, delete,
-adopt and write, event rows with the Now divider, `chainBrokenMessage` and the adopt and delete messages); `client.ts` keeps the structured
+adopt and write, change rows with the Now divider, `chainBrokenMessage` and the adopt and delete messages); `client.ts` keeps the structured
 answer of a refusal on `RuleError.detail` and `ChainBrokenError.hint`, and answers 403 as `ForbiddenError`.
 
 **Start row (ticket 12).** `timeline.ts` has `startInfo` (the row of a Scenario from its line, the lines and the parent's changes; null for the

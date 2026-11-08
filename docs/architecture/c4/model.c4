@@ -7,7 +7,7 @@ model {
     description 'Runs an Organization: people, Invitations, billing (Owners), agent access, and Support Access approval; also works with models.'
   }
   organizationMember = person 'Member' {
-    description 'Works with the models of the Organization: lines and events, scenarios, metrics, simulations, and analysis.'
+    description 'Works with the models of the Organization: lines and changes, scenarios, metrics, simulations, and analysis.'
   }
   platformOperator = person 'Platform Operator' {
     description 'Platform Admin or Support Agent. Works in the operator console; reaches customer content only through approved Support Access (ADR-0020, ADR-0021).'
@@ -78,11 +78,11 @@ model {
       }
       models = component 'Models and metamodel' {
         technology 'model_routes, metamodel_routes, default_metamodel.json'
-        description 'Models and the graph of a line (read by replay of its events), the per-model metamodel (node types, connection types, allowed connections; ADR-0043), optimistic concurrency (ADR-0018). Versions, the change list and merge of ADR-0045 are gone (ADR-0048, ADR-0050). Deleting a type or an allowed-connection rule that an event still uses is refused (in_use; ADR-0049).'
+        description 'Models and the graph of a line (read by replay of its changes), the per-model metamodel (node types, connection types, allowed connections; ADR-0043), optimistic concurrency (ADR-0018). Versions, the change list and merge of ADR-0045 are gone (ADR-0048, ADR-0050). Deleting a type or an allowed-connection rule that a change still uses is refused (in_use; ADR-0049).'
       }
       timeline = component 'Model timeline' {
-        technology 'timeline_routes, timeline_event_routes, timeline_edit_routes, timeline_line_routes, timeline/ (state, chain, validate, loader, payloads, compact)'
-        description 'Lines (the Base line and Scenarios) hold dated events of changes (ADR-0048). A pure replay engine computes the state after any event; every event write locks the Model row, replays the changed line and every Scenario that branches from it, and refuses a broken chain with a structured 422 (ADR-0049). Canvas edits of nodes and connections are changes inside an event, tidied by compaction and validated the same way. Scenarios are created from any event and copy the parent line metrics; a Scenario is adopted into its parent by appending its events when the parent has not moved on (ADR-0050); positions are stored per line. Reads need membership; Owners and Admins write the Base line, Members write Scenarios.'
+        technology 'timeline_routes, timeline_change_routes, timeline_edit_routes, timeline_line_routes, timeline/ (state, chain, validate, loader, payloads, compact)'
+        description 'Lines (the Base line and Scenarios) hold dated changes made of edits (ADR-0048). A pure replay engine computes the state after any change; every change write locks the Model row, replays the changed line and every Scenario that branches from it, and refuses a broken chain with a structured 422 (ADR-0049). Canvas edits of nodes and connections are edits inside a change, tidied by compaction and validated the same way. Scenarios are created from any change and copy the parent line metrics; a Scenario is adopted into its parent by appending its changes when the parent has not moved on (ADR-0050); positions are stored per line. Reads need membership; Owners and Admins write the Base line, Members write Scenarios.'
       }
       metrics = component 'Metrics and formulas' {
         technology 'metric_routes, metric_engine, formulas'
@@ -106,7 +106,7 @@ model {
       }
       mcp = component 'MCP interface' {
         technology 'mcp_server/server, mcp_server/model_tools, mcp_routes (official Python MCP SDK)'
-        description 'Streamable HTTP endpoint at /api/mcp for the person\'s own agents (ADR-0037). Verifies Authentik access tokens (audience = the MCP provider\'s client id, ADR-0038), resolves the customer account, and calls the same functions as the REST API, so the same access rules apply. Organization tools plus tools for models, lines, events and scenarios (including adoption), canvas edits inside events, metrics, simulations and analysis (model_tools; ADR-0046). Read and write tools; each change is audited as made through MCP, and every call is recorded without content for Owners and Admins (ADR-0047). Two switches stop it per Organization (Owners and Admins; the operator).'
+        description 'Streamable HTTP endpoint at /api/mcp for the person\'s own agents (ADR-0037). Verifies Authentik access tokens (audience = the MCP provider\'s client id, ADR-0038), resolves the customer account, and calls the same functions as the REST API, so the same access rules apply. Organization tools plus tools for models, lines, changes and scenarios (including adoption), canvas edits inside changes, metrics, simulations and analysis (model_tools; ADR-0046). Read and write tools; each change is audited as made through MCP, and every call is recorded without content for Owners and Admins (ADR-0047). Two switches stop it per Organization (Owners and Admins; the operator).'
       }
       support = component 'Support Access and platform' {
         technology 'support_access_routes, platform_routes, platform_admin, monitoring_routes'
@@ -147,7 +147,7 @@ model {
 
     database = database 'Shadow database' {
       technology 'PostgreSQL 17'
-      description 'Organizations, memberships, models with lines, events, node positions and types, metrics and values, simulations and recommendations, audit, jobs, and outbox, with row-level security. Schema: docs/architecture/dbml/shadow.dbml.'
+      description 'Organizations, memberships, models with lines, changes, node positions and types, metrics and values, simulations and recommendations, audit, jobs, and outbox, with row-level security. Schema: docs/architecture/dbml/shadow.dbml.'
     }
   }
 
@@ -242,7 +242,7 @@ model {
   shadow.api.organizations -> shadow.api.legalDocuments 'requires accepted documents at signup'
   shadow.api.organizations -> shadow.api.notifications 'role and invitation notices'
   shadow.webApp -> shadow.api.models 'models, graph, metamodel' 'HTTPS'
-  shadow.webApp -> shadow.api.timeline 'lines, events, states and adoption' 'HTTPS'
+  shadow.webApp -> shadow.api.timeline 'lines, changes, states and adoption' 'HTTPS'
   shadow.webApp -> shadow.api.metrics 'metrics and values' 'HTTPS'
   shadow.webApp -> shadow.api.simulations 'forecasts and simulations' 'HTTPS'
   shadow.webApp -> shadow.api.analysis 'analysis and proposals' 'HTTPS'
@@ -264,7 +264,7 @@ model {
   shadow.api.mcp -> shadow.api.analysis 'calls the same functions, including the agents summary and proposals'
   shadow.api.mcp -> shadow.api.persistence 'records every call without content (mcp_calls)'
   shadow.api.models -> shadow.api.audit 'records'
-  shadow.api.timeline -> shadow.api.audit 'records event.created, event.updated (also for canvas edits) and event.deleted without names'
+  shadow.api.timeline -> shadow.api.audit 'records change.created, change.updated (also for canvas edits) and change.deleted without names'
   shadow.api.metrics -> shadow.api.audit 'records'
   shadow.api.simulations -> shadow.api.audit 'records'
   shadow.api.analysis -> shadow.api.audit 'records'

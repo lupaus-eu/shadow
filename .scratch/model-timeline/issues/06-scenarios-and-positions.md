@@ -4,17 +4,17 @@ Status: implemented
 
 ## Goal
 
-Create, rename and delete Scenarios from any event, and store node positions per line.
+Create, rename and delete Scenarios from any change, and store node positions per line.
 
 ## Implementation
 
-- `POST /lines` (branch from any event of any line; copies parent's metrics and values), `PATCH`, `DELETE` (409 `has_children`, 422 base), `acknowledge-start`; `start_changed_at` set when a prefix change affects a Scenario.
-- `PUT /lines/{line}/positions` with fallback to the parent line, then to the added position; no event, no audit.
+- `POST /lines` (branch from any change of any line; copies parent's metrics and values), `PATCH`, `DELETE` (409 `has_children`, 422 base), `acknowledge-start`; `start_changed_at` set when a prefix change affects a Scenario.
+- `PUT /lines/{line}/positions` with fallback to the parent line, then to the added position; no change, no audit.
 - Audit `line.created`, `line.renamed`, `line.deleted`.
 
 ## Acceptance criteria
 
-- [x] A Scenario shows the parent's state at its branch point and its own events; later parent events do not appear, earlier inserted ones do and set `start_changed_at`.
+- [x] A Scenario shows the parent's state at its branch point and its own changes; later parent changes do not appear, earlier inserted ones do and set `start_changed_at`.
 - [x] Scenario of a Scenario works to any depth.
 - [x] Creator, Owner or Admin may delete a Scenario without children; the Base line cannot be deleted.
 

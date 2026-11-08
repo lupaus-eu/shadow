@@ -12,9 +12,9 @@ Drawing is direct: nodes appear where the person looks, connections are made by 
 - Connect: the `connect` module with the context pad, or press `C` / the Connect button and click two nodes; `GraphRules` offers only the types the metamodel allows for the two node types; self-connection, duplicate and refused connections show a readable reason.
 - Delete with confirmation (`Delete`/`Backspace`), including a set; the confirmation names touching connections.
 - Multi-select by shift-click and the lasso tool; selected nodes move together as one command (one position write each); delete works on the set.
-- Undo and redo: the diagram-js command stack is the session history; each entry has a server counterpart (inverse write after a fresh row read with `expected_version`, see the technical design). `Ctrl/Cmd+Z`, `Shift+Ctrl/Cmd+Z` and toolbar buttons with enabled state; a rejected undo (409 or 422) drops the entry and shows a readable notice; the stack clears when the version, line or event changes and on reload. A multi-node move or delete is one undo step.
+- Undo and redo: the diagram-js command stack is the session history; each entry has a server counterpart (inverse write after a fresh row read with `expected_version`, see the technical design). `Ctrl/Cmd+Z`, `Shift+Ctrl/Cmd+Z` and toolbar buttons with enabled state; a rejected undo (409 or 422) drops the entry and shows a readable notice; the stack clears when the version, line or change changes and on reload. A multi-node move or delete is one undo step.
 - Every edit goes through `applyEdit` (optimistic command, server write, revert on refusal).
-- Not done: align and snap, events, undo that survives a reload.
+- Not done: align and snap, changes, undo that survives a reload.
 
 ## Acceptance criteria
 
@@ -73,6 +73,6 @@ Record exact updated file paths and explain every “No documentation effect” 
 
 ## Comments
 
-- Keep every edit behind one function (`applyEdit`) so ticket 08 can redirect writes into the selected event.
+- Keep every edit behind one function (`applyEdit`) so ticket 08 can redirect writes into the selected change.
 - Each undo is an audited write like any edit; the audit log, not the stack, is the durable history.
 - This ticket absorbs the former undo/redo ticket: the command stack of diagram-js makes it part of drawing.

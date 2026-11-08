@@ -81,5 +81,5 @@ Finished: the Structure canvas is drawn by diagram-js through the Shadow domain 
 
 ## Comments
 
-- The hook is the seam to the timeline: `.scratch/model-timeline/` swaps its source to a state after an event.
+- The hook is the seam to the timeline: `.scratch/model-timeline/` swaps its source to a state after a change.
 - This ticket brings in the library (ADR-0051); tickets 03 to 09 build on it and wait for it.

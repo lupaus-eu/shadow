@@ -28,66 +28,69 @@ your agent stops working for that Organization.
 
 Shadow calls no AI model itself. To get a written summary and action proposals, connect your own agent (see above) and ask it to analyse a simulation: it reads the model, metrics, simulation and rule-based analysis through MCP, then writes a summary and proposals back. They appear on the analysis page labelled **Agent**, with the agent's name and the date. Check them before acting: you accept or dismiss each proposal yourself. The agent, its provider and its token cost are your responsibility.
 
-## The model timeline: the Base line, Scenarios and Events
+## The model timeline: the Base line, Scenarios and Changes
 
-A Model keeps its history as dated **Events** on a **Line**. The **Base line** is what has really
+A Model keeps its history as dated **Changes** on a **Line**. The **Base line** is what has really
 happened to the organisation; every Model has exactly one, it can be renamed, and it cannot be deleted. A
-**Scenario** is a what-if with its own name and Events, starting from the state after one Event of another line
+**Scenario** is a what-if with its own name and Changes, starting from the state after one Change of another line
 (the Base line or another Scenario). The line picker above the canvas shows the Base line first, with its
 label and colour, and the Scenarios under the line they start from.
 
-- **Events.** An Event has a title, a date (required), an optional note and an ordered list of changes: add,
-  remove or update a node, add or remove a connection, re-route a connection, change its type. Events are
-  ordered by date and then by when they were entered. The event list on the model page shows them; choose one
+In Finnish the dated item is a **muutos** (Change), its steps are **muokkaukset** (Edits), a planned one is a
+**suunniteltu muutos** and the list is the **muutoslista**. "Event" is not used for these.
+
+- **Changes.** A Change has a title, a date (required), an optional note and an ordered list of **Edits** (one step each): add,
+  remove or update a node, add or remove a connection, re-route a connection, change its type. Changes are
+  ordered by date and then by when they were entered. The change list on the model page shows them; choose one
   to see the state after it (read-only unless you may write that line).
 - **Start row.** The change list of a Scenario begins with **Start** (Finnish: Lähtötilanne), which says which line the
   Scenario starts from and after which Change (with its date), with links to that line and Change. Choose it to see the
   state the Scenario started from: it is shown read-only with the note "Start state, not editable. Change it in the parent
   line.", and you cannot draw, undo, delete or edit Changes while it is shown. It is not a Change and is not counted in the
   change count. If the parent line's history is corrected, the row shows the current start. The Base line has no Start row.
-- **Planned events.** An Event dated after today (in the Organization's time zone) is planned. It is marked with
-  the label **Planned**, a different colour and a dashed frame, and a **Now** divider sits between the last Event
-  that has happened and the first planned one. The present state of a line ignores planned Events until their date
+- **Planned changes.** A Change dated after today (in the Organization's time zone) is planned. It is marked with
+  the label **Planned**, a different colour and a dashed frame, and a **Now** divider sits between the last Change
+  that has happened and the first planned one. The present state of a line ignores planned Changes until their date
   arrives; you can still choose one to see the state after it.
-- **Drawing writes Events.** Drawing on the canvas edits the Event that is shown (an earlier one, the last or a
-  planned one). Use **New event** to start a new dated Event first when you want to record a new happening. Moving a
-  node is only a drawing position and writes no Event.
-- **Correcting history.** Any Event can be changed (title, note, date, changes) or deleted later. The change is
+- **Drawing writes Changes.** Drawing on the canvas edits the Change that is shown (an earlier one, the last or a
+  planned one). Use **New change** to start a new dated Change first when you want to record a new happening. Moving a
+  node is only a drawing position and writes no Change.
+- **Correcting history.** Any Change can be edited (title, note, date, Edits) or deleted later. The correction is
   checked against everything after it, and against every Scenario that starts from the line. If it would break any of
-  them nothing is saved, and the message names the Event and the element, says why, and says what to change first.
+  them nothing is saved, and the message names the Change and the element, says why, and says what to change first.
   Your input stays in the form.
-- **Starting a Scenario from a past state.** Choose an Event, then **New scenario from here**. The Scenario shows
-  the parent's state at that point and then its own Events; later Events of the parent do not appear in it. If
-  someone later inserts an Event into the parent's history before that point, the Scenario's start changes and you
+- **Starting a Scenario from a past state.** Choose a Change, then **New scenario from here**. The Scenario shows
+  the parent's state at that point and then its own Changes; later Changes of the parent do not appear in it. If
+  someone later inserts a Change into the parent's history before that point, the Scenario's start changes and you
   see a notice that you can acknowledge. The Scenario copies the parent's metrics.
 - **Adopting a Scenario.** An Owner or Admin (Base line) or a person who may write the parent line can **Adopt** a
-  Scenario: its own Events are appended to the parent line and the Scenario goes away (if other Scenarios start
-  from it, it stays, empty, at the last adopted Event). Metrics are not adopted. It is refused when the parent has
-  Events after the point where the Scenario starts, or when a Scenario Event is dated before the parent's last Event;
+  Scenario: its own Changes are appended to the parent line and the Scenario goes away (if other Scenarios start
+  from it, it stays, empty, at the last adopted Change). Metrics are not adopted. It is refused when the parent has
+  Changes after the point where the Scenario starts, or when a Scenario Change is dated before the parent's last Change;
   the message then says which, and suggests creating a new Scenario from the parent's latest state and making the
   changes there again.
 
 ### "The chain is broken": the refusals in plain words
 
-A refusal means the state after some Event would no longer make sense. The message gives the Event and the element.
+A refusal means the state after some Change would no longer make sense. The message gives the Change and the element.
 
 | What the message says | What it means | What to do first |
 | --- | --- | --- |
-| An element does not exist at that point | A later Event changes, connects or removes something that has not been added yet, or that an earlier edit removed | Move the earlier Event, or change or drop the later one |
-| An element exists twice | An Event adds something that is already there | Remove the duplicate add |
-| A type is missing | A node or connection type used by an Event no longer exists | Restore the type on the Types tab |
+| An element does not exist at that point | A later Change edits, connects or removes something that has not been added yet, or that an earlier edit removed | Move the earlier Change, or edit or drop the later one |
+| An element exists twice | A Change adds something that is already there | Remove the duplicate add |
+| A type is missing | A node or connection type used by a Change no longer exists | Restore the type on the Types tab |
 | The connection is not allowed | The model's types do not allow that connection between those node types | Change a node type or the connection, or add the rule on the Types tab |
 | An endpoint is missing, or a node is connected to itself | A connection needs two different existing nodes | Add the node earlier, or choose another end |
 | The connection already exists | The same type between the same two nodes | Remove one of them |
-| A Scenario starts from this Event | The Event is a branch point and cannot be deleted; the message names the Scenario | Delete or adopt the Scenario first |
-| A Scenario Event would fall before its start | The date would put an Event before the Event it starts from | Choose a later date |
+| A Scenario starts from this Change | The Change is a branch point and cannot be deleted; the message names the Scenario | Delete or adopt the Scenario first |
+| A Scenario Change would fall before its start | The date would put a Change before the Change it starts from | Choose a later date |
 
 The same texts appear in Finnish.
 
 ## The Structure canvas
 
-The **Structure** tab draws the state of the chosen line after the chosen Event, using the whole width of the page.
-A label in the lower left corner says which line and Event is shown and marks what that Event changed:
+The **Structure** tab draws the state of the chosen line after the chosen Change, using the whole width of the page.
+A label in the lower left corner says which line and Change is shown and marks what that Change edited:
 `+` for added, `~` for changed or re-routed, and dashed `-` outlines for removed elements.
 
 - **Drawing.** `+` beside a type in the left panel, or **Add** in the details panel, creates a node at the centre of
@@ -102,8 +105,8 @@ A label in the lower left corner says which line and Event is shown and marks wh
   connections that touch them), collapse groups, and search by name (`/` focuses the search; matches are
   highlighted, the rest dimmed, Enter centres on the first).
 - **Undo and redo.** `Ctrl/Cmd+Z` and `Shift+Ctrl/Cmd+Z` (or `Ctrl/Cmd+Y`), or the toolbar buttons, undo your own steps
-  in this session for the shown line and Event. History is kept in memory only; it is cleared when you change line or
-  Event and on reload. A step that no longer fits because the element changed meanwhile is refused with a notice.
+  in this session for the shown line and Change. History is kept in memory only; it is cleared when you change line or
+  Change and on reload. A step that no longer fits because the element changed meanwhile is refused with a notice.
 - **Align and snap.** With three or more nodes selected, align left, centre or top, or distribute with equal gaps;
   a grid snap toggle keeps nodes on the grid (hold Ctrl or Cmd while dragging to turn it off for that drag).
 - **Auto layout** arranges the graph on request, as one step you can undo.

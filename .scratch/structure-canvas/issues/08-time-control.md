@@ -1,35 +1,35 @@
-# Ticket 08: Time control (scenario picker, event list, edits into the selected event)
+# Ticket 08: Time control (scenario picker, change list, edits into the selected change)
 
 Status: implemented
 
 ## Goal
 
-The canvas shows the state after a chosen event of a chosen line, and drawing edits that event, with refusals shown readably.
+The canvas shows the state after a chosen change of a chosen line, and drawing edits that change, with refusals shown readably.
 
 ## Implementation
 
-- `useGraphState` gets the source `{kind:"event", lineId, eventId}`; the version source is retired when the timeline replaces versions.
-- Scenario picker (Base line visibly different) and the event list with dates; planned events in another colour with a "Planned" label and a "Now" divider; choosing an event redraws the state after it.
-- "New event" asks for a title and a date (Base line suggests today), creates it and selects it; "New scenario from here" starts a scenario at the shown state.
-- Canvas edits go through `applyEdit` (its server target changes to the selected event; the command stack and revert-on-refusal stay) into the selected event (add, remove, rename, re-type, re-route); node moves write positions only.
-- A 422 `chain_broken` answer is shown as a readable message naming the event and element, with what to do first; the person's work stays on the canvas.
-- Elements added, removed or re-routed by the shown event are marked on the canvas (replaces the version change list).
-- Not done: the event editor and list screens themselves (`model-timeline/09`), adoption.
+- `useGraphState` gets the source `{kind:"change", lineId, changeId}`; the version source is retired when the timeline replaces versions.
+- Scenario picker (Base line visibly different) and the change list with dates; planned changes in another colour with a "Planned" label and a "Now" divider; choosing a change redraws the state after it.
+- "New change" asks for a title and a date (Base line suggests today), creates it and selects it; "New scenario from here" starts a scenario at the shown state.
+- Canvas edits go through `applyEdit` (its server target changes to the selected change; the command stack and revert-on-refusal stay) into the selected change (add, remove, rename, re-type, re-route); node moves write positions only.
+- A 422 `chain_broken` answer is shown as a readable message naming the change and element, with what to do first; the person's work stays on the canvas.
+- Elements added, removed or re-routed by the shown change are marked on the canvas (replaces the version change list).
+- Not done: the change editor and list screens themselves (`model-timeline/09`), adoption.
 
 ## Acceptance criteria
 
-- [x] Choosing an event, planned or not, redraws the state after it; the Base line and Scenarios are clearly distinguishable.
-- [x] Planned events are marked by colour and text; the "Now" divider sits between the last happened and first planned event.
-- [x] An edit changes the selected event's changes in one validated write; a refused edit leaves the server and the on-screen work unchanged and shows the readable message.
-- [x] Marks show what the shown event added, removed and re-routed.
-- [x] Members cannot edit Base line events (controls hidden, server 403 handled); read-only Organizations cannot edit.
+- [x] Choosing a change, planned or not, redraws the state after it; the Base line and Scenarios are clearly distinguishable.
+- [x] Planned changes are marked by colour and text; the "Now" divider sits between the last happened and first planned change.
+- [x] An edit amends the selected Change's Edits in one validated write; a refused edit leaves the server and the on-screen work unchanged and shows the readable message.
+- [x] Marks show what the shown change added, removed and re-routed.
+- [x] Members cannot edit Base line changes (controls hidden, server 403 handled); read-only Organizations cannot edit.
 - [x] "New scenario from here" creates a scenario at the shown state, from the past or the present.
 
 ## Testing
 
 - [x] Backend/API test — not applicable here (covered by `model-timeline/05`); contract check against its routes.
-- [x] Frontend/UI test — vitest for the event source mapping, planned/"Now" ordering, and the `chain_broken` message mapping.
-- [x] Browser/E2E validation — Playwright: pick an earlier event, draw into it, hit a refused edit, create a scenario from a past event (mocked API, `model-timeline.spec.ts` and `structure-canvas-time.spec.ts`).
+- [x] Frontend/UI test — vitest for the change source mapping, planned/"Now" ordering, and the `chain_broken` message mapping.
+- [x] Browser/E2E validation — Playwright: pick an earlier change, draw into it, hit a refused edit, create a scenario from a past change (mocked API, `model-timeline.spec.ts` and `structure-canvas-time.spec.ts`).
 - [x] Migration/integration/architecture validation — typecheck and build.
 
 ## Ajetut tarkistukset
@@ -60,8 +60,8 @@ Record exact updated file paths and explain every “No documentation effect” 
 
 - 02
 - 05
-- model-timeline/05 (event write routes with chain validation)
-- model-timeline/09 (frontend event list and scenario picker)
+- model-timeline/05 (change write routes with chain validation)
+- model-timeline/09 (frontend change list and scenario picker)
 
 ## Completion record
 

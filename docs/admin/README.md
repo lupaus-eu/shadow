@@ -315,16 +315,16 @@ users' view of these is in the [user guide](../user/README.md); this section is 
 
 | Action | Who |
 | --- | --- |
-| Read every line, Event and state | Every member of the Organization (also when the Organization is read-only) |
-| Write Events on the **Base line** (including canvas drawing on it) | Owners and Admins |
-| Create a Scenario from any Event they can read; write Events in a Scenario | Every member, including Members |
+| Read every line, Change and state | Every member of the Organization (also when the Organization is read-only) |
+| Write Changes on the **Base line** (including canvas drawing on it) | Owners and Admins |
+| Create a Scenario from any Change they can read; write Changes in a Scenario | Every member, including Members |
 | Rename or delete a Scenario | Its creator, Owners and Admins (a Scenario others start from cannot be deleted) |
 | **Adopt** a Scenario into the Base line | Owners and Admins; into another Scenario, whoever may write that Scenario |
 | Anything that writes | Nobody while the Organization is read-only (subscription ended or cancelled) |
 
-Limits: a ceiling of events per line (`LIMIT_CHANGES_PER_LINE`, 5000) and lines per model
-(`LIMIT_LINES_PER_MODEL`, 200); beyond it a write is refused (`limit_reached`). Every line and Event write is in Activity
-(`line.created`, `line.renamed`, `line.deleted`, `line.adopted`, `event.created`, `event.updated`, `event.deleted`) with ids and
+Limits: a ceiling of changes per line (`LIMIT_CHANGES_PER_LINE`, 5000) and lines per model
+(`LIMIT_LINES_PER_MODEL`, 200); beyond it a write is refused (`limit_reached`). Every line and Change write is in Activity
+(`line.created`, `line.renamed`, `line.deleted`, `line.adopted`, `change.created`, `change.updated`, `change.deleted`; entries from before the rename keep `event.created`, `event.updated`, `event.deleted`) with ids and
 counts only, never element names or note text. An adoption is refused with an explanation when the Base line has moved
 on since the Scenario started; ask the person to create a new Scenario from the latest state.
 
@@ -332,13 +332,13 @@ on since the Scenario started; ask the person to create a new Scenario from the 
 line, and one run by an Owner or Admin can. The model tools (see
 [`docs/runbooks/mcp-interface.md`](../runbooks/mcp-interface.md)) are:
 
-- Reads: `list_models`, `get_model`, `list_lines`, `list_events`, `get_state` (by Event or by date), `list_metrics`,
+- Reads: `list_models`, `get_model`, `list_lines`, `list_changes`, `get_state` (by Change or by date), `list_metrics`,
   `get_metric_series`, `list_simulations`, `get_simulation`, `get_analysis`.
-- Writes: `create_model`, `create_scenario`, `add_event`, `update_event`, `delete_event`, `adopt_scenario`,
-  `create_node`, `create_connection` (inside an Event), `create_metric`, `set_metric_values`, `run_simulation`,
+- Writes: `create_model`, `create_scenario`, `add_change`, `update_change`, `delete_change`, `adopt_scenario`,
+  `create_node`, `create_connection` (inside a Change), `create_metric`, `set_metric_values`, `run_simulation`,
   `generate_analysis`, `set_analysis_summary`, `add_proposal`.
 
-`delete_event` and `adopt_scenario` are destructive; the agent's own confirmation settings are the only prompt. Chain
+`delete_change` and `adopt_scenario` are destructive; the agent's own confirmation settings are the only prompt. Chain
 checks, stale-version checks and audit apply exactly as in the web application, and every call is in the agent call log.
 The old version tools (`create_version`, `merge_version`, `get_version_changes`) no longer exist.
 

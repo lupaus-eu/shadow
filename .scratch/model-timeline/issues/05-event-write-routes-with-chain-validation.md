@@ -1,22 +1,22 @@
-# Ticket 05: event write routes with chain validation
+# Ticket 05: change write routes with chain validation
 
 Status: implemented
 
 ## Goal
 
-Create, change, move and delete events, refusing any change that breaks the chain.
+Create, update, move and delete Changes, refusing any write that breaks the chain.
 
 ## Implementation
 
-- `POST /lines/{line}/events`, `PATCH` and `DELETE /events/{event}` with `expected_version`; `validate_model` with the Model row lock; `422 chain_broken` with event, position, element, cause and hint; `409 branch_point`; Base line writes need Owner or Admin.
-- Planned events allowed in any line; limits `LIMIT_EVENTS_PER_LINE` and `LIMIT_LINES_PER_MODEL` in both env examples.
-- Audit actions `event.created`, `event.updated`, `event.deleted` without element names.
+- `POST /lines/{line}/changes`, `PATCH` and `DELETE /changes/{change}` with `expected_version`; `validate_model` with the Model row lock; `422 chain_broken` with change, position, element, cause and hint; `409 branch_point`; Base line writes need Owner or Admin.
+- Planned changes allowed in any line; limits `LIMIT_CHANGES_PER_LINE` and `LIMIT_LINES_PER_MODEL` in both env examples.
+- Audit actions `change.created`, `change.updated`, `change.deleted` without element names.
 - Not done: canvas edit routes (ticket 07), Scenarios (ticket 06).
 
 ## Acceptance criteria
 
 - [x] Every cause in the domain model is refused and nothing is saved; a valid correction (date moved, content changed) succeeds and later states update.
-- [x] Deleting the branch event of a Scenario is refused and names the Scenario.
+- [x] Deleting the branch change of a Scenario is refused and names the Scenario.
 - [x] A Member's write to the Base line gets 403; to a Scenario succeeds.
 - [x] Two concurrent writes cannot together break the chain.
 

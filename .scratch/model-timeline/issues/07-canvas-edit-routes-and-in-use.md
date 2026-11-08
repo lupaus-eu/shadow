@@ -4,22 +4,22 @@ Status: implemented
 
 ## Goal
 
-Make node and connection edits changes inside an event, and make `in_use` checks respect events.
+Make node and connection edits into Edits inside a Change, and make `in_use` checks respect changes.
 
 ## Implementation
 
-- `POST/PATCH/DELETE /events/{event}/nodes` and `/connections` replace the `/nodes` and `/connections` routes; each edit is validated, compacted and written as one change.
-- MCP `create_node` and `create_connection` take `event_id`.
-- Metamodel deletes (`in_use`) check events and branches.
+- `POST/PATCH/DELETE /changes/{change}/nodes` and `/connections` replace the `/nodes` and `/connections` routes; each edit is validated, compacted and written as one change.
+- MCP `create_node` and `create_connection` take `change_id`.
+- Metamodel deletes (`in_use`) check changes and branches.
 - Migration 0063 drops the foreign key `metrics.node_id` → `nodes.id` and remaps the values to element ids; `_validate_node` checks the line's current state.
 - The old version changes and merge routes (and the MCP tools `get_version_changes`, `merge_version`) are removed (their tests too); a fork no longer copies nodes. Ticket 08 retires the rest of the version routes.
-- Interim frontend: the Structure canvas edits the line's last event (creating an "Edits" event when the line has none) and loads the graph from `GET lines/{line}/state`.
+- Interim frontend: the Structure canvas edits the line's last change (creating an "Edits" change when the line has none) and loads the graph from `GET lines/{line}/state`.
 
 ## Acceptance criteria
 
-- [x] Adding then removing an element in one event leaves no change; renaming twice leaves one.
-- [x] A refusal returns the chain_broken body and leaves the event unchanged.
-- [x] A type used by any event cannot be deleted (409 `in_use`).
+- [x] Adding then removing an element in one Change leaves no Edit; renaming twice leaves one.
+- [x] A refusal returns the chain_broken body and leaves the change unchanged.
+- [x] A type used by any change cannot be deleted (409 `in_use`).
 
 ## Testing
 
@@ -46,9 +46,9 @@ Make node and connection edits changes inside an event, and make `in_use` checks
 
 - [x] Update architecture or ADR
 
-Updated: `docs/architecture/api.md` (edit routes, removed routes, `latest_event`, `in_use`, metric `node_id`, MCP tools), `docs/architecture/database.md` (0063), `docs/architecture/dbml/shadow.dbml` (regenerated), `docs/architecture/c4/model.c4`, `docs/architecture/c4/views.c4` (the `versionMerge` view became `canvasEdit`), `docs/architecture/c4/README.md`, `.scratch/model-timeline/technical-design.md` (migration numbering, edit semantics) and ticket 08 (migration number 0064, removed routes).
+Updated: `docs/architecture/api.md` (edit routes, removed routes, `latest_change`, `in_use`, metric `node_id`, MCP tools), `docs/architecture/database.md` (0063), `docs/architecture/dbml/shadow.dbml` (regenerated), `docs/architecture/c4/model.c4`, `docs/architecture/c4/views.c4` (the `versionMerge` view became `canvasEdit`), `docs/architecture/c4/README.md`, `.scratch/model-timeline/technical-design.md` (migration numbering, edit semantics) and ticket 08 (migration number 0064, removed routes).
 
-No documentation effect: `docs/architecture/audit.md` (edits use the existing `event.updated` entry, already described as counts without names), `docs/runbooks/mcp-interface.md` (it holds setup and operations only and lists no model tools; the tool list is in `api.md`), `docs/architecture/stack.md`, `.env.example` (no new setting), ADRs (no decision changed: ADR-0049 already says `in_use` is checked against events).
+No documentation effect: `docs/architecture/audit.md` (edits use the existing `event.updated` entry, already described as counts without names), `docs/runbooks/mcp-interface.md` (it holds setup and operations only and lists no model tools; the tool list is in `api.md`), `docs/architecture/stack.md`, `.env.example` (no new setting), ADRs (no decision changed: ADR-0049 already says `in_use` is checked against changes).
 
 ## Blocked by
 

@@ -227,37 +227,37 @@ Every write is audited.
 
 | Method and path | Purpose |
 | --- | --- |
-| `GET`, `POST` `/models` | List and create models (`base_line_id` names the Base line); a new model gets the default metamodel, a Base line and an empty "Initial situation" event |
-| `GET`, `PATCH`, `DELETE` `/models/{model_id}` | Read (the model, `line` and `lines` (the Base line first, then the Scenarios, as `GET /lines` shows them), the metamodel and the graph of one line; `?line_id=` picks it, the Base line by default), rename, delete. The graph is the replayed state after the line's last event, with `latest_event` (`id`, `version`, `occurred_on`, `title`); nodes and connections carry no `version`. For another event or a date use `GET .../lines/{line_id}/state` |
-| `POST`, `PATCH`, `DELETE` `.../node-types[/{type_id}]` | Node types; deleting one that any event change names answers 409 `in_use` |
+| `GET`, `POST` `/models` | List and create models (`base_line_id` names the Base line); a new model gets the default metamodel, a Base line and an empty "Initial situation" change |
+| `GET`, `PATCH`, `DELETE` `/models/{model_id}` | Read (the model, `line` and `lines` (the Base line first, then the Scenarios, as `GET /lines` shows them), the metamodel and the graph of one line; `?line_id=` picks it, the Base line by default), rename, delete. The graph is the replayed state after the line's last change, with `latest_change` (`id`, `version`, `occurred_on`, `title`); nodes and connections carry no `version`. For another change or a date use `GET .../lines/{line_id}/state` |
+| `POST`, `PATCH`, `DELETE` `.../node-types[/{type_id}]` | Node types; deleting one that any edit names answers 409 `in_use` |
 | `POST`, `PATCH`, `DELETE` `.../connection-types[/{type_id}]` | Connection types; the same rule |
-| `POST`, `DELETE` `.../allowed-connections` | Add or remove a rule allowing a connection type between two node types; removing one that some chain of the Model needs to replay (an event adds or re-routes a connection by it, in any line) answers 409 `in_use` |
+| `POST`, `DELETE` `.../allowed-connections` | Add or remove a rule allowing a connection type between two node types; removing one that some chain of the Model needs to replay (a change adds or re-routes a connection by it, in any line) answers 409 `in_use` |
 
 The routes `POST`, `PATCH`, `DELETE` `.../nodes` and `.../connections` (version-based) were removed with the
-model-timeline ticket 07; canvas edits are changes inside an event (below). The node-type, connection-type and
-rule deletes lock the Model row like event writes, so an event cannot start using a type while it is deleted.
+model-timeline ticket 07; canvas edits are edits inside a change (below). The node-type, connection-type and
+rule deletes lock the Model row like change writes, so a change cannot start using a type while it is deleted.
 
 The version routes (`/versions`, list, fork, rename, delete) and the `nodes`, `connections` and `model_versions` tables
 were removed with ticket 08 of the model timeline: a version is a line now (ADR-0048), merge is adoption of a Scenario
 (ADR-0050) and the change list is gone.
 
-## Lines, events and state (model timeline; ADR-0048, ADR-0049)
+## Lines, changes and state (model timeline; ADR-0048, ADR-0049)
 
-Routes under `/models/{model_id}/lines` and `/models/{model_id}/events`. Reads are in
+Routes under `/models/{model_id}/lines` and `/models/{model_id}/changes`. Reads are in
 `backend/app/timeline_routes.py` (loading and the planned rule are in `backend/app/timeline/loader.py`) and
-need any membership; they work while the Organization is read-only. Event writes are in
-`backend/app/timeline_event_routes.py`. Another Organization, an unknown Model, line or event answers 404. Scenario, adoption and position writes are in `backend/app/timeline_line_routes.py`
+need any membership; they work while the Organization is read-only. Change writes are in
+`backend/app/timeline_change_routes.py`. Another Organization, an unknown Model, line or change answers 404. Scenario, adoption and position writes are in `backend/app/timeline_line_routes.py`
 (below); canvas edits are in `backend/app/timeline_edit_routes.py` (below).
 
 | Method and path | Purpose |
 | --- | --- |
-| `GET` `/lines` | Lines, Base first: `kind`, `parent_line_id`, `branch_event_id`, `start_changed_at`, `created_by_user_account_id`, `version`, `event_count`, `latest_event_date` (the state's `line` carries the same fields) |
-| `GET` `.../lines/{line_id}/events` | The line's own events by date then entry order: `occurred_on`, `title`, `note`, `planned`, `change_count`, `change_counts` per operation, `branches` (Scenarios that branch from the event) |
-| `GET` `.../lines/{line_id}/state` | The graph after `?event_id=` (an event of that line) or on `?as_of=YYYY-MM-DD` (the last event dated that day or earlier); with neither, the present state (`as_of` = today). Both together answer 422 `event_id_and_as_of` |
-| `GET` `/events/{event_id}` | One event with its ordered `changes` (`position`, `op`, `element_id`, `payload`) |
-| `POST` `/lines/{line_id}/events` | Add an event: `occurred_on`, `title`, `note`, `changes[]` (`op`, `element_id`, `payload`); answers 201 with the event and its changes |
-| `PATCH` `/events/{event_id}` | Change `title`, `note`, `occurred_on`, or replace `changes`; only the fields sent change; `expected_version` required; a patch that changes nothing answers 200 without a new version |
-| `DELETE` `/events/{event_id}?expected_version=` | Delete an event; answers 204 |
+| `GET` `/lines` | Lines, Base first: `kind`, `parent_line_id`, `branch_change_id`, `start_changed_at`, `created_by_user_account_id`, `version`, `change_count`, `latest_change_date` (the state's `line` carries the same fields) |
+| `GET` `.../lines/{line_id}/changes` | The line's own changes by date then entry order: `occurred_on`, `title`, `note`, `planned`, `edit_count`, `edit_counts` per operation, `branches` (Scenarios that branch from the change) |
+| `GET` `.../lines/{line_id}/state` | The graph after `?change_id=` (a change of that line) or on `?as_of=YYYY-MM-DD` (the last change dated that day or earlier); with neither, the present state (`as_of` = today). Both together answer 422 `change_id_and_as_of`. The **Start** row of a Scenario is this route on the parent line with `change_id` set to the Scenario's `branch_change_id` (no separate route) |
+| `GET` `/changes/{change_id}` | One change with its ordered `edits` (`position`, `op`, `element_id`, `payload`) |
+| `POST` `/lines/{line_id}/changes` | Add a change: `occurred_on`, `title`, `note`, `edits[]` (`op`, `element_id`, `payload`); answers 201 with the change and its edits |
+| `PATCH` `/changes/{change_id}` | Change `title`, `note`, `occurred_on`, or replace `edits`; only the fields sent change; `expected_version` required; a patch that changes nothing answers 200 without a new version |
+| `DELETE` `/changes/{change_id}?expected_version=` | Delete a change; answers 204 |
 | `POST` `/lines` | Create a Scenario (see below) |
 | `PATCH` `/lines/{line_id}` | Rename and set the description (see below) |
 | `DELETE` `/lines/{line_id}` | Delete a Scenario (see below) |
@@ -266,95 +266,95 @@ need any membership; they work while the Organization is read-only. Event writes
 | `PUT` `/lines/{line_id}/positions` | Write node positions for one line |
 
 The state answers the graph in the shape of `GET /models/{model_id}` (`nodes`, `connections`, `node_types`,
-`connection_types`, `allowed_connections`; nodes carry no `version`) plus `line`, `event` (null before the
-line's first event), `as_of`, `planned`, `positions` (`node_id`, `x`, `y`: the line's own position, else the
+`connection_types`, `allowed_connections`; nodes carry no `version`) plus `line`, `change` (null before the
+line's first change), `as_of`, `planned`, `positions` (`node_id`, `x`, `y`: the line's own position, else the
 nearest ancestor line's, else the position the node was added with; node `x` and `y` already hold the
-resolved position), and, for the shown event, `added`, `updated` (with `previous`) and `removed` lists of
+resolved position), and, for the shown change, `added`, `updated` (with `previous`) and `removed` lists of
 `nodes` and `connections` (removed ones keep their data and last drawn position). `planned` is true when
-the shown event is dated after today in the Organization's time zone; the present state ignores such events,
-but a planned event's own state can be read by `event_id`. A chain that cannot be replayed answers 422
-`chain_broken` with `line_id`, `event_id`, `position`, `cause`, `element`.
+the shown change is dated after today in the Organization's time zone; the present state ignores such changes,
+but a planned change's own state can be read by `change_id`. A chain that cannot be replayed answers 422
+`chain_broken` with `line_id`, `change_id`, `position`, `cause`, `element`.
 
-### Writing events (ADR-0049)
+### Writing changes (ADR-0049)
 
-A change is `{op, element_id, payload}`; `payload` is validated by the Pydantic payloads in
+An edit is `{op, element_id, payload}`; `payload` is validated by the Pydantic payloads in
 `backend/app/timeline/payloads.py` (`add_node`: `node_type_id`, `name`, `description`, `x`, `y`; `remove_node`: none;
 `update_node`: any of `name`, `description`, `node_type_id`; `add_connection`: `connection_type_id`,
 `source_node_id`, `target_node_id`; `remove_connection`: none; `reroute_connection`: `source_node_id` and/or
 `target_node_id`; `change_connection_type`: `connection_type_id`). `element_id` names the node or connection; an
-`add_node` or `add_connection` may leave it out and the server generates one (a client that wants a later change
-in the same event to refer to it supplies its own). Changes are stored in the order sent, numbered
+`add_node` or `add_connection` may leave it out and the server generates one (a client that wants a later edit
+in the same change to refer to it supplies its own). Edits are stored in the order sent, numbered
 `position` 0..n-1; a bad shape answers the usual 422 validation list. Titles are trimmed (at most 200 characters).
-A node added by a change gets a drawn position on the line (from `x`, `y`) unless the line already has one for it;
-deleting or rewriting the event that added a node drops that position when no event adds the node any more.
+A node added by an edit gets a drawn position on the line (from `x`, `y`) unless the line already has one for it;
+deleting or rewriting the change that added a node drops that position when no edit adds the node any more.
 
-Every write locks the Model row (`SELECT ... FOR UPDATE`), loads the whole timeline, applies the change in memory
+Every write locks the Model row (`SELECT ... FOR UPDATE`), loads the whole timeline, applies the write in memory
 and replays the changed line and every Scenario that branches from it, directly or through other Scenarios
 (`backend/app/timeline/validate.py`). Nothing is saved unless every replay is valid.
 
 | Answer | When |
 | --- | --- |
 | 403 | A Member writes the Base line (Owners and Admins write it; any Member writes a Scenario), or the Organization is read-only |
-| 404 | Unknown Model, line or event, or another Organization's |
+| 404 | Unknown Model, line or change, or another Organization's |
 | 409 `{latest_version}` | `expected_version` is stale |
-| 409 `{reason: "branch_point", line, line_id, lines}` | The event to delete is the branch point of another line; `line` is that Scenario's name. Checked before the chain |
-| 409 `{reason: "limit_reached", limit: "events_per_line", maximum}` | The line holds `LIMIT_EVENTS_PER_LINE` events (create only) |
-| 422 `{reason: "chain_broken", event, line, position, element, cause, hint}` | Some chain would not replay |
+| 409 `{reason: "branch_point", line, line_id, lines}` | The change to delete is the branch point of another line; `line` is that Scenario's name. Checked before the chain |
+| 409 `{reason: "limit_reached", limit: "changes_per_line", maximum}` | The line holds `LIMIT_CHANGES_PER_LINE` changes (create only) |
+| 422 `{reason: "chain_broken", change, line, position, element, cause, hint}` | Some chain would not replay |
 
-`chain_broken` carries ids for the machine (`event` is the event that fails, which may be in another line;
-`line` the line it is in; `position` the change number, null for the date rule; `element` the node, connection or
+`chain_broken` carries ids for the machine (`change` is the change that fails, which may be in another line;
+`line` the line it is in; `position` the edit number, null for the date rule; `element` the node, connection or
 type id) and `cause`, one of `missing_element`, `duplicate_element`, `missing_type`, `connection_not_allowed`,
-`missing_endpoint`, `self_connection`, `duplicate_connection`, `missing_branch_event`, `before_branch_event`. `hint`
+`missing_endpoint`, `self_connection`, `duplicate_connection`, `missing_branch_change`, `before_branch_change`. `hint`
 is structured data for the interface to word in Finnish and English, never prose: `code` (what to do first:
 `add_element_before`, `remove_duplicate_add`, `choose_existing_type`, `choose_allowed_connection`, `add_endpoint_before`,
-`choose_different_ends`, `remove_duplicate_connection`, `restore_branch_event`, `move_after_branch_event`), `event_title`,
-`event_date`, `op`, `line_name`, `line_kind`, `scenario_name` (set when the failing line is a Scenario),
-`in_other_line` (true when the failing event is not in the line that was written), `element_kind`, `element_name`
-(where known), `type_name`, `source_name`, `target_name`, `branch_event_title` and `branch_event_date`.
+`choose_different_ends`, `remove_duplicate_connection`, `restore_branch_change`, `move_after_branch_change`), `change_title`,
+`change_date`, `op`, `line_name`, `line_kind`, `scenario_name` (set when the failing line is a Scenario),
+`in_other_line` (true when the failing change is not in the line that was written), `element_kind`, `element_name`
+(where known), `type_name`, `source_name`, `target_name`, `branch_change_title` and `branch_change_date`.
 
-After a successful write, each Scenario below the changed line whose starting point changed (an event inserted,
-removed or moved before its branch point, or the content of one of those events replaced) gets
-`start_changed_at` set. Audit actions `event.created`, `event.updated` and `event.deleted` hold ids, the event
-date and change counts per operation, never names, titles or notes (`audit.md`).
+After a successful write, each Scenario below the changed line whose starting point changed (a change inserted,
+removed or moved before its branch point, or the content of one of those changes replaced) gets
+`start_changed_at` set. Audit actions `change.created`, `change.updated` and `change.deleted` hold ids, the change
+date and edit counts per operation, never names, titles or notes (`audit.md`).
 
-### Canvas edits inside an event (ADR-0049)
+### Canvas edits inside a change (ADR-0049)
 
 | Method and path | Purpose |
 | --- | --- |
-| `POST` `/events/{event_id}/nodes` | `node_type_id`, `name`, `description?`, `x`, `y`, `expected_version?`; answers 201 `{id, event, node}` (`id` is the generated element id) |
-| `PATCH` `/events/{event_id}/nodes/{node_id}` | `name`, `description` (null clears), `node_type_id` (only the fields sent change), `expected_version`; answers `{id, event, node}` |
-| `DELETE` `/events/{event_id}/nodes/{node_id}?expected_version=` | Remove the node (its connections go with it); 204 |
-| `POST` `/events/{event_id}/connections` | `connection_type_id`, `source_node_id`, `target_node_id`, `expected_version?`; 201 `{id, event, connection}` |
-| `PATCH` `/events/{event_id}/connections/{connection_id}` | Re-type and/or re-route (`connection_type_id`, `source_node_id`, `target_node_id`), `expected_version`; `{id, event, connection}` |
-| `DELETE` `/events/{event_id}/connections/{connection_id}?expected_version=` | Remove the connection; 204 |
+| `POST` `/changes/{change_id}/nodes` | `node_type_id`, `name`, `description?`, `x`, `y`, `expected_version?`; answers 201 `{id, change, node}` (`id` is the generated element id) |
+| `PATCH` `/changes/{change_id}/nodes/{node_id}` | `name`, `description` (null clears), `node_type_id` (only the fields sent change), `expected_version`; answers `{id, change, node}` |
+| `DELETE` `/changes/{change_id}/nodes/{node_id}?expected_version=` | Remove the node (its connections go with it); 204 |
+| `POST` `/changes/{change_id}/connections` | `connection_type_id`, `source_node_id`, `target_node_id`, `expected_version?`; 201 `{id, change, connection}` |
+| `PATCH` `/changes/{change_id}/connections/{connection_id}` | Re-type and/or re-route (`connection_type_id`, `source_node_id`, `target_node_id`), `expected_version`; `{id, change, connection}` |
+| `DELETE` `/changes/{change_id}/connections/{connection_id}?expected_version=` | Remove the connection; 204 |
 
-The event is the one whose state the person is looking at: any event of a line they may write, not only the last. Each
-edit is appended to the event's changes, the list is tidied (`backend/app/timeline/compact.py`: an element added and
-removed in the same event leaves no change, nor do its connections and renames; renames, re-routes and type changes
-merge into the add or the earlier change of the same element; a change that leaves the state as it was is dropped),
-the whole chain is replayed as for any event write, and the event's changes are rewritten and renumbered. The `event`
-in the answer is the saved event with its changes and new `version`; an edit that changes nothing writes nothing and
-leaves the version alone. `expected_version` is the event's `version` (409 `{latest_version}` when stale); a create may
-leave it out, a change and a delete need it. The node or connection must exist in the state after the event (404
-otherwise). Roles, read-only Organization, 404 and 422 `chain_broken` as for event writes (the 422 also covers what a
+The change is the one whose state the person is looking at: any change of a line they may write, not only the last. Each
+edit is appended to the change's edits, the list is tidied (`backend/app/timeline/compact.py`: an element added and
+removed in the same change leaves no edit, nor do its connections and renames; renames, re-routes and type changes
+merge into the add or the earlier edit of the same element; an edit that leaves the state as it was is dropped),
+the whole chain is replayed as for any change write, and the change's edits are rewritten and renumbered. The `change`
+in the answer is the saved change with its edits and new `version`; an edit that changes nothing writes nothing and
+leaves the version alone. `expected_version` is the change's `version` (409 `{latest_version}` when stale); a create may
+leave it out, an update and a delete need it. The node or connection must exist in the state after the change (404
+otherwise). Roles, read-only Organization, 404 and 422 `chain_broken` as for change writes (the 422 also covers what a
 single edit gets wrong: `duplicate_connection`, `connection_not_allowed`, `self_connection`, `missing_endpoint`,
-`missing_type`); on a refusal the event is unchanged. Re-typing and re-routing a connection in one PATCH is tried in
+`missing_type`); on a refusal the change is unchanged. Re-typing and re-routing a connection in one PATCH is tried in
 both orders; a pair that is allowed only together is refused with `connection_not_allowed` (remove the connection and add
 a new one). A node created here also gets the position `x`, `y` on the line (a Scenario's own line for a Scenario's
-event). Moving nodes stays `PUT .../positions`. The audit entry is `event.updated` with `fields: ["changes"]`, the new
-and `previous_change_counts` per operation, and no names.
+change). Moving nodes stays `PUT .../positions`. The audit entry is `change.updated` with `fields: ["edits"]`, the new
+and `previous_edit_counts` per operation, and no names.
 
 ### Scenarios and positions (ADR-0048)
 
 `POST /lines` takes `name` (trimmed, at most 120, unique per Model ignoring case, the Base line's name counts),
-`description` (optional) and `branch_event_id`: any event of any line of the Model, so a Scenario of a Scenario
-works to any depth. The parent line is the line that holds the event. The Scenario starts from the parent's state
-after that event, and gets a copy of the parent's metrics and stored values as they are now (a metric keeps its
+`description` (optional) and `branch_change_id`: any change of any line of the Model, so a Scenario of a Scenario
+works to any depth. The parent line is the line that holds the change. The Scenario starts from the parent's state
+after that change, and gets a copy of the parent's metrics and stored values as they are now (a metric keeps its
 `node_id` only while that node exists in the state at the branch point); afterwards the lines are independent.
 Answers 201 with the line. Any Member may create a Scenario. The Model row is locked while it is created.
 
 `PATCH /lines/{line_id}` takes `name`, `description` (replaced; null clears it) and `expected_version`; a patch that
-changes nothing answers 200 without a new version. `DELETE /lines/{line_id}` answers 204 and takes the line's events,
+changes nothing answers 200 without a new version. `DELETE /lines/{line_id}` answers 204 and takes the line's changes,
 changes, positions, metrics, values and simulations with it (optional `?expected_version=`). Rename and delete: the
 Base line needs an Owner or Admin (the Base line cannot be deleted); a Scenario needs its creator, an Owner or an
 Admin. `POST .../acknowledge-start` clears `start_changed_at` for anyone who may write the line (Base line Owner or
@@ -362,15 +362,15 @@ Admin, a Scenario any Member) and answers the line without a new version.
 
 `PUT /lines/{line_id}/positions` takes `[{node_id, x, y}]` (at most 5000, finite numbers; a node named twice takes its
 last entry) and upserts the line's own positions, all or nothing; answers the positions written. Moving nodes is part
-of drawing, so it follows the line's write rule (Base line Owner or Admin; Scenario any Member). It writes no event,
-no audit entry and no version. A node must exist in the line's state at its latest event (including planned ones).
+of drawing, so it follows the line's write rule (Base line Owner or Admin; Scenario any Member). It writes no change,
+no audit entry and no version. A node must exist in the line's state at its latest change (including planned ones).
 The state read resolves a position as the line's own, else the nearest ancestor's, else the position the node was
 added with.
 
 | Answer | When |
 | --- | --- |
 | 403 | A role is not enough (see above), or the Organization is read-only |
-| 404 | Unknown Model, line or branch event, or another Organization's (also an event of another Model) |
+| 404 | Unknown Model, line or branch change, or another Organization's (also a change of another Model) |
 | 409 `{reason: "duplicate_name"}` | Another line of the Model has the name (create, rename) |
 | 409 `{latest_version}` | `expected_version` is stale |
 | 409 `{reason: "limit_reached", limit: "lines_per_model", maximum}` | The Model holds `LIMIT_LINES_PER_MODEL` lines (create only) |
@@ -378,38 +378,38 @@ added with.
 | 422 `{reason: "base_line"}` | Delete of the Base line |
 | 422 `{reason: "unknown_node", node_ids}` | A position names a node the line does not have |
 
-Audit actions `line.created` (`model_id`, `line_id`, `parent_line_id`, `branch_event_id`), `line.renamed` (ids and
-the `fields` changed) and `line.deleted` (ids, `parent_line_id`, `event_count`) never hold names or descriptions
+Audit actions `line.created` (`model_id`, `line_id`, `parent_line_id`, `branch_change_id`), `line.renamed` (ids and
+the `fields` changed) and `line.deleted` (ids, `parent_line_id`, `change_count`) never hold names or descriptions
 (`audit.md`).
 
 ### Adopting a Scenario (ADR-0050)
 
-`POST /lines/{line_id}/adopt` (body optional: `{expected_version}` of the Scenario) appends the Scenario's own events to
-its parent line. The events are created again in the parent, in order, with new ids and entry numbers, the same date,
+`POST /lines/{line_id}/adopt` (body optional: `{expected_version}` of the Scenario) appends the Scenario's own changes to
+its parent line. The changes are created again in the parent, in order, with new ids and entry numbers, the same date,
 title, note and changes (element ids stay, so the nodes are the same nodes); the positions drawn on the Scenario for
 the nodes it added are copied to the parent line; metrics, values and simulations are not adopted. It needs the parent to
-have no events after the Scenario's branch point (a fast-forward) and no Scenario event dated before the parent's last
-event; the Model row is locked, the chain is replayed as for an event write, and nothing is saved on a refusal. Afterwards
-a Scenario with no child Scenarios is deleted with its metrics and simulations. One with children stays: it has no events
-of its own, its branch point is the last adopted event, and its child Scenarios now branch from the parent line at the
-adopted copies of the events they branched from (their states do not change). Owners and Admins adopt into the Base line;
+have no changes after the Scenario's branch point (a fast-forward) and no Scenario change dated before the parent's last
+change; the Model row is locked, the chain is replayed as for a change write, and nothing is saved on a refusal. Afterwards
+a Scenario with no child Scenarios is deleted with its metrics and simulations. One with children stays: it has no changes
+of its own, its branch point is the last adopted change, and its child Scenarios now branch from the parent line at the
+adopted copies of the changes they branched from (their states do not change). Owners and Admins adopt into the Base line;
 into a Scenario parent any Member may (the write rule of the parent line). Answers 200
-`{line, scenario, adopted_events, moved_scenarios}`: the parent line, the Scenario if it was kept (else null), the new
-events and the number of child Scenarios moved.
+`{line, scenario, adopted_changes, moved_scenarios}`: the parent line, the Scenario if it was kept (else null), the new
+changes and the number of child Scenarios moved.
 
 | Answer | When |
 | --- | --- |
 | 403 | A Member adopts into the Base line, or the Organization is read-only |
 | 404 | Unknown Model or line, or another Organization's |
 | 409 `{latest_version}` | `expected_version` is stale |
-| 409 `{reason: "parent_moved_on", parent_line_id, parent_name, parent_kind, events_after, events[], suggestion}` | The parent has events after the branch point; `events` lists up to 20 of them (`id`, `title`, `occurred_on`); `suggestion` is `{action: "create_scenario", parent_line_id, branch_event_id, branch_event_title, branch_event_date}`: create a new Scenario from the parent's latest event and redo the differing changes |
-| 409 `{reason: "limit_reached", limit: "events_per_line"}` | The parent would exceed `LIMIT_EVENTS_PER_LINE` |
-| 422 `{reason: "dates_precede", parent_last_event_id, parent_last_event_title, parent_last_event_date, events[], suggestion}` | A Scenario event is dated before the parent's last event; `suggestion` is `{action: "move_events_after", date}`. Writes keep Scenario events on or after the branch event, so this only follows data changed outside the application |
+| 409 `{reason: "parent_moved_on", parent_line_id, parent_name, parent_kind, changes_after, changes[], suggestion}` | The parent has changes after the branch point; `changes` lists up to 20 of them (`id`, `title`, `occurred_on`); `suggestion` is `{action: "create_scenario", parent_line_id, branch_change_id, branch_change_title, branch_change_date}`: create a new Scenario from the parent's latest change and redo the differing changes |
+| 409 `{reason: "limit_reached", limit: "changes_per_line"}` | The parent would exceed `LIMIT_CHANGES_PER_LINE` |
+| 422 `{reason: "dates_precede", parent_last_change_id, parent_last_change_title, parent_last_change_date, changes[], suggestion}` | A Scenario change is dated before the parent's last change; `suggestion` is `{action: "move_changes_after", date}`. Writes keep Scenario changes on or after the branch change, so this only follows data changed outside the application |
 | 422 `{reason: "base_line"}` | The line is the Base line |
-| 422 `{reason: "nothing_to_adopt"}` | The Scenario has no events of its own |
-| 422 `{reason: "chain_broken", ...}` | The adopted chain would not replay (as for event writes) |
+| 422 `{reason: "nothing_to_adopt"}` | The Scenario has no changes of its own |
+| 422 `{reason: "chain_broken", ...}` | The adopted chain would not replay (as for change writes) |
 
-The audit action `line.adopted` holds the ids, `event_count`, `change_counts`, `scenario_kept` and `moved_scenarios`,
+The audit action `line.adopted` holds the ids, `change_count`, `edit_counts`, `scenario_kept` and `moved_scenarios`,
 never names, titles or notes (`audit.md`).
 
 ## Metrics
@@ -417,8 +417,8 @@ never names, titles or notes (`audit.md`).
 Under `/models/{model_id}/lines/{line_id}/metrics` (a line is the Base line or a Scenario). Keys, formulas and derived
 metrics are scoped to one line; an unknown line, or one of another Model, answers 404. A metric's `node_id` is a
 node's element id (migration 0063 dropped the foreign key to the old `nodes` table); creating or changing a metric
-accepts a node of the line's current state (after its last event), otherwise 422, and a metric that already has a node
-keeps it when saved unchanged even if a later event removed the node.
+accepts a node of the line's current state (after its last change), otherwise 422, and a metric that already has a node
+keeps it when saved unchanged even if a later change removed the node.
 
 | Method and path | Purpose |
 | --- | --- |
@@ -595,15 +595,15 @@ Protocol. The endpoint is off unless `MCP_ENABLED=true`.
   belong to an existing customer User Account; MCP never creates an account.
 - Tools (every Organization-scoped tool takes `organization_id`):
   - Organizations: `list_organizations`, `get_organization`.
-  - Reads: `list_models` (with `base_line_id`), `get_model` (the lines, the metamodel and the nodes and connections of one line after its last event, with `latest_event`, the event `create_node` and `create_connection` write into; `line_id` picks the line), `list_lines`, `list_events` (a line's own events), `get_state` (the graph after an `event_id` or on an `as_of` date),
+  - Reads: `list_models` (with `base_line_id`), `get_model` (the lines, the metamodel and the nodes and connections of one line after its last change, with `latest_change`, the change `create_node` and `create_connection` write into; `line_id` picks the line), `list_lines`, `list_changes` (a line's own changes), `get_state` (the graph after an `change_id` or on an `as_of` date),
     `list_metrics`, `get_metric_series`, `list_simulations`, `get_simulation` (these four take `line_id`), `get_analysis`.
-  - Writes: `create_model`, `create_scenario` (from a `branch_event_id`), `add_event`, `update_event` (`expected_version`), `delete_event`
-    (destructive), `adopt_scenario` (destructive: it can delete the Scenario), `create_node` and `create_connection` (these two take `event_id`, as changes inside that event,
-    and an optional `expected_version` of the event),
+  - Writes: `create_model`, `create_scenario` (from a `branch_change_id`), `add_change`, `update_change` (`expected_version`), `delete_change`
+    (destructive), `adopt_scenario` (destructive: it can delete the Scenario), `create_node` and `create_connection` (these two take `change_id`, as edits inside that change,
+    and an optional `expected_version` of the change),
     `create_metric`, `set_metric_values`, `run_simulation` (these three take `line_id`), `generate_analysis`,
     `set_analysis_summary`, `add_proposal` (the agent's own analysis, ADR-0047). The version tools (`create_version`,
     `merge_version`, `get_version_changes`) were removed in model-timeline tickets 07 and 08.
-  - Deleting is limited to events (`delete_event`, a correction of recorded history) and adopting a Scenario; Shadow itself
+  - Deleting is limited to changes (`delete_change`, a correction of recorded history) and adopting a Scenario; Shadow itself
     calls no model (ADR-0047); metamodel editing, import, and export stay in the web application (ADR-0046).
   Tools call the same endpoint functions as the REST API, so roles, `expected_version`,
   the read-only state, and audit are identical. Writes are saved at once and carry the MCP

@@ -1,28 +1,28 @@
-# Ticket 09: frontend event list and scenario picker
+# Ticket 09: frontend change list and scenario picker
 
 Status: implemented
 
 ## Goal
 
-Replace the version controls with a line picker, an event list and the event editor.
+Replace the version controls with a line picker, a change list and the change editor.
 
 ## Implementation
 
-- `ModelShell`: line picker, new Scenario from the shown event, rename, delete, adopt; event list with date, title, Planned label and colour, and a Now divider; selecting an event redraws the state.
-- Event editor with ordered changes, date change, delete, and refusal messages for every cause in Finnish and English; the form keeps input; scenario start-changed notice with acknowledge.
+- `ModelShell`: line picker, new Scenario from the shown change, rename, delete, adopt; change list with date, title, Planned label and colour, and a Now divider; selecting a change redraws the state.
+- Change editor with ordered edits, date change, delete, and refusal messages for every cause in Finnish and English; the form keeps input; scenario start-changed notice with acknowledge.
 - All tabs follow the selected line; Types says it is shared.
 
 ## Acceptance criteria
 
-- [x] Planned events are marked by colour and text; the Now divider sits between the last happened and first planned event.
-- [x] A refused change shows event, element, reason and what to do, with no raw server text.
-- [x] A new Scenario can be started from a past event and appears in the picker under its parent.
+- [x] Planned changes are marked by colour and text; the Now divider sits between the last happened and first planned change.
+- [x] A refused change shows change, element, reason and what to do, with no raw server text.
+- [x] A new Scenario can be started from a past change and appears in the picker under its parent.
 
 ## Testing
 
 - [x] Backend/API test — not applicable (backend done)
 - [x] Frontend/UI test — message builder, list grouping and marks
-- [x] Browser/E2E validation — create Scenario from a past event, plan an event, break and fix a chain
+- [x] Browser/E2E validation — create Scenario from a past change, plan a change, break and fix a chain
 - [x] Migration/integration/architecture validation — `npm run typecheck`, `build`, `test:unit`
 
 ## Ajetut tarkistukset

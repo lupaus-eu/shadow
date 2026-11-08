@@ -1,25 +1,25 @@
-# Ticket 03: read api lines events state
+# Ticket 03: read api lines changes state
 
 Status: implemented
 
 ## Goal
 
-Read lines, events and the state after an event or as of a date.
+Read lines, changes and the state after a change or as of a date.
 
 ## Implementation
 
-- `GET /lines`, `GET /lines/{line}/events`, `GET /lines/{line}/state` (by `event_id`, `as_of`, or present state) with `added`, `updated`, `removed` and `positions`; planned flag from the Organization's time zone.
+- `GET /lines`, `GET /lines/{line}/changes`, `GET /lines/{line}/state` (by `change_id`, `as_of`, or present state) with `added`, `updated`, `removed` and `positions`; planned flag from the Organization's time zone.
 - Not done: any write.
 
 ## Acceptance criteria
 
-- [x] The state after the initial event equals the pre-migration graph; `as_of` picks the last event of that day or earlier.
-- [x] The present state ignores events dated after today; a planned event's state can still be read.
+- [x] The state after the initial change equals the pre-migration graph; `as_of` picks the last change of that day or earlier.
+- [x] The present state ignores changes dated after today; a planned change's state can still be read.
 - [x] A Member reads every line; another Organization gets 404; a read-only Organization can read.
 
 ## Testing
 
-- [x] Backend/API test — shapes, event vs as_of, planned, roles, RLS
+- [x] Backend/API test — shapes, change_id vs as_of, planned, roles, RLS
 - [x] Frontend/UI test — not applicable
 - [x] Browser/E2E validation — not applicable
 - [x] Migration/integration/architecture validation — `make models`; API doc updated
