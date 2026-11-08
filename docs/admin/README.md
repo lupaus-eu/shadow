@@ -322,7 +322,7 @@ users' view of these is in the [user guide](../user/README.md); this section is 
 | **Adopt** a Scenario into the Base line | Owners and Admins; into another Scenario, whoever may write that Scenario |
 | Anything that writes | Nobody while the Organization is read-only (subscription ended or cancelled) |
 
-Limits: a ceiling of events per line (`LIMIT_EVENTS_PER_LINE`, 5000) and lines per model
+Limits: a ceiling of events per line (`LIMIT_CHANGES_PER_LINE`, 5000) and lines per model
 (`LIMIT_LINES_PER_MODEL`, 200); beyond it a write is refused (`limit_reached`). Every line and Event write is in Activity
 (`line.created`, `line.renamed`, `line.deleted`, `line.adopted`, `event.created`, `event.updated`, `event.deleted`) with ids and
 counts only, never element names or note text. An adoption is refused with an explanation when the Base line has moved

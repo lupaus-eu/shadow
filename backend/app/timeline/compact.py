@@ -1,92 +1,92 @@
-"""Tidy the changes inside one event without changing what the event does (ADR-0049).
+"""Tidy the edits inside one change without changing what the change does (ADR-0049).
 
 Folds an update into the add of the same node, merges repeated updates of one element, folds a re-route
-or a type change into the add of the same connection (and repeated re-routes or type changes into one), and
-drops an element that the event both adds and removes together with every change that touches it. Every
-candidate is replayed on the state the event starts from; if it fails or ends differently, the changes
+or a type edit into the add of the same connection (and repeated re-routes or type edits into one), and
+drops an element that the change both adds and removes together with every edit that touches it. Every
+candidate is replayed on the state the change starts from; if it fails or ends differently, the edits
 are returned unchanged.
 """
 
 from collections.abc import Sequence
 from uuid import UUID
 
-from app.timeline.errors import ChangeInvalid
-from app.timeline.state import Change, Metamodel, State, apply_changes
+from app.timeline.errors import EditInvalid
+from app.timeline.state import Edit, Metamodel, State, apply_edits
 
 
-def compact(changes: Sequence[Change], base: State, metamodel: Metamodel) -> list[Change]:
-    original = list(changes)
+def compact(edits: Sequence[Edit], base: State, metamodel: Metamodel) -> list[Edit]:
+    original = list(edits)
     try:
-        expected = apply_changes(base, original, metamodel)
-    except ChangeInvalid:
+        expected = apply_edits(base, original, metamodel)
+    except EditInvalid:
         return original
     try:
         candidate = _drop_noops(_drop_short_lived(_merge_connection_edits(_merge_updates(original))), base, metamodel)
         if candidate == original:
             return original
-        result = apply_changes(base, candidate, metamodel)
-    except ChangeInvalid:
+        result = apply_edits(base, candidate, metamodel)
+    except EditInvalid:
         return original
     return candidate if (result.nodes, result.connections) == (expected.nodes, expected.connections) else original
 
 
-def _drop_noops(changes: list[Change], base: State, metamodel: Metamodel) -> list[Change]:
-    """Leave out an update, re-route or type change that finds the state unchanged; the rest is replayed on the way."""
+def _drop_noops(edits: list[Edit], base: State, metamodel: Metamodel) -> list[Edit]:
+    """Leave out an update, re-route or type edit that finds the state unchanged; the rest is replayed on the way."""
     state, kept = base, []
-    for change in changes:
-        after = apply_changes(state, [change], metamodel)
-        if change.op in ("update_node", "reroute_connection", "change_connection_type") and (after.nodes, after.connections) == (state.nodes, state.connections):
+    for edit in edits:
+        after = apply_edits(state, [edit], metamodel)
+        if edit.op in ("update_node", "reroute_connection", "change_connection_type") and (after.nodes, after.connections) == (state.nodes, state.connections):
             continue
         state = after
-        kept.append(change)
+        kept.append(edit)
     return kept
 
 
-def _merge_updates(changes: list[Change]) -> list[Change]:
-    merged: list[Change] = []
-    for change in changes:
-        if change.op == "update_node":
-            earlier = next((i for i in range(len(merged) - 1, -1, -1) if merged[i].element_id == change.element_id and merged[i].op in ("add_node", "update_node")), None)
+def _merge_updates(edits: list[Edit]) -> list[Edit]:
+    merged: list[Edit] = []
+    for edit in edits:
+        if edit.op == "update_node":
+            earlier = next((i for i in range(len(merged) - 1, -1, -1) if merged[i].element_id == edit.element_id and merged[i].op in ("add_node", "update_node")), None)
             if earlier is not None:
                 target = merged[earlier]
-                merged[earlier] = Change(target.op, target.element_id, {**target.payload, **change.payload})
+                merged[earlier] = Edit(target.op, target.element_id, {**target.payload, **edit.payload})
                 continue
-        merged.append(change)
+        merged.append(edit)
     return merged
 
 
-def _merge_connection_edits(changes: list[Change]) -> list[Change]:
-    """A re-route or a type change joins the latest earlier add, or change of the same kind, of that connection."""
-    merged: list[Change] = []
-    for change in changes:
-        if change.op in ("reroute_connection", "change_connection_type"):
-            earlier = next((i for i in range(len(merged) - 1, -1, -1) if merged[i].element_id == change.element_id and merged[i].op in ("add_connection", change.op)), None)
+def _merge_connection_edits(edits: list[Edit]) -> list[Edit]:
+    """A re-route or a type edit joins the latest earlier add, or edit of the same kind, of that connection."""
+    merged: list[Edit] = []
+    for edit in edits:
+        if edit.op in ("reroute_connection", "change_connection_type"):
+            earlier = next((i for i in range(len(merged) - 1, -1, -1) if merged[i].element_id == edit.element_id and merged[i].op in ("add_connection", edit.op)), None)
             if earlier is not None:
                 target = merged[earlier]
-                merged[earlier] = Change(target.op, target.element_id, {**target.payload, **change.payload})
+                merged[earlier] = Edit(target.op, target.element_id, {**target.payload, **edit.payload})
                 continue
-        merged.append(change)
+        merged.append(edit)
     return merged
 
 
-def _drop_short_lived(changes: list[Change]) -> list[Change]:
+def _drop_short_lived(edits: list[Edit]) -> list[Edit]:
     added: dict[UUID, int] = {}
     doomed: set[UUID] = set()
-    for index, change in enumerate(changes):
-        if change.op in ("add_node", "add_connection"):
-            added[change.element_id] = index
-        elif change.op in ("remove_node", "remove_connection") and change.element_id in added:
-            doomed.add(change.element_id)
+    for index, edit in enumerate(edits):
+        if edit.op in ("add_node", "add_connection"):
+            added[edit.element_id] = index
+        elif edit.op in ("remove_node", "remove_connection") and edit.element_id in added:
+            doomed.add(edit.element_id)
     if not doomed:
-        return changes
-    # A connection added in the event whose end is a doomed node cannot outlive it either.
-    for change in changes:
-        if change.op == "add_connection" and {UUID(str(change.payload["source_node_id"])), UUID(str(change.payload["target_node_id"]))} & doomed:
-            doomed.add(change.element_id)
+        return edits
+    # A connection added in the change whose end is a doomed node cannot outlive it either.
+    for edit in edits:
+        if edit.op == "add_connection" and {UUID(str(edit.payload["source_node_id"])), UUID(str(edit.payload["target_node_id"]))} & doomed:
+            doomed.add(edit.element_id)
 
-    def touches(change: Change) -> bool:
-        if change.element_id in doomed:
+    def touches(edit: Edit) -> bool:
+        if edit.element_id in doomed:
             return True
-        return any(UUID(str(change.payload[key])) in doomed for key in ("source_node_id", "target_node_id") if change.payload.get(key))
+        return any(UUID(str(edit.payload[key])) in doomed for key in ("source_node_id", "target_node_id") if edit.payload.get(key))
 
-    return [change for change in changes if not touches(change)]
+    return [edit for edit in edits if not touches(edit)]

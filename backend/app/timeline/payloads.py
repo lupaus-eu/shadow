@@ -1,4 +1,4 @@
-"""The shape of each change's payload, validated with Pydantic and stored as JSON."""
+"""The shape of each edit's payload, validated with Pydantic and stored as JSON."""
 
 from typing import Any
 from uuid import UUID
@@ -30,7 +30,7 @@ class UpdateNode(_Payload):
     @model_validator(mode="after")
     def _something_changes(self) -> "UpdateNode":
         if not self.model_fields_set & {"name", "description", "node_type_id"}:
-            raise ValueError("update_node must change something")
+            raise ValueError("update_node must edit something")
         return self
 
 
@@ -75,7 +75,7 @@ def parse_payload(op: str, payload: dict[str, Any]) -> _Payload:
     try:
         model = PAYLOADS[op]
     except KeyError as error:
-        raise ValueError(f"unknown change operation: {op}") from error
+        raise ValueError(f"unknown edit operation: {op}") from error
     return model.model_validate(payload)
 
 

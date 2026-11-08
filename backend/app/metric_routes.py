@@ -104,12 +104,12 @@ def _check_formulas(session: Session, line_id: UUID, changed: Metric | None = No
 
 
 def _validate_node(session: Session, model_id: UUID, line_id: UUID, node_id: UUID | None) -> None:
-    """A metric may be tied to a node of the line's current graph: the state after the line's last event (``metrics.node_id`` is an element id)."""
+    """A metric may be tied to a node of the line's current graph: the state after the line's last change (``metrics.node_id`` is an element id)."""
     if node_id is None:
         return
     timeline = load_timeline(session, model_id)
     try:
-        state = state_after(timeline.lines, timeline.events, timeline.metamodel, line_id)
+        state = state_after(timeline.lines, timeline.changes, timeline.metamodel, line_id)
     except ChainBroken:
         state = State()
     if node_id not in state.nodes:
@@ -164,7 +164,7 @@ def create_metric_router(*, session_factory: sessionmaker[Session], authenticate
             _stale(metric.version, body.expected_version)
             if body.key != metric.key:
                 raise HTTPException(status_code=422, detail="the key of a metric cannot change")
-            if body.node_id != metric.node_id:  # a node the metric already has stays, even if a later event removed it
+            if body.node_id != metric.node_id:  # a node the metric already has stays, even if a later change removed it
                 _validate_node(session, model_id, line.id, body.node_id)
             was_derived = bool(metric.formula)
             changes = {key: value for key, value in (("name", body.name), ("unit", body.unit), ("node_id", str(body.node_id) if body.node_id else None), ("formula", body.formula)) if (str(getattr(metric, key)) if key == "node_id" and getattr(metric, key) else getattr(metric, key)) != value}

@@ -1,8 +1,8 @@
-"""Reading a Model's lines, their events, and the graph after an event or on a date (model timeline, ADR-0048).
+"""Reading a Model's lines, their changes, and the graph after a change or on a date (model timeline, ADR-0048).
 
 Reads need membership only; a read-only Organization can read. Nothing here writes (writes arrive with
-the event routes). The graph is computed by replaying the chain of events (ancestors up to the branch
-event, then the line's own events); positions belong to the line and fall back to the parent line and
+the change routes). The graph is computed by replaying the chain of changes (ancestors up to the branch
+change, then the line's own changes); positions belong to the line and fall back to the parent line and
 then to the position the node was added with.
 """
 
@@ -26,7 +26,7 @@ from app.model_routes import (
     _model,
 )
 from app.models import AllowedConnection, ConnectionType, NodePosition, NodeType
-from app.timeline.chain import chain_events, replay, state_as_of
+from app.timeline.chain import chain_changes, replay, state_as_of
 from app.timeline.errors import ChainBroken
 from app.timeline.loader import ModelTimeline, is_planned, load_timeline, today_in_organization
 from app.timeline.state import ConnectionState, NodeState, State
@@ -37,7 +37,7 @@ class BranchResponse(BaseModel):
     name: str
 
 
-class EventResponse(BaseModel):
+class ChangeResponse(BaseModel):
     id: UUID
     line_id: UUID
     occurred_on: date
@@ -46,8 +46,8 @@ class EventResponse(BaseModel):
     note: str | None
     version: int
     planned: bool
-    change_count: int
-    change_counts: dict[str, int]
+    edit_count: int
+    edit_counts: dict[str, int]
     branches: list[BranchResponse]
 
 
@@ -74,7 +74,7 @@ class PositionResponse(BaseModel):
 
 
 class ChangedNode(BaseModel):
-    """A node the shown event changed; ``previous`` holds the node as it was before an update."""
+    """A node the shown change changed; ``previous`` holds the node as it was before an update."""
 
     node: StateNode
     previous: StateNode | None = None
@@ -92,7 +92,7 @@ class ElementList(BaseModel):
 
 class StateResponse(BaseModel):
     line: LineResponse
-    event: EventResponse | None
+    change: ChangeResponse | None
     as_of: date | None
     planned: bool
     node_types: list[NodeTypeResponse]
@@ -108,29 +108,29 @@ class StateResponse(BaseModel):
 
 def _line_response(timeline: ModelTimeline, line_id: UUID) -> LineResponse:
     row = timeline.line_rows[line_id]
-    own = timeline.events.get(line_id, ())
+    own = timeline.changes.get(line_id, ())
     return LineResponse(
         id=row.id,
         name=row.name,
         description=row.description,
         kind=row.kind,
         parent_line_id=row.parent_line_id,
-        branch_event_id=row.branch_event_id,
+        branch_change_id=row.branch_change_id,
         start_changed_at=row.start_changed_at,
         created_by_user_account_id=row.created_by_user_account_id,
         version=row.version,
         created_at=row.created_at,
-        event_count=len(own),
-        latest_event_date=max((event.occurred_on for event in own), default=None),
+        change_count=len(own),
+        latest_change_date=max((change.occurred_on for change in own), default=None),
     )
 
 
-def _event_response(timeline: ModelTimeline, event_id: UUID, today: date) -> EventResponse:
-    row = timeline.event_rows[event_id]
-    record = next(item for item in timeline.events[row.line_id] if item.id == event_id)
-    counts = Counter(change.op for change in record.changes)
-    branches = sorted((line for line in timeline.line_rows.values() if line.branch_event_id == event_id), key=lambda line: (line.created_at, line.id))
-    return EventResponse(
+def _change_response(timeline: ModelTimeline, change_id: UUID, today: date) -> ChangeResponse:
+    row = timeline.change_rows[change_id]
+    record = next(item for item in timeline.changes[row.line_id] if item.id == change_id)
+    counts = Counter(edit.op for edit in record.edits)
+    branches = sorted((line for line in timeline.line_rows.values() if line.branch_change_id == change_id), key=lambda line: (line.created_at, line.id))
+    return ChangeResponse(
         id=row.id,
         line_id=row.line_id,
         occurred_on=row.occurred_on,
@@ -139,8 +139,8 @@ def _event_response(timeline: ModelTimeline, event_id: UUID, today: date) -> Eve
         note=row.note,
         version=row.version,
         planned=is_planned(row.occurred_on, today),
-        change_count=len(record.changes),
-        change_counts=dict(sorted(counts.items())),
+        edit_count=len(record.edits),
+        edit_counts=dict(sorted(counts.items())),
         branches=[BranchResponse(line_id=line.id, name=line.name) for line in branches],
     )
 
@@ -176,7 +176,7 @@ def _connection(connection: ConnectionState) -> StateConnection:
 
 
 def _diff(before: State, after: State, positions: dict[UUID, tuple[float, float]]) -> tuple[ElementList, ElementList, ElementList]:
-    """What one event changed: elements it added, updated (with their previous data) and removed (with their data)."""
+    """What one change changed: elements it added, updated (with their previous data) and removed (with their data)."""
     added, updated, removed = ElementList(), ElementList(), ElementList()
     for key, node in after.nodes.items():
         old = before.nodes.get(key)
@@ -200,7 +200,7 @@ def _diff(before: State, after: State, positions: dict[UUID, tuple[float, float]
 
 
 def _broken(error: ChainBroken) -> HTTPException:
-    return HTTPException(status_code=422, detail={"reason": "chain_broken", "line_id": str(error.line_id), "event_id": str(error.event_id) if error.event_id else None, "position": error.position, "cause": error.cause, "element": str(error.element_id) if error.element_id else None})
+    return HTTPException(status_code=422, detail={"reason": "chain_broken", "line_id": str(error.line_id), "change_id": str(error.change_id) if error.change_id else None, "position": error.position, "cause": error.cause, "element": str(error.element_id) if error.element_id else None})
 
 
 def _line(timeline: ModelTimeline, line_id: UUID) -> None:
@@ -220,40 +220,40 @@ def create_timeline_router(*, session_factory: sessionmaker[Session], authentica
             ordered = sorted(timeline.line_rows.values(), key=lambda line: (line.kind != "base", line.created_at, line.id))
             return [_line_response(timeline, line.id) for line in ordered]
 
-    @router.get(base + "/{line_id}/events", response_model=list[EventResponse])
-    def list_events(organization_id: UUID, model_id: UUID, line_id: UUID, user: AuthenticatedUser = Depends(authenticated_user_dependency)) -> list[EventResponse]:
+    @router.get(base + "/{line_id}/changes", response_model=list[ChangeResponse])
+    def list_changes(organization_id: UUID, model_id: UUID, line_id: UUID, user: AuthenticatedUser = Depends(authenticated_user_dependency)) -> list[ChangeResponse]:
         with _member_session(session_factory, organization_id, user) as (session, _membership):
             _model(session, organization_id, model_id)
             timeline = load_timeline(session, model_id)
             _line(timeline, line_id)
             today = today_in_organization(session, organization_id, clock)
-            return [_event_response(timeline, event.id, today) for event in timeline.events_of(line_id)]
+            return [_change_response(timeline, change.id, today) for change in timeline.changes_of(line_id)]
 
     @router.get(base + "/{line_id}/state", response_model=StateResponse)
-    def read_state(organization_id: UUID, model_id: UUID, line_id: UUID, event_id: UUID | None = None, as_of: date | None = None, user: AuthenticatedUser = Depends(authenticated_user_dependency)) -> StateResponse:
-        if event_id is not None and as_of is not None:
-            raise HTTPException(status_code=422, detail={"reason": "event_id_and_as_of"})
+    def read_state(organization_id: UUID, model_id: UUID, line_id: UUID, change_id: UUID | None = None, as_of: date | None = None, user: AuthenticatedUser = Depends(authenticated_user_dependency)) -> StateResponse:
+        if change_id is not None and as_of is not None:
+            raise HTTPException(status_code=422, detail={"reason": "change_id_and_as_of"})
         with _member_session(session_factory, organization_id, user) as (session, _membership):
             _model(session, organization_id, model_id)
             timeline = load_timeline(session, model_id)
             _line(timeline, line_id)
             today = today_in_organization(session, organization_id, clock)
-            own = timeline.events_of(line_id)
+            own = timeline.changes_of(line_id)
             day: date | None = None
             try:
-                if event_id is not None:
-                    shown = next((event for event in own if event.id == event_id), None)
+                if change_id is not None:
+                    shown = next((change for change in own if change.id == change_id), None)
                     if shown is None:
-                        raise HTTPException(status_code=404, detail="Event not found")
+                        raise HTTPException(status_code=404, detail="Change not found")
                 else:
                     day = as_of or today
-                    shown = next(iter(reversed([event for event in own if event.occurred_on <= day])), None)
+                    shown = next(iter(reversed([change for change in own if change.occurred_on <= day])), None)
                 if shown is not None:
-                    chain = chain_events(timeline.lines, timeline.events, line_id, shown.id)
+                    chain = chain_changes(timeline.lines, timeline.changes, line_id, shown.id)
                     state = replay(chain, timeline.metamodel)
                     before = replay(chain[:-1], timeline.metamodel)
                 else:
-                    state = state_as_of(timeline.lines, timeline.events, timeline.metamodel, line_id, day) if day else State()
+                    state = state_as_of(timeline.lines, timeline.changes, timeline.metamodel, line_id, day) if day else State()
                     before = state
             except ChainBroken as error:
                 raise _broken(error) from error
@@ -263,7 +263,7 @@ def create_timeline_router(*, session_factory: sessionmaker[Session], authentica
             added, updated, removed = _diff(before, state, drawn) if shown is not None else (ElementList(), ElementList(), ElementList())
             return StateResponse(
                 line=_line_response(timeline, line_id),
-                event=_event_response(timeline, shown.id, today) if shown is not None else None,
+                change=_change_response(timeline, shown.id, today) if shown is not None else None,
                 as_of=day,
                 planned=is_planned(shown.occurred_on, today) if shown is not None else False,
                 node_types=[NodeTypeResponse.model_validate(item, from_attributes=True) for item in session.scalars(by_model(NodeType).order_by(NodeType.name))],

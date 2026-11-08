@@ -3,7 +3,7 @@ from contextlib import ExitStack
 
 import pytest
 
-from test_models_graph import _add_node, _graph, _latest_event, _tenant, _types  # noqa: F401
+from test_models_graph import _add_node, _graph, _latest_change, _tenant, _types  # noqa: F401
 
 
 @pytest.fixture
@@ -40,35 +40,35 @@ def test_allowed_connections_gate_the_graph_and_types_in_use_stay(database_url: 
     path = f"{base}/models/{model_id}"
     site = owner.post(f"{path}/node-types", json={"name": "Site", "color": "#336699"}).json()
     hosts = owner.post(f"{path}/connection-types", json={"name": "Hosts"}).json()
-    event = _latest_event(owner, path)["id"]
-    a = _add_node(owner, path, event, site["id"], "Helsinki").json()
-    b = _add_node(owner, path, event, site["id"], "Tampere").json()
+    change = _latest_change(owner, path)["id"]
+    a = _add_node(owner, path, change, site["id"], "Helsinki").json()
+    b = _add_node(owner, path, change, site["id"], "Tampere").json()
     link = {"connection_type_id": hosts["id"], "source_node_id": a["id"], "target_node_id": b["id"]}
-    refused = owner.post(f"{path}/events/{event}/connections", json=link)
+    refused = owner.post(f"{path}/changes/{change}/connections", json=link)
     assert refused.status_code == 422 and refused.json()["detail"]["cause"] == "connection_not_allowed"
     rule = {"connection_type_id": hosts["id"], "source_node_type_id": site["id"], "target_node_type_id": site["id"]}
     assert owner.post(f"{path}/allowed-connections", json=rule).status_code == 201
     assert owner.post(f"{path}/allowed-connections", json=rule).status_code == 409
-    connection = owner.post(f"{path}/events/{event}/connections", json=link)
+    connection = owner.post(f"{path}/changes/{change}/connections", json=link)
     assert connection.status_code == 201
     # in use: the node type, the connection type and the rule cannot be removed
     assert owner.delete(f"{path}/node-types/{site['id']}", params={"expected_version": 1}).status_code == 409
     assert owner.delete(f"{path}/connection-types/{hosts['id']}", params={"expected_version": 1}).status_code == 409
     assert owner.delete(f"{path}/allowed-connections", params=rule).status_code == 409
-    version = owner.get(f"{path}/events/{event}").json()["version"]
-    owner.delete(f"{path}/events/{event}/connections/{connection.json()['id']}", params={"expected_version": version})
+    version = owner.get(f"{path}/changes/{change}").json()["version"]
+    owner.delete(f"{path}/changes/{change}/connections/{connection.json()['id']}", params={"expected_version": version})
     assert owner.delete(f"{path}/allowed-connections", params=rule).status_code == 204
     assert owner.delete(f"{path}/allowed-connections", params=rule).status_code == 404
-    assert owner.post(f"{path}/events/{event}/connections", json=link).status_code == 422  # the rule is gone
+    assert owner.post(f"{path}/changes/{change}/connections", json=link).status_code == 422  # the rule is gone
 
 
-def test_types_used_by_any_event_stay_even_when_the_element_is_gone(database_url: str, stack: ExitStack) -> None:
-    """ADR-0049: a type that an event of any line names cannot be deleted, whether or not a node of that type still exists."""
+def test_types_used_by_any_change_stay_even_when_the_element_is_gone(database_url: str, stack: ExitStack) -> None:
+    """ADR-0049: a type that a change of any line names cannot be deleted, whether or not a node of that type still exists."""
     _, owner, _, base = _tenant(stack, database_url, "meta-in-use")
     model_id = owner.post(f"{base}/models", json={"name": "Twin"}).json()["id"]
     path = f"{base}/models/{model_id}"
     line = owner.get(f"{path}/lines").json()[0]["id"]
-    first = _latest_event(owner, path)["id"]
+    first = _latest_change(owner, path)["id"]
     node_type = lambda name, color: owner.post(f"{path}/node-types", json={"name": name, "color": color}).json()  # noqa: E731
     site, hall, unused, ghost = node_type("Site", "#336699"), node_type("Hall", "#336644"), node_type("Unused", "#336655"), node_type("Ghost", "#336666")
     hosts = owner.post(f"{path}/connection-types", json={"name": "Hosts"}).json()
@@ -79,26 +79,26 @@ def test_types_used_by_any_event_stay_even_when_the_element_is_gone(database_url
     a = _add_node(owner, path, first, site["id"], "A").json()
     b = _add_node(owner, path, first, site["id"], "B").json()
     d = _add_node(owner, path, first, unused["id"], "D").json()
-    second = owner.post(f"{path}/lines/{line}/events", json={"occurred_on": "2099-01-01", "title": "Later", "changes": []}).json()
-    version = lambda: owner.get(f"{path}/events/{second['id']}").json()["version"]  # noqa: E731
-    assert owner.post(f"{path}/events/{second['id']}/connections", json={"connection_type_id": hosts["id"], "source_node_id": a["id"], "target_node_id": b["id"]}).status_code == 201
-    # a node added and removed in one event leaves no trace, so its type can go
+    second = owner.post(f"{path}/lines/{line}/changes", json={"occurred_on": "2099-01-01", "title": "Later", "edits": []}).json()
+    version = lambda: owner.get(f"{path}/changes/{second['id']}").json()["version"]  # noqa: E731
+    assert owner.post(f"{path}/changes/{second['id']}/connections", json={"connection_type_id": hosts["id"], "source_node_id": a["id"], "target_node_id": b["id"]}).status_code == 201
+    # a node added and removed in one change leaves no trace, so its type can go
     c = _add_node(owner, path, second["id"], ghost["id"], "C").json()
-    assert owner.delete(f"{path}/events/{second['id']}/nodes/{c['id']}", params={"expected_version": version()}).status_code == 204
+    assert owner.delete(f"{path}/changes/{second['id']}/nodes/{c['id']}", params={"expected_version": version()}).status_code == 204
     assert owner.delete(f"{path}/node-types/{ghost['id']}", params={"expected_version": 1}).status_code == 204
-    # a later event retypes D: the update names hall, the earlier add still names unused
-    assert owner.patch(f"{path}/events/{second['id']}/nodes/{d['id']}", json={"expected_version": version(), "node_type_id": hall["id"]}).status_code == 200
+    # a later change retypes D: the update names hall, the earlier add still names unused
+    assert owner.patch(f"{path}/changes/{second['id']}/nodes/{d['id']}", json={"expected_version": version(), "node_type_id": hall["id"]}).status_code == 200
     assert owner.delete(f"{path}/node-types/{unused['id']}", params={"expected_version": 1}).status_code == 409
     assert owner.delete(f"{path}/node-types/{hall['id']}", params={"expected_version": 1}).status_code == 409
     assert owner.delete(f"{path}/node-types/{site['id']}", params={"expected_version": 1}).status_code == 409
     assert owner.delete(f"{path}/connection-types/{hosts['id']}", params={"expected_version": 1}).status_code == 409
     assert owner.delete(f"{path}/connection-types/{free['id']}", params={"expected_version": 1}).status_code == 204
-    # a Scenario's own events count too, for the type and for the rule
-    scenario = owner.post(f"{path}/lines", json={"name": "What if", "branch_event_id": second["id"]}).json()["id"]
-    own = owner.post(f"{path}/lines/{scenario}/events", json={"occurred_on": "2099-02-01", "title": "Swap", "changes": []}).json()["id"]
-    assert owner.post(f"{path}/events/{own}/connections", json={"connection_type_id": swaps["id"], "source_node_id": a["id"], "target_node_id": b["id"]}).status_code == 201
+    # a Scenario's own changes count too, for the type and for the rule
+    scenario = owner.post(f"{path}/lines", json={"name": "What if", "branch_change_id": second["id"]}).json()["id"]
+    own = owner.post(f"{path}/lines/{scenario}/changes", json={"occurred_on": "2099-02-01", "title": "Swap", "edits": []}).json()["id"]
+    assert owner.post(f"{path}/changes/{own}/connections", json={"connection_type_id": swaps["id"], "source_node_id": a["id"], "target_node_id": b["id"]}).status_code == 201
     assert owner.delete(f"{path}/connection-types/{swaps['id']}", params={"expected_version": 1}).status_code == 409
     rule = {"connection_type_id": swaps["id"], "source_node_type_id": site["id"], "target_node_type_id": site["id"]}
-    assert owner.delete(f"{path}/allowed-connections", params=rule).status_code == 409  # only a Scenario event needs this rule
+    assert owner.delete(f"{path}/allowed-connections", params=rule).status_code == 409  # only a Scenario change needs this rule
     spare = {"connection_type_id": hosts["id"], "source_node_type_id": hall["id"], "target_node_type_id": hall["id"]}
-    assert owner.delete(f"{path}/allowed-connections", params=spare).status_code == 204  # no event connects halls
+    assert owner.delete(f"{path}/allowed-connections", params=spare).status_code == 204  # no change connects halls

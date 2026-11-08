@@ -1,4 +1,4 @@
-"""Migration 0061: versions, graphs, metrics and simulations become lines and events (model-timeline ticket 02).
+"""Migration 0061: versions, graphs, metrics and simulations become lines and changes (model-timeline ticket 02).
 
 The Model, its metrics and a simulation are made through the application; the schema is then moved back to 0061 (0064
 recreates the old tables, with a version for every line), the old graph tables are written directly (the routes that wrote
@@ -15,8 +15,8 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine, text
 
-from app.timeline.chain import EventRecord, LineRecord, state_after
-from app.timeline.state import Change, Metamodel
+from app.timeline.chain import ChangeRecord, LineRecord, state_after
+from app.timeline.state import Edit, Metamodel
 from test_metrics import _values
 from test_models_graph import _graph, _tenant, _types
 
@@ -120,9 +120,9 @@ def _seed_old(engine, organization_id, seeded) -> dict:
     # Dropping a node takes its connections with it.
     pruned = fork("Pruned")
     old.run("DELETE FROM nodes WHERE id = :id", id=old.named(pruned, "Onboarding"))
-    # The baseline moves on after the forks above were made: they lack its new node, so their events remove it.
+    # The baseline moves on after the forks above were made: they lack its new node, so their changes remove it.
     old.node(baseline, types["person"], "Late")
-    # Same as the baseline: no event of its own; a fork of it branches where it branches.
+    # Same as the baseline: no change of its own; a fork of it branches where it branches.
     unchanged = fork("Unchanged")
     below_unchanged = fork("Below unchanged", unchanged)
     old.run("INSERT INTO metrics (id, organization_id, model_id, version_id, key, name) VALUES (:id, :org, :model, :version, 'own', 'Own')", id=uuid4(), org=organization_id, model=model_id, version=below_unchanged)
@@ -137,8 +137,8 @@ def _load(engine):
             "nodes": rows("SELECT * FROM nodes"),
             "connections": rows("SELECT * FROM connections"),
             "lines": rows("SELECT * FROM model_lines"),
-            "events": rows("SELECT * FROM timeline_events ORDER BY occurred_on, seq"),
-            "changes": rows("SELECT * FROM event_changes ORDER BY event_id, position"),
+            "changes": rows("SELECT * FROM timeline_events ORDER BY occurred_on, seq"),
+            "edits": rows("SELECT * FROM event_changes ORDER BY event_id, position"),
             "positions": rows("SELECT * FROM node_positions"),
             "node_types": rows("SELECT id, model_id FROM node_types"),
             "connection_types": rows("SELECT id, model_id FROM connection_types"),
@@ -148,19 +148,19 @@ def _load(engine):
 
 def _engine_inputs(data, model_id):
     lines = {row["id"]: LineRecord(row["id"], row["parent_line_id"], row["branch_event_id"]) for row in data["lines"] if row["model_id"] == model_id}
+    edits: dict = {}
+    for row in data["edits"]:
+        edits.setdefault(row["event_id"], []).append(Edit(row["op"], row["element_id"], row["payload"]))
     changes: dict = {}
     for row in data["changes"]:
-        changes.setdefault(row["event_id"], []).append(Change(row["op"], row["element_id"], row["payload"]))
-    events: dict = {}
-    for row in data["events"]:
         if row["model_id"] == model_id:
-            events.setdefault(row["line_id"], []).append(EventRecord(row["id"], row["line_id"], row["occurred_on"], row["seq"], row["title"], tuple(changes.get(row["id"], ()))))
+            changes.setdefault(row["line_id"], []).append(ChangeRecord(row["id"], row["line_id"], row["occurred_on"], row["seq"], row["title"], tuple(edits.get(row["id"], ()))))
     metamodel = Metamodel(
         frozenset(row["id"] for row in data["node_types"] if row["model_id"] == model_id),
         frozenset(row["id"] for row in data["connection_types"] if row["model_id"] == model_id),
         frozenset((row["connection_type_id"], row["source_node_type_id"], row["target_node_type_id"]) for row in data["allowed"] if row["model_id"] == model_id),
     )
-    return lines, events, metamodel
+    return lines, changes, metamodel
 
 
 def _element_ids(data) -> dict:
@@ -188,8 +188,8 @@ def _element_ids(data) -> dict:
 
 
 def _assert_replay_equals_old_graph(data, version_id, model_id) -> None:
-    lines, events, metamodel = _engine_inputs(data, model_id)
-    state = state_after(lines, events, metamodel, version_id)
+    lines, changes, metamodel = _engine_inputs(data, model_id)
+    state = state_after(lines, changes, metamodel, version_id)
     element = _element_ids(data)
     old_nodes = [row for row in data["nodes"] if row["version_id"] == version_id]
     assert set(state.nodes) == {element[row["id"]] for row in old_nodes}
@@ -245,9 +245,9 @@ def test_upgrade_converts_every_version_without_losing_anything_and_downgrade_is
         for version in kept:
             _assert_replay_equals_old_graph(data, version["id"], model_id)
 
-        events_of = lambda line_id: [row for row in data["events"] if row["line_id"] == line_id]  # noqa: E731
+        changes_of = lambda line_id: [row for row in data["changes"] if row["line_id"] == line_id]  # noqa: E731
         baseline_line = UUID(seeded["baseline"])
-        initial = events_of(baseline_line)
+        initial = changes_of(baseline_line)
         assert [(row["title"]) for row in initial] == ["Initial situation"]
         model_day = None
         with engine.connect() as connection:
@@ -255,27 +255,27 @@ def test_upgrade_converts_every_version_without_losing_anything_and_downgrade_is
         assert initial[0]["occurred_on"] == model_day
         growth, deeper = UUID(seeded["growth"]), UUID(seeded["deeper"])
         assert (lines[growth]["parent_line_id"], lines[growth]["branch_event_id"]) == (baseline_line, initial[0]["id"])
-        assert len(events_of(growth)) == 1 and events_of(growth)[0]["occurred_on"] >= initial[0]["occurred_on"]
-        # A fork of a fork branches from its base fork's last event.
-        assert (lines[deeper]["parent_line_id"], lines[deeper]["branch_event_id"]) == (growth, events_of(growth)[0]["id"])
-        # No difference, no event; the fork below it branches where it branches.
+        assert len(changes_of(growth)) == 1 and changes_of(growth)[0]["occurred_on"] >= initial[0]["occurred_on"]
+        # A fork of a fork branches from its base fork's last change.
+        assert (lines[deeper]["parent_line_id"], lines[deeper]["branch_event_id"]) == (growth, changes_of(growth)[0]["id"])
+        # No difference, no change; the fork below it branches where it branches.
         unchanged, below = UUID(seeded["unchanged"]), UUID(seeded["below_unchanged"])
-        assert events_of(unchanged) == [] and events_of(below) == []
+        assert changes_of(unchanged) == [] and changes_of(below) == []
         assert (lines[below]["parent_line_id"], lines[below]["branch_event_id"]) == (baseline_line, initial[0]["id"])
-        # The baseline's later node is something the forks lack: their events remove it.
-        pruned_ops = [row["op"] for row in data["changes"] if row["event_id"] == events_of(UUID(seeded["pruned"]))[0]["id"]]
+        # The baseline's later node is something the forks lack: their changes remove it.
+        pruned_ops = [row["op"] for row in data["edits"] if row["event_id"] == changes_of(UUID(seeded["pruned"]))[0]["id"]]
         assert pruned_ops == ["remove_node", "remove_node"]  # Onboarding (its connection goes with it) and Late
         # A Model with no baseline version still gets a Base line (empty initial situation).
         empty_lines = [row for row in data["lines"] if row["model_id"] == UUID(empty_model)]
         assert [row["kind"] for row in empty_lines] == ["base"]
-        empty_events = events_of(empty_lines[0]["id"])
-        assert [row["title"] for row in empty_events] == ["Initial situation"]
-        assert not [row for row in data["changes"] if row["event_id"] == empty_events[0]["id"]]
-        # Scenario events are never dated before the branch event.
-        dates = {row["id"]: row["occurred_on"] for row in data["events"]}
+        empty_changes = changes_of(empty_lines[0]["id"])
+        assert [row["title"] for row in empty_changes] == ["Initial situation"]
+        assert not [row for row in data["edits"] if row["event_id"] == empty_changes[0]["id"]]
+        # Scenario changes are never dated before the branch change.
+        dates = {row["id"]: row["occurred_on"] for row in data["changes"]}
         for line in data["lines"]:
             if line["kind"] == "scenario":
-                assert all(row["occurred_on"] >= dates[line["branch_event_id"]] for row in events_of(line["id"]))
+                assert all(row["occurred_on"] >= dates[line["branch_event_id"]] for row in changes_of(line["id"]))
 
         command.downgrade(config, "0060")
         with engine.connect() as connection:
@@ -297,18 +297,18 @@ def test_a_new_model_has_a_base_line_with_an_empty_initial_situation(database_ur
     with engine.connect() as connection:
         zone = connection.execute(text("SELECT time_zone FROM organizations WHERE id = :id"), {"id": organization_id}).scalar_one()
         lines = connection.execute(text("SELECT id, kind, parent_line_id, name FROM model_lines WHERE model_id = :id"), {"id": model_id}).all()
-        events = connection.execute(text("SELECT id, line_id, occurred_on, title FROM timeline_events WHERE model_id = :id"), {"id": model_id}).all()
-        changes = connection.execute(text("SELECT count(*) FROM event_changes WHERE event_id = :id"), {"id": events[0].id}).scalar_one()
+        changes = connection.execute(text("SELECT id, line_id, occurred_on, title FROM timeline_changes WHERE model_id = :id"), {"id": model_id}).all()
+        edits = connection.execute(text("SELECT count(*) FROM change_edits WHERE change_id = :id"), {"id": changes[0].id}).scalar_one()
     engine.dispose()
     assert [(row.id, row.kind, row.parent_line_id, row.name) for row in lines] == [(baseline, "base", None, "Baseline")]
-    assert [(row.line_id, row.title) for row in events] == [(baseline, "Initial situation")] and changes == 0
-    assert abs((events[0].occurred_on - datetime.now(ZoneInfo(zone)).date()).days) <= 1
-    # Deleting the Model removes its lines and events with it.
+    assert [(row.line_id, row.title) for row in changes] == [(baseline, "Initial situation")] and edits == 0
+    assert abs((changes[0].occurred_on - datetime.now(ZoneInfo(zone)).date()).days) <= 1
+    # Deleting the Model removes its lines and changes with it.
     assert owner.delete(f"{base}/models/{model_id}", params={"expected_version": 1}).status_code == 204
     engine = create_engine(database_url)
     with engine.connect() as connection:
         assert connection.execute(text("SELECT count(*) FROM model_lines WHERE model_id = :id"), {"id": model_id}).scalar_one() == 0
-        assert connection.execute(text("SELECT count(*) FROM timeline_events WHERE model_id = :id"), {"id": model_id}).scalar_one() == 0
+        assert connection.execute(text("SELECT count(*) FROM timeline_changes WHERE model_id = :id"), {"id": model_id}).scalar_one() == 0
     engine.dispose()
 
 
@@ -318,9 +318,9 @@ def test_migration_0064_drops_the_version_tables_and_downgrade_recreates_them_fr
     path = f"{base}/models/{model_id}"
     types = _types(_graph(owner, base, model_id))
     baseline = _graph(owner, base, model_id)["line"]["id"]
-    event = owner.get(f"{path}/lines/{baseline}/events").json()[-1]["id"]
-    owner.post(f"{path}/events/{event}/nodes", json={"node_type_id": types["product"], "name": "App"})
-    scenario = owner.post(f"{path}/lines", json={"name": "What if", "description": "Later", "branch_event_id": event}).json()["id"]
+    change = owner.get(f"{path}/lines/{baseline}/changes").json()[-1]["id"]
+    owner.post(f"{path}/changes/{change}/nodes", json={"node_type_id": types["product"], "name": "App"})
+    scenario = owner.post(f"{path}/lines", json={"name": "What if", "description": "Later", "branch_change_id": change}).json()["id"]
     owner.post(f"{path}/lines/{baseline}/metrics", json={"key": "revenue", "name": "Revenue"})
     stack.close()
     engine = create_engine(database_url)

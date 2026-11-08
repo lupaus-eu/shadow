@@ -16,7 +16,7 @@ TABLE_GROUPS: dict[str, list[str]] = {
     "billing": ["organization_seat_changes", "organization_seat_previews", "stripe_webhook_events"],
     "legal": ["legal_acceptances", "legal_announcements"],
     "model_graph": ["models"],
-    "model_timeline": ["model_lines", "timeline_events", "event_changes", "node_positions"],
+    "model_timeline": ["model_lines", "timeline_changes", "change_edits", "node_positions"],
     "metamodel": ["node_types", "connection_types", "allowed_connections"],
     "metrics": ["metrics", "metric_values"],
     "simulation_analysis": ["simulations", "simulation_points", "recommendations"],

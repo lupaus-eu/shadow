@@ -7,7 +7,7 @@ import pytest
 from sqlalchemy import create_engine, text
 
 from app.database import RequestContext, transaction_session
-from test_timeline_events import World, add_node, basic, names
+from test_timeline_changes import World, add_node, basic, names
 from test_models_graph import _tenant
 
 
@@ -17,12 +17,12 @@ def stack():
         yield clients
 
 
-def create(world: World, name: str, branch_event: str, client=None, **extra):
-    return (client or world.owner).post(f"{world.path}/lines", json={"name": name, "branch_event_id": branch_event, **extra})
+def create(world: World, name: str, branch_change: str, client=None, **extra):
+    return (client or world.owner).post(f"{world.path}/lines", json={"name": name, "branch_change_id": branch_change, **extra})
 
 
-def make(world: World, name: str, branch_event: str, client=None, **extra) -> dict:
-    response = create(world, name, branch_event, client, **extra)
+def make(world: World, name: str, branch_change: str, client=None, **extra) -> dict:
+    response = create(world, name, branch_change, client, **extra)
     assert response.status_code == 201, response.text
     return response.json()
 
@@ -39,12 +39,12 @@ def readonly(world: World) -> None:
     engine.dispose()
 
 
-def test_a_scenario_branches_from_a_past_event_and_from_another_scenario_to_any_depth(database_url: str, stack: ExitStack) -> None:
+def test_a_scenario_branches_from_a_past_change_and_from_another_scenario_to_any_depth(database_url: str, stack: ExitStack) -> None:
     world = World(stack, database_url, "tln-depth")
     data = basic(world)
     first = make(world, "From Start", data["first"]["id"])
-    assert first["kind"] == "scenario" and first["parent_line_id"] == world.line and first["branch_event_id"] == data["first"]["id"] and first["version"] == 1
-    assert first["created_by_user_account_id"] and first["start_changed_at"] is None and first["event_count"] == 0
+    assert first["kind"] == "scenario" and first["parent_line_id"] == world.line and first["branch_change_id"] == data["first"]["id"] and first["version"] == 1
+    assert first["created_by_user_account_id"] and first["start_changed_at"] is None and first["change_count"] == 0
     assert names(world.state(first["id"])) == {"App", "Onboarding"}  # Ada was hired after the branch point
     own = world.ok(first["id"], "2026-03-01", "Own one", [add_node(str(uuid4()), world.types["goal"], "Goal one")])
     second = make(world, "Second", own["id"])
@@ -55,22 +55,22 @@ def test_a_scenario_branches_from_a_past_event_and_from_another_scenario_to_any_
     assert names(world.state(third["id"])) == {"App", "Onboarding", "Goal one", "Goal two"}
     assert names(world.state(first["id"])) == {"App", "Onboarding", "Goal one"} and names(world.state()) == {"App", "Onboarding", "Ada"}
     assert [item["name"] for item in world.owner.get(f"{world.path}/lines").json()] == ["Baseline", "From Start", "Second", "Third"]
-    # a Scenario may branch from the initial event of the Base line, and from the very last event
-    assert make(world, "From nothing", world.initial)["branch_event_id"] == world.initial
+    # a Scenario may branch from the initial change of the Base line, and from the very last change
+    assert make(world, "From nothing", world.initial)["branch_change_id"] == world.initial
     assert names(world.state(world.lines()["From nothing"]["id"])) == set()
-    assert world.owner.get(f"{world.path}/lines/{third['id']}/events").json() == []
+    assert world.owner.get(f"{world.path}/lines/{third['id']}/changes").json() == []
 
 
-def test_the_branch_event_must_exist_in_this_model_and_the_name_must_be_valid_and_unique(database_url: str, stack: ExitStack) -> None:
+def test_the_branch_change_must_exist_in_this_model_and_the_name_must_be_valid_and_unique(database_url: str, stack: ExitStack) -> None:
     world = World(stack, database_url, "tln-invalid")
     data = basic(world)
     assert create(world, "Ghost", str(uuid4())).status_code == 404
     other = world.owner.post(f"{world.base}/models", json={"name": "Other"}).json()["id"]
     other_line = world.owner.get(f"{world.base}/models/{other}/lines").json()[0]["id"]
-    other_event = world.owner.get(f"{world.base}/models/{other}/lines/{other_line}/events").json()[0]["id"]
-    assert create(world, "Foreign", other_event).status_code == 404  # an event of another Model of the same Organization
+    other_change = world.owner.get(f"{world.base}/models/{other}/lines/{other_line}/changes").json()[0]["id"]
+    assert create(world, "Foreign", other_change).status_code == 404  # a change of another Model of the same Organization
     assert create(world, "   ", data["first"]["id"]).status_code == 422
-    assert world.owner.post(f"{world.path}/lines", json={"name": "No event"}).status_code == 422
+    assert world.owner.post(f"{world.path}/lines", json={"name": "No change"}).status_code == 422
     make(world, "  Plan   B ", data["first"]["id"])
     assert world.lines()["Plan B"]["description"] is None
     assert create(world, "plan b", data["second"]["id"]).status_code == 409 and create(world, "plan b", data["second"]["id"]).json()["detail"] == {"reason": "duplicate_name"}
@@ -78,7 +78,7 @@ def test_the_branch_event_must_exist_in_this_model_and_the_name_must_be_valid_an
     assert create(world, "x" * 121, data["first"]["id"]).status_code == 422
 
 
-def test_parent_events_after_the_branch_do_not_show_and_earlier_inserted_events_do_and_mark_the_start(database_url: str, stack: ExitStack) -> None:
+def test_parent_changes_after_the_branch_do_not_show_and_earlier_inserted_changes_do_and_mark_the_start(database_url: str, stack: ExitStack) -> None:
     world = World(stack, database_url, "tln-start")
     data = basic(world)
     scenario = make(world, "From Hire", data["second"]["id"], description="What if")
@@ -100,8 +100,8 @@ def test_parent_events_after_the_branch_do_not_show_and_earlier_inserted_events_
     assert world.owner.post(f"{world.path}/lines/{deeper['id']}/acknowledge-start").json()["start_changed_at"] is None
     assert member.post(f"{world.path}/lines/{world.line}/acknowledge-start").status_code == 403
     assert world.owner.post(f"{world.path}/lines/{uuid4()}/acknowledge-start").status_code == 404
-    world.owner.delete(f"{world.path}/events/{inserted['id']}", params={"expected_version": 1})
-    assert world.lines()["From Hire"]["start_changed_at"] is not None  # removing an earlier event changes the start again
+    world.owner.delete(f"{world.path}/changes/{inserted['id']}", params={"expected_version": 1})
+    assert world.lines()["From Hire"]["start_changed_at"] is not None  # removing an earlier change changes the start again
 
 
 def test_a_scenario_gets_a_copy_of_the_parents_metrics_and_values_that_is_then_independent(database_url: str, stack: ExitStack) -> None:
@@ -179,7 +179,7 @@ def test_delete_rules_and_everything_the_line_owned_goes_with_it(database_url: s
     parent = make(world, "Parent", data["first"]["id"], creator)
     own = world.ok(parent["id"], "2026-03-01", "Own", [add_node(str(uuid4()), world.types["goal"], "Goal")])
     child = make(world, "Child", own["id"], other)
-    assert world.owner.get(f"{world.path}/lines/{parent['id']}/events").json()[0]["branches"] == [{"line_id": child["id"], "name": "Child"}]
+    assert world.owner.get(f"{world.path}/lines/{parent['id']}/changes").json()[0]["branches"] == [{"line_id": child["id"], "name": "Child"}]
     blocked = creator.delete(f"{world.path}/lines/{parent['id']}")
     assert blocked.status_code == 409 and blocked.json()["detail"] == {"reason": "has_children", "children": 1}
     assert world.owner.delete(f"{world.path}/lines/{parent['id']}").status_code == 409  # not even an Owner
@@ -195,26 +195,26 @@ def test_delete_rules_and_everything_the_line_owned_goes_with_it(database_url: s
     assert world.owner.put(f"{world.path}/lines/{parent['id']}/positions", json=[{"node_id": node, "x": 1, "y": 2}]).status_code == 200
     # the copy of the metric in the deleted child and the rows of the parent are all there before the delete
     line = parent["id"]
-    tables = {table: f"SELECT count(*) FROM {table} WHERE line_id = :line" for table in ("timeline_events", "node_positions", "metrics", "metric_values", "simulations")}
+    tables = {table: f"SELECT count(*) FROM {table} WHERE line_id = :line" for table in ("timeline_changes", "node_positions", "metrics", "metric_values", "simulations")}
     before = {table: count(world, sql, line=line) for table, sql in tables.items()}
     assert all(value > 0 for value in before.values()), before
     assert creator.delete(f"{world.path}/lines/{parent['id']}", params={"expected_version": 1}).status_code == 204
     after = {table: count(world, sql, line=line) for table, sql in tables.items()}
     assert set(after.values()) == {0}, after
-    assert count(world, "SELECT count(*) FROM event_changes WHERE event_id = :event", event=own["id"]) == 0
+    assert count(world, "SELECT count(*) FROM change_edits WHERE change_id = :change", change=own["id"]) == 0
     assert count(world, "SELECT count(*) FROM model_lines WHERE id IN (:a, :b)", a=parent["id"], b=child["id"]) == 0
     assert [item["name"] for item in world.owner.get(f"{world.path}/lines").json()] == ["Baseline"]
     assert world.owner.get(f"{world.path}/lines/{parent['id']}/state").status_code == 404
     assert world.owner.delete(f"{world.path}/lines/{parent['id']}").status_code == 404
-    assert len(world.events()) == 3 and names(world.state()) == {"App", "Onboarding", "Ada"}  # the parent line is untouched
-    # an Owner may delete a Scenario another Member made; the branch event may then be deleted again
+    assert len(world.changes()) == 3 and names(world.state()) == {"App", "Onboarding", "Ada"}  # the parent line is untouched
+    # an Owner may delete a Scenario another Member made; the branch change may then be deleted again
     again = make(world, "Again", data["second"]["id"], creator)
-    assert world.owner.delete(f"{world.path}/events/{data['second']['id']}", params={"expected_version": 1}).status_code == 409
+    assert world.owner.delete(f"{world.path}/changes/{data['second']['id']}", params={"expected_version": 1}).status_code == 409
     assert world.owner.delete(f"{world.path}/lines/{again['id']}").status_code == 204
-    assert world.owner.delete(f"{world.path}/events/{data['second']['id']}", params={"expected_version": 1}).status_code == 204
+    assert world.owner.delete(f"{world.path}/changes/{data['second']['id']}", params={"expected_version": 1}).status_code == 204
 
 
-def test_positions_are_written_per_line_with_fallback_and_without_event_or_audit(database_url: str, stack: ExitStack) -> None:
+def test_positions_are_written_per_line_with_fallback_and_without_change_or_audit(database_url: str, stack: ExitStack) -> None:
     world = World(stack, database_url, "tln-positions")
     data = basic(world)
     a, b, c = data["ids"]["A"], data["ids"]["B"], data["ids"]["C"]
@@ -225,7 +225,7 @@ def test_positions_are_written_per_line_with_fallback_and_without_event_or_audit
         return {item["node_id"]: (item["x"], item["y"]) for item in world.state(line)["positions"]}
 
     assert drawn(world.line)[a] == (10, 20) and drawn(scenario["id"])[a] == (10, 20) and drawn(sub["id"])[a] == (10, 20)  # added position, inherited
-    events, audit, versions = len(world.events()), len(world.audit()), world.lines()
+    changes, audit, versions = len(world.changes()), len(world.audit()), world.lines()
     put = world.owner.put(f"{world.path}/lines/{scenario['id']}/positions", json=[{"node_id": a, "x": 100.5, "y": -3}, {"node_id": b, "x": 1, "y": 2}, {"node_id": a, "x": 111, "y": 222}])
     assert put.status_code == 200 and put.json() == [{"node_id": a, "x": 111, "y": 222}, {"node_id": b, "x": 1, "y": 2}]  # the last entry for a node wins
     assert drawn(scenario["id"])[a] == (111, 222) and drawn(scenario["id"])[b] == (1, 2)
@@ -236,11 +236,11 @@ def test_positions_are_written_per_line_with_fallback_and_without_event_or_audit
     assert world.owner.put(f"{world.path}/lines/{sub['id']}/positions", json=[{"node_id": a, "x": 7, "y": 8}]).status_code == 200
     assert drawn(sub["id"])[a] == (7, 8) and drawn(scenario["id"])[a] == (5, 6)
     assert world.owner.put(f"{world.path}/lines/{world.line}/positions", json=[]).json() == []
-    assert len(world.events()) == events and len(world.audit()) == audit and world.lines() == versions  # no event, no audit entry, no version change
-    assert count(world, "SELECT count(*) FROM node_positions WHERE line_id = :line", line=scenario["id"]) == 3  # Ada's and App's rows plus the position seeded by its own event "More"
+    assert len(world.changes()) == changes and len(world.audit()) == audit and world.lines() == versions  # no change, no audit entry, no version edit
+    assert count(world, "SELECT count(*) FROM node_positions WHERE line_id = :line", line=scenario["id"]) == 3  # Ada's and App's rows plus the position seeded by its own change "More"
 
 
-def test_a_position_needs_a_node_of_the_line_at_its_latest_event(database_url: str, stack: ExitStack) -> None:
+def test_a_position_needs_a_node_of_the_line_at_its_latest_change(database_url: str, stack: ExitStack) -> None:
     world = World(stack, database_url, "tln-position-nodes")
     data = basic(world)
     scenario = make(world, "Early", data["first"]["id"])
@@ -255,8 +255,8 @@ def test_a_position_needs_a_node_of_the_line_at_its_latest_event(database_url: s
     assert world.owner.put(path, json=[{"node_id": data["ids"]["A"], "x": "left", "y": 1}]).status_code == 422
     assert world.owner.put(path, json={"node_id": data["ids"]["A"], "x": 1, "y": 1}).status_code == 422
     removed = world.ok(scenario["id"], "2026-03-01", "Drop", [{"op": "remove_node", "element_id": data["ids"]["B"]}])
-    assert removed["change_counts"] == {"remove_node": 1}
-    assert world.owner.put(path, json=[{"node_id": data["ids"]["B"], "x": 1, "y": 1}]).status_code == 422  # removed at the line's latest event
+    assert removed["edit_counts"] == {"remove_node": 1}
+    assert world.owner.put(path, json=[{"node_id": data["ids"]["B"], "x": 1, "y": 1}]).status_code == 422  # removed at the line's latest change
     assert world.owner.put(path, json=[{"node_id": data["ids"]["A"], "x": 9, "y": 9}]).status_code == 200
 
 
@@ -276,7 +276,7 @@ def test_roles_for_scenarios_and_positions(database_url: str, stack: ExitStack) 
     assert member.delete(f"{world.path}/lines/{world.line}").status_code == 422
 
 
-def test_a_read_only_organization_reads_but_cannot_change_lines_or_positions(database_url: str, stack: ExitStack) -> None:
+def test_a_read_only_organization_reads_but_cannot_edit_lines_or_positions(database_url: str, stack: ExitStack) -> None:
     world = World(stack, database_url, "tln-readonly")
     data = basic(world)
     scenario = make(world, "Before", data["first"]["id"])
@@ -307,25 +307,25 @@ def test_audit_entries_carry_ids_and_never_names_or_descriptions(database_url: s
         assert item["target_type"] == "line" and item["target_id"] == scenario["id"]
         assert item["change_summary"]["model_id"] == world.model and item["change_summary"]["line_id"] == scenario["id"]
     by_action = {item["action"]: item["change_summary"] for item in items}
-    assert by_action["line.created"]["parent_line_id"] == world.line and by_action["line.created"]["branch_event_id"] == data["first"]["id"]
-    assert by_action["line.renamed"]["fields"] == ["name", "description"] and by_action["line.deleted"]["event_count"] == 0
+    assert by_action["line.created"]["parent_line_id"] == world.line and by_action["line.created"]["branch_change_id"] == data["first"]["id"]
+    assert by_action["line.renamed"]["fields"] == ["name", "description"] and by_action["line.deleted"]["change_count"] == 0
     assert "ecret" not in json.dumps(items)
 
 
-def test_another_organization_cannot_touch_lines_or_branch_from_its_events(database_url: str, stack: ExitStack) -> None:
+def test_another_organization_cannot_touch_lines_or_branch_from_its_changes(database_url: str, stack: ExitStack) -> None:
     world = World(stack, database_url, "tln-rls-a")
     data = basic(world)
     scenario = make(world, "Mine", data["first"]["id"])
     _, stranger, other_org, other_base = _tenant(stack, database_url, "tln-rls-b")
     node = data["ids"]["A"]
     for path in (world.path, f"{other_base}/models/{world.model}"):
-        assert stranger.post(f"{path}/lines", json={"name": "Injected", "branch_event_id": data["first"]["id"]}).status_code == 404
+        assert stranger.post(f"{path}/lines", json={"name": "Injected", "branch_change_id": data["first"]["id"]}).status_code == 404
         assert stranger.patch(f"{path}/lines/{scenario['id']}", json={"name": "Injected", "expected_version": 1}).status_code == 404
         assert stranger.delete(f"{path}/lines/{scenario['id']}").status_code == 404
         assert stranger.post(f"{path}/lines/{scenario['id']}/acknowledge-start").status_code == 404
         assert stranger.put(f"{path}/lines/{scenario['id']}/positions", json=[{"node_id": node, "x": 1, "y": 1}]).status_code == 404
     other_model = stranger.post(f"{other_base}/models", json={"name": "Mine too"}).json()["id"]
-    assert stranger.post(f"{other_base}/models/{other_model}/lines", json={"name": "Cross", "branch_event_id": data["first"]["id"]}).status_code == 404  # an event of another Organization
+    assert stranger.post(f"{other_base}/models/{other_model}/lines", json={"name": "Cross", "branch_change_id": data["first"]["id"]}).status_code == 404  # a change of another Organization
     assert stranger.patch(f"{other_base}/models/{other_model}/lines/{scenario['id']}", json={"name": "Cross", "expected_version": 1}).status_code == 404
     foreign = {table: count(world, f"SELECT count(*) FROM {table} WHERE organization_id = :id", id=other_org) for table in ("model_lines", "node_positions", "metrics")}
     assert set(foreign.values()) == {0}, foreign  # row-level security hides the other Organization's rows

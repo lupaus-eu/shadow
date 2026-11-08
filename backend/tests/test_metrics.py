@@ -61,8 +61,8 @@ def test_forks_copy_metrics_and_edits_stay_in_their_line(database_url: str, stac
     revenue = owner.post(url, json={"key": "revenue", "name": "Revenue"}).json()
     owner.post(url, json={"key": "double", "name": "Double", "formula": "revenue * 2"})
     _values(owner, url, revenue["id"], [("2026-01-01", 10)])
-    initial = owner.get(f"{path}/lines/{owner.get(f'{path}/lines').json()[0]['id']}/events").json()[-1]["id"]
-    fork = owner.post(f"{path}/lines", json={"name": "Scenario", "branch_event_id": initial}).json()
+    initial = owner.get(f"{path}/lines/{owner.get(f'{path}/lines').json()[0]['id']}/changes").json()[-1]["id"]
+    fork = owner.post(f"{path}/lines", json={"name": "Scenario", "branch_change_id": initial}).json()
     fork_url = f"{path}/lines/{fork['id']}/metrics"
     copies = {m["key"]: m for m in owner.get(fork_url).json()}
     assert set(copies) == {"revenue", "double"} and copies["revenue"]["id"] != revenue["id"]

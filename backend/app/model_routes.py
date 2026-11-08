@@ -1,8 +1,8 @@
 """Models (digital twins): the Model, its metamodel and the graph a line shows (Shadow feature 1, model timeline).
 
-A Model belongs to an Organization. Every member can read the graph; the graph itself is a replay of the events of
+A Model belongs to an Organization. Every member can read the graph; the graph itself is a replay of the changes of
 a line (``timeline_*`` routes). Owners and Admins create, rename, and delete Models. A new Model starts with the
-default metamodel and a Base line holding an empty "Initial situation" event. Writes carry ``expected_version``
+default metamodel and a Base line holding an empty "Initial situation" change. Writes carry ``expected_version``
 (409 on a stale one) and are audited. Row-level security keeps every row inside its Organization.
 """
 
@@ -30,7 +30,7 @@ from app.models import (
     Organization,
     OrganizationMembership,
     OrganizationRole,
-    TimelineEvent,
+    TimelineChange,
     TwinModel,
 )
 from app.subscription_access import require_organization_mutation_access
@@ -84,8 +84,8 @@ class ConnectionResponse(BaseModel):
     target_node_id: UUID
 
 
-class LatestEventResponse(BaseModel):
-    """The last event of the shown line: the one canvas edits and ``create_node`` / ``create_connection`` write into."""
+class LatestChangeResponse(BaseModel):
+    """The last change of the shown line: the one canvas edits and ``create_node`` / ``create_connection`` write into."""
 
     id: UUID
     version: int
@@ -124,13 +124,13 @@ class LineResponse(BaseModel):
     description: str | None
     kind: str
     parent_line_id: UUID | None
-    branch_event_id: UUID | None
+    branch_change_id: UUID | None
     start_changed_at: datetime | None
     created_by_user_account_id: UUID | None
     version: int
     created_at: datetime
-    event_count: int
-    latest_event_date: date | None
+    change_count: int
+    latest_change_date: date | None
 
 
 class GraphResponse(BaseModel):
@@ -142,7 +142,7 @@ class GraphResponse(BaseModel):
     allowed_connections: list[AllowedConnectionResponse]
     nodes: list[NodeResponse]
     connections: list[ConnectionResponse]
-    latest_event: LatestEventResponse | None = None
+    latest_change: LatestChangeResponse | None = None
 
 
 @contextmanager
@@ -207,18 +207,18 @@ def _stale(current: int, expected: int) -> None:
         raise HTTPException(status_code=409, detail={"latest_version": current})
 
 
-def _latest_state(timeline: ModelTimeline, line_id: UUID) -> tuple[State, TimelineEvent | None]:
-    """The graph after the last event of a line (including planned events) and that event; empty if the chain cannot be replayed."""
-    own = timeline.events_of(line_id) if line_id in timeline.lines else []
+def _latest_state(timeline: ModelTimeline, line_id: UUID) -> tuple[State, TimelineChange | None]:
+    """The graph after the last change of a line (including planned changes) and that change; empty if the chain cannot be replayed."""
+    own = timeline.changes_of(line_id) if line_id in timeline.lines else []
     last = own[-1] if own else None
     try:
-        return state_after(timeline.lines, timeline.events, timeline.metamodel, line_id, last.id if last else None), (timeline.event_rows[last.id] if last else None)
+        return state_after(timeline.lines, timeline.changes, timeline.metamodel, line_id, last.id if last else None), (timeline.change_rows[last.id] if last else None)
     except ChainBroken:
         return State(), None
 
 
 def _model_response(session: Session, model: TwinModel, timeline: ModelTimeline | None = None) -> ModelResponse:
-    """``nodes`` counts the Base line's graph after its last event, which takes one replay of the Model's timeline."""
+    """``nodes`` counts the Base line's graph after its last change, which takes one replay of the Model's timeline."""
     base = session.scalar(select(ModelLine.id).where(ModelLine.model_id == model.id, ModelLine.kind == "base"))
     nodes = len(_latest_state(timeline or load_timeline(session, model.id), base)[0].nodes) if base is not None else 0
     return ModelResponse(id=model.id, name=model.name, description=model.description, version=model.version, nodes=nodes, base_line_id=base)
@@ -244,7 +244,7 @@ def models_of(session_factory: sessionmaker[Session], organization_id: UUID, use
 
 
 def graph_of(session_factory: sessionmaker[Session], organization_id: UUID, model_id: UUID, user: AuthenticatedUser, line_id: UUID | None = None) -> GraphResponse:
-    """The Model with the lines and the graph of one line (the Base line unless given) after its last event."""
+    """The Model with the lines and the graph of one line (the Base line unless given) after its last change."""
     from app.timeline_routes import _line_response, _resolve_positions  # a function-level import: timeline_routes imports this module
 
     with _member_session(session_factory, organization_id, user) as (session, _membership):
@@ -267,7 +267,7 @@ def graph_of(session_factory: sessionmaker[Session], organization_id: UUID, mode
             allowed_connections=[AllowedConnectionResponse.model_validate(item, from_attributes=True) for item in session.scalars(by_model(AllowedConnection)).all()],
             nodes=[NodeResponse(id=node.id, node_type_id=node.node_type_id, name=node.name, description=node.description, x=drawn.get(node.id, (node.x, node.y))[0], y=drawn.get(node.id, (node.x, node.y))[1]) for node in state.nodes.values()],
             connections=[ConnectionResponse(id=item.id, connection_type_id=item.connection_type_id, source_node_id=item.source_node_id, target_node_id=item.target_node_id) for item in state.connections.values()],
-            latest_event=LatestEventResponse(id=latest.id, version=latest.version, occurred_on=latest.occurred_on, title=latest.title) if latest is not None else None,
+            latest_change=LatestChangeResponse(id=latest.id, version=latest.version, occurred_on=latest.occurred_on, title=latest.title) if latest is not None else None,
         )
 
 
@@ -289,8 +289,8 @@ def create_model_router(*, session_factory: sessionmaker[Session], authenticated
             baseline_id = uuid4()
             session.add(ModelLine(id=baseline_id, organization_id=organization_id, model_id=model.id, name="Baseline", kind="base", created_by_user_account_id=user.account.id, version=1))
             session.flush()
-            # Rule 1 of the domain model: every Model has a Base line with an empty "Initial situation" event dated the creation day.
-            session.add(TimelineEvent(id=uuid4(), organization_id=organization_id, model_id=model.id, line_id=baseline_id, occurred_on=_today_in_organization(session, organization_id), title="Initial situation", created_by_user_account_id=user.account.id))
+            # Rule 1 of the domain model: every Model has a Base line with an empty "Initial situation" change dated the creation day.
+            session.add(TimelineChange(id=uuid4(), organization_id=organization_id, model_id=model.id, line_id=baseline_id, occurred_on=_today_in_organization(session, organization_id), title="Initial situation", created_by_user_account_id=user.account.id))
             seed_metamodel(session, model)
             _audit(session, request, "model.created", "model", model.id, {"name": model.name})
             return _model_response(session, model)

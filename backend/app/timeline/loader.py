@@ -1,4 +1,4 @@
-"""Loading a Model's lines, events and metamodel for replay (ADR-0048); reads only.
+"""Loading a Model's lines, changes and metamodel for replay (ADR-0048); reads only.
 
 Ticket 03 (read API) and ticket 05 (write validation) share this loader so both replay the same data.
 """
@@ -12,9 +12,9 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import AllowedConnection, ConnectionType, EventChange, ModelLine, NodeType, Organization, TimelineEvent
-from app.timeline.chain import EventRecord, LineRecord, sort_events
-from app.timeline.state import Change, Metamodel
+from app.models import AllowedConnection, ConnectionType, ChangeEdit, ModelLine, NodeType, Organization, TimelineChange
+from app.timeline.chain import ChangeRecord, LineRecord, sort_changes
+from app.timeline.state import Edit, Metamodel
 
 
 @dataclass
@@ -23,13 +23,13 @@ class ModelTimeline:
 
     lines: dict[UUID, LineRecord] = field(default_factory=dict)
     line_rows: dict[UUID, ModelLine] = field(default_factory=dict)
-    events: dict[UUID, list[EventRecord]] = field(default_factory=dict)
-    event_rows: dict[UUID, TimelineEvent] = field(default_factory=dict)
+    changes: dict[UUID, list[ChangeRecord]] = field(default_factory=dict)
+    change_rows: dict[UUID, TimelineChange] = field(default_factory=dict)
     metamodel: Metamodel = Metamodel(frozenset(), frozenset(), frozenset())
 
-    def events_of(self, line_id: UUID) -> list[EventRecord]:
-        """The line's own events in order (date, then entry order)."""
-        return sort_events(self.events.get(line_id, ()))
+    def changes_of(self, line_id: UUID) -> list[ChangeRecord]:
+        """The line's own changes in order (date, then entry order)."""
+        return sort_changes(self.changes.get(line_id, ()))
 
 
 def load_metamodel(session: Session, model_id: UUID) -> Metamodel:
@@ -44,22 +44,22 @@ def load_metamodel(session: Session, model_id: UUID) -> Metamodel:
 
 
 def load_timeline(session: Session, model_id: UUID) -> ModelTimeline:
-    """Every line, event and change of the Model, and its metamodel (a Model's timeline is small; see the limits)."""
+    """Every line, change and edit of the Model, and its metamodel (a Model's timeline is small; see the limits)."""
     line_rows = {row.id: row for row in session.scalars(select(ModelLine).where(ModelLine.model_id == model_id))}
-    event_rows = {row.id: row for row in session.scalars(select(TimelineEvent).where(TimelineEvent.model_id == model_id))}
-    changes: dict[UUID, list[Change]] = {}
-    if event_rows:
-        statement = select(EventChange).where(EventChange.event_id.in_(list(event_rows))).order_by(EventChange.event_id, EventChange.position)
+    change_rows = {row.id: row for row in session.scalars(select(TimelineChange).where(TimelineChange.model_id == model_id))}
+    edits: dict[UUID, list[Edit]] = {}
+    if change_rows:
+        statement = select(ChangeEdit).where(ChangeEdit.change_id.in_(list(change_rows))).order_by(ChangeEdit.change_id, ChangeEdit.position)
         for row in session.scalars(statement):
-            changes.setdefault(row.event_id, []).append(Change(row.op, row.element_id, row.payload or {}))
-    events: dict[UUID, list[EventRecord]] = {}
-    for row in event_rows.values():
-        events.setdefault(row.line_id, []).append(EventRecord(row.id, row.line_id, row.occurred_on, row.seq, row.title, tuple(changes.get(row.id, ()))))
+            edits.setdefault(row.change_id, []).append(Edit(row.op, row.element_id, row.payload or {}))
+    changes: dict[UUID, list[ChangeRecord]] = {}
+    for row in change_rows.values():
+        changes.setdefault(row.line_id, []).append(ChangeRecord(row.id, row.line_id, row.occurred_on, row.seq, row.title, tuple(edits.get(row.id, ()))))
     return ModelTimeline(
-        lines={row.id: LineRecord(row.id, row.parent_line_id, row.branch_event_id) for row in line_rows.values()},
+        lines={row.id: LineRecord(row.id, row.parent_line_id, row.branch_change_id) for row in line_rows.values()},
         line_rows=line_rows,
-        events=events,
-        event_rows=event_rows,
+        changes=changes,
+        change_rows=change_rows,
         metamodel=load_metamodel(session, model_id),
     )
 
@@ -75,5 +75,5 @@ def today_in_organization(session: Session, organization_id: UUID, clock: Callab
 
 
 def is_planned(occurred_on: date, today: date) -> bool:
-    """An event dated after today (in the Organization's time zone) has not happened yet."""
+    """A change dated after today (in the Organization's time zone) has not happened yet."""
     return occurred_on > today

@@ -650,7 +650,7 @@ class McpCall(Base):
 
 
 class ModelLine(Base):
-    """The Base line or a Scenario of a Model; it holds dated events (ADR-0048)."""
+    """The Base line or a Scenario of a Model; it holds dated changes (ADR-0048)."""
 
     __tablename__ = "model_lines"
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
@@ -660,17 +660,17 @@ class ModelLine(Base):
     description: Mapped[str | None] = mapped_column(Text)
     kind: Mapped[str] = mapped_column(String(10))
     parent_line_id: Mapped[UUID | None] = mapped_column(Uuid)
-    branch_event_id: Mapped[UUID | None] = mapped_column(Uuid)
+    branch_change_id: Mapped[UUID | None] = mapped_column(Uuid)
     start_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_by_user_account_id: Mapped[UUID | None] = mapped_column(Uuid)
     version: Mapped[int] = mapped_column(Integer, server_default="1")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
-class TimelineEvent(Base):
-    """A dated change set in one line; events sort by date, then by entry order (``seq``)."""
+class TimelineChange(Base):
+    """A dated set of edits in one line; changes sort by date, then by entry order (``seq``)."""
 
-    __tablename__ = "timeline_events"
+    __tablename__ = "timeline_changes"
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     organization_id: Mapped[UUID] = mapped_column(Uuid, index=True)
     model_id: Mapped[UUID] = mapped_column(Uuid, index=True)
@@ -685,13 +685,13 @@ class TimelineEvent(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
-class EventChange(Base):
-    """One step inside an event on one element (add, remove, update or re-route)."""
+class ChangeEdit(Base):
+    """One step inside a change on one element (add, remove, update or re-route)."""
 
-    __tablename__ = "event_changes"
+    __tablename__ = "change_edits"
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     organization_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    event_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("timeline_events.id", ondelete="CASCADE"))
+    change_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("timeline_changes.id", ondelete="CASCADE"))
     position: Mapped[int] = mapped_column(Integer)
     op: Mapped[str] = mapped_column(String(30))
     element_id: Mapped[UUID] = mapped_column(Uuid)
@@ -699,7 +699,7 @@ class EventChange(Base):
 
 
 class NodePosition(Base):
-    """Where a node is drawn on one line; a property of the drawing, not an event."""
+    """Where a node is drawn on one line; a property of the drawing, not a change."""
 
     __tablename__ = "node_positions"
     line_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
