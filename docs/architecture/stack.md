@@ -18,7 +18,7 @@
 - Backend: FastAPI, Python
 - Legal texts: Markdown files in `backend/legal/`, served by the backend (ADR-0041); the frontend renders them with `react-markdown` and `remark-gfm` (added with the public pages)
 - Reverse proxy: Caddy
-- Database: PostgreSQL
+- Database: PostgreSQL 18 (`postgres:18-alpine`)
 - Persistence: SQLAlchemy 2 with Psycopg 3
 - Migrations: Alembic
 - Background jobs: Python workers backed by PostgreSQL
@@ -30,6 +30,7 @@
 - Billing: Stripe Billing
 - Transactional email: Scaleway Transactional Email
 - Local orchestration: Docker Compose
+- Images: built for `linux/arm64` (ADR-0053)
 - CI: GitHub Actions
 - Tests: pytest (backend), Node's built-in test runner for pure frontend
   modules, Vitest with jsdom for frontend modules that need a DOM (the

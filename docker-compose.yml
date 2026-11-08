@@ -5,7 +5,7 @@ name: shadow
 
 services:
   db:
-    image: postgres:17-alpine
+    image: postgres:18-alpine
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-shadow}
       POSTGRES_USER: ${POSTGRES_USER:-shadow}
@@ -21,11 +21,11 @@ services:
     ports:
       - "${SHADOW_BIND_ADDRESS:-127.0.0.1}:${SHADOW_DB_PORT:-8132}:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres18_data:/var/lib/postgresql
       - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
 
   authentik-db-init:
-    image: postgres:17-alpine
+    image: postgres:18-alpine
     command: ["/scripts/02-create-authentik-database.sh"]
     environment:
       PGHOST: db
@@ -221,4 +221,4 @@ volumes:
   caddy_config:
   authentik_media:
   authentik_templates:
-  postgres_data:
+  postgres18_data:

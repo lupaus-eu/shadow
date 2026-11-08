@@ -1,6 +1,7 @@
 # Stages: `production` serves the built SPA with Caddy; the final `development`
 # stage (the default target) runs the Vite dev server for the local stack.
-FROM node:22-alpine AS deps
+# The Node stages run on the build platform; only the Caddy stage is built for the target (ADR-0053).
+FROM --platform=$BUILDPLATFORM node:22-alpine AS deps
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci

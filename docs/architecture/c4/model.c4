@@ -146,7 +146,7 @@ model {
     }
 
     database = database 'Shadow database' {
-      technology 'PostgreSQL 17'
+      technology 'PostgreSQL 18'
       description 'Organizations, memberships, models with lines, changes, node positions and types, metrics and values, simulations and recommendations, audit, jobs, and outbox, with row-level security. Schema: docs/architecture/dbml/shadow.dbml.'
     }
   }
@@ -168,7 +168,7 @@ model {
       description 'Authentik background tasks and blueprints.'
     }
     authentikDatabase = database 'Authentik database' {
-      technology 'PostgreSQL 17 (same server, separate database and owner)'
+      technology 'PostgreSQL 18 (same server, separate database and owner)'
       description 'Identity data; separate credentials, pools, migrations, and backups (ADR-0011).'
     }
   }

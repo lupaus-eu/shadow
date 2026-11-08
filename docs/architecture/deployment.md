@@ -30,7 +30,7 @@ are deployment secrets and never committed.
 
 - `docker-compose.prod.yml` is the production stack. It publishes only Caddy,
   requires every secret (`${NAME:?}`), runs `migrate` before `backend` and
-  `worker`, restarts services, and keeps `postgres_data`, Authentik media, and
+  `worker`, restarts services, and keeps `postgres18_data`, Authentik media, and
   Caddy certificates in volumes. It builds nothing: `migrate`, `backend`, and
   `worker` run the backend image and `frontend` the frontend image, both selected
   by `YEARCLOCK_TAG` (see "Images and deployment").
@@ -68,7 +68,7 @@ are deployment secrets and never committed.
 
 - `.github/workflows/images.yml` builds `yearclock-backend` and
   `yearclock-frontend` (the `production` target, same-origin API) for
-  `linux/amd64` and pushes them to `ghcr.io/lupaus-eu/` on every push to `main`
+  `linux/arm64` (the Hetzner host is arm64, ADR-0053) and pushes them to `ghcr.io/lupaus-eu/` on every push to `main`
   and every `v*` tag. Tags are `sha-<short>`, the Git tag, and `main`; there is no
   `latest`. `YEARCLOCK_IMAGE_PREFIX` overrides the registry path. CI deploys
   nothing and holds no host secret.

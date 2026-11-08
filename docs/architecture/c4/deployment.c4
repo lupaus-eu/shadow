@@ -13,7 +13,7 @@ deployment {
         worker = instanceOf shadow.worker
         migrate = instanceOf shadow.migrate
         database = instanceOf shadow.database {
-          description 'postgres:17-alpine, host port 8132.'
+          description 'postgres:18-alpine, host port 8132.'
         }
         authentikServer = instanceOf authentik.authentikServer
         authentikWorker = instanceOf authentik.authentikWorker
@@ -43,7 +43,7 @@ deployment {
           description 'Runs before the API and worker.'
         }
         database = instanceOf shadow.database {
-          description 'Volume postgres_data; backups per database (scripts/ops).'
+          description 'Volume postgres18_data; backups per database (scripts/ops).'
         }
         authentikServer = instanceOf authentik.authentikServer
         authentikWorker = instanceOf authentik.authentikWorker

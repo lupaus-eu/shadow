@@ -17,6 +17,7 @@
 
 | Tekninen työ | Toteutustila | Ticketit | Seuraava ticket | Odottaa ticketejä |
 | --- | --- | ---: | --- | --- |
+| [Technical design: arm64 images and PostgreSQL 18](tech-arm64-postgres-18/technical-design.md) | implemented | 2/2 | — | — |
 | [Technical design: Change terminology (rename event to Change, change to Edit)](tech-change-terminology/technical-design.md) | implemented | 3/3 | — | — |
 | [Technical design: Compose file for local development with live reload](tech-dev-compose/technical-design.md) | implemented | 1/1 | — | — |
 | [Technical design: Platform foundation (backend)](tech-platform-foundation/technical-design.md) | implemented | 4/4 | — | — |
