@@ -57,4 +57,4 @@ stack; the application database and Authentik's share one PostgreSQL container.
 - Refines ADR-0034 (the database and host for the beta). Does not change ADR-0010,
   ADR-0011, or ADR-0024.
 
-ADR-0053 changes the image platform to linux/arm64 and the first host to a Hetzner arm64 server.
+ADR-0053 records that the first host is a Hetzner Intel (x86-64) server and keeps the images on linux/amd64.

@@ -68,7 +68,7 @@ are deployment secrets and never committed.
 
 - `.github/workflows/images.yml` builds `yearclock-backend` and
   `yearclock-frontend` (the `production` target, same-origin API) for
-  `linux/arm64` (the Hetzner host is arm64, ADR-0053) and pushes them to `ghcr.io/lupaus-eu/` on every push to `main`
+  `linux/amd64` (the Hetzner host is x86-64, ADR-0053) and pushes them to `ghcr.io/lupaus-eu/` on every push to `main`
   and every `v*` tag. Tags are `sha-<short>`, the Git tag, and `main`; there is no
   `latest`. `YEARCLOCK_IMAGE_PREFIX` overrides the registry path. CI deploys
   nothing and holds no host secret.

@@ -30,7 +30,7 @@
 - Billing: Stripe Billing
 - Transactional email: Scaleway Transactional Email
 - Local orchestration: Docker Compose
-- Images: built for `linux/arm64` (ADR-0053)
+- Images: built for `linux/amd64` (ADR-0053)
 - CI: GitHub Actions
 - Tests: pytest (backend), Node's built-in test runner for pure frontend
   modules, Vitest with jsdom for frontend modules that need a DOM (the
