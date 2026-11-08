@@ -13,7 +13,7 @@ export function refusalMessage(cause: unknown, locale: Locale): string {
     switch (cause.reason) {
       case "branch_point": return branchPointMessage(typeof cause.detail.line === "string" ? cause.detail.line : null, locale);
       case "duplicate_name": return text.duplicateName;
-      case "limit_reached": return cause.detail.limit === "lines_per_model" ? text.limitScenarios : text.limitEvents;
+      case "limit_reached": return cause.detail.limit === "lines_per_model" ? text.limitScenarios : text.limitChanges;
       default: return text.failed;
     }
   }

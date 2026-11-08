@@ -4,8 +4,8 @@ import { expect, test, type Page } from "@playwright/test";
 const ORG = "00000000-0000-4000-8000-000000000001";
 const MODEL = "00000000-0000-4000-8000-000000000002";
 const LINE = "00000000-0000-4000-8000-000000000003";
-const EVENT = "00000000-0000-4000-8000-000000000004";
-const event = { id: EVENT, line_id: LINE, occurred_on: "2026-01-01", title: "Start", version: 1, planned: false, change_count: 1 };
+const CHANGE = "00000000-0000-4000-8000-000000000004";
+const change = { id: CHANGE, line_id: LINE, occurred_on: "2026-01-01", title: "Start", version: 1, planned: false, edit_count: 1 };
 
 async function mockApi(page: Page) {
   await page.route("**/api/v1/**", (route) => {
@@ -17,9 +17,9 @@ async function mockApi(page: Page) {
     if (path.endsWith("/unread-count")) return json({ unread: 0 });
     if (path === `/organizations/${ORG}`) return json({ organization: { id: ORG, name: "Test Org", time_zone: "UTC" }, membership: { role: "owner" }, subscription: { state: "active", writable: true, grace_expires_at: null, cancel_at_period_end: false, current_period_end: null } });
     if (path === `/organizations/${ORG}/models`) return json([{ id: MODEL, name: "Test model", description: null, version: 1, nodes: 1 }]);
-    if (path === `/organizations/${ORG}/models/${MODEL}/lines`) return json([{ id: LINE, name: "Base line", description: null, kind: "base", parent_line_id: null, branch_event_id: null, version: 1, event_count: 1, latest_event_date: "2026-01-01" }]);
-    if (path.endsWith("/events")) return json([event]);
-    if (path.endsWith("/state")) return json({ event, node_types: [{ id: "t1", key: "unit", name: "Unit", color: "#cfe3ff", shape: "rectangle", version: 1 }], connection_types: [], allowed_connections: [], nodes: [{ id: "n1", node_type_id: "t1", name: "Sales", description: null, x: 40, y: 40 }], connections: [] });
+    if (path === `/organizations/${ORG}/models/${MODEL}/lines`) return json([{ id: LINE, name: "Base line", description: null, kind: "base", parent_line_id: null, branch_change_id: null, version: 1, change_count: 1, latest_change_date: "2026-01-01" }]);
+    if (path.endsWith("/changes")) return json([change]);
+    if (path.endsWith("/state")) return json({ change, node_types: [{ id: "t1", key: "unit", name: "Unit", color: "#cfe3ff", shape: "rectangle", version: 1 }], connection_types: [], allowed_connections: [], nodes: [{ id: "n1", node_type_id: "t1", name: "Sales", description: null, x: 40, y: 40 }], connections: [] });
     return json([]);
   });
 }

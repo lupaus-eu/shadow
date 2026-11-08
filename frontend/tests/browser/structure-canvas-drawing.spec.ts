@@ -327,7 +327,7 @@ test("an undo the server refuses (stale or chain broken) drops the step and expl
   await expect(node(page, "Revenue")).toBeVisible();
   api.state.refuseNext = "chain";
   await undo(page).click();
-  await expect(alert(page)).toContainText("would break a later event or scenario");
+  await expect(alert(page)).toContainText("would break a later change or scenario");
   await expect(undo(page)).toBeDisabled();
   await expect(node(page, "Revenue")).toBeVisible();
 });

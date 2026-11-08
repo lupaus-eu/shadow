@@ -11,7 +11,7 @@ let root: Root | null = null;
 afterEach(() => { act(() => root?.unmount()); root = null; });
 
 const source = (overrides: Partial<GraphSource> = {}): GraphSource => ({ organizationId: "o", modelId: "m", lineId: "l", ...overrides });
-const loaded = (name = "first"): LoadedGraph => ({ graph: { ...graph(), nodes: [{ id: "n", node_type_id: "t1", name, description: null, x: 1, y: 2 }] }, event: null });
+const loaded = (name = "first"): LoadedGraph => ({ graph: { ...graph(), nodes: [{ id: "n", node_type_id: "t1", name, description: null, x: 1, y: 2 }] }, change: null });
 
 function mount(initial: GraphSource, load: GraphLoader) {
   const result: { current: Hook } = { current: undefined as unknown as Hook };
@@ -88,12 +88,12 @@ describe("useGraphState", () => {
     expect(result.current.graph?.nodes[0].name).toBe("fresh");
   });
 
-  it("starts over without the old graph when the line or the event changes", async () => {
-    const load: GraphLoader = async (value) => loaded(`${value.lineId}/${value.eventId ?? "last"}`);
+  it("starts over without the old graph when the line or the change changes", async () => {
+    const load: GraphLoader = async (value) => loaded(`${value.lineId}/${value.changeId ?? "last"}`);
     const { result, render } = mount(source({ lineId: "l1" }), load);
     await settle();
     expect(result.current.graph?.nodes[0].name).toBe("l1/last");
-    render(source({ lineId: "l1", eventId: "e2" }));
+    render(source({ lineId: "l1", changeId: "e2" }));
     expect(result.current.graph).toBeNull();
     expect(result.current.status).toBe("loading");
     await settle();
@@ -104,24 +104,24 @@ describe("useGraphState", () => {
     expect(result.current.graph?.nodes[0].name).toBe("l2/last");
   });
 
-  it("returns the event the graph is shown after", async () => {
-    const event = { id: "e", line_id: "l", occurred_on: "2026-01-01", title: "Start", version: 3, planned: false, change_count: 1 };
-    const { result } = mount(source(), async () => ({ ...loaded(), event }));
+  it("returns the change the graph is shown after", async () => {
+    const change = { id: "e", line_id: "l", occurred_on: "2026-01-01", title: "Start", version: 3, planned: false, edit_count: 1 };
+    const { result } = mount(source(), async () => ({ ...loaded(), change }));
     await settle();
-    expect(result.current.event).toEqual(event);
+    expect(result.current.change).toEqual(change);
   });
 });
 
 describe("toGraphData", () => {
   it("maps the state route's answer, with the change markers", () => {
     const state: LineState = {
-      event: null,
+      change: null,
       node_types: [{ id: "t", key: "t", name: "T", color: "#fff", shape: "ellipse", version: 1 }],
       connection_types: [{ id: "c", key: "c", name: "C", style: "dashed", source_end: "none", target_end: "arrow", version: 1 }],
       allowed_connections: [{ connection_type_id: "c", source_node_type_id: "t", target_node_type_id: "t" }],
       nodes: [{ id: "n", node_type_id: "t", name: "N", description: null, x: 0, y: 0 }],
       connections: [],
-      changes: { added: ["n"], updated: [], removed: ["gone"] },
+      marks: { added: ["n"], updated: [], removed: ["gone"] },
     };
     const { graph: data } = toGraphData(state);
     expect(data.nodeTypes[0].shape).toBe("ellipse");

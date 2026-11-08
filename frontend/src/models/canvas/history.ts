@@ -77,7 +77,7 @@ export class GraphHistory {
     this.emit();
   }
 
-  /** Forgets everything: the line or event changed, or the canvas closed. */
+  /** Forgets everything: the line or the shown change switched, or the canvas closed. */
   clear(): void {
     this.undoStack = [];
     this.redoStack = [];

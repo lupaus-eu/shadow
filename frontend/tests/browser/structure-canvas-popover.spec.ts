@@ -5,7 +5,7 @@ import { expect, test, type Page } from "@playwright/test";
 const ORG = "00000000-0000-4000-8000-000000000001";
 const MODEL = "00000000-0000-4000-8000-000000000002";
 const LINE = "00000000-0000-4000-8000-000000000003";
-const EVENT = "00000000-0000-4000-8000-000000000004";
+const CHANGE = "00000000-0000-4000-8000-000000000004";
 
 const LONG = "abcdefghij".repeat(8); // 80 characters
 type Node = { id: string; node_type_id: string; name: string; description: string | null; x: number; y: number };
@@ -39,7 +39,7 @@ function createApi(options: { locale?: string } = {}) {
     seriesReads: [] as string[],
     failMetrics: false,
   };
-  const event = () => ({ id: EVENT, line_id: LINE, occurred_on: "2026-01-01", title: "Start", version: 1, planned: false, change_count: 1 });
+  const change = () => ({ id: CHANGE, line_id: LINE, occurred_on: "2026-01-01", title: "Start", version: 1, planned: false, edit_count: 1 });
   async function mock(page: Page) {
     await page.route("**/api/v1/**", async (route) => {
       const request = route.request();
@@ -53,9 +53,9 @@ function createApi(options: { locale?: string } = {}) {
       const model = `/organizations/${ORG}/models/${MODEL}`;
       if (path === `/organizations/${ORG}/models`) return json([{ id: MODEL, name: "Test model", description: null, version: 1, nodes: state.nodes.length }]);
       if (path === `${model}`) return json({ id: MODEL, name: "Test model", description: null, version: 1, nodes: state.nodes.length });
-      if (path === `${model}/lines`) return json([{ id: LINE, name: "Base line", description: null, kind: "base", parent_line_id: null, branch_event_id: null, version: 1, event_count: 1, latest_event_date: "2026-01-01" }]);
-      if (path === `${model}/lines/${LINE}/events`) return json([event()]);
-      if (path === `${model}/lines/${LINE}/state`) return json({ event: event(), node_types: types, connection_types: connectionTypes, allowed_connections: allowed, nodes: state.nodes, connections: state.connections });
+      if (path === `${model}/lines`) return json([{ id: LINE, name: "Base line", description: null, kind: "base", parent_line_id: null, branch_change_id: null, version: 1, change_count: 1, latest_change_date: "2026-01-01" }]);
+      if (path === `${model}/lines/${LINE}/changes`) return json([change()]);
+      if (path === `${model}/lines/${LINE}/state`) return json({ change: change(), node_types: types, connection_types: connectionTypes, allowed_connections: allowed, nodes: state.nodes, connections: state.connections });
       if (path === `${model}/lines/${LINE}/metrics`) {
         state.metricLists++;
         if (state.failMetrics) return json({ detail: "boom" }, 500);

@@ -5,7 +5,7 @@ import type { GraphData } from "./graph-types";
 import { NODE_HEIGHT, NODE_WIDTH, shortenName } from "./diagram/shapes";
 
 /**
- * Elements the shown event removed. They are not on the canvas as shapes: they are outlines in a layer of their own, so they cannot be
+ * Elements the shown change removed. They are not on the canvas as shapes: they are outlines in a layer of their own, so they cannot be
  * selected, moved, connected or deleted, only looked at. The "-" badge and the dashed outline are the marks (not colour alone), and each
  * ghost has a `<title>` for assistive technology; `ghostSummary` lists the same elements as text.
  */

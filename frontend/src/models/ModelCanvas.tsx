@@ -8,8 +8,8 @@ import { useOrganization } from "../shell/organization-outlet";
 import { useModel } from "./ModelShell";
 import { Alert, Button, Dialog, Field, IconButton, Select, TextArea, TextInput, cx, useConfirm } from "../ui";
 import {
-  ChainBrokenError, ForbiddenError, createConnection, createEditsEvent, createNode, deleteConnection, deleteNode, RuleError, saveNodePositions, StaleVersionError, updateConnection, updateNode,
-  type GraphConnection, type GraphNode, type LineEvent,
+  ChainBrokenError, ForbiddenError, createConnection, createEditsChange, createNode, deleteConnection, deleteNode, RuleError, saveNodePositions, StaleVersionError, updateConnection, updateNode,
+  type GraphConnection, type GraphNode, type LineChange,
 } from "./client";
 import { EditRefused } from "./canvas/diagram";
 import { deleteSummary, planConnection } from "./canvas/draw";
@@ -28,7 +28,7 @@ import type { Locale } from "../i18n";
 import { timelineMessages } from "./timeline-messages";
 import { readPanels, writePanels, type PanelState } from "./panel-state";
 import { readSnap, writeSnap } from "./canvas/snap";
-import { canvasWritable, markCounts, shouldClearHistory, sourceEventId } from "./canvas/edit-target";
+import { canvasWritable, markCounts, shouldClearHistory, sourceChangeId } from "./canvas/edit-target";
 import { ghostSummary } from "./canvas/ghosts";
 import { nextAnnouncement, nodeConnectionRows, selectionAnnouncement } from "./canvas/a11y";
 import { refusalMessage } from "./timeline/refusals";
@@ -59,25 +59,25 @@ function useIsPhone() {
   const [phone, setPhone] = useState(() => typeof window !== "undefined" && window.matchMedia(query).matches);
   useEffect(() => {
     const list = window.matchMedia(query);
-    const change = () => setPhone(list.matches);
-    list.addEventListener("change", change);
-    return () => list.removeEventListener("change", change);
+    const onMediaChange = () => setPhone(list.matches);
+    list.addEventListener("change", onMediaChange);
+    return () => list.removeEventListener("change", onMediaChange);
   }, []);
   return phone;
 }
 
-/** `/organizations/:organizationId/models/:modelId`: the nodes and connections of a line on a canvas. Edits are changes of the line's last event (ticket 09 of the model timeline adds the event list and the choice of event). */
+/** `/organizations/:organizationId/models/:modelId`: the nodes and connections of a line on a canvas. Edits are changes of the line's last change (ticket 09 of the model timeline adds the change list and the choice of change). */
 export function ModelCanvas() {
   const { locale } = useOrganization();
-  const { organizationId, modelId, model, line, writable: subscriptionWritable, event: shownEventRow, eventIsLast, reloadEvents, canWriteLine } = useModel();
-  // Drawing edits the shown event, whichever it is; a line the person's role may not write (Members on the Base line) and a read-only subscription show the canvas read-only.
+  const { organizationId, modelId, model, line, writable: subscriptionWritable, change: shownChangeRow, changeIsLast, reloadChanges, canWriteLine } = useModel();
+  // Drawing edits the shown change, whichever it is; a line the person's role may not write (Members on the Base line) and a read-only subscription show the canvas read-only.
   const writable = canvasWritable({ subscriptionWritable, canWriteLine });
   const lineId = line.id;
   const text = modelMessages(locale);
-  // Without a chosen event the canvas shows the line's last one (the one an edit goes into), which it finds itself.
-  const shownId = sourceEventId(eventIsLast, shownEventRow);
-  const source = useMemo(() => ({ organizationId, modelId, lineId, eventId: shownId }), [organizationId, modelId, lineId, shownId]);
-  const { graph, event, status, reload } = useGraphState(source);
+  // Without a chosen change the canvas shows the line's last one (the one an edit goes into), which it finds itself.
+  const shownId = sourceChangeId(changeIsLast, shownChangeRow);
+  const source = useMemo(() => ({ organizationId, modelId, lineId, changeId: shownId }), [organizationId, modelId, lineId, shownId]);
+  const { graph, change, status, reload } = useGraphState(source);
   // The view (pan and zoom) is kept while this line stays open on this tab; another line or another tab starts fresh.
   const view = useCanvasView(`${organizationId}|${modelId}|${lineId}`);
   const [notice, setNotice] = useState<string | null>(null);
@@ -110,9 +110,9 @@ export function ModelCanvas() {
   const searchInput = useRef<HTMLInputElement>(null);
   const toggle = (side: keyof PanelState) => setPanels((old) => { const next = { ...old, [side]: !old[side] }; writePanels(next); return next; });
 
-  // Edits of an event go one after the other, each against the event's current version, which is read again after every write.
-  const editTarget = useRef<LineEvent | null>(null);
-  editTarget.current = event;
+  // Edits of an change go one after the other, each against the change's current version, which is read again after every write.
+  const editTarget = useRef<LineChange | null>(null);
+  editTarget.current = change;
   const queue = useRef<Promise<unknown>>(Promise.resolve());
 
   const nodes = graph?.nodes ?? [];
@@ -127,7 +127,7 @@ export function ModelCanvas() {
   const nodeMetrics = useNodeMetrics(source, selectedNode?.id ?? null);
   const selectedConnection = selectedId && !selectedNode ? graph?.connections.find((item) => item.id === selectedId) : undefined;
 
-  // A refused edit says why in words: stale, a chain that would break (naming event and element and what to do first), a branch point, a role that may not write.
+  // A refused edit says why in words: stale, a chain that would break (naming change and element and what to do first), a branch point, a role that may not write.
   const noticeFor = (cause: unknown, rule: string) =>
     cause instanceof StaleVersionError ? text.stale
       : cause instanceof ChainBrokenError && !cause.hint ? text.chainBroken
@@ -140,12 +140,12 @@ export function ModelCanvas() {
       setNotice(null);
       try {
         if (edit.kind === "node.move") {
-          // A move is a position of the line, not an edit of an event.
+          // A move is a position of the line, not an edit of an change.
           await saveNodePositions(organizationId, modelId, lineId, edit.moves.map((move) => ({ node_id: move.id, x: move.x, y: move.y })));
           return undefined;
         }
-        // A line that has no event yet gets an "Edits" event first.
-        const target = editTarget.current ?? await createEditsEvent(organizationId, modelId, lineId, text.editsEvent);
+        // A line that has no change yet gets an "Edits" change first.
+        const target = editTarget.current ?? await createEditsChange(organizationId, modelId, lineId, text.editsChange);
         switch (edit.kind) {
           case "node.create": return { id: (await createNode(organizationId, modelId, target, { node_type_id: edit.nodeTypeId, name: edit.name, description: edit.description ?? null, x: edit.x, y: edit.y })).id };
           case "node.update": await updateNode(organizationId, modelId, target, byId.get(edit.id) ?? ({ id: edit.id } as GraphNode), { name: edit.name, description: edit.description }); break;
@@ -154,7 +154,7 @@ export function ModelCanvas() {
           case "connection.delete": await deleteConnection(organizationId, modelId, target, { id: edit.id } as GraphConnection); break;
           case "connection.reroute": await updateConnection(organizationId, modelId, target, { id: edit.id } as GraphConnection, { source_node_id: edit.sourceId, target_node_id: edit.targetId }); break;
           case "elements.delete": {
-            // Each delete changes the event's version by one; the answer of a delete carries none, so the next one counts on from here.
+            // Each delete changes the change's version by one; the answer of a delete carries none, so the next one counts on from here.
             let version = target.version;
             for (const id of edit.connectionIds) { await deleteConnection(organizationId, modelId, { ...target, version }, { id } as GraphConnection); version++; }
             for (const id of edit.nodeIds) { await deleteNode(organizationId, modelId, { ...target, version }, { id } as GraphNode); version++; }
@@ -167,8 +167,8 @@ export function ModelCanvas() {
         throw cause;
       } finally {
         const loaded = await reload();
-        if (loaded) editTarget.current = loaded.event;
-        void reloadEvents();
+        if (loaded) editTarget.current = loaded.change;
+        void reloadChanges();
       }
     };
     const next = queue.current.then(run, run);
@@ -209,9 +209,9 @@ export function ModelCanvas() {
   }, [connecting]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Draws an edit and sends it. A refusal before sending (read-only, a rule) gets its notice here; a refused write got its notice in `send`. */
-  const edit = (change: GraphEdit): Promise<void> =>
-    (canvas.current?.applyEdit(change) ?? Promise.resolve()).catch((cause) => {
-      if (cause instanceof EditRefused) refuse(refusalText(cause.cause, "sourceId" in change ? change.sourceId : undefined, "targetId" in change ? change.targetId : undefined));
+  const edit = (graphEdit: GraphEdit): Promise<void> =>
+    (canvas.current?.applyEdit(graphEdit) ?? Promise.resolve()).catch((cause) => {
+      if (cause instanceof EditRefused) refuse(refusalText(cause.cause, "sourceId" in graphEdit ? graphEdit.sourceId : undefined, "targetId" in graphEdit ? graphEdit.targetId : undefined));
     });
 
   /** Two nodes were joined (a drag from the context pad, or two clicks): refuse with the reason, create, or ask which connection. */
@@ -286,7 +286,7 @@ export function ModelCanvas() {
   }
   const readGraph = async () => {
     const loaded = await new Promise<Awaited<ReturnType<typeof reload>>>((resolve) => {
-      const run = async () => { const result = await reload(); if (result) editTarget.current = result.event; resolve(result); };
+      const run = async () => { const result = await reload(); if (result) editTarget.current = result.change; resolve(result); };
       queue.current = queue.current.then(run, run);
     });
     return loaded?.graph ?? null;
@@ -309,14 +309,14 @@ export function ModelCanvas() {
     { id: "draw.rename", keys: ["F2"], run: () => { if (!writableRef.current || selectedRef.current.length !== 1) return false; return canvas.current?.renameNode(selectedRef.current[0]); } },
   ], []);
 
-  // The undo history belongs to one line and one event: it is forgotten when either changes (the first edit of a line without events creates one: that is no change).
-  const eventId = event?.id ?? null;
-  const lastEvent = useRef<string | null>(null);
+  // The undo history belongs to one line and one change: it is forgotten when either changes (the first edit of a line without changes creates one: that is no change).
+  const changeId = change?.id ?? null;
+  const lastChange = useRef<string | null>(null);
   useEffect(() => {
-    if (shouldClearHistory(lastEvent.current, eventId)) canvas.current?.clearHistory();
-    if (eventId) lastEvent.current = eventId;
-  }, [eventId]);
-  useEffect(() => { lastEvent.current = null; }, [lineId]);
+    if (shouldClearHistory(lastChange.current, changeId)) canvas.current?.clearHistory();
+    if (changeId) lastChange.current = changeId;
+  }, [changeId]);
+  useEffect(() => { lastChange.current = null; }, [lineId]);
 
   if (status === "failed") return <Alert tone="danger" role="alert">{text.failed}</Alert>;
   if (!graph) return <p role="status" className="text-ink-muted">{text.loading}</p>;
@@ -328,7 +328,7 @@ export function ModelCanvas() {
       {selectedNode ? (
         <NodePanel key={`${selectedNode.id}-${selectedNode.name}-${selectedNode.description ?? ""}`} graph={graph} onSelectConnection={(id) => { setSelectedId(id); window.setTimeout(() => document.getElementById("canvas-connection-title")?.focus(), 0); }} node={selectedNode} writable={writable} connecting={connecting !== null} text={text}
           metrics={nodeMetrics} locale={locale} metricsHref={`${modelHref(organizationId, modelId)}/metrics?line=${lineId}`}
-          onSave={(changes) => void edit({ kind: "node.update", id: selectedNode.id, name: changes.name, description: changes.description })}
+          onSave={(fields) => void edit({ kind: "node.update", id: selectedNode.id, name: fields.name, description: fields.description })}
           onDelete={() => void requestDelete([selectedNode.id])}
           onConnect={(connectionTypeId) => setConnecting({ sourceId: selectedNode.id, connectionTypeId })}
           onCancel={() => setConnecting(null)} />
@@ -370,8 +370,8 @@ export function ModelCanvas() {
   return (
     <div className="flex flex-col gap-3">
       {!subscriptionWritable ? <Alert tone="warning">{text.readOnly}</Alert> : null}
-      {subscriptionWritable && !eventIsLast && shownEventRow ? <Alert tone="info" role="status" action={<Button size="sm" onClick={() => setSearch((old) => { const next = new URLSearchParams(old); next.delete("event"); return next; })}>{timelineMessages(locale).showLatest}</Button>}>{timelineMessages(locale).pastNotice(shownEventRow.title, shownEventRow.occurred_on, writable)}</Alert> : null}
-      {shownEventRow?.planned ? <Alert tone="warning">{timelineMessages(locale).plannedNotice}</Alert> : null}
+      {subscriptionWritable && !changeIsLast && shownChangeRow ? <Alert tone="info" role="status" action={<Button size="sm" onClick={() => setSearch((old) => { const next = new URLSearchParams(old); next.delete("change"); return next; })}>{timelineMessages(locale).showLatest}</Button>}>{timelineMessages(locale).pastNotice(shownChangeRow.title, shownChangeRow.occurred_on, writable)}</Alert> : null}
+      {shownChangeRow?.planned ? <Alert tone="warning">{timelineMessages(locale).plannedNotice}</Alert> : null}
       {notice ? <Alert tone="danger" role="alert">{notice}</Alert> : null}
       <div role="status" aria-live="polite" className="sr-only">{announcement}</div>
       <Dialog open={picker !== null} onOpenChange={(open) => { if (!open) { setPicker(null); restoreFocus(); } }} title={text.chooseConnection}
@@ -391,7 +391,7 @@ export function ModelCanvas() {
             drawingTexts={{ connect: text.padConnect, remove: text.padRemove, nodeName: text.nodeName, namePlaceholder: text.namePlaceholder }}
             readGraph={readGraph} isRefusal={(error) => error instanceof StaleVersionError || error instanceof RuleError || error instanceof ForbiddenError} onHistory={onHistory}
             onToggleConnect={() => setConnecting((old) => (old ? null : { sourceId: null, connectionTypeId: null }))} onElementClick={onElementClick} send={send} connecting={connecting !== null} onEscape={cancelConnect} view={view} filter={filter} keyBindings={keyBindings} snap={snap} onSnapChange={changeSnap} exportName={{ model: model.name, line: line.name }} onToolResult={onToolResult} toolbarTexts={toolbarTexts} label={text.canvasLabel} description={text.canvasHelp} />
-          <CanvasCaption locale={locale} kind={line.kind} lineName={line.name} event={shownEventRow} markers={graph.markers} />
+          <CanvasCaption locale={locale} kind={line.kind} lineName={line.name} change={shownChangeRow} markers={graph.markers} />
         </div>
         {phone ? null : <Panel side="right" title={text.panelDetails} collapsed={panels.right} onToggle={() => toggle("right")} text={text}>{rightContent}</Panel>}
       </div>
@@ -412,19 +412,19 @@ export function ModelCanvas() {
 }
 
 /**
- * A small label over the corner of the canvas (it takes no room and lets clicks through): which line and event the canvas shows (Base line and
- * Scenario look different; a planned event says so) and what the event changed: + added, ~ changed or re-routed, \u2212 removed. The marks on
+ * A small label over the corner of the canvas (it takes no room and lets clicks through): which line and change the canvas shows (Base line and
+ * Scenario look different; a planned change says so) and what the change changed: + added, ~ changed or re-routed, \u2212 removed. The marks on
  * the elements carry the same signs, so nothing relies on colour alone.
  */
-function CanvasCaption({ locale, kind, lineName, event, markers }: { locale: Locale; kind: "base" | "scenario"; lineName: string; event: LineEvent | null; markers: GraphData["markers"] }) {
+function CanvasCaption({ locale, kind, lineName, change, markers }: { locale: Locale; kind: "base" | "scenario"; lineName: string; change: LineChange | null; markers: GraphData["markers"] }) {
   const words = timelineMessages(locale);
   const counts = markCounts(markers);
   return (
     <div data-testid="canvas-caption" data-caption-kind={kind} className={cx("pointer-events-none absolute bottom-2 left-2 z-10 flex max-w-[calc(100%-1rem)] flex-col gap-0.5 rounded-[var(--radius-control)] border border-l-4 bg-surface px-2 py-1 text-[12px] shadow-[var(--shadow-overlay)]", kind === "base" ? "border-line border-l-accent" : "border-line border-l-info-ink")}>
       <p className="m-0 flex flex-wrap items-center gap-x-2 font-medium">
-        <span>{words.shownOn(lineName, event?.title ?? null, event?.occurred_on ?? null)}</span>
+        <span>{words.shownOn(lineName, change?.title ?? null, change?.occurred_on ?? null)}</span>
         <span className="text-ink-muted">{kind === "base" ? words.baseLine : words.scenario}</span>
-        {event?.planned ? <span className="rounded-full border border-warning-ink px-2 text-warning-ink">{words.planned}</span> : null}
+        {change?.planned ? <span className="rounded-full border border-warning-ink px-2 text-warning-ink">{words.planned}</span> : null}
       </p>
       {counts.any ? (
         <p className="m-0 flex flex-wrap gap-x-3 text-ink-muted" data-testid="canvas-legend">
@@ -438,7 +438,7 @@ function CanvasCaption({ locale, kind, lineName, event, markers }: { locale: Loc
   );
 }
 
-/** What the shown event removed, as text (the same elements are drawn as dashed outlines on the canvas, which cannot be selected or edited). */
+/** What the shown change removed, as text (the same elements are drawn as dashed outlines on the canvas, which cannot be selected or edited). */
 function GhostList({ locale, ghosts }: { locale: Locale; ghosts: ReturnType<typeof ghostSummary> }) {
   const words = timelineMessages(locale);
   const items = [...ghosts.nodes, ...ghosts.connections];

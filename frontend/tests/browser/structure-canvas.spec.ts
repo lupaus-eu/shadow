@@ -6,7 +6,7 @@ import { expect, test, type Page } from "@playwright/test";
 const ORG = "00000000-0000-4000-8000-000000000001";
 const MODEL = "00000000-0000-4000-8000-000000000002";
 const LINE = "00000000-0000-4000-8000-000000000003";
-const EVENT = "00000000-0000-4000-8000-000000000004";
+const CHANGE = "00000000-0000-4000-8000-000000000004";
 
 type Node = { id: string; node_type_id: string; name: string; description: string | null; x: number; y: number };
 type Connection = { id: string; connection_type_id: string; source_node_id: string; target_node_id: string };
@@ -33,7 +33,7 @@ function createApi(writable = true) {
     refuseNext: false as false | "chain" | "stale",
     nextConnection: 1,
   };
-  const event = () => ({ id: EVENT, line_id: LINE, occurred_on: "2026-01-01", title: "Start", version: state.version, planned: false, change_count: 1 });
+  const change = () => ({ id: CHANGE, line_id: LINE, occurred_on: "2026-01-01", title: "Start", version: state.version, planned: false, edit_count: 1 });
   async function mock(page: Page) {
     await page.route("**/api/v1/**", async (route) => {
       const request = route.request();
@@ -48,16 +48,16 @@ function createApi(writable = true) {
       if (path === `/organizations/${ORG}`) return json({ organization: { id: ORG, name: "Test Org", time_zone: "UTC" }, membership: { role: "owner" }, subscription: { state: writable ? "active" : "read_only", writable, grace_expires_at: null, cancel_at_period_end: false, current_period_end: null } });
       const model = `/organizations/${ORG}/models/${MODEL}`;
       if (path === `/organizations/${ORG}/models`) return json([{ id: MODEL, name: "Test model", description: null, version: 1, nodes: state.nodes.length }]);
-      if (path === `${model}/lines`) return json([{ id: LINE, name: "Base line", description: null, kind: "base", parent_line_id: null, branch_event_id: null, version: 1, event_count: 1, latest_event_date: "2026-01-01" }]);
-      if (path === `${model}/lines/${LINE}/events`) return json([event()]);
-      if (path === `${model}/lines/${LINE}/state`) return json({ event: event(), node_types: types, connection_types: connectionTypes, allowed_connections: allowed, nodes: state.nodes, connections: state.connections });
+      if (path === `${model}/lines`) return json([{ id: LINE, name: "Base line", description: null, kind: "base", parent_line_id: null, branch_change_id: null, version: 1, change_count: 1, latest_change_date: "2026-01-01" }]);
+      if (path === `${model}/lines/${LINE}/changes`) return json([change()]);
+      if (path === `${model}/lines/${LINE}/state`) return json({ change: change(), node_types: types, connection_types: connectionTypes, allowed_connections: allowed, nodes: state.nodes, connections: state.connections });
       if (path === `${model}/lines/${LINE}/positions` && method === "PUT") {
         const body = request.postDataJSON() as { node_id: string; x: number; y: number }[];
         state.positionWrites.push(body);
         for (const move of body) Object.assign(state.nodes.find((node) => node.id === move.node_id)!, { x: move.x, y: move.y });
         return route.fulfill({ status: 204 });
       }
-      if (path === `${model}/events/${EVENT}/connections` && method === "POST") {
+      if (path === `${model}/changes/${CHANGE}/connections` && method === "POST") {
         state.connectionWrites++;
         if (state.refuseNext) {
           const stale = state.refuseNext === "stale";
@@ -69,7 +69,7 @@ function createApi(writable = true) {
         state.version++;
         return json({ id: state.connections.at(-1)!.id, connection: state.connections.at(-1) });
       }
-      const removal = new RegExp(`${model}/events/${EVENT}/nodes/([^/]+)$`).exec(path);
+      const removal = new RegExp(`${model}/changes/${CHANGE}/nodes/([^/]+)$`).exec(path);
       if (removal && method === "DELETE") {
         state.deleteWrites.push(removal[1]);
         state.nodes = state.nodes.filter((node) => node.id !== removal[1]);
@@ -202,7 +202,7 @@ test("a write the server refuses is reverted on the canvas and explained", async
   const api = await open(page);
   api.state.refuseNext = "chain";
   await connectSalesToSupport(page);
-  await expect(page.getByRole("alert")).toContainText("would break a later event or scenario");
+  await expect(page.getByRole("alert")).toContainText("would break a later change or scenario");
   expect(api.state.connectionWrites).toBe(1);
   await expect(canvas(page).locator(".djs-connection")).toHaveCount(0);
 });

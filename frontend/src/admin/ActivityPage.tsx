@@ -5,7 +5,7 @@ import { loadAuditEvents, loadMcpCalls, type AuditItem, type McpCallItem } from 
 import { Alert, Badge, Button, EmptyState, Field, Select } from "../ui";
 import { formatDateTime, MUTED, ROW, ROWS, Section } from "./Section";
 
-const AUDIT_AREAS = ["", "organization", "shadow", "lane", "category", "label", "event", "series", "occurrence", "support_access", "agent_calls"] as const;
+const AUDIT_AREAS = ["", "organization", "shadow", "lane", "category", "label", "change", "event", "series", "occurrence", "support_access", "agent_calls"] as const;
 
 export function ActivityLog({ organizationId, locale }: { organizationId: string; locale: Locale }) {
   const text = workspaceMessages(locale).activity;

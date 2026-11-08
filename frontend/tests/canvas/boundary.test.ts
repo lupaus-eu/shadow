@@ -6,10 +6,10 @@ const canvas = join(import.meta.dirname, "../../src/models/canvas");
 const files = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap((entry) => (entry.isDirectory() ? files(join(dir, entry.name)) : [join(dir, entry.name)]));
 
 describe("the canvas is a view of plain graph data", () => {
-  // `useGraphState.ts` is the one seam that may know about lines and events.
+  // `useGraphState.ts` is the one seam that may know about lines and changes.
   const view = files(canvas).filter((file) => !file.endsWith("useGraphState.ts"));
 
-  it("imports no line, event or version types and no server calls outside the hook", () => {
+  it("imports no line, change or version types and no server calls outside the hook", () => {
     expect(view.length).toBeGreaterThan(6);
     for (const file of view) {
       const source = readFileSync(file, "utf8");
@@ -17,7 +17,7 @@ describe("the canvas is a view of plain graph data", () => {
       for (const { path, text } of imports) {
         if (!/(^|\/)client$/.test(path)) continue;
         expect(text, `${file} may only take plain graph types from the client`).toMatch(/^import type /);
-        expect(text, file).not.toMatch(/\b(LineEvent|ModelLine|Version\w*|ModelSummary)\b/);
+        expect(text, file).not.toMatch(/\b(LineChange|ModelLine|Version\w*|ModelSummary)\b/);
       }
     }
   });

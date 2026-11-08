@@ -9,19 +9,19 @@ export type GraphNode = { id: string; node_type_id: string; name: string; descri
 export type GraphConnection = { id: string; connection_type_id: string; source_node_id: string; target_node_id: string };
 /** The Base line or a Scenario of a model (`GET …/lines`); `version` is the stale check of a rename or delete. */
 export type ModelLine = {
-  id: string; name: string; description: string | null; kind: "base" | "scenario"; parent_line_id: string | null; branch_event_id: string | null; version: number; event_count: number; latest_event_date: string | null;
+  id: string; name: string; description: string | null; kind: "base" | "scenario"; parent_line_id: string | null; branch_change_id: string | null; version: number; change_count: number; latest_change_date: string | null;
   /** Set when the state a Scenario starts from changed; cleared by `acknowledgeStart`. */
   start_changed_at?: string | null; created_by_user_account_id?: string | null;
 };
-/** An event of a line; `version` is what a canvas edit sends as `expected_version`. */
-export type LineEvent = {
-  id: string; line_id: string; occurred_on: string; title: string; version: number; planned: boolean; change_count: number;
-  note?: string | null; change_counts?: Record<string, number>; /** Scenarios that start from this event. */ branches?: { line_id: string; name: string }[];
+/** An change of a line; `version` is what a canvas edit sends as `expected_version`. */
+export type LineChange = {
+  id: string; line_id: string; occurred_on: string; title: string; version: number; planned: boolean; edit_count: number;
+  note?: string | null; edit_counts?: Record<string, number>; /** Scenarios that start from this change. */ branches?: { line_id: string; name: string }[];
 };
-/** One change of an event, in order. */
-export type EventChange = { position: number; op: string; element_id: string | null; payload: Record<string, unknown> };
-/** The graph a line shows after its last event. */
-export type Graph = { event: LineEvent | null; node_types: NodeType[]; connection_types: ConnectionType[]; allowed_connections: AllowedConnection[]; nodes: GraphNode[]; connections: GraphConnection[] };
+/** One edit of an change, in order. */
+export type ChangeEdit = { position: number; op: string; element_id: string | null; payload: Record<string, unknown> };
+/** The graph a line shows after its last change. */
+export type Graph = { change: LineChange | null; node_types: NodeType[]; connection_types: ConnectionType[]; allowed_connections: AllowedConnection[]; nodes: GraphNode[]; connections: GraphConnection[] };
 
 /** A write was refused because the row changed since it was read (HTTP 409 with `latest_version`). */
 export class StaleVersionError extends Error {}
@@ -32,7 +32,7 @@ export class RuleError extends Error {
 }
 /** The person's role does not allow the write (HTTP 403). */
 export class ForbiddenError extends Error {}
-/** An edit would break a later event or Scenario (HTTP 422 `chain_broken`); `cause` is the machine-readable reason and `hint` the structured explanation. The edit was not saved. */
+/** An edit would break a later change or Scenario (HTTP 422 `chain_broken`); `cause` is the machine-readable reason and `hint` the structured explanation. The edit was not saved. */
 export class ChainBrokenError extends RuleError {
   constructor(readonly cause: string, readonly hint: ChainHint | null = null, detail: Refusal = { reason: "chain_broken" }) { super("chain_broken", detail); }
 }
@@ -75,57 +75,57 @@ export async function deleteModel(organizationId: string, model: ModelSummary): 
 }
 
 type ElementList = { nodes?: { node: GraphNode }[]; connections?: { connection: GraphConnection }[] };
-type LineStateResponse = Omit<Graph, "event"> & { event: LineEvent | null; added?: ElementList; updated?: ElementList; removed?: ElementList };
-/** Ids of the nodes and connections the shown event added, updated and removed (the state route's `added`, `updated` and `removed`). */
-export type StateChanges = { added: string[]; updated: string[]; removed: string[] };
-/** The elements the shown event removed, with their data. */
+type LineStateResponse = Omit<Graph, "change"> & { change: LineChange | null; added?: ElementList; updated?: ElementList; removed?: ElementList };
+/** Ids of the nodes and connections the shown change added, updated and removed (the state route's `added`, `updated` and `removed`). */
+export type StateMarks = { added: string[]; updated: string[]; removed: string[] };
+/** The elements the shown change removed, with their data. */
 export type StateGhosts = { nodes: GraphNode[]; connections: GraphConnection[] };
-export type LineState = Graph & { changes: StateChanges; ghosts?: StateGhosts };
+export type LineState = Graph & { marks: StateMarks; ghosts?: StateGhosts };
 
-const changeIds = (list: ElementList | undefined) => [...(list?.nodes ?? []).map((item) => item.node.id), ...(list?.connections ?? []).map((item) => item.connection.id)];
+const markIds = (list: ElementList | undefined) => [...(list?.nodes ?? []).map((item) => item.node.id), ...(list?.connections ?? []).map((item) => item.connection.id)];
 
 /**
- * The graph of a line after one event (`eventId`), or after the line's last event when none is given (any event, planned or not, as that
- * is the one a canvas edit changes), with the ids the event changed.
+ * The graph of a line after one change (`changeId`), or after the line's last change when none is given (any change, planned or not, as that
+ * is the one a canvas edit changes), with the ids the change changed.
  */
-export async function loadLineState(organizationId: string, modelId: string, lineId: string, eventId?: string | null, signal?: AbortSignal): Promise<LineState> {
+export async function loadLineState(organizationId: string, modelId: string, lineId: string, changeId?: string | null, signal?: AbortSignal): Promise<LineState> {
   const line = `${modelsUrl(organizationId)}/${modelId}/lines/${lineId}`;
-  let shown = eventId ?? null;
+  let shown = changeId ?? null;
   if (!shown) {
-    const events: LineEvent[] = await (await call(`${line}/events`, { signal })).json();
-    shown = events[events.length - 1]?.id ?? null;
+    const changes: LineChange[] = await (await call(`${line}/changes`, { signal })).json();
+    shown = changes[changes.length - 1]?.id ?? null;
   }
-  const state: LineStateResponse = await (await call(`${line}/state${shown ? `?event_id=${shown}` : ""}`, { signal })).json();
+  const state: LineStateResponse = await (await call(`${line}/state${shown ? `?change_id=${shown}` : ""}`, { signal })).json();
   return {
-    event: state.event, node_types: state.node_types, connection_types: state.connection_types, allowed_connections: state.allowed_connections, nodes: state.nodes, connections: state.connections,
-    changes: { added: changeIds(state.added), updated: changeIds(state.updated), removed: changeIds(state.removed) },
+    change: state.change, node_types: state.node_types, connection_types: state.connection_types, allowed_connections: state.allowed_connections, nodes: state.nodes, connections: state.connections,
+    marks: { added: markIds(state.added), updated: markIds(state.updated), removed: markIds(state.removed) },
     ghosts: { nodes: (state.removed?.nodes ?? []).map((item) => item.node), connections: (state.removed?.connections ?? []).map((item) => item.connection) },
   };
 }
 
-/** The graph after the line's last event. */
+/** The graph after the line's last change. */
 export async function loadGraph(organizationId: string, modelId: string, lineId: string, signal?: AbortSignal): Promise<Graph> {
-  const { changes: _changes, ghosts: _ghosts, ...graph } = await loadLineState(organizationId, modelId, lineId, null, signal);
+  const { marks: _marks, ghosts: _ghosts, ...graph } = await loadLineState(organizationId, modelId, lineId, null, signal);
   return graph;
 }
 
-/** A line with no events yet (a new Scenario) gets one to hold the canvas edits; the date is today. */
-export async function createEditsEvent(organizationId: string, modelId: string, lineId: string, title: string): Promise<LineEvent> {
+/** A line with no changes yet (a new Scenario) gets one to hold the canvas edits; the date is today. */
+export async function createEditsChange(organizationId: string, modelId: string, lineId: string, title: string): Promise<LineChange> {
   const now = new Date();
   const occurredOn = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-  return (await call(`${modelsUrl(organizationId)}/${modelId}/lines/${lineId}/events`, { method: "POST", ...json({ occurred_on: occurredOn, title, changes: [] }) })).json();
+  return (await call(`${modelsUrl(organizationId)}/${modelId}/lines/${lineId}/changes`, { method: "POST", ...json({ occurred_on: occurredOn, title, edits: [] }) })).json();
 }
 
 export async function loadLines(organizationId: string, modelId: string): Promise<ModelLine[]> {
   return (await call(`${modelsUrl(organizationId)}/${modelId}/lines`)).json();
 }
 
-export async function createScenario(organizationId: string, modelId: string, name: string, branchEventId: string): Promise<ModelLine> {
-  return (await call(`${modelsUrl(organizationId)}/${modelId}/lines`, { method: "POST", ...json({ name, branch_event_id: branchEventId }) })).json();
+export async function createScenario(organizationId: string, modelId: string, name: string, branchChangeId: string): Promise<ModelLine> {
+  return (await call(`${modelsUrl(organizationId)}/${modelId}/lines`, { method: "POST", ...json({ name, branch_change_id: branchChangeId }) })).json();
 }
 
-export async function loadEvents(organizationId: string, modelId: string, lineId: string, signal?: AbortSignal): Promise<LineEvent[]> {
-  return (await call(`${modelsUrl(organizationId)}/${modelId}/lines/${lineId}/events`, { signal })).json();
+export async function loadChanges(organizationId: string, modelId: string, lineId: string, signal?: AbortSignal): Promise<LineChange[]> {
+  return (await call(`${modelsUrl(organizationId)}/${modelId}/lines/${lineId}/changes`, { signal })).json();
 }
 
 export async function renameLine(organizationId: string, modelId: string, line: ModelLine, name: string): Promise<ModelLine> {
@@ -137,79 +137,79 @@ export async function acknowledgeStart(organizationId: string, modelId: string, 
   return (await call(`${modelsUrl(organizationId)}/${modelId}/lines/${line.id}/acknowledge-start`, { method: "POST" })).json();
 }
 
-export type AdoptResult = { line: ModelLine; scenario: ModelLine | null; adopted_events: unknown[] | number; moved_scenarios: number };
+export type AdoptResult = { line: ModelLine; scenario: ModelLine | null; adopted_changes: unknown[] | number; moved_scenarios: number };
 
 export async function adoptLine(organizationId: string, modelId: string, line: ModelLine): Promise<AdoptResult> {
   return (await call(`${modelsUrl(organizationId)}/${modelId}/lines/${line.id}/adopt`, { method: "POST", ...json({ expected_version: line.version }) })).json();
 }
 
-export type EventInput = { occurred_on: string; title: string; note: string | null };
-export type EventDetail = { event: LineEvent; changes: EventChange[]; names: Map<string, string> };
+export type ChangeInput = { occurred_on: string; title: string; note: string | null };
+export type ChangeDetail = { change: LineChange; edits: ChangeEdit[]; names: Map<string, string> };
 
-/** One event with its ordered changes, and the names of the elements they refer to (from the state after the event, incl. what it removed, and its own payloads). */
-export async function loadEventDetail(organizationId: string, modelId: string, lineId: string, eventId: string): Promise<EventDetail> {
+/** One change with its ordered edits, and the names of the elements they refer to (from the state after the change, incl. what it removed, and its own payloads). */
+export async function loadChangeDetail(organizationId: string, modelId: string, lineId: string, changeId: string): Promise<ChangeDetail> {
   const base = modelsUrl(organizationId);
-  const [event, state] = await Promise.all([
-    call(`${base}/${modelId}/events/${eventId}`).then((response) => response.json() as Promise<LineEvent & { changes: EventChange[] }>),
-    call(`${base}/${modelId}/lines/${lineId}/state?event_id=${eventId}`).then((response) => response.json() as Promise<{ nodes?: GraphNode[]; node_types?: NodeType[]; connection_types?: ConnectionType[]; removed?: { nodes?: { node: GraphNode }[] }; updated?: { nodes?: { previous?: GraphNode | null }[] } }>),
+  const [change, state] = await Promise.all([
+    call(`${base}/${modelId}/changes/${changeId}`).then((response) => response.json() as Promise<LineChange & { edits: ChangeEdit[] }>),
+    call(`${base}/${modelId}/lines/${lineId}/state?change_id=${changeId}`).then((response) => response.json() as Promise<{ nodes?: GraphNode[]; node_types?: NodeType[]; connection_types?: ConnectionType[]; removed?: { nodes?: { node: GraphNode }[] }; updated?: { nodes?: { previous?: GraphNode | null }[] } }>),
   ]);
   const names = new Map<string, string>();
   for (const node of state.nodes ?? []) names.set(node.id, node.name);
   for (const item of state.removed?.nodes ?? []) names.set(item.node.id, item.node.name);
   for (const item of state.updated?.nodes ?? []) if (item.previous && !names.has(item.previous.id)) names.set(item.previous.id, item.previous.name);
   for (const type of [...(state.node_types ?? []), ...(state.connection_types ?? [])]) names.set(type.id, type.name);
-  for (const change of event.changes) {
-    const name = change.payload.name;
-    if (change.element_id && typeof name === "string" && !names.has(change.element_id)) names.set(change.element_id, name);
+  for (const edit of change.edits) {
+    const name = edit.payload.name;
+    if (edit.element_id && typeof name === "string" && !names.has(edit.element_id)) names.set(edit.element_id, name);
   }
-  const { changes, ...summary } = event;
-  return { event: summary, changes: [...changes].sort((a, b) => a.position - b.position), names };
+  const { edits, ...summary } = change;
+  return { change: summary, edits: [...edits].sort((a, b) => a.position - b.position), names };
 }
 
-export async function createEvent(organizationId: string, modelId: string, lineId: string, input: EventInput): Promise<LineEvent> {
-  return (await call(`${modelsUrl(organizationId)}/${modelId}/lines/${lineId}/events`, { method: "POST", ...json({ ...input, changes: [] }) })).json();
+export async function createChange(organizationId: string, modelId: string, lineId: string, input: ChangeInput): Promise<LineChange> {
+  return (await call(`${modelsUrl(organizationId)}/${modelId}/lines/${lineId}/changes`, { method: "POST", ...json({ ...input, edits: [] }) })).json();
 }
 
-export async function updateEvent(organizationId: string, modelId: string, event: LineEvent, input: EventInput): Promise<LineEvent> {
-  return (await call(`${eventUrl(organizationId, modelId, event)}`, { method: "PATCH", ...json({ ...input, expected_version: event.version }) })).json();
+export async function updateChange(organizationId: string, modelId: string, change: LineChange, input: ChangeInput): Promise<LineChange> {
+  return (await call(`${changeUrl(organizationId, modelId, change)}`, { method: "PATCH", ...json({ ...input, expected_version: change.version }) })).json();
 }
 
-export async function deleteEvent(organizationId: string, modelId: string, event: LineEvent): Promise<void> {
-  await call(`${eventUrl(organizationId, modelId, event)}?expected_version=${event.version}`, { method: "DELETE" });
+export async function deleteChange(organizationId: string, modelId: string, change: LineChange): Promise<void> {
+  await call(`${changeUrl(organizationId, modelId, change)}?expected_version=${change.version}`, { method: "DELETE" });
 }
 
 export async function deleteLine(organizationId: string, modelId: string, line: ModelLine): Promise<void> {
   await call(`${modelsUrl(organizationId)}/${modelId}/lines/${line.id}?expected_version=${line.version}`, { method: "DELETE" });
 }
 
-// Canvas edits are changes inside an event; `event.version` is the stale check. Moving a node is a position of the line, not an edit.
-const eventUrl = (organizationId: string, modelId: string, event: LineEvent) => `${modelsUrl(organizationId)}/${modelId}/events/${event.id}`;
+// Canvas edits are edits inside an change; `change.version` is the stale check. Moving a node is a position of the line, not an edit.
+const changeUrl = (organizationId: string, modelId: string, change: LineChange) => `${modelsUrl(organizationId)}/${modelId}/changes/${change.id}`;
 
-export async function createNode(organizationId: string, modelId: string, event: LineEvent, input: { node_type_id: string; name: string; description?: string | null; x: number; y: number }): Promise<GraphNode> {
-  return ((await (await call(`${eventUrl(organizationId, modelId, event)}/nodes`, { method: "POST", ...json({ ...input, expected_version: event.version }) })).json()) as { node: GraphNode }).node;
+export async function createNode(organizationId: string, modelId: string, change: LineChange, input: { node_type_id: string; name: string; description?: string | null; x: number; y: number }): Promise<GraphNode> {
+  return ((await (await call(`${changeUrl(organizationId, modelId, change)}/nodes`, { method: "POST", ...json({ ...input, expected_version: change.version }) })).json()) as { node: GraphNode }).node;
 }
 
-export async function updateNode(organizationId: string, modelId: string, event: LineEvent, node: GraphNode, changes: { name?: string; description?: string | null; node_type_id?: string }): Promise<void> {
-  await call(`${eventUrl(organizationId, modelId, event)}/nodes/${node.id}`, { method: "PATCH", ...json({ ...changes, expected_version: event.version }) });
+export async function updateNode(organizationId: string, modelId: string, change: LineChange, node: GraphNode, fields: { name?: string; description?: string | null; node_type_id?: string }): Promise<void> {
+  await call(`${changeUrl(organizationId, modelId, change)}/nodes/${node.id}`, { method: "PATCH", ...json({ ...fields, expected_version: change.version }) });
 }
 
-export async function deleteNode(organizationId: string, modelId: string, event: LineEvent, node: GraphNode): Promise<void> {
-  await call(`${eventUrl(organizationId, modelId, event)}/nodes/${node.id}?expected_version=${event.version}`, { method: "DELETE" });
+export async function deleteNode(organizationId: string, modelId: string, change: LineChange, node: GraphNode): Promise<void> {
+  await call(`${changeUrl(organizationId, modelId, change)}/nodes/${node.id}?expected_version=${change.version}`, { method: "DELETE" });
 }
 
 /** Creates a connection and returns its id (the element id the later edits and undo refer to). */
-export async function createConnection(organizationId: string, modelId: string, event: LineEvent, input: { connection_type_id: string; source_node_id: string; target_node_id: string }): Promise<{ id: string }> {
-  const body = (await (await call(`${eventUrl(organizationId, modelId, event)}/connections`, { method: "POST", ...json({ ...input, expected_version: event.version }) })).json()) as { id?: string; connection?: { id: string } };
+export async function createConnection(organizationId: string, modelId: string, change: LineChange, input: { connection_type_id: string; source_node_id: string; target_node_id: string }): Promise<{ id: string }> {
+  const body = (await (await call(`${changeUrl(organizationId, modelId, change)}/connections`, { method: "POST", ...json({ ...input, expected_version: change.version }) })).json()) as { id?: string; connection?: { id: string } };
   return { id: (body.connection?.id ?? body.id) as string };
 }
 
 /** Re-routes a connection: another source and/or target node. */
-export async function updateConnection(organizationId: string, modelId: string, event: LineEvent, connection: GraphConnection, changes: { source_node_id?: string; target_node_id?: string; connection_type_id?: string }): Promise<void> {
-  await call(`${eventUrl(organizationId, modelId, event)}/connections/${connection.id}`, { method: "PATCH", ...json({ ...changes, expected_version: event.version }) });
+export async function updateConnection(organizationId: string, modelId: string, change: LineChange, connection: GraphConnection, fields: { source_node_id?: string; target_node_id?: string; connection_type_id?: string }): Promise<void> {
+  await call(`${changeUrl(organizationId, modelId, change)}/connections/${connection.id}`, { method: "PATCH", ...json({ ...fields, expected_version: change.version }) });
 }
 
-export async function deleteConnection(organizationId: string, modelId: string, event: LineEvent, connection: GraphConnection): Promise<void> {
-  await call(`${eventUrl(organizationId, modelId, event)}/connections/${connection.id}?expected_version=${event.version}`, { method: "DELETE" });
+export async function deleteConnection(organizationId: string, modelId: string, change: LineChange, connection: GraphConnection): Promise<void> {
+  await call(`${changeUrl(organizationId, modelId, change)}/connections/${connection.id}?expected_version=${change.version}`, { method: "DELETE" });
 }
 
 export async function saveNodePositions(organizationId: string, modelId: string, lineId: string, positions: { node_id: string; x: number; y: number }[]): Promise<void> {
@@ -297,8 +297,8 @@ export async function createNodeType(organizationId: string, modelId: string, in
   return (await call(typesUrl(organizationId, modelId, "node-types"), { method: "POST", ...json(input) })).json();
 }
 
-export async function updateNodeType(organizationId: string, modelId: string, type: NodeType, changes: { name?: string; color?: string }): Promise<NodeType> {
-  return (await call(`${typesUrl(organizationId, modelId, "node-types")}/${type.id}`, { method: "PATCH", ...json({ ...changes, expected_version: type.version }) })).json();
+export async function updateNodeType(organizationId: string, modelId: string, type: NodeType, fields: { name?: string; color?: string }): Promise<NodeType> {
+  return (await call(`${typesUrl(organizationId, modelId, "node-types")}/${type.id}`, { method: "PATCH", ...json({ ...fields, expected_version: type.version }) })).json();
 }
 
 export async function deleteNodeType(organizationId: string, modelId: string, type: NodeType): Promise<void> {
@@ -309,8 +309,8 @@ export async function createConnectionType(organizationId: string, modelId: stri
   return (await call(typesUrl(organizationId, modelId, "connection-types"), { method: "POST", ...json(input) })).json();
 }
 
-export async function updateConnectionType(organizationId: string, modelId: string, type: ConnectionType, changes: { name?: string; style?: string; source_end?: string; target_end?: string }): Promise<ConnectionType> {
-  return (await call(`${typesUrl(organizationId, modelId, "connection-types")}/${type.id}`, { method: "PATCH", ...json({ ...changes, expected_version: type.version }) })).json();
+export async function updateConnectionType(organizationId: string, modelId: string, type: ConnectionType, fields: { name?: string; style?: string; source_end?: string; target_end?: string }): Promise<ConnectionType> {
+  return (await call(`${typesUrl(organizationId, modelId, "connection-types")}/${type.id}`, { method: "PATCH", ...json({ ...fields, expected_version: type.version }) })).json();
 }
 
 export async function deleteConnectionType(organizationId: string, modelId: string, type: ConnectionType): Promise<void> {

@@ -4,7 +4,7 @@ import type { Page } from "@playwright/test";
 export const ORG = "00000000-0000-4000-8000-000000000001";
 export const MODEL = "00000000-0000-4000-8000-000000000002";
 export const LINE = "00000000-0000-4000-8000-000000000003";
-export const EVENT = "00000000-0000-4000-8000-000000000004";
+export const CHANGE = "00000000-0000-4000-8000-000000000004";
 
 export type Node = { id: string; node_type_id: string; name: string; description: string | null; x: number; y: number };
 export type Connection = { id: string; connection_type_id: string; source_node_id: string; target_node_id: string };
@@ -38,7 +38,7 @@ export function createApi(writable = true) {
     bodies: [] as unknown[],
     refuseNext: false as false | "chain" | "stale",
   };
-  const event = () => ({ id: EVENT, line_id: LINE, occurred_on: "2026-01-01", title: "Start", version: state.version, planned: false, change_count: 1 });
+  const change = () => ({ id: CHANGE, line_id: LINE, occurred_on: "2026-01-01", title: "Start", version: state.version, planned: false, edit_count: 1 });
   async function mock(page: Page) {
     await page.route("**/api/v1/**", async (route) => {
       const request = route.request();
@@ -53,9 +53,9 @@ export function createApi(writable = true) {
       if (path === `/organizations/${ORG}`) return json({ organization: { id: ORG, name: "Test Org", time_zone: "UTC" }, membership: { role: "owner" }, subscription: { state: writable ? "active" : "read_only", writable, grace_expires_at: null, cancel_at_period_end: false, current_period_end: null } });
       const model = `/organizations/${ORG}/models/${MODEL}`;
       if (path === `/organizations/${ORG}/models`) return json([{ id: MODEL, name: "Test model", description: null, version: 1, nodes: state.nodes.length }]);
-      if (path === `${model}/lines`) return json([{ id: LINE, name: "Base line", description: null, kind: "base", parent_line_id: null, branch_event_id: null, version: 1, event_count: 1, latest_event_date: "2026-01-01" }]);
-      if (path === `${model}/lines/${LINE}/events`) return json([event()]);
-      if (path === `${model}/lines/${LINE}/state`) return json({ event: event(), node_types: types, connection_types: connectionTypes, allowed_connections: allowed, nodes: state.nodes, connections: state.connections });
+      if (path === `${model}/lines`) return json([{ id: LINE, name: "Base line", description: null, kind: "base", parent_line_id: null, branch_change_id: null, version: 1, change_count: 1, latest_change_date: "2026-01-01" }]);
+      if (path === `${model}/lines/${LINE}/changes`) return json([change()]);
+      if (path === `${model}/lines/${LINE}/state`) return json({ change: change(), node_types: types, connection_types: connectionTypes, allowed_connections: allowed, nodes: state.nodes, connections: state.connections });
       if (path === `${model}/lines/${LINE}/positions` && method === "PUT") {
         const body = request.postDataJSON() as { node_id: string; x: number; y: number }[];
         state.positionWrites.push(body);
@@ -63,7 +63,7 @@ export function createApi(writable = true) {
         for (const move of body) Object.assign(state.nodes.find((node) => node.id === move.node_id)!, { x: move.x, y: move.y });
         return route.fulfill({ status: 204 });
       }
-      const edit = new RegExp(`${model}/events/${EVENT}/(nodes|connections)(?:/([^/]+))?$`).exec(path);
+      const edit = new RegExp(`${model}/changes/${CHANGE}/(nodes|connections)(?:/([^/]+))?$`).exec(path);
       if (edit && ["POST", "PATCH", "DELETE"].includes(method)) {
         const body = method === "DELETE" ? null : (request.postDataJSON() as Record<string, unknown>);
         const sent = method === "DELETE" ? Number(url.searchParams.get("expected_version")) : (body!.expected_version as number | undefined);
@@ -80,9 +80,9 @@ export function createApi(writable = true) {
           if (method === "POST") {
             const node: Node = { id: `n${++state.counter}`, node_type_id: body!.node_type_id as string, name: body!.name as string, description: (body!.description as string | null) ?? null, x: body!.x as number, y: body!.y as number };
             state.nodes.push(node);
-            return json({ id: node.id, node, event: event() }, 201);
+            return json({ id: node.id, node, change: change() }, 201);
           }
-          if (method === "PATCH") { Object.assign(state.nodes.find((node) => node.id === edit[2])!, { name: body!.name, description: body!.description ?? null }); return json({ id: edit[2], event: event() }); }
+          if (method === "PATCH") { Object.assign(state.nodes.find((node) => node.id === edit[2])!, { name: body!.name, description: body!.description ?? null }); return json({ id: edit[2], change: change() }); }
           state.nodes = state.nodes.filter((node) => node.id !== edit[2]);
           state.connections = state.connections.filter((item) => item.source_node_id !== edit[2] && item.target_node_id !== edit[2]);
           return route.fulfill({ status: 204 });
@@ -90,9 +90,9 @@ export function createApi(writable = true) {
         if (method === "POST") {
           const connection: Connection = { id: `cx${++state.counter}`, connection_type_id: body!.connection_type_id as string, source_node_id: body!.source_node_id as string, target_node_id: body!.target_node_id as string };
           state.connections.push(connection);
-          return json({ id: connection.id, connection, event: event() }, 201);
+          return json({ id: connection.id, connection, change: change() }, 201);
         }
-        if (method === "PATCH") { Object.assign(state.connections.find((item) => item.id === edit[2])!, { source_node_id: body!.source_node_id, target_node_id: body!.target_node_id }); return json({ id: edit[2], event: event() }); }
+        if (method === "PATCH") { Object.assign(state.connections.find((item) => item.id === edit[2])!, { source_node_id: body!.source_node_id, target_node_id: body!.target_node_id }); return json({ id: edit[2], change: change() }); }
         state.connections = state.connections.filter((item) => item.id !== edit[2]);
         return route.fulfill({ status: 204 });
       }

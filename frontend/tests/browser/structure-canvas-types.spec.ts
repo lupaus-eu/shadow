@@ -5,7 +5,7 @@ import { expect, test, type Page } from "@playwright/test";
 const ORG = "00000000-0000-4000-8000-000000000001";
 const MODEL = "00000000-0000-4000-8000-000000000002";
 const LINE = "00000000-0000-4000-8000-000000000003";
-const EVENT = "00000000-0000-4000-8000-000000000004";
+const CHANGE = "00000000-0000-4000-8000-000000000004";
 
 type Node = { id: string; node_type_id: string; name: string; description: string | null; x: number; y: number };
 const types = [
@@ -26,7 +26,7 @@ function createApi(options: { writable?: boolean } = {}) {
     created: [] as { node_type_id: string; name: string }[],
   };
   const connections = [{ id: "k1", connection_type_id: "c1", source_node_id: "n1", target_node_id: "n2" }];
-  const event = () => ({ id: EVENT, line_id: LINE, occurred_on: "2026-01-01", title: "Start", version: 1, planned: false, change_count: 1 });
+  const change = () => ({ id: CHANGE, line_id: LINE, occurred_on: "2026-01-01", title: "Start", version: 1, planned: false, edit_count: 1 });
   async function mock(page: Page) {
     await page.route("**/api/v1/**", async (route) => {
       const request = route.request();
@@ -40,10 +40,10 @@ function createApi(options: { writable?: boolean } = {}) {
       if (path === `/organizations/${ORG}`) return json({ organization: { id: ORG, name: "Test Org", time_zone: "UTC" }, membership: { role: "owner" }, subscription: { state: options.writable === false ? "read_only" : "active", writable: options.writable !== false, grace_expires_at: null, cancel_at_period_end: false, current_period_end: null } });
       const model = `/organizations/${ORG}/models/${MODEL}`;
       if (path === `/organizations/${ORG}/models`) return json([{ id: MODEL, name: "Test model", description: null, version: 1, nodes: state.nodes.length }]);
-      if (path === `${model}/lines`) return json([{ id: LINE, name: "Base line", description: null, kind: "base", parent_line_id: null, branch_event_id: null, version: 1, event_count: 1, latest_event_date: "2026-01-01" }]);
-      if (path === `${model}/lines/${LINE}/events`) return json([event()]);
-      if (path === `${model}/lines/${LINE}/state`) return json({ event: event(), node_types: types, connection_types: connectionTypes, allowed_connections: allowed, nodes: state.nodes, connections });
-      if (path === `${model}/events/${EVENT}/nodes` && method === "POST") {
+      if (path === `${model}/lines`) return json([{ id: LINE, name: "Base line", description: null, kind: "base", parent_line_id: null, branch_change_id: null, version: 1, change_count: 1, latest_change_date: "2026-01-01" }]);
+      if (path === `${model}/lines/${LINE}/changes`) return json([change()]);
+      if (path === `${model}/lines/${LINE}/state`) return json({ change: change(), node_types: types, connection_types: connectionTypes, allowed_connections: allowed, nodes: state.nodes, connections });
+      if (path === `${model}/changes/${CHANGE}/nodes` && method === "POST") {
         const body = request.postDataJSON() as { node_type_id: string; name: string; x: number; y: number };
         state.created.push({ node_type_id: body.node_type_id, name: body.name });
         const created = { id: `n${state.nodes.length + 1}`, description: null, ...body };

@@ -1,17 +1,17 @@
 import { describe, expect, it } from "vitest";
 
-import { adoptMessage, branchPointMessage, canAdopt, canManageLine, canWriteLine, CHAIN_HINT_CODES, chainBrokenMessage, deleteLineMessage, eventRows, lineTree, shownEvent, tabQuery, type ChainHint } from "../../src/models/timeline";
-import { describeChange } from "../../src/models/timeline-messages";
+import { adoptMessage, branchPointMessage, canAdopt, canManageLine, canWriteLine, CHAIN_HINT_CODES, chainBrokenMessage, deleteLineMessage, changeRows, lineTree, shownChange, tabQuery, type ChainHint } from "../../src/models/timeline";
+import { describeEdit } from "../../src/models/timeline-messages";
 
-const hint = (code: string, extra: Partial<ChainHint> = {}): ChainHint => ({ code, event_title: "Hire", event_date: "2026-03-01", element_name: "Sales", element_kind: "node", ...extra });
+const hint = (code: string, extra: Partial<ChainHint> = {}): ChainHint => ({ code, change_title: "Hire", change_date: "2026-03-01", element_name: "Sales", element_kind: "node", ...extra });
 
 describe("chainBrokenMessage", () => {
-  it("has a message for every hint code in both languages, naming the event and saying what to do", () => {
+  it("has a message for every hint code in both languages, naming the change and saying what to do", () => {
     expect(CHAIN_HINT_CODES).toHaveLength(9);
     for (const code of CHAIN_HINT_CODES) {
       for (const locale of ["en", "fi"] as const) {
-        const message = chainBrokenMessage(hint(code, { type_name: "Team", source_name: "A", target_name: "B", scenario_name: "Plan B", branch_event_title: "Reorg", branch_event_date: "2026-02-01" }), locale);
-        expect(message, `${code} ${locale}`).toContain(code === "restore_branch_event" ? "Reorg" : "Hire");
+        const message = chainBrokenMessage(hint(code, { type_name: "Team", source_name: "A", target_name: "B", scenario_name: "Plan B", branch_change_title: "Reorg", branch_change_date: "2026-02-01" }), locale);
+        expect(message, `${code} ${locale}`).toContain(code === "restore_branch_change" ? "Reorg" : "Hire");
         expect(message.length).toBeGreaterThan(40);
         expect(message).not.toMatch(/chain_broken|undefined|null/);
       }
@@ -23,16 +23,16 @@ describe("chainBrokenMessage", () => {
     expect(chainBrokenMessage(hint("remove_duplicate_connection", { element_kind: "connection", source_name: "A", target_name: "B" }), "en")).toContain('"A" to "B"');
     expect(chainBrokenMessage(hint("add_endpoint_before", { source_name: "A", target_name: "B" }), "en")).toContain("A -> B");
   });
-  it("says which scenario when the failing event is in another line, and the branch event for branch causes", () => {
+  it("says which scenario when the failing change is in another line, and the branch change for branch causes", () => {
     expect(chainBrokenMessage(hint("add_element_before", { in_other_line: true, scenario_name: "Plan B" }), "en")).toContain('in the scenario "Plan B"');
     expect(chainBrokenMessage(hint("add_element_before", { in_other_line: false, scenario_name: "Plan B" }), "en")).not.toContain("Plan B");
-    const message = chainBrokenMessage(hint("restore_branch_event", { scenario_name: "Plan B", branch_event_title: "Reorg", branch_event_date: "2026-02-01" }), "en");
+    const message = chainBrokenMessage(hint("restore_branch_change", { scenario_name: "Plan B", branch_change_title: "Reorg", branch_change_date: "2026-02-01" }), "en");
     expect(message).toContain('"Plan B"');
     expect(message).toContain('"Reorg" (2026-02-01)');
   });
   it("falls back to a generic message for an unknown code or no hint", () => {
-    expect(chainBrokenMessage({ code: "new_code", event_title: "Hire" }, "en")).toContain("Hire");
-    expect(chainBrokenMessage(null, "fi")).toContain("Muuta tai poista");
+    expect(chainBrokenMessage({ code: "new_code", change_title: "Hire" }, "en")).toContain("Hire");
+    expect(chainBrokenMessage(null, "fi")).toContain("Muokkaa tai poista");
   });
   it("words a branch point refusal with the scenario", () => {
     expect(branchPointMessage("Plan B", "en")).toContain('"Plan B"');
@@ -40,34 +40,34 @@ describe("chainBrokenMessage", () => {
   });
 });
 
-describe("event list rows", () => {
-  const event = (id: string, planned: boolean) => ({ id, planned });
-  const kinds = (rows: ReturnType<typeof eventRows>) => rows.map((row) => (row.kind === "now" ? "now" : (row.event as { id: string }).id));
-  it("puts the Now divider between the last happened and the first planned event", () => {
-    expect(kinds(eventRows([event("a", false), event("b", false), event("c", true), event("d", true)], null))).toEqual(["a", "b", "now", "c", "d"]);
+describe("change list rows", () => {
+  const change = (id: string, planned: boolean) => ({ id, planned });
+  const kinds = (rows: ReturnType<typeof changeRows>) => rows.map((row) => (row.kind === "now" ? "now" : (row.change as { id: string }).id));
+  it("puts the Now divider between the last happened and the first planned change", () => {
+    expect(kinds(changeRows([change("a", false), change("b", false), change("c", true), change("d", true)], null))).toEqual(["a", "b", "now", "c", "d"]);
   });
   it("puts Now at the end when nothing is planned and at the start when everything is", () => {
-    expect(kinds(eventRows([event("a", false), event("b", false)], null))).toEqual(["a", "b", "now"]);
-    expect(kinds(eventRows([event("a", true)], null))).toEqual(["now", "a"]);
-    expect(kinds(eventRows([], null))).toEqual(["now"]);
+    expect(kinds(changeRows([change("a", false), change("b", false)], null))).toEqual(["a", "b", "now"]);
+    expect(kinds(changeRows([change("a", true)], null))).toEqual(["now", "a"]);
+    expect(kinds(changeRows([], null))).toEqual(["now"]);
   });
-  it("marks the shown event, the last one by default", () => {
-    const rows = eventRows([event("a", false), event("b", true)], null).filter((row) => row.kind === "event");
-    expect(rows.map((row) => row.kind === "event" && row.selected)).toEqual([false, true]);
-    const chosen = eventRows([event("a", false), event("b", true)], "a").filter((row) => row.kind === "event");
-    expect(chosen.map((row) => row.kind === "event" && row.selected)).toEqual([true, false]);
+  it("marks the shown change, the last one by default", () => {
+    const rows = changeRows([change("a", false), change("b", true)], null).filter((row) => row.kind === "change");
+    expect(rows.map((row) => row.kind === "change" && row.selected)).toEqual([false, true]);
+    const chosen = changeRows([change("a", false), change("b", true)], "a").filter((row) => row.kind === "change");
+    expect(chosen.map((row) => row.kind === "change" && row.selected)).toEqual([true, false]);
   });
-  it("shows the requested event when the line has it, else the last, and tells whether it is the last", () => {
+  it("shows the requested change when the line has it, else the last, and tells whether it is the last", () => {
     const items = [{ id: "a" }, { id: "b" }, { id: "c" }];
-    expect(shownEvent(items, "a")).toEqual({ event: items[0], isLast: false });
-    expect(shownEvent(items, "zzz")).toEqual({ event: items[2], isLast: true });
-    expect(shownEvent(items, null).isLast).toBe(true);
-    expect(shownEvent([], null)).toEqual({ event: null, isLast: true });
+    expect(shownChange(items, "a")).toEqual({ change: items[0], isLast: false });
+    expect(shownChange(items, "zzz")).toEqual({ change: items[2], isLast: true });
+    expect(shownChange(items, null).isLast).toBe(true);
+    expect(shownChange([], null)).toEqual({ change: null, isLast: true });
   });
-  it("builds tab queries that carry the line and the event", () => {
+  it("builds tab queries that carry the line and the change", () => {
     expect(tabQuery(null, null)).toBe("");
     expect(tabQuery("L", null)).toBe("?line=L");
-    expect(tabQuery("L", "E")).toBe("?line=L&event=E");
+    expect(tabQuery("L", "E")).toBe("?line=L&change=E");
   });
 });
 
@@ -103,14 +103,14 @@ describe("line tree", () => {
 
 describe("adopt and delete messages", () => {
   it("explains parent_moved_on with the count and the suggestion to start a new scenario", () => {
-    const message = adoptMessage({ reason: "parent_moved_on", parent_name: "Base line", events_after: 2 }, "en");
+    const message = adoptMessage({ reason: "parent_moved_on", parent_name: "Base line", changes_after: 2 }, "en");
     expect(message).toContain('"Base line"');
-    expect(message).toContain("2 events");
+    expect(message).toContain("2 changes");
     expect(message).toContain("new scenario");
-    expect(adoptMessage({ reason: "parent_moved_on", parent_name: "Peruslinja", events_after: 1 }, "fi")).toContain("uusi skenaario");
+    expect(adoptMessage({ reason: "parent_moved_on", parent_name: "Peruslinja", changes_after: 1 }, "fi")).toContain("uusi skenaario");
   });
   it("explains dates_precede, nothing_to_adopt and the other reasons", () => {
-    expect(adoptMessage({ reason: "dates_precede", parent_last_event_title: "Reorg" }, "en")).toContain('"Reorg"');
+    expect(adoptMessage({ reason: "dates_precede", parent_last_change_title: "Reorg" }, "en")).toContain('"Reorg"');
     expect(adoptMessage({ reason: "nothing_to_adopt" }, "en")).toContain("nothing to adopt");
     expect(adoptMessage({ reason: "nothing_to_adopt" }, "fi")).toContain("liitettävää");
     expect(adoptMessage({ reason: "base_line" }, "en")).toContain("Base line");
@@ -123,11 +123,11 @@ describe("adopt and delete messages", () => {
   });
 });
 
-describe("describeChange", () => {
+describe("describeEdit", () => {
   const names = new Map([["n1", "Sales"], ["n2", "Support"], ["t1", "Team"]]);
   it("resolves element, end and type names for reading", () => {
-    expect(describeChange({ op: "add_node", element_id: "n1", payload: { name: "Sales", node_type_id: "t1" } }, names, "en")).toBe('Add the node "Sales" (Team)');
-    expect(describeChange({ op: "add_connection", element_id: "c1", payload: { source_node_id: "n1", target_node_id: "n2" } }, names, "fi")).toContain('"Sales" -> "Support"');
-    expect(describeChange({ op: "remove_node", element_id: "n2", payload: {} }, names, "en")).toBe('Remove the node "Support"');
+    expect(describeEdit({ op: "add_node", element_id: "n1", payload: { name: "Sales", node_type_id: "t1" } }, names, "en")).toBe('Add the node "Sales" (Team)');
+    expect(describeEdit({ op: "add_connection", element_id: "c1", payload: { source_node_id: "n1", target_node_id: "n2" } }, names, "fi")).toContain('"Sales" -> "Support"');
+    expect(describeEdit({ op: "remove_node", element_id: "n2", payload: {} }, names, "en")).toBe('Remove the node "Support"');
   });
 });

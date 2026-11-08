@@ -1,7 +1,7 @@
 import type { AllowedConnection, ConnectionType, GraphConnection, GraphNode, NodeType } from "../client";
 
 /**
- * The plain data the canvas draws. It knows nothing about versions, lines or events: whoever supplies it (today `useGraphState`)
+ * The plain data the canvas draws. It knows nothing about versions, lines or changes: whoever supplies it (today `useGraphState`)
  * decides where the graph comes from, and the canvas only receives it and reports edits.
  */
 export type GraphMarkers = {

@@ -48,7 +48,7 @@ export type ShadowCanvasHandle = {
   /** Undoes or redoes the person's last step (see `history.ts`); the outcome is also reported through `onHistory`. */
   undo(): Promise<HistoryOutcome>;
   redo(): Promise<HistoryOutcome>;
-  /** Forgets the undo and redo stacks (the line or event changed). */
+  /** Forgets the undo and redo stacks (the line or the shown change switched). */
   clearHistory(): void;
   /** Aligns the selected nodes (two or more); one history entry. False when fewer are selected. */
   align(mode: AlignMode): Promise<boolean>;

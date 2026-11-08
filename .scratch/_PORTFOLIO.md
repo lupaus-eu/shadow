@@ -17,7 +17,7 @@
 
 | Tekninen työ | Toteutustila | Ticketit | Seuraava ticket | Odottaa ticketejä |
 | --- | --- | ---: | --- | --- |
-| [Technical design: Change terminology (rename event to Change, change to Edit)](tech-change-terminology/technical-design.md) | ready for implementation | 1/3 | [02 rename frontend](tech-change-terminology/issues/02-rename-frontend.md) — ready-for-agent | — |
+| [Technical design: Change terminology (rename event to Change, change to Edit)](tech-change-terminology/technical-design.md) | ready for implementation | 2/3 | [03 documents and vocabulary sweep](tech-change-terminology/issues/03-documents-and-vocabulary-sweep.md) — ready-for-agent | — |
 | [Technical design: Compose file for local development with live reload](tech-dev-compose/technical-design.md) | implemented | 1/1 | — | — |
 | [Technical design: Platform foundation (backend)](tech-platform-foundation/technical-design.md) | implemented | 4/4 | — | — |
 
@@ -35,8 +35,7 @@
 
 | Ticket | Tila | Avoimia kriteerejä | Aloitettavissa | Odottaa ticketejä |
 | --- | --- | ---: | --- | --- |
-| [02 rename frontend](tech-change-terminology/issues/02-rename-frontend.md) | ready-for-agent | 3 | kyllä | — |
-| [03 documents and vocabulary sweep](tech-change-terminology/issues/03-documents-and-vocabulary-sweep.md) | ready-for-agent | 2 | ei | 02 |
+| [03 documents and vocabulary sweep](tech-change-terminology/issues/03-documents-and-vocabulary-sweep.md) | ready-for-agent | 2 | kyllä | — |
 
 ## Tilan tulkinta
 

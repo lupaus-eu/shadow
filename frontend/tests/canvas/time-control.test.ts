@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { canvasWritable, markCounts, shouldClearHistory, sourceEventId } from "../../src/models/canvas/edit-target";
+import { canvasWritable, markCounts, shouldClearHistory, sourceChangeId } from "../../src/models/canvas/edit-target";
 import { ghostSummary } from "../../src/models/canvas/ghosts";
 import { toGraphData } from "../../src/models/canvas/useGraphState";
 import { ChainBrokenError, ForbiddenError, RuleError, StaleVersionError } from "../../src/models/client";
@@ -11,17 +11,17 @@ let current: ReturnType<typeof createDiagram>;
 afterEach(() => current?.destroy());
 
 describe("edit target", () => {
-  it("asks the loader for the shown event unless it is the last one", () => {
-    expect(sourceEventId(true, { id: "e2" })).toBeNull();
-    expect(sourceEventId(false, { id: "e1" })).toBe("e1");
-    expect(sourceEventId(false, null)).toBeNull();
+  it("asks the loader for the shown change unless it is the last one", () => {
+    expect(sourceChangeId(true, { id: "e2" })).toBeNull();
+    expect(sourceChangeId(false, { id: "e1" })).toBe("e1");
+    expect(sourceChangeId(false, null)).toBeNull();
   });
-  it("is writable for any shown event; only the subscription and the role decide", () => {
+  it("is writable for any shown change; only the subscription and the role decide", () => {
     expect(canvasWritable({ subscriptionWritable: true, canWriteLine: true })).toBe(true);
     expect(canvasWritable({ subscriptionWritable: false, canWriteLine: true })).toBe(false);
     expect(canvasWritable({ subscriptionWritable: true, canWriteLine: false })).toBe(false);
   });
-  it("clears the undo history when the shown event changes, not on the first event or the same one", () => {
+  it("clears the undo history when the shown change changes, not on the first change or the same one", () => {
     expect(shouldClearHistory("e1", "e2")).toBe(true);
     expect(shouldClearHistory("e1", "e1")).toBe(false);
     expect(shouldClearHistory(null, "e1")).toBe(false);
@@ -30,13 +30,13 @@ describe("edit target", () => {
 });
 
 describe("change marks", () => {
-  it("counts what the shown event added, changed and removed", () => {
+  it("counts what the shown change added, changed and removed", () => {
     expect(markCounts({ added: ["a", "b"], updated: ["c"], removed: [] })).toEqual({ added: 2, updated: 1, removed: 0, any: true });
     expect(markCounts({ added: [], updated: [], removed: [] }).any).toBe(false);
   });
   it("maps the state answer's removed list to ghosts with their data", () => {
     const gone = { id: "x", node_type_id: "t1", name: "Gone", description: null, x: 5, y: 6 };
-    const { graph: data } = toGraphData({ event: null, node_types: [], connection_types: [], allowed_connections: [], nodes: [], connections: [], changes: { added: [], updated: [], removed: ["x"] }, ghosts: { nodes: [gone], connections: [] } });
+    const { graph: data } = toGraphData({ change: null, node_types: [], connection_types: [], allowed_connections: [], nodes: [], connections: [], marks: { added: [], updated: [], removed: ["x"] }, ghosts: { nodes: [gone], connections: [] } });
     expect(data.markers.removed).toEqual(["x"]);
     expect(data.ghosts?.nodes).toEqual([gone]);
     expect(ghostSummary(data).nodes).toEqual(["Gone"]);
@@ -67,12 +67,12 @@ describe("change marks", () => {
 });
 
 describe("refusal messages of a canvas edit", () => {
-  const hint = { code: "add_element_before", event_title: "Hire", event_date: "2026-03-01", element_name: "Sales", element_kind: "node" };
-  it("names event and element and what to do first for a broken chain", () => {
+  const hint = { code: "add_element_before", change_title: "Hire", change_date: "2026-03-01", element_name: "Sales", element_kind: "node" };
+  it("names change and element and what to do first for a broken chain", () => {
     const message = refusalMessage(new ChainBrokenError("missing_element", hint), "en");
     expect(message).toContain("Hire");
     expect(message).toContain('"Sales"');
-    expect(message).toContain("earlier event first");
+    expect(message).toContain("earlier change first");
   });
   it("explains a stale answer, a branch point and a forbidden write in both languages", () => {
     for (const locale of ["en", "fi"] as const) {

@@ -56,7 +56,7 @@ export class ArrangeHandler {
 /**
  * The single seam between the diagram and the server. `applyEdit` runs the change on the command stack at once (so the person sees it),
  * sends the same change through the sender, and when the sender rejects undoes the change and passes the error on. The sender is where
- * the server write lives: the model's event routes today, whichever target a later ticket chooses. A move made with the mouse is already
+ * the server write lives: the model's change routes today, whichever target a later ticket chooses. A move made with the mouse is already
  * on the stack when it happens, so it is only collected here and sent in one batch after a short quiet time.
  *
  * A successful edit also goes into the session `history` (see `history.ts`) with the write that undoes it; `undo` and `redo` run those
