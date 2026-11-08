@@ -21,16 +21,25 @@ export type GraphData = {
   markers: GraphMarkers;
 };
 
-/** One change the person made on the canvas. Every change passes through `GraphModeling.applyEdit`. */
+/**
+ * One change the person made on the canvas. Every change passes through `GraphModeling.applyEdit`. `elements.delete` is the one compound
+ * edit: nodes (and the connections touching them, which the server removes with them) and connections deleted together, one undo step.
+ * `connection.reroute` points an existing connection at other nodes.
+ */
 export type GraphEdit =
   | { kind: "node.move"; moves: { id: string; x: number; y: number }[] }
-  | { kind: "node.create"; nodeTypeId: string; name: string; x: number; y: number }
+  | { kind: "node.create"; nodeTypeId: string; name: string; description?: string | null; x: number; y: number }
   | { kind: "node.update"; id: string; name: string; description: string | null }
   | { kind: "node.delete"; id: string }
   | { kind: "connection.create"; connectionTypeId: string; sourceId: string; targetId: string }
-  | { kind: "connection.delete"; id: string };
+  | { kind: "connection.delete"; id: string }
+  | { kind: "connection.reroute"; id: string; sourceId: string; targetId: string }
+  | { kind: "elements.delete"; nodeIds: string[]; connectionIds: string[] };
+
+/** What a write tells back: the id the server gave a created element (a later undo of the creation deletes it). */
+export type EditResult = { id?: string } | void;
 
 /** Sends an edit to the server. It rejects when the server refuses; the canvas then reverts the optimistic change. */
-export type GraphEditSender = (edit: GraphEdit) => Promise<void>;
+export type GraphEditSender = (edit: GraphEdit) => Promise<EditResult>;
 
 export const noMarkers: GraphMarkers = { added: [], updated: [], removed: [] };

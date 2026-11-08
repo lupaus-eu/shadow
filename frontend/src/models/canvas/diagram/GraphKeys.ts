@@ -3,8 +3,9 @@ import type Keyboard from "diagram-js/lib/features/keyboard/Keyboard.js";
 import type Modeling from "diagram-js/lib/features/modeling/Modeling.js";
 import type Selection from "diagram-js/lib/features/selection/Selection.js";
 
-import { Keymap, navigationBindings } from "../keymap";
+import { Keymap, isEditableTarget, navigationBindings } from "../keymap";
 import type { GraphContext } from "./GraphRules";
+import type { GraphModeling } from "./GraphModeling";
 import type { GraphNavigation } from "./GraphNavigation";
 import { isNodeElement, type GraphElement } from "./model";
 
@@ -17,7 +18,7 @@ const MOVE_STEP_PX = 10;
  * `graphKeys.keymap.register(...)`. Space belongs to the hand tool, except on a focused node where it selects, like Enter.
  */
 export class GraphKeys {
-  static $inject = ["keyboard", "eventBus", "graphNavigation", "selection", "modeling", "graphContext"];
+  static $inject = ["keyboard", "eventBus", "graphNavigation", "selection", "modeling", "graphContext", "graphModeling"];
 
   readonly keymap = new Keymap();
 
@@ -28,6 +29,7 @@ export class GraphKeys {
     private readonly selection: Selection,
     private readonly modeling: Modeling,
     private readonly context: GraphContext,
+    graphModeling: GraphModeling,
   ) {
     for (const binding of navigationBindings({
       zoomStep: (direction) => this.navigation.zoomStep(direction),
@@ -37,6 +39,16 @@ export class GraphKeys {
       moveSelection: (dx, dy, large) => this.moveSelection(dx, dy, large),
     })) this.keymap.register(binding);
 
+    // Undo and redo are chords with Ctrl or Cmd, which the keymap never takes: Ctrl/Cmd+Z, Shift+Ctrl/Cmd+Z (and Ctrl/Cmd+Y). Text fields keep their own.
+    keyboard.addListener(KEY_PRIORITY + 50, (context: { keyEvent: KeyboardEvent }) => {
+      const event = context.keyEvent;
+      if (!(event.ctrlKey || event.metaKey) || event.altKey || event.isComposing || isEditableTarget(event.target)) return undefined;
+      const key = event.key.toLowerCase();
+      if (key !== "z" && key !== "y") return undefined;
+      if (this.context.readOnly) return true;
+      void (key === "y" || event.shiftKey ? graphModeling.redo() : graphModeling.undo());
+      return true;
+    });
     keyboard.addListener(KEY_PRIORITY, (context: { keyEvent: KeyboardEvent }) => (this.keymap.handle(context.keyEvent) ? true : undefined));
     // Space is "grab" for the drawing (space + drag pans, see GraphNavigation); the library's own hand tool must not also react to it.
     // On a focused node the space is a click for the keyboard instead (see ShadowCanvas), and does not grab.

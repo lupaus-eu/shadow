@@ -60,7 +60,7 @@ export class GraphImporter {
       summary.removed++;
     }
     for (const element of elements.filter(isNodeElement)) {
-      if (nodeIds.has(element.id)) continue;
+      if (nodeIds.has(element.id) || element.businessObject.draft) continue;
       for (const connection of [...element.incoming, ...element.outgoing]) this.detach(connection);
       this.canvas.removeShape(element as never);
       summary.removed++;

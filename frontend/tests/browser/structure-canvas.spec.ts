@@ -67,7 +67,7 @@ function createApi(writable = true) {
         const body = request.postDataJSON() as Omit<Connection, "id">;
         state.connections.push({ id: `cx${state.nextConnection++}`, connection_type_id: body.connection_type_id, source_node_id: body.source_node_id, target_node_id: body.target_node_id });
         state.version++;
-        return json({ connection: state.connections.at(-1) });
+        return json({ id: state.connections.at(-1)!.id, connection: state.connections.at(-1) });
       }
       const removal = new RegExp(`${model}/events/${EVENT}/nodes/([^/]+)$`).exec(path);
       if (removal && method === "DELETE") {
@@ -193,7 +193,7 @@ test("a connection the Metamodel does not allow is explained and never sent", as
   await node(page, "Sales").locator(".shadow-node-body").click();
   await page.getByRole("button", { name: "Connect from this node" }).click();
   await node(page, "Lead").locator(".shadow-node-body").click();
-  await expect(page.getByRole("alert")).toContainText("not allowed");
+  await expect(page.getByRole("alert")).toContainText("The model does not allow a connection from a Unit node to a Role node.");
   expect(api.state.connectionWrites).toBe(0);
   await expect(canvas(page).locator(".djs-connection")).toHaveCount(0);
 });
@@ -225,6 +225,8 @@ test("delete removes the node and its connections", async ({ page }) => {
   await expect(canvas(page).locator(".djs-connection")).toHaveCount(1);
   await node(page, "Sales").locator(".shadow-node-body").click();
   await page.getByRole("button", { name: "Delete node" }).click();
+  await expect(page.getByRole("alertdialog")).toContainText("Delete the node \u201CSales\u201D? Its connection will also be deleted: Sales \u2192 Support (Reports to).");
+  await page.getByRole("button", { name: "Delete", exact: true }).click();
   await expect(node(page, "Sales")).toHaveCount(0);
   await expect(canvas(page).locator(".djs-connection")).toHaveCount(0);
   await expect.poll(() => api.state.deleteWrites).toEqual(["n1"]);

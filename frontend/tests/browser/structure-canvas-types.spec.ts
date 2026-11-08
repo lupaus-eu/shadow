@@ -186,11 +186,13 @@ test("with the collapse key blocked the panel still collapses", async ({ page })
   await expect(page.getByRole("button", { name: "Expand Unit" })).toHaveAttribute("aria-expanded", "false");
 });
 
-test("the + of a type adds a node of that type", async ({ page }) => {
+test("the + of a type opens a node of that type for naming, and Enter saves it", async ({ page }) => {
   const api = await open(page);
   await page.getByRole("button", { name: "Add a Team node" }).click();
-  await expect.poll(() => api.state.created).toEqual([{ node_type_id: "t2", name: "Team 2" }]);
-  await expect(node(page, "Team 2")).toBeVisible();
+  await page.getByRole("textbox", { name: "Node name" }).last().fill("Platform");
+  await page.keyboard.press("Enter");
+  await expect.poll(() => api.state.created.map((item) => ({ node_type_id: item.node_type_id, name: item.name }))).toEqual([{ node_type_id: "t2", name: "Platform" }]);
+  await expect(node(page, "Platform")).toBeVisible();
   await expect(page.getByRole("checkbox", { name: "Show Team nodes" }).locator("xpath=ancestor::label")).toContainText("(2)");
 });
 

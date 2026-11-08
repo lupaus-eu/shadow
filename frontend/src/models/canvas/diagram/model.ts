@@ -4,7 +4,7 @@ import type { ConnectionType, GraphConnection, GraphNode, NodeType } from "../..
 export type ChangeMark = "added" | "updated" | null;
 
 /** What a node shape carries in `businessObject`. `pending` is an optimistic element the server has not confirmed yet. */
-export type NodeObject = { kind: "node"; node: GraphNode; nodeType: NodeType | undefined; change: ChangeMark; pending?: boolean };
+export type NodeObject = { kind: "node"; node: GraphNode; nodeType: NodeType | undefined; change: ChangeMark; pending?: boolean; /** A node being named: drawn, not on the server and not on the command stack; a load leaves it alone. */ draft?: boolean };
 export type ConnectionObject = { kind: "connection"; connection: GraphConnection; connectionType: ConnectionType | undefined; change: ChangeMark; pending?: boolean };
 export type ElementObject = NodeObject | ConnectionObject;
 
@@ -23,6 +23,11 @@ export type GraphElement = {
   incoming: GraphElement[];
   outgoing: GraphElement[];
 };
+
+/** The name the server stores: whitespace collapsed and trimmed (the server does the same), so what the history expects is what the server has. */
+export const normalizeName = (name: string) => name.split(/\s+/).filter(Boolean).join(" ");
+
+export const isPendingId = (id: string) => id.startsWith("pending-");
 
 export const isNodeElement = (element: unknown): element is GraphElement & { businessObject: NodeObject } =>
   (element as GraphElement | undefined)?.businessObject?.kind === "node";

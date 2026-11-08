@@ -2,6 +2,8 @@ import Diagram from "diagram-js";
 import { useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
 
 import { CanvasToolbar, type CanvasToolbarTexts } from "./CanvasToolbar";
+import type { DrawingHandlers, DrawingState, GraphDrawing } from "./diagram/GraphDrawing";
+import type { HistoryOutcome, HistoryState } from "./history";
 import { shadowGraphModule } from "./diagram";
 import type { GraphFilter } from "./diagram/GraphFilter";
 import type { GraphImporter } from "./diagram/GraphImporter";
@@ -33,6 +35,17 @@ export type ShadowCanvasHandle = {
   /** Centres on a node (the drawing's own position of it, so an unsaved move counts); with `zoom` also zooms in to at least 100 %. False when the node is not drawn. */
   centreOnNode(id: string, options?: { zoom?: boolean }): boolean;
   getView(): View | null;
+  /** Draws an empty node of a type at the centre of the view and opens its name for editing; false when it cannot (read-only, unknown type). */
+  addNode(nodeTypeId: string): boolean;
+  /** Opens a node's name for editing in place. */
+  renameNode(id: string): boolean;
+  /** Undoes or redoes the person's last step (see `history.ts`); the outcome is also reported through `onHistory`. */
+  undo(): Promise<HistoryOutcome>;
+  redo(): Promise<HistoryOutcome>;
+  /** Forgets the undo and redo stacks (the line or event changed). */
+  clearHistory(): void;
+  /** Switches the lasso mode. */
+  setLasso(on: boolean): void;
   /** Adds a key to the canvas keymap (it only fires while focus is inside the drawing and not in a text field); returns the function that removes it. */
   registerKey(binding: KeyBinding): () => void;
 };
@@ -40,9 +53,18 @@ export type ShadowCanvasHandle = {
 type Props = {
   graph: GraphData | null;
   readOnly: boolean;
-  /** The selected node or connection, or null. The canvas follows it and reports changes through `onSelect`. */
-  selectedId: string | null;
-  onSelect(id: string | null): void;
+  /** The selected nodes and connections. The canvas follows them and reports changes through `onSelect`. */
+  selectedIds: readonly string[];
+  onSelect(ids: string[]): void;
+  /** What the pointer gestures of the canvas ask of the parent (connect, delete from the pad, naming in place). */
+  drawing: DrawingHandlers;
+  drawingTexts: { connect: string; remove: string; nodeName: string; namePlaceholder: string };
+  /** A fresh read of the graph, for the history (it checks the state before every undo and redo). Resolves null when it failed. */
+  readGraph(): Promise<GraphData | null>;
+  /** True for a refusal of the server (stale, rule, broken chain). */
+  isRefusal(error: unknown): boolean;
+  /** An undo or redo finished, was refused or was rejected. */
+  onHistory(outcome: HistoryOutcome): void;
   /** A click (or Enter or Space) on an element or the background. Return true to handle it yourself; the canvas then does not select. */
   onElementClick?(target: CanvasTarget): boolean;
   /** Writes an edit to the server; reject to have the optimistic change reverted. */
@@ -57,12 +79,14 @@ type Props = {
   filter?: CanvasFilter;
   /** Keys of the parent's panels, registered on every diagram this component creates (read when the diagram is created; their `run` should read refs). Registering through the handle instead would be lost when the diagram is recreated. */
   keyBindings?: KeyBinding[];
+  /** The toolbar's Connect button. */
+  onToggleConnect(): void;
   toolbarTexts: CanvasToolbarTexts;
   label: string;
   ref?: Ref<ShadowCanvasHandle>;
 };
 
-type Services = { importer: GraphImporter; filter: GraphFilter; registry: { get(id: string): GraphElement | undefined }; modeling: GraphModeling; navigation: GraphNavigation; keys: GraphKeys };
+type Services = { drawing: GraphDrawing; importer: GraphImporter; filter: GraphFilter; registry: { get(id: string): GraphElement | undefined }; modeling: GraphModeling; navigation: GraphNavigation; keys: GraphKeys };
 
 const kindOf = (element: GraphElement | undefined): CanvasTarget["kind"] => (isNodeElement(element) ? "node" : isConnectionElement(element) ? "connection" : "root");
 
@@ -71,12 +95,14 @@ const kindOf = (element: GraphElement | undefined): CanvasTarget["kind"] => (isN
  * which updates shapes in place, and the diagram reports selection and edits back through the props. The container is observed so the
  * diagram follows the size the page gives it.
  */
-export function ShadowCanvas({ graph, readOnly, selectedId, onSelect, onElementClick, send, connecting = false, onEscape, view, filter = noFilter, keyBindings, toolbarTexts, label, ref }: Props) {
+export function ShadowCanvas({ graph, readOnly, selectedIds, onSelect, drawing, drawingTexts, readGraph, isRefusal, onHistory, onToggleConnect, onElementClick, send, connecting = false, onEscape, view, filter = noFilter, keyBindings, toolbarTexts, label, ref }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const diagram = useRef<Diagram | null>(null);
   const services = useRef<Services | null>(null);
-  const props = useRef({ onSelect, onElementClick, onEscape, send, selectedId, view, keyBindings });
-  props.current = { onSelect, onElementClick, onEscape, send, selectedId, view, keyBindings };
+  const props = useRef({ onSelect, onElementClick, onEscape, send, selectedIds, view, keyBindings, drawing, drawingTexts, readGraph, isRefusal, onHistory });
+  props.current = { onSelect, onElementClick, onEscape, send, selectedIds, view, keyBindings, drawing, drawingTexts, readGraph, isRefusal, onHistory };
+  const [history, setHistory] = useState<HistoryState>({ canUndo: false, canRedo: false, busy: false });
+  const [tools, setTools] = useState<DrawingState>({ lasso: false });
   const [scale, setScale] = useState(1);
   // False until the first graph of this canvas has been placed (fitted or restored); before that the view is not remembered.
   const placed = useRef(false);
@@ -100,6 +126,12 @@ export function ShadowCanvas({ graph, readOnly, selectedId, onSelect, onElementC
         return true;
       },
       getView: () => navigation()?.getView() ?? null,
+      addNode: (typeId) => services.current?.drawing.addNode(typeId) ?? false,
+      renameNode: (id) => services.current?.drawing.renameNode(id) ?? false,
+      undo: () => services.current?.modeling.undo() ?? Promise.resolve({ status: "idle" as const }),
+      redo: () => services.current?.modeling.redo() ?? Promise.resolve({ status: "idle" as const }),
+      clearHistory: () => services.current?.modeling.history.clear(),
+      setLasso: (on) => services.current?.drawing.setLasso(on),
       registerKey: (binding) => services.current?.keys.keymap.register(binding) ?? (() => undefined),
     };
   }, []);
@@ -115,7 +147,18 @@ export function ShadowCanvas({ graph, readOnly, selectedId, onSelect, onElementC
     const navigation = get<GraphNavigation>("graphNavigation");
     const keys = get<GraphKeys>("graphKeys");
     const registry = get<{ get(id: string): GraphElement | undefined }>("elementRegistry");
-    services.current = { importer: get<GraphImporter>("graphImporter"), filter: get<GraphFilter>("graphFilter"), registry, modeling, navigation, keys };
+    const drawingService = get<GraphDrawing>("graphDrawing");
+    drawingService.setHandlers({
+      connect: (a, b) => props.current.drawing.connect(a, b),
+      remove: (ids) => props.current.drawing.remove(ids),
+      create: (input) => props.current.drawing.create(input),
+      rename: (id, name) => props.current.drawing.rename(id, name),
+    });
+    drawingService.setTexts(props.current.drawingTexts);
+    modeling.setHistoryPort({ read: () => props.current.readGraph(), isRefusal: (error) => props.current.isRefusal(error), report: (outcome) => props.current.onHistory(outcome) });
+    const unsubscribeHistory = modeling.history.subscribe(setHistory);
+    const unsubscribeTools = drawingService.subscribe(setTools);
+    services.current = { drawing: drawingService, importer: get<GraphImporter>("graphImporter"), filter: get<GraphFilter>("graphFilter"), registry, modeling, navigation, keys };
     modeling.setSender((edit) => props.current.send(edit));
     const eventBus = get<{ on(event: string, priority: number, handler: (event: never) => unknown): void; off(event: string, handler: unknown): void }>("eventBus");
     const selection = get<{ get(): GraphElement[]; select(element: GraphElement | null): void }>("selection");
@@ -132,6 +175,7 @@ export function ShadowCanvas({ graph, readOnly, selectedId, onSelect, onElementC
       id: "canvas.escape",
       keys: ["Escape"],
       run: () => {
+        if (drawingService.state.lasso) { drawingService.setLasso(false); return true; }
         if (props.current.onEscape?.()) return true;
         if (selection.get().length === 0) return false;
         selection.select(null);
@@ -152,7 +196,7 @@ export function ShadowCanvas({ graph, readOnly, selectedId, onSelect, onElementC
       return undefined;
     }) as (event: never) => unknown;
     eventBus.on("element.click", 1500, onClick as never);
-    const onSelection = ((event: { newSelection: GraphElement[] }) => props.current.onSelect(event.newSelection[0]?.id ?? null)) as (event: never) => unknown;
+    const onSelection = ((event: { newSelection: GraphElement[] }) => props.current.onSelect(event.newSelection.map((element) => element.id))) as (event: never) => unknown;
     eventBus.on("selection.changed", 1000, onSelection as never);
 
     // Nodes are buttons for the keyboard: Enter and Space act like a click.
@@ -170,6 +214,8 @@ export function ShadowCanvas({ graph, readOnly, selectedId, onSelect, onElementC
     observer?.observe(host);
     return () => {
       observer?.disconnect();
+      unsubscribeHistory();
+      unsubscribeTools();
       unregisterEscape();
       for (const unregister of unregisterParentKeys) unregister();
       host.removeEventListener("keydown", onKey);
@@ -218,13 +264,13 @@ export function ShadowCanvas({ graph, readOnly, selectedId, onSelect, onElementC
   useEffect(() => {
     const created = diagram.current;
     if (!created) return;
-    const selection = created.get("selection") as { get(): GraphElement[]; select(element: GraphElement | null): void };
+    const selection = created.get("selection") as { get(): GraphElement[]; select(elements: GraphElement[] | null): void };
     const registry = created.get("elementRegistry") as { get(id: string): GraphElement | undefined };
-    const wanted = selectedId ? registry.get(selectedId) : undefined;
-    const current = selection.get()[0];
-    if ((current?.id ?? null) === (wanted?.id ?? null)) return;
-    selection.select(wanted ?? null);
-  }, [selectedId, graph]);
+    const wanted = selectedIds.map((id) => registry.get(id)).filter((element): element is GraphElement => !!element);
+    const current = selection.get();
+    if (current.length === wanted.length && current.every((element) => wanted.includes(element))) return;
+    selection.select(wanted);
+  }, [selectedIds, graph]);
 
   const navigation = () => services.current?.navigation;
   return (
@@ -234,6 +280,8 @@ export function ShadowCanvas({ graph, readOnly, selectedId, onSelect, onElementC
         scale={scale}
         texts={toolbarTexts}
         actions={{ zoomIn: () => navigation()?.zoomStep(1), zoomOut: () => navigation()?.zoomStep(-1), fit: () => navigation()?.fit(), actualSize: () => navigation()?.actualSize() }}
+        edit={{ writable: !readOnly, canUndo: history.canUndo, canRedo: history.canRedo, busy: history.busy, connecting, lasso: tools.lasso }}
+        editActions={{ undo: () => void services.current?.modeling.undo(), redo: () => void services.current?.modeling.redo(), toggleConnect: onToggleConnect, toggleLasso: () => services.current?.drawing.setLasso(!services.current.drawing.state.lasso) }}
       />
     </div>
   );

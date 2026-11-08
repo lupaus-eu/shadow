@@ -245,6 +245,20 @@ canvas is one `Diagram` created once in `ShadowCanvas.tsx` and never recreated o
   100 %) sits over the canvas inside `ShadowCanvas`. `keymap.ts` is the key map (`Keymap.register`, reachable as
   `ShadowCanvasHandle.registerKey`); `diagram/GraphKeys` connects it to the library's `keyboard` service, which fires only
   while focus is inside the drawing, and the keymap ignores text fields as well.
-- diagram-js modules in use: `modeling`, `selection`, `move`, `outline`, `movecanvas`, `zoomscroll`, `keyboard` and `hand-tool`; its CSS is imported
+- Drawing and undo (ticket 05): `diagram/GraphDrawing` is the pointer drawing (the library's `connect` whose end it takes over, lasso mode,
+  naming in place as an overlay input, a draft node that is neither on the command stack nor sent until named) and `GraphContextPad` the pad's
+  Connect and Delete; they only ask the parent through handlers, and `ModelCanvas` applies the rules (`draw.ts`: `planConnection` gives create,
+  choose or one of three refusals; `deleteSummary`; `freeSpot` for the centre placement), confirms deletes and sends. `applyEdit` gained
+  `elements.delete` (one command, one write, nodes and loose connections; the connections touching a node leave with it, as on the server),
+  `connection.reroute` and a created element's id coming back from the sender. The session history is `canvas/history.ts` (`GraphHistory`,
+  owned by `GraphModeling`), **not** the diagram-js command stack: that stack still draws the optimistic change and is cleared on every load,
+  because a load replaces optimistic elements and ids change (a deleted node brought back is a new element). Each entry holds plain steps
+  (create, delete, rename, move, connect, delete connection, re-route) in both directions keyed by element id with an alias map for re-created
+  ids; before running, the state is read afresh and the steps are checked against it (the element exists and is as the entry left it);
+  then each step is one ordinary write. A refusal, a 409 or a 422 drops the entry; a network failure before the first write keeps it.
+  Ctrl/Cmd+Z chords are on the library's `keyboard` service (`GraphKeys`); the single-key bindings (`C`, `L`, `Delete`, `F2`) come from
+  `ModelCanvas` through the `keyBindings` prop. Positions are not event edits: a move is a positions write without a version, so only
+  event edits can be stale.
+- diagram-js modules in use: `modeling`, `selection`, `move`, `outline`, `movecanvas`, `zoomscroll`, `keyboard`, `hand-tool`, `connect`, `connection-preview`, `context-pad`, `lasso-tool` and `overlays`; its CSS is imported
   into `theme.css` (layer `components`) and its `--bio-*` variables are defined from Shadow's colour tokens, so the canvas
   follows the theme. The remaining modules the design expects were verified to exist (ADR-0051).

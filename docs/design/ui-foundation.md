@@ -214,7 +214,7 @@ keep the reading column. `OrganizationLayout` turns `wide` on for that route.
 - **Type panel** (`canvas/TypePanel.tsx`, the left panel). A search box (labelled **Search nodes**, focused with `/`), **Select
   all** and **Deselect all**, then one group per node type sorted by name with a disclosure button (`aria-expanded`,
   `aria-controls`), a visibility checkbox (**Show X nodes**), the type's colour tag and node count, and a "+" that adds a node
-  of that type (named "Type N", placed on the grid; not shown on a read-only model). The rows of a group are the nodes sorted by
+  of that type (a new node opens for naming at the centre of the view, see Drawing; not shown on a read-only model). The rows of a group are the nodes sorted by
   name with a description clamped to two lines and a "+" or "~" mark for an element the shown state added or changed. A type
   without nodes starts collapsed; the person's collapse choices are the per-model `localStorage` key
   `shadow.canvas.typeCollapse` (`canvas/type-collapse.ts`, try/catch, the panel works without it). A search opens the groups
@@ -236,9 +236,39 @@ keep the reading column. `OrganizationLayout` turns `wide` on for that route.
   which is data. Selection is a heavier accent outline, a node with keyboard focus the same, and an element the shown state
   added or changed carries a "+" or "~" badge and a dashed outline: nothing is shown by colour alone.
 - **Canvas toolbar** (`CanvasToolbar`, a `role="toolbar"` over the top left of the canvas): zoom out, the percentage
-  readout, zoom in, **Fit** and **100 %**. Every control is a labelled button (Finnish and English texts in
+  readout, zoom in, **Fit** and **100 %**, then (after a separator) **Undo**, **Redo** and the **Connect nodes** toggle
+  (writable models only; Undo and Redo are disabled while their stack is empty or a step is running) and the **Select
+  several nodes** (lasso) toggle, which is also there on a read-only model. A toggle shows its state with `aria-pressed`
+  and a filled background, never colour alone. Every control is a labelled button (Finnish and English texts in
   `models/messages.ts`; Fit is "Fit the whole graph in view" / "Sovita koko kaavio näkymään"); the readout is a plain
   `<output>` that is not announced on every change. Zoom out and in disable at the limits.
+- **Drawing** (ticket 05 of the Structure canvas; none of it exists on a read-only model, apart from selecting).
+  - **New node.** "+" in the type panel, or **Add** in the details panel for the chosen type, draws an empty node at the
+    centre of what is in view (at any zoom and pan; moved 24 px aside while another node is on that spot) and opens its name
+    in place, an input over the node. Enter, or leaving the field, saves it (a blank name saves nothing); Esc cancels. Nothing
+    is sent or kept before the name is committed. An existing node is renamed the same way with a double-click or `F2`.
+  - **Connect.** Two gestures end in the same place: drag from the **Connect** button of the context pad (the buttons beside
+    the one selected element: Connect and Delete for a node, Delete for a connection) onto another node, or press `C` or the
+    toolbar button and click the first node and then the second (the panel's "Connect from this node" works too). Only the
+    connection types the Metamodel allows from the source's node type to the target's, and that the two nodes do not have yet,
+    are offered; with more than one a dialog **Choose the connection** asks which. A connection runs from where the gesture
+    started: the reverse direction is never assumed. The three refusals have their own sentences (a node cannot be connected
+    to itself; the model does not allow a connection from a X node to a Y node; the nodes are already connected in this
+    direction with this connection) and are shown in the alert and the live region; the server's own text is never shown.
+  - **Select several.** Shift-click adds or removes a node; the lasso toggle (or `L`) draws a selection rectangle on the
+    background (Esc leaves the mode); nodes of a hidden type are never selected. Dragging any selected node, or an arrow key,
+    moves all of them together: one command, one positions write, one undo step. With several selected the details panel shows
+    the count and **Delete selected**.
+  - **Delete** (`Delete` or `Backspace`, the pad, or the details panel) always asks first, in the confirmation dialog, naming
+    what goes: "Delete the node \u201CSales\u201D? Its 2 connections will also be deleted: Sales \u2192 Support (Reports to), ...
+    You can undo this." (three names, then "and N more"). A set is deleted as one step.
+  - **Undo and redo** (`Ctrl/Cmd+Z`, `Shift+Ctrl/Cmd+Z` or `Ctrl/Cmd+Y`, and the toolbar buttons) cover the person's own steps
+    in this session, for this line and event: create, delete (the same name, description, type and place, and its
+    connections, as a new element), rename, connect, re-route (the details panel's From and To) and move. The history is in
+    memory only; it is cleared when the line or event changes and on reload. Each undo is an ordinary write after a fresh
+    read: if the element is gone or somebody changed it since, or the server answers 409 or 422, the step is refused and
+    dropped with a readable notice and the other steps stay. Keys act only while focus is inside the drawing.
+  - Every outcome of undo, redo, delete and a refusal is also said in a polite live region.
 - **Zoom and view rules.** Zoom is 10 % to 400 % everywhere (wheel, pinch, buttons, keys). The wheel and a pinch zoom
   around the pointer, a drag on the background, a middle-button drag, **Space + drag** and one finger on the background
   pan; two fingers pinch and pan. **Fit** shows the whole graph with 48 px of padding and never zooms in past 100 %;
@@ -256,7 +286,13 @@ keep the reading column. `OrganizationLayout` turns `wide` on for that route.
   | `F` | Fit the whole graph |
   | Arrows | Move the selected nodes 10 px (Shift 50 px); with no node selected, or on a read-only canvas, pan 50 px (Shift 200 px) |
   | `/` | Focus the search box of the type panel |
-  | `Esc` | Cancel connect mode; otherwise clear the selection |
+  | `Esc` | Cancel naming in place; leave lasso or connect mode; otherwise clear the selection |
+  | `C` | Connect mode: click the node to connect from, then the node to connect to |
+  | `L` | Lasso mode: drag a rectangle on the background to select |
+  | `Delete` / `Backspace` | Delete the selection, after a confirmation |
+  | `F2` | Rename the selected node in place |
+  | `Ctrl/Cmd+Z` | Undo the last step |
+  | `Shift+Ctrl/Cmd+Z`, `Ctrl/Cmd+Y` | Redo |
   | Space + drag | Pan (on a focused node Space selects it, like Enter) |
   | `Enter` / Space on a focused node | Select it |
 

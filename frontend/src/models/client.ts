@@ -117,7 +117,7 @@ export async function deleteLine(organizationId: string, modelId: string, line: 
 // Canvas edits are changes inside an event; `event.version` is the stale check. Moving a node is a position of the line, not an edit.
 const eventUrl = (organizationId: string, modelId: string, event: LineEvent) => `${modelsUrl(organizationId)}/${modelId}/events/${event.id}`;
 
-export async function createNode(organizationId: string, modelId: string, event: LineEvent, input: { node_type_id: string; name: string; x: number; y: number }): Promise<GraphNode> {
+export async function createNode(organizationId: string, modelId: string, event: LineEvent, input: { node_type_id: string; name: string; description?: string | null; x: number; y: number }): Promise<GraphNode> {
   return ((await (await call(`${eventUrl(organizationId, modelId, event)}/nodes`, { method: "POST", ...json({ ...input, expected_version: event.version }) })).json()) as { node: GraphNode }).node;
 }
 
@@ -129,8 +129,15 @@ export async function deleteNode(organizationId: string, modelId: string, event:
   await call(`${eventUrl(organizationId, modelId, event)}/nodes/${node.id}?expected_version=${event.version}`, { method: "DELETE" });
 }
 
-export async function createConnection(organizationId: string, modelId: string, event: LineEvent, input: { connection_type_id: string; source_node_id: string; target_node_id: string }): Promise<void> {
-  await call(`${eventUrl(organizationId, modelId, event)}/connections`, { method: "POST", ...json({ ...input, expected_version: event.version }) });
+/** Creates a connection and returns its id (the element id the later edits and undo refer to). */
+export async function createConnection(organizationId: string, modelId: string, event: LineEvent, input: { connection_type_id: string; source_node_id: string; target_node_id: string }): Promise<{ id: string }> {
+  const body = (await (await call(`${eventUrl(organizationId, modelId, event)}/connections`, { method: "POST", ...json({ ...input, expected_version: event.version }) })).json()) as { id?: string; connection?: { id: string } };
+  return { id: (body.connection?.id ?? body.id) as string };
+}
+
+/** Re-routes a connection: another source and/or target node. */
+export async function updateConnection(organizationId: string, modelId: string, event: LineEvent, connection: GraphConnection, changes: { source_node_id?: string; target_node_id?: string; connection_type_id?: string }): Promise<void> {
+  await call(`${eventUrl(organizationId, modelId, event)}/connections/${connection.id}`, { method: "PATCH", ...json({ ...changes, expected_version: event.version }) });
 }
 
 export async function deleteConnection(organizationId: string, modelId: string, event: LineEvent, connection: GraphConnection): Promise<void> {

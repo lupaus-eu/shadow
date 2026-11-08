@@ -92,6 +92,12 @@ export class GraphNavigation {
     this.setView(zoomAround(view, stepScale(view.scale, direction), this.centre()), animate);
   }
 
+  /** The point of the canvas at the centre of what is in view (where a new node goes). */
+  viewCentre(): Point {
+    const box = this.canvas.viewbox();
+    return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  }
+
   /** Scale 1 around the centre of the drawing area. */
   actualSize(animate = true): void { this.zoomTo(1, animate); }
 

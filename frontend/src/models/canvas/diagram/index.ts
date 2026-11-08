@@ -1,13 +1,20 @@
+import ConnectModule from "diagram-js/lib/features/connect/index.js";
+import ConnectionPreviewModule from "diagram-js/lib/features/connection-preview/index.js";
+import ContextPadModule from "diagram-js/lib/features/context-pad/index.js";
 import HandToolModule from "diagram-js/lib/features/hand-tool/index.js";
 import KeyboardModule from "diagram-js/lib/features/keyboard/index.js";
+import LassoToolModule from "diagram-js/lib/features/lasso-tool/index.js";
 import ModelingModule from "diagram-js/lib/features/modeling/index.js";
 import MoveCanvasModule from "diagram-js/lib/navigation/movecanvas/index.js";
 import MoveModule from "diagram-js/lib/features/move/index.js";
 import OutlineModule from "diagram-js/lib/features/outline/index.js";
+import OverlaysModule from "diagram-js/lib/features/overlays/index.js";
 import SelectionModule from "diagram-js/lib/features/selection/index.js";
 import ZoomScrollModule from "diagram-js/lib/navigation/zoomscroll/index.js";
 import CroppingConnectionDocking from "diagram-js/lib/layout/CroppingConnectionDocking.js";
 
+import { GraphContextPad } from "./GraphContextPad";
+import { GraphDrawing } from "./GraphDrawing";
 import { GraphFilter } from "./GraphFilter";
 import { GraphImporter } from "./GraphImporter";
 import { GraphKeys } from "./GraphKeys";
@@ -28,13 +35,13 @@ GraphMoveTarget.$inject = ["eventBus", "canvas"];
 /**
  * The Shadow graph domain layer for diagram-js: how nodes and connections look (`graphRenderer`), where connections run (`layouter`,
  * `connectionDocking`), what is allowed (`graphRules`), how plain data becomes shapes (`graphImporter`) and how edits reach the server
- * (`graphModeling`), how the view moves (`graphNavigation`), which keys do what (`graphKeys`) and what the type panel hides or dims (`graphFilter`). The library's own modules supply selection,
+ * (`graphModeling`), how the view moves (`graphNavigation`), which keys do what (`graphKeys`), what the type panel hides or dims (`graphFilter`), and the pointer drawing: connect, lasso, the context pad and naming in place (`graphDrawing`, `graphContextPad`). The library's own modules supply selection,
  * move, background drag and space + drag panning, the keyboard service, the command stack and the rules registry;
- * lasso, create, connect, context pad, palette, align, snapping, editor actions, overlays and the minimap join in the tickets that need them.
+ * create, palette, align, snapping, editor actions, overlays and the minimap join in the tickets that need them.
  */
 export const shadowGraphModule = {
-  __depends__: [ModelingModule, SelectionModule, MoveModule, OutlineModule, MoveCanvasModule, ZoomScrollModule, KeyboardModule, HandToolModule],
-  __init__: ["graphRenderer", "graphRules", "graphModeling", "graphMoveTarget", "graphNavigation", "graphKeys"],
+  __depends__: [ModelingModule, SelectionModule, MoveModule, OutlineModule, MoveCanvasModule, ZoomScrollModule, KeyboardModule, HandToolModule, ConnectModule, ConnectionPreviewModule, ContextPadModule, LassoToolModule, OverlaysModule],
+  __init__: ["graphRenderer", "graphRules", "graphModeling", "graphMoveTarget", "graphNavigation", "graphDrawing", "graphContextPad", "graphKeys"],
   graphContext: ["type", GraphContext],
   graphRenderer: ["type", GraphRenderer],
   graphRules: ["type", GraphRules],
@@ -43,6 +50,8 @@ export const shadowGraphModule = {
   graphFilter: ["type", GraphFilter],
   graphMoveTarget: ["type", GraphMoveTarget],
   graphNavigation: ["type", GraphNavigation],
+  graphDrawing: ["type", GraphDrawing],
+  graphContextPad: ["type", GraphContextPad],
   graphKeys: ["type", GraphKeys],
   layouter: ["type", GraphLayouter],
   connectionDocking: ["type", CroppingConnectionDocking],

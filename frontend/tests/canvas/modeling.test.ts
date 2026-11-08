@@ -25,7 +25,7 @@ describe("applyEdit: accepted by the server", () => {
     expect(current.registry.get("a")).toBeUndefined();
     expect(current.registry.get("ab")).toBeUndefined();
     await done;
-    expect(sent).toEqual([{ kind: "node.delete", id: "a" }]);
+    expect(sent).toEqual([{ kind: "elements.delete", nodeIds: ["a"], connectionIds: [] }]);
     expect(current.commandStack.canUndo()).toBe(true);
   });
 
