@@ -1,6 +1,8 @@
 # Ticket 10: Row-level security and isolation tests (080G)
 
-Status: needs-info
+Status: wontfix
+
+Closed with the feature: superseded by the Yearclock platform base (see the PRD note).
 
 ## Goal
 

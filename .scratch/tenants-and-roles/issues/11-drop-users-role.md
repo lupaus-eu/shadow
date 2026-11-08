@@ -1,6 +1,8 @@
 # Ticket 11: Drop users.role (080G, cleanup)
 
-Status: needs-info
+Status: wontfix
+
+Closed with the feature: superseded by the Yearclock platform base (see the PRD note).
 
 ## Goal
 

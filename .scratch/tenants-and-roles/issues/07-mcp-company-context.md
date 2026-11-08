@@ -1,6 +1,8 @@
 # Ticket 07: MCP company context (080E)
 
-Status: needs-info
+Status: wontfix
+
+Closed with the feature: superseded by the Yearclock platform base (see the PRD note).
 
 ## Goal
 

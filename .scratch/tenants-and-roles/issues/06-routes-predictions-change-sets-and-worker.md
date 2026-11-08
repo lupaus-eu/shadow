@@ -1,6 +1,8 @@
 # Ticket 06: Company routes: predictions, change sets, prediction worker (080D, part 3)
 
-Status: needs-info
+Status: wontfix
+
+Closed with the feature: superseded by the Yearclock platform base (see the PRD note).
 
 ## Goal
 

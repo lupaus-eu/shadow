@@ -1,6 +1,8 @@
 # Ticket 08: Members API (080F)
 
-Status: needs-info
+Status: wontfix
+
+Closed with the feature: superseded by the Yearclock platform base (see the PRD note).
 
 ## Goal
 

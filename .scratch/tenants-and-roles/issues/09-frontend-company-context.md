@@ -1,6 +1,8 @@
 # Ticket 09: Frontend company context (080F, UI)
 
-Status: needs-info
+Status: wontfix
+
+Closed with the feature: superseded by the Yearclock platform base (see the PRD note).
 
 ## Goal
 

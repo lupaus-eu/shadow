@@ -1,6 +1,8 @@
 # Ticket 04: Company routes: Organisations and Customers (080D, part 1)
 
-Status: needs-info
+Status: wontfix
+
+Closed with the feature: superseded by the Yearclock platform base (see the PRD note).
 
 ## Goal
 

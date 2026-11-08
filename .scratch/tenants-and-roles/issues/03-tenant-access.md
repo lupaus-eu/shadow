@@ -1,6 +1,8 @@
 # Ticket 03: Company access, session and sign-in accounts (080C)
 
-Status: needs-info
+Status: wontfix
+
+Closed with the feature: superseded by the Yearclock platform base (see the PRD note).
 
 ## Goal
 

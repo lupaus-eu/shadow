@@ -1,6 +1,8 @@
 # Ticket 05: Company routes: scenarios, states, structure, metrics (080D, part 2)
 
-Status: needs-info
+Status: wontfix
+
+Closed with the feature: superseded by the Yearclock platform base (see the PRD note).
 
 ## Goal
 

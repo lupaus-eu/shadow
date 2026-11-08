@@ -1,6 +1,13 @@
 # Domain model: Companies (tenants) and roles
 
-Status: ready-for-human
+Status: wontfix
+
+> **Closed as `wontfix` (2026-11-08).** Superseded by the Yearclock platform base that Shadow now runs on:
+> Organizations (the paying account), memberships with the roles Owner, Admin and Member, row-level security
+> by Organization, invitations and sign-in through Authentik already exist there (see
+> `.scratch/saas-platform/`, `.scratch/authentik-sign-in/` and `docs/architecture/`). This feature was written
+> for the previous Shadow code, now in `legacy/`, and its tickets 03 to 11 no longer apply to the current
+> codebase. Tickets 01 and 02 were implemented in that earlier code.
 
 ## Purpose and boundary
 
