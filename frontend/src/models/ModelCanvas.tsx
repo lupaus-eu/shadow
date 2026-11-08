@@ -1,6 +1,9 @@
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 
+import { Link } from "react-router";
+
+import { modelHref } from "../shell/nav";
 import { useOrganization } from "../shell/organization-outlet";
 import { useModel } from "./ModelShell";
 import { Alert, Button, Dialog, Field, IconButton, Select, TextArea, TextInput, cx, useConfirm } from "../ui";
@@ -17,7 +20,9 @@ import { useCanvasView } from "./canvas/useCanvasView";
 import { TypePanel } from "./canvas/TypePanel";
 import { readTypeCollapse, writeTypeCollapse, type TypeCollapse } from "./canvas/type-collapse";
 import { groupNodes, hideAllTypes, searchMatches, showAllTypes, toggleType, type CanvasFilter } from "./canvas/type-list";
+import { formatMetricValue, periodLabel } from "./canvas/node-metrics";
 import { useGraphState } from "./canvas/useGraphState";
+import { useNodeMetrics, type NodeMetricsState } from "./useNodeMetrics";
 import { modelMessages } from "./messages";
 import { readPanels, writePanels, type PanelState } from "./panel-state";
 
@@ -100,6 +105,8 @@ export function ModelCanvas() {
   const matchIds = filter.matchIds;
   const connectionTypes = useMemo(() => new Map((graph?.connectionTypes ?? []).map((type) => [type.id, type])), [graph]);
   const selectedNode = selectedId ? byId.get(selectedId) : undefined;
+  // Metrics are read only once a node is selected, and once per line.
+  const nodeMetrics = useNodeMetrics(source, selectedNode?.id ?? null);
   const selectedConnection = selectedId && !selectedNode ? graph?.connections.find((item) => item.id === selectedId) : undefined;
 
   const noticeFor = (cause: unknown, rule: string) =>
@@ -268,6 +275,7 @@ export function ModelCanvas() {
     <>
       {selectedNode ? (
         <NodePanel key={`${selectedNode.id}-${selectedNode.name}-${selectedNode.description ?? ""}`} graph={graph} node={selectedNode} writable={writable} connecting={connecting !== null} text={text}
+          metrics={nodeMetrics} locale={locale} metricsHref={`${modelHref(organizationId, modelId)}/metrics?line=${lineId}`}
           onSave={(changes) => void edit({ kind: "node.update", id: selectedNode.id, name: changes.name, description: changes.description })}
           onDelete={() => void requestDelete([selectedNode.id])}
           onConnect={(connectionTypeId) => setConnecting({ sourceId: selectedNode.id, connectionTypeId })}
@@ -377,7 +385,7 @@ function AddNode({ graph, onAdd, text }: { graph: GraphData; onAdd: (typeId: str
   );
 }
 
-function NodePanel({ graph, node, writable, connecting, text, onSave, onDelete, onConnect, onCancel }: { graph: GraphData; node: GraphNode; writable: boolean; connecting: boolean; text: Text; onSave: (changes: { name: string; description: string | null }) => void; onDelete: () => void; onConnect: (connectionTypeId: string) => void; onCancel: () => void }) {
+function NodePanel({ graph, node, writable, connecting, text, metrics, locale, metricsHref, onSave, onDelete, onConnect, onCancel }: { graph: GraphData; node: GraphNode; writable: boolean; connecting: boolean; text: Text; metrics: NodeMetricsState; locale: string; metricsHref: string; onSave: (changes: { name: string; description: string | null }) => void; onDelete: () => void; onConnect: (connectionTypeId: string) => void; onCancel: () => void }) {
   const [name, setName] = useState(node.name);
   const [description, setDescription] = useState(node.description ?? "");
   const options = graph.allowedConnections.filter((item) => item.source_node_type_id === node.node_type_id).map((item) => item.connection_type_id);
@@ -397,7 +405,38 @@ function NodePanel({ graph, node, writable, connecting, text, onSave, onDelete, 
         </div>
       ) : null}
       {related.length > 0 ? <p className="m-0 text-xs text-ink-muted">{text.connections}: {related.length}</p> : null}
+      <NodeMetricsList metrics={metrics} locale={locale} href={metricsHref} text={text} />
     </div>
+  );
+}
+
+/** The metrics attached to the selected node: name and latest value with unit, an empty or failed state, and a link to the Metrics tab of the same line. Read only. */
+function NodeMetricsList({ metrics, locale, href, text }: { metrics: NodeMetricsState; locale: string; href: string; text: Text }) {
+  return (
+    <section aria-labelledby="node-metrics-title" className="flex flex-col gap-2 border-t border-line pt-3">
+      <h3 id="node-metrics-title" className="m-0 text-[13px] font-semibold">{text.nodeMetrics}</h3>
+      {metrics.status === "loading" || metrics.status === "idle" ? <p role="status" className="m-0 text-xs text-ink-muted">{text.nodeMetricsLoading}</p> : null}
+      {metrics.status === "failed" ? (
+        <div className="flex flex-col items-start gap-2">
+          <Alert tone="danger" role="alert">{text.nodeMetricsFailed}</Alert>
+          <Button size="sm" onClick={metrics.retry}>{text.nodeMetricsRetry}</Button>
+        </div>
+      ) : null}
+      {metrics.status === "ready" && metrics.items.length === 0 ? <p className="m-0 text-xs text-ink-muted">{text.nodeMetricsEmpty}</p> : null}
+      {metrics.status === "ready" && metrics.items.length > 0 ? (
+        <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
+          {metrics.items.map(({ metric, latest }) => (
+            <li key={metric.id} data-testid="node-metric" className="flex flex-col text-[13px]">
+              <span className="font-medium break-words">{metric.name}</span>
+              <span className="text-ink">
+                {latest && latest.value !== null ? <>{formatMetricValue(latest.value, metric.unit, locale)} <span className="text-xs text-ink-muted">({text.nodeMetricsAsOf(periodLabel(latest.period))})</span></> : <span className="text-ink-muted">{text.nodeMetricsNoValue}</span>}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      <Link to={href} className="w-fit text-[13px]">{text.nodeMetricsOpen}</Link>
+    </section>
   );
 }
 

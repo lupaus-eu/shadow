@@ -6,6 +6,7 @@ import type { ConnectionType, GraphConnection, GraphNode, NodeType } from "../..
 import type { GraphData } from "../graph-types";
 import type { GraphContext } from "./GraphRules";
 import type { GraphModeling } from "./GraphModeling";
+import { pairKey, parallelConnections } from "./GraphLayouter";
 import { isConnectionElement, isNodeElement, type ChangeMark, type ConnectionObject, type GraphElement, type NodeObject, type RegistryLike } from "./model";
 import { NODE_HEIGHT, NODE_WIDTH } from "./shapes";
 
@@ -52,16 +53,21 @@ export class GraphImporter {
     const summary: ImportSummary = { added: 0, updated: 0, removed: 0 };
     const changed = new Set<GraphElement>();
     const relayout = new Set<GraphElement>();
+    // Pairs of nodes whose number of connections changed: all their connections are laid out again so the parallel offsets stay even.
+    const touchedPairs = new Set<string>();
+    const newConnections = new Set<GraphElement>();
+    const touch = (connection: GraphElement) => { if (connection.source && connection.target) touchedPairs.add(pairKey(connection.source.id, connection.target.id)); };
 
     // Gone: connections first (a shape that goes takes none with it here), then shapes.
     for (const element of elements.filter(isConnectionElement)) {
       if (connectionIds.has(element.id)) continue;
+      touch(element);
       this.detach(element);
       summary.removed++;
     }
     for (const element of elements.filter(isNodeElement)) {
       if (nodeIds.has(element.id) || element.businessObject.draft) continue;
-      for (const connection of [...element.incoming, ...element.outgoing]) this.detach(connection);
+      for (const connection of [...element.incoming, ...element.outgoing]) { touch(connection); this.detach(connection); }
       this.canvas.removeShape(element as never);
       summary.removed++;
     }
@@ -104,6 +110,8 @@ export class GraphImporter {
         const created = this.factory.createConnection({ id: connection.id, source, target, businessObject } as never) as unknown as GraphElement;
         created.waypoints = this.layouter.layoutConnection(created);
         this.canvas.addConnection(created as never, root);
+        touch(created);
+        newConnections.add(created);
         summary.added++;
         continue;
       }
@@ -115,6 +123,14 @@ export class GraphImporter {
       summary.updated++;
     }
 
+    if (touchedPairs.size > 0) {
+      for (const element of this.registry.filter((item) => !!item.parent && isConnectionElement(item))) {
+        if (!element.source || !element.target || !touchedPairs.has(pairKey(element.source.id, element.target.id))) continue;
+        // A connection drawn just now and alone between its nodes is already straight.
+        if (newConnections.has(element) && parallelConnections(element.source, element.target).length === 1) continue;
+        relayout.add(element);
+      }
+    }
     for (const connection of relayout) {
       if (!connection.source || !connection.target) continue;
       connection.waypoints = this.layouter.layoutConnection(connection);

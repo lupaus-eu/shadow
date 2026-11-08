@@ -3,6 +3,7 @@ import type { KeyboardEvent, Ref } from "react";
 
 import { Button, IconButton, cx } from "../../ui";
 import type { GraphMarkers } from "./graph-types";
+import { shortenName } from "./diagram/shapes";
 import { isGroupOpen, type TypeGroup } from "./type-list";
 
 export type TypePanelTexts = {
@@ -126,7 +127,7 @@ export function TypePanel({ groups, hidden, collapse, query, matches, selectedId
                         )}
                       >
                         <span className="flex w-full items-center gap-1">
-                          <span className="min-w-0 flex-1 truncate">{node.name}</span>
+                          <span className="min-w-0 flex-1 truncate" title={node.name}>{shortenName(node.name)}</span>
                           {change ? <span data-change={change} className="shrink-0 rounded-[4px] border border-line px-1 text-[11px] leading-4 text-ink" title={change === "added" ? texts.changeAdded : texts.changeUpdated}><span aria-hidden="true">{change === "added" ? "+" : "~"}</span><span className="sr-only">{change === "added" ? texts.changeAdded : texts.changeUpdated}</span></span> : null}
                         </span>
                         {node.description ? <span className="line-clamp-2 w-full text-xs font-normal text-ink-muted">{node.description}</span> : null}

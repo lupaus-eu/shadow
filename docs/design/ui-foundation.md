@@ -269,6 +269,31 @@ keep the reading column. `OrganizationLayout` turns `wide` on for that route.
     read: if the element is gone or somebody changed it since, or the server answers 409 or 422, the step is refused and
     dropped with a readable notice and the other steps stay. Keys act only while focus is inside the drawing.
   - Every outcome of undo, redo, delete and a refusal is also said in a polite live region.
+- **Reading** (ticket 06 of the Structure canvas).
+  - **Hover popover** (`diagram/GraphPopover.ts`, an `overlays` overlay, `role="tooltip"`): the node's full name, its type and its
+    description. It opens after the pointer has rested on a node for 250 ms, and at once when a node gets keyboard focus (the node
+    then has `aria-describedby` pointing at it). It sits beside the node on the side with room (right, left, below, above, in that
+    order) and is moved so that it lies inside the canvas (`canvas/popover.ts`, 6 px margin, at most 320 px wide, description clamped
+    to eight lines). The overlay layer follows pan and zoom with the drawing; the popover itself is not scaled, so its text stays
+    readable. It closes when the pointer leaves, focus leaves, `Esc` is pressed (the key is not consumed), the drawing is panned, a drag
+    starts, the node changes or goes, or the node's name is edited in place; a zoom keeps it and puts it again once the zoom has
+    settled. A node being named (the draft) and the naming input never get one; neither does a node of a hidden type. The popover
+    takes no pointer events so it cannot block the drawing; because of that it cannot be hovered itself, and everything it shows is
+    also in the details panel and the node list. It fades in over 120 ms only when `prefers-reduced-motion` allows motion.
+  - **Shortened labels.** A name over 60 code points is shown as its first 59 and an ellipsis (60 in all; counted in code points, so
+    an emoji is one) on the canvas (up to three lines of 22 characters in the node, the text a little smaller at three lines), in the
+    node list (the full name is the row's `title`) and in connection labels. The full name is in the popover, the node's
+    accessible name and `<title>`, and the details panel's name field.
+  - **Parallel connections.** Connections between the same two nodes, in either direction, are drawn 18 px apart (centred on the
+    line between the nodes: two lie 9 px either side, three have one on the line), so lines and labels do not lie on top of each
+    other. A single connection stays straight between the centres. They are laid out again when one is added or removed.
+  - **Node metrics.** The details panel of a selected node ends with a **Metrics** section: each metric attached to the node
+    (`node_id`) with its latest value and unit and the month it is from ("1,234.5 EUR (as of 2026-03)", formatted for the
+    person's language), "No values yet" for a metric with no value, a message when the node has none (**No metrics are attached to
+    this node. Attach one on the Metrics tab.**), a loading line and, when the read fails, an alert (**The metrics could not be
+    loaded.**) with **Try again**. A link **Open the Metrics tab** goes to `.../metrics?line=<line id>` of the same line. Nothing is
+    read before a node is selected; the line's metric list and each metric's series are read once and kept while the Structure
+    page is open (leaving for the Metrics tab, where they are edited, starts over). The canvas never edits metrics.
 - **Zoom and view rules.** Zoom is 10 % to 400 % everywhere (wheel, pinch, buttons, keys). The wheel and a pinch zoom
   around the pointer, a drag on the background, a middle-button drag, **Space + drag** and one finger on the background
   pan; two fingers pinch and pan. **Fit** shows the whole graph with 48 px of padding and never zooms in past 100 %;

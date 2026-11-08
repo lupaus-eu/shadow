@@ -8,7 +8,7 @@
 | [Feature: Sign in with Authentik](authentik-sign-in/PRD.md) | implemented | 5/5 | — | — |
 | [Feature: Model timeline (Base line, events and scenarios)](model-timeline/PRD.md) | ready for implementation | 8/11 | [09 frontend event list and scenario picker](model-timeline/issues/09-frontend-event-list-and-scenario-picker.md) — ready-for-agent | — |
 | [Feature: Shadow models (digital twin of an organisation)](shadow-models/PRD.md) | implemented (written after the fact, 2026-11-07; the features were built in | 0/0 | — | — |
-| [Feature: Structure canvas (full-width drawing tool)](structure-canvas/PRD.md) | ready for implementation | 5/9 | [06 Hover popovers, label shortening and node metrics](structure-canvas/issues/06-hover-labels-and-metrics.md) — ready-for-agent | — |
+| [Feature: Structure canvas (full-width drawing tool)](structure-canvas/PRD.md) | ready for implementation | 6/9 | [07 Snap, align, auto layout, minimap and export](structure-canvas/issues/07-layout-tools-minimap-export.md) — ready-for-agent | — |
 | [Feature: Companies (tenants) and roles](tenants-and-roles/PRD.md) | needs decision | 2/11 | [03 Company access, session and sign-in accounts (080C)](tenants-and-roles/issues/03-tenant-access.md) — needs-info | — |
 
 ## Tekniset työt
@@ -36,10 +36,9 @@
 
 | Ticket | Tila | Avoimia kriteerejä | Aloitettavissa | Odottaa ticketejä |
 | --- | --- | ---: | --- | --- |
-| [06 Hover popovers, label shortening and node metrics](structure-canvas/issues/06-hover-labels-and-metrics.md) | ready-for-agent | 4 | kyllä | — |
 | [07 Snap, align, auto layout, minimap and export](structure-canvas/issues/07-layout-tools-minimap-export.md) | ready-for-agent | 5 | kyllä | — |
 | [08 Time control (scenario picker, event list, edits into the selected event)](structure-canvas/issues/08-time-control.md) | ready-for-agent | 6 | kyllä | — |
-| [09 Accessibility, texts, browser test and documentation](structure-canvas/issues/09-accessibility-texts-docs.md) | ready-for-agent | 5 | ei | 06, 07 |
+| [09 Accessibility, texts, browser test and documentation](structure-canvas/issues/09-accessibility-texts-docs.md) | ready-for-agent | 5 | ei | 07 |
 
 ### Feature: Companies (tenants) and roles
 

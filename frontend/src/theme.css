@@ -427,6 +427,23 @@
   }
   .shadow-canvas .shadow-editor-input[aria-invalid="true"] { border-color: var(--color-danger); }
   .shadow-canvas .shadow-editor-input:focus { outline: none; }
+  /* Hover popover of a node (GraphPopover, an overlays overlay): full name, type, description. It takes no pointer events, so it never
+     blocks the drawing; its box and text follow the theme tokens. It fades in only when motion is allowed. */
+  .shadow-canvas .shadow-popover {
+    box-sizing: border-box; width: max-content; max-height: 220px; overflow: hidden; padding: 8px 10px; pointer-events: none;
+    display: flex; flex-direction: column; gap: 2px; color: var(--color-ink); background: var(--color-surface);
+    border: 1px solid var(--color-line-strong); border-radius: var(--radius-control); box-shadow: var(--shadow-overlay);
+    font-size: 13px; line-height: 1.35; overflow-wrap: anywhere;
+  }
+  .shadow-canvas .shadow-popover-name { font-weight: 600; }
+  .shadow-canvas .shadow-popover-type { font-size: 12px; color: var(--color-ink-muted); }
+  .shadow-canvas .shadow-popover-description {
+    margin: 4px 0 0; white-space: pre-wrap; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 8; line-clamp: 8; overflow: hidden;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .shadow-canvas .shadow-popover { animation: shadow-popover-in 120ms ease-out; }
+  }
+  @keyframes shadow-popover-in { from { opacity: 0; } to { opacity: 1; } }
   .shadow-canvas .djs-element[role="button"] {
     outline: none;
   }

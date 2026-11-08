@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { arrowHead, contrastingInk, shapeKind, shapePath, shortenName, wrapLabel } from "../../src/models/canvas/diagram/shapes.ts";
+import { arrowHead, parallelShift, contrastingInk, shapeKind, shapePath, shortenName, wrapLabel } from "../../src/models/canvas/diagram/shapes.ts";
 
 describe("shapeKind", () => {
   it("knows the five shapes, whatever the spelling", () => {
@@ -17,14 +17,30 @@ describe("shapeKind", () => {
 });
 
 describe("shortenName", () => {
-  it("leaves 60 code points alone and shortens 61 with an ellipsis", () => {
+  it("leaves 60 code points alone and shortens 61 to 59 plus an ellipsis", () => {
     expect(shortenName("a".repeat(60))).toBe("a".repeat(60));
-    expect(shortenName("a".repeat(61))).toBe(`${"a".repeat(60)}…`);
+    expect(shortenName("a".repeat(61))).toBe(`${"a".repeat(59)}…`);
+    expect(shortenName("a".repeat(61))).toHaveLength(60);
+  });
+  it("shortens an 80 character name to 59 characters and an ellipsis", () => {
+    const eighty = "abcdefghij".repeat(8);
+    expect(shortenName(eighty)).toBe(`${eighty.slice(0, 59)}…`);
+    expect(Array.from(shortenName(eighty))).toHaveLength(60);
   });
   it("counts code points, not UTF-16 units", () => {
     const sixty = "😀".repeat(60);
+    expect(sixty).toHaveLength(120); // UTF-16 units
     expect(shortenName(sixty)).toBe(sixty);
-    expect(shortenName(`${sixty}x`)).toBe(`${sixty}…`);
+    expect(shortenName(`${sixty}x`)).toBe(`${"😀".repeat(59)}…`);
+  });
+  it("never splits a surrogate pair or a joined emoji it keeps whole", () => {
+    const shortened = shortenName(`${"a".repeat(58)}😀😀😀`);
+    expect(shortened).toBe(`${"a".repeat(58)}😀…`);
+    expect(Array.from(shortened)).toHaveLength(60);
+  });
+  it("leaves the empty and short names alone", () => {
+    expect(shortenName("")).toBe("");
+    expect(shortenName("Sales")).toBe("Sales");
   });
 });
 
@@ -67,5 +83,29 @@ describe("shapePath and arrowHead", () => {
     expect(left.x).toBeLessThan(100);
     expect(right.x).toBeLessThan(100);
     expect(left.y).toBeCloseTo(-right.y);
+  });
+});
+
+describe("parallelShift", () => {
+  const from = { x: 0, y: 0 };
+  const to = { x: 100, y: 0 };
+  it("keeps a single connection on the line", () => {
+    expect(parallelShift(0, 1, from, to)).toEqual({ x: 0, y: 0 });
+  });
+  it("spreads two connections evenly on both sides, perpendicular to the line", () => {
+    const a = parallelShift(0, 2, from, to);
+    const b = parallelShift(1, 2, from, to);
+    expect(a.x).toBeCloseTo(0);
+    expect(b.x).toBeCloseTo(0);
+    expect(a.y).toBeCloseTo(-b.y);
+    expect(Math.abs(b.y - a.y)).toBeCloseTo(18);
+  });
+  it("keeps the middle one of three on the line", () => {
+    expect(parallelShift(1, 3, from, to)).toEqual({ x: 0, y: 0 });
+  });
+  it("is perpendicular on a diagonal and safe for two nodes on the same spot", () => {
+    const shift = parallelShift(0, 2, { x: 0, y: 0 }, { x: 10, y: 10 });
+    expect(shift.x * 10 + shift.y * 10).toBeCloseTo(0);
+    expect(parallelShift(0, 2, from, from)).toEqual({ x: 0, y: 0 });
   });
 });

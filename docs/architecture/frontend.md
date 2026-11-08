@@ -259,6 +259,14 @@ canvas is one `Diagram` created once in `ShadowCanvas.tsx` and never recreated o
   Ctrl/Cmd+Z chords are on the library's `keyboard` service (`GraphKeys`); the single-key bindings (`C`, `L`, `Delete`, `F2`) come from
   `ModelCanvas` through the `keyBindings` prop. Positions are not event edits: a move is a positions write without a version, so only
   event edits can be stale.
+- **Reading (ticket 06).** `diagram/GraphPopover.ts` is the hover and focus popover, an `overlays` overlay placed by `canvas/popover.ts` (`placePopover`, pure
+  screen-pixel arithmetic: right, left, below, above, then clamped into the drawing area); it listens to `element.hover` and `element.out`,
+  `focusin` and `focusout` on the diagram container, `drag.init`, `canvas.viewbox.changing` (a pan, meaning an unchanged scale, closes it) and
+  `canvas.viewbox.changed` (a zoom puts it again). `shortenName` (`diagram/shapes.ts`) keeps 59 code points and an ellipsis over 60, and the
+  type list uses it too. `GraphLayouter` offsets connections between the same pair of nodes (`parallelShift`), and `GraphImporter` lays a
+  pair's connections out again when one is added or removed. The metrics of the selected node are read by `models/useNodeMetrics.ts` (it is outside
+  `canvas/` because it calls the server; `canvas/node-metrics.ts` holds the pure selection and formatting): the line's metric list and each
+  series once, kept in a ref for the life of the page, nothing read without a selected node, a failed read not cached.
 - diagram-js modules in use: `modeling`, `selection`, `move`, `outline`, `movecanvas`, `zoomscroll`, `keyboard`, `hand-tool`, `connect`, `connection-preview`, `context-pad`, `lasso-tool` and `overlays`; its CSS is imported
   into `theme.css` (layer `components`) and its `--bio-*` variables are defined from Shadow's colour tokens, so the canvas
   follows the theme. The remaining modules the design expects were verified to exist (ADR-0051).

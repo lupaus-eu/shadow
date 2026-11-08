@@ -19,10 +19,10 @@ export function shapeKind(value: string | null | undefined): ShapeKind {
   return "roundrectangle";
 }
 
-/** At most 60 code points; a longer name keeps the first 60 and ends with an ellipsis. */
+/** At most 60 code points: a longer name keeps its first 59 and ends with an ellipsis, so the result is exactly 60 code points. Counts code points, not UTF-16 units, so an emoji is one. */
 export function shortenName(name: string, max = MAX_LABEL_CODE_POINTS): string {
   const points = Array.from(name);
-  return points.length <= max ? name : `${points.slice(0, max).join("")}…`;
+  return points.length <= max ? name : `${points.slice(0, max - 1).join("")}…`;
 }
 
 /** Breaks a label into lines of at most `lineLength` characters (words are kept whole when they fit); what does not fit in `maxLines` ends with an ellipsis. */
@@ -94,6 +94,23 @@ export function arrowHead(from: Point, tip: Point, size = 10): Point[] {
   const spread = Math.PI / 7;
   const wing = (offset: number) => ({ x: tip.x - size * Math.cos(angle + offset), y: tip.y - size * Math.sin(angle + offset) });
   return [tip, wing(-spread), wing(spread)];
+}
+
+/** Distance between two parallel connections of the same pair of nodes, in canvas units. */
+export const PARALLEL_SPACING = 18;
+
+/**
+ * How far the `index`-th of `count` connections between two nodes is moved sideways so they do not lie on each other: the offsets are
+ * centred on the straight line (one connection stays on it), spaced `PARALLEL_SPACING` apart, and perpendicular to the line from `from`
+ * to `to`. The caller passes the two nodes in a fixed order (by id), so a connection in the opposite direction lands on the other side.
+ */
+export function parallelShift(index: number, count: number, from: Point, to: Point, spacing = PARALLEL_SPACING): Point {
+  if (count <= 1) return { x: 0, y: 0 };
+  const length = Math.hypot(to.x - from.x, to.y - from.y);
+  if (length === 0) return { x: 0, y: 0 };
+  const amount = (index - (count - 1) / 2) * spacing;
+  // `+ 0` turns a negative zero into zero.
+  return { x: (-(to.y - from.y) / length) * amount + 0, y: ((to.x - from.x) / length) * amount + 0 };
 }
 
 export const toPoints = (points: Point[]) => points.map((point) => `${Math.round(point.x * 100) / 100},${Math.round(point.y * 100) / 100}`).join(" ");

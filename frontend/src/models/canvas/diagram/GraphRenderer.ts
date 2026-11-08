@@ -6,7 +6,8 @@ import { isConnectionElement, isNodeElement, type ChangeMark, type GraphElement 
 import { FALLBACK_FILL, NODE_HEIGHT, NODE_WIDTH, arrowHead, contrastingInk, shapeKind, shapePath, shortenName, toPoints, wrapLabel, type Point } from "./shapes";
 
 const NAME_LINE_LENGTH = 22;
-const NAME_LINES = 2;
+/** Three lines of 22 hold a name of the 60 code points a label may have; with three lines the text is a little smaller to fit the 56 px node. */
+const NAME_LINES = 3;
 const BADGE: Record<Exclude<ChangeMark, null>, string> = { added: "+", updated: "~" };
 
 function text(parent: SVGElement, value: string, attrs: Record<string, string | number>, className: string) {
@@ -74,9 +75,11 @@ export class GraphRenderer extends BaseRenderer {
     const name = shortenName(node.name);
     const lines = wrapLabel(name, NAME_LINE_LENGTH, NAME_LINES);
     const typeLine = nodeType?.name ?? "";
-    const lineHeight = 14;
+    const compact = lines.length > 2;
+    const lineHeight = compact ? 12 : 14;
+    const fontSize = compact ? 11 : 12;
     const block = lines.length * lineHeight + (typeLine ? 12 : 0);
-    let y = (height - block) / 2 + 11;
+    let y = (height - block) / 2 + (compact ? 10 : 11);
     const label = create("g");
     classes(label).add("shadow-node-label");
     attr(label, { fill: ink, "pointer-events": "none" });
@@ -84,7 +87,7 @@ export class GraphRenderer extends BaseRenderer {
     title.textContent = typeLine ? `${node.name} (${typeLine})` : node.name;
     append(label, title);
     for (const line of lines) {
-      text(label, line, { x: width / 2, y, "text-anchor": "middle", "font-size": 12, "font-weight": 600, fill: ink }, "shadow-node-name");
+      text(label, line, { x: width / 2, y, "text-anchor": "middle", "font-size": fontSize, "font-weight": 600, fill: ink }, "shadow-node-name");
       y += lineHeight;
     }
     if (typeLine) text(label, typeLine, { x: width / 2, y: y - 1, "text-anchor": "middle", "font-size": 10, fill: ink, opacity: 0.85 }, "shadow-node-type");

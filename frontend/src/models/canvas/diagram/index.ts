@@ -21,6 +21,7 @@ import { GraphKeys } from "./GraphKeys";
 import { GraphLayouter } from "./GraphLayouter";
 import { GraphModeling } from "./GraphModeling";
 import { GraphNavigation } from "./GraphNavigation";
+import { GraphPopover } from "./GraphPopover";
 import { GraphRenderer } from "./GraphRenderer";
 import { GraphContext, GraphRules } from "./GraphRules";
 
@@ -35,13 +36,13 @@ GraphMoveTarget.$inject = ["eventBus", "canvas"];
 /**
  * The Shadow graph domain layer for diagram-js: how nodes and connections look (`graphRenderer`), where connections run (`layouter`,
  * `connectionDocking`), what is allowed (`graphRules`), how plain data becomes shapes (`graphImporter`) and how edits reach the server
- * (`graphModeling`), how the view moves (`graphNavigation`), which keys do what (`graphKeys`), what the type panel hides or dims (`graphFilter`), and the pointer drawing: connect, lasso, the context pad and naming in place (`graphDrawing`, `graphContextPad`). The library's own modules supply selection,
+ * (`graphModeling`), how the view moves (`graphNavigation`), which keys do what (`graphKeys`), what the type panel hides or dims (`graphFilter`), and the pointer drawing: connect, lasso, the context pad and naming in place (`graphDrawing`, `graphContextPad`), and the hover popover of a node (`graphPopover`). The library's own modules supply selection,
  * move, background drag and space + drag panning, the keyboard service, the command stack and the rules registry;
- * create, palette, align, snapping, editor actions, overlays and the minimap join in the tickets that need them.
+ * create, palette, align, snapping, editor actions and the minimap join in the tickets that need them.
  */
 export const shadowGraphModule = {
   __depends__: [ModelingModule, SelectionModule, MoveModule, OutlineModule, MoveCanvasModule, ZoomScrollModule, KeyboardModule, HandToolModule, ConnectModule, ConnectionPreviewModule, ContextPadModule, LassoToolModule, OverlaysModule],
-  __init__: ["graphRenderer", "graphRules", "graphModeling", "graphMoveTarget", "graphNavigation", "graphDrawing", "graphContextPad", "graphKeys"],
+  __init__: ["graphRenderer", "graphRules", "graphModeling", "graphMoveTarget", "graphNavigation", "graphDrawing", "graphContextPad", "graphKeys", "graphPopover"],
   graphContext: ["type", GraphContext],
   graphRenderer: ["type", GraphRenderer],
   graphRules: ["type", GraphRules],
@@ -53,6 +54,7 @@ export const shadowGraphModule = {
   graphDrawing: ["type", GraphDrawing],
   graphContextPad: ["type", GraphContextPad],
   graphKeys: ["type", GraphKeys],
+  graphPopover: ["type", GraphPopover],
   layouter: ["type", GraphLayouter],
   connectionDocking: ["type", CroppingConnectionDocking],
 };
