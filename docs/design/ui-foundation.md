@@ -205,15 +205,31 @@ keep the reading column. `OrganizationLayout` turns `wide` on for that route.
   its measured top, minimum 320 px), so the page does not scroll while drawing;
   the diagram fills that area and follows its size (a `ResizeObserver` calls `canvas.resized()`); at the default view one
   unit is one pixel and positions are not clamped to a fixed area.
-- Side panels sit beside the canvas: **Nodes** left (220 px), **Details** right
+- Side panels sit beside the canvas: **Nodes** left (220 px, the type panel below), **Details** right
   (280 px, add node, selection, changes). Each collapses to a 40 px rail with
   one icon button (label **Collapse/Expand the ... panel**, `aria-expanded`,
   `aria-controls`). The collapsed state is the per-person
   `localStorage` key `shadow.canvas.panels`, read and written in try/catch
   (`models/panel-state.ts`); the page works without it.
+- **Type panel** (`canvas/TypePanel.tsx`, the left panel). A search box (labelled **Search nodes**, focused with `/`), **Select
+  all** and **Deselect all**, then one group per node type sorted by name with a disclosure button (`aria-expanded`,
+  `aria-controls`), a visibility checkbox (**Show X nodes**), the type's colour tag and node count, and a "+" that adds a node
+  of that type (named "Type N", placed on the grid; not shown on a read-only model). The rows of a group are the nodes sorted by
+  name with a description clamped to two lines and a "+" or "~" mark for an element the shown state added or changed. A type
+  without nodes starts collapsed; the person's collapse choices are the per-model `localStorage` key
+  `shadow.canvas.typeCollapse` (`canvas/type-collapse.ts`, try/catch, the panel works without it). A search opens the groups
+  that hold a match while it is active. The hidden types and the search are not remembered.
+  - A hidden type is not removed from the model: `GraphFilter` marks its nodes and every connection touching them
+    `shadow-hidden` (`display: none`), so restoring brings them back unchanged. Fit ignores hidden nodes, and a hidden node is
+    deselected. Its rows stay in the list but are disabled.
+  - Search matches the node name (case-insensitive substring). Matching nodes get a heavier outline (`shadow-match`) and the
+    rest, and connections with no matching end, are dimmed to 30 % (`shadow-dim`); the list rows dim the same way. Enter
+    centres the canvas on the first match (in list order) keeping the zoom; Esc clears the search.
+  - Clicking a row selects the node and centres it, zooming to at least 100 %; the move eases over 160 ms and jumps under
+    `prefers-reduced-motion`.
 - Below 768 px the panels become a bottom sheet: a 48 px handle button
   (**Show/Hide panels**, `aria-expanded`) fixed to the bottom, with the details
-  and the node list in a scrolling sheet of at most 55 % of the height.
+  and the node list in a scrolling sheet of at most 55 % of the height (the type panel is the node list there).
 - The drawing is diagram-js (ADR-0051). Its stylesheet is part of `theme.css`, imported into the `components` layer, and the
   variables it reads (`--bio-*`) are defined there from the tokens (`surface`, `ink`, `accent`, `line-strong` and so on), so a
   dark theme redefines the tokens and the canvas follows. Canvas colours are never hard-coded except a node's own type colour,
@@ -239,6 +255,7 @@ keep the reading column. `OrganizationLayout` turns `wide` on for that route.
   | `0` | 100 % |
   | `F` | Fit the whole graph |
   | Arrows | Move the selected nodes 10 px (Shift 50 px); with no node selected, or on a read-only canvas, pan 50 px (Shift 200 px) |
+  | `/` | Focus the search box of the type panel |
   | `Esc` | Cancel connect mode; otherwise clear the selection |
   | Space + drag | Pan (on a focused node Space selects it, like Enter) |
   | `Enter` / Space on a focused node | Select it |

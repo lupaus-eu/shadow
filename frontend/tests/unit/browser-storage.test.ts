@@ -24,7 +24,7 @@ const code = files(source).map((path) => ({ path, text: readFileSync(path, "utf8
 const relative = (path: string) => path.slice(source.length + 1);
 
 // String and template literals that look like one of our keys: "shadow.something" or `shadow.filters.${id}`.
-const KEY = /["'`](shadow\.[a-z][a-z0-9.-]*)/g;
+const KEY = /["'`](shadow\.[a-z][A-Za-z0-9.-]*)/g;
 const used = new Map<string, string[]>();
 for (const { path, text } of code) {
   if (!/localStorage|sessionStorage/.test(text)) continue;

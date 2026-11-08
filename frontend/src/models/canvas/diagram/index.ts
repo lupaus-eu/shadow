@@ -8,6 +8,7 @@ import SelectionModule from "diagram-js/lib/features/selection/index.js";
 import ZoomScrollModule from "diagram-js/lib/navigation/zoomscroll/index.js";
 import CroppingConnectionDocking from "diagram-js/lib/layout/CroppingConnectionDocking.js";
 
+import { GraphFilter } from "./GraphFilter";
 import { GraphImporter } from "./GraphImporter";
 import { GraphKeys } from "./GraphKeys";
 import { GraphLayouter } from "./GraphLayouter";
@@ -27,7 +28,7 @@ GraphMoveTarget.$inject = ["eventBus", "canvas"];
 /**
  * The Shadow graph domain layer for diagram-js: how nodes and connections look (`graphRenderer`), where connections run (`layouter`,
  * `connectionDocking`), what is allowed (`graphRules`), how plain data becomes shapes (`graphImporter`) and how edits reach the server
- * (`graphModeling`), how the view moves (`graphNavigation`) and which keys do what (`graphKeys`). The library's own modules supply selection,
+ * (`graphModeling`), how the view moves (`graphNavigation`), which keys do what (`graphKeys`) and what the type panel hides or dims (`graphFilter`). The library's own modules supply selection,
  * move, background drag and space + drag panning, the keyboard service, the command stack and the rules registry;
  * lasso, create, connect, context pad, palette, align, snapping, editor actions, overlays and the minimap join in the tickets that need them.
  */
@@ -39,6 +40,7 @@ export const shadowGraphModule = {
   graphRules: ["type", GraphRules],
   graphModeling: ["type", GraphModeling],
   graphImporter: ["type", GraphImporter],
+  graphFilter: ["type", GraphFilter],
   graphMoveTarget: ["type", GraphMoveTarget],
   graphNavigation: ["type", GraphNavigation],
   graphKeys: ["type", GraphKeys],
@@ -46,6 +48,7 @@ export const shadowGraphModule = {
   connectionDocking: ["type", CroppingConnectionDocking],
 };
 
+export type { GraphFilter };
 export { EditRefused, MOVE_SAVE_DELAY_MS } from "./GraphModeling";
 export type { GraphImporter, GraphModeling, GraphRules };
 export { checkConnection, connectionKey, type ConnectionRefusal } from "./GraphRules";

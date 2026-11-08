@@ -3,6 +3,7 @@ import { useEffect, useImperativeHandle, useRef, useState, type Ref } from "reac
 
 import { CanvasToolbar, type CanvasToolbarTexts } from "./CanvasToolbar";
 import { shadowGraphModule } from "./diagram";
+import type { GraphFilter } from "./diagram/GraphFilter";
 import type { GraphImporter } from "./diagram/GraphImporter";
 import type { GraphKeys } from "./diagram/GraphKeys";
 import type { GraphModeling } from "./diagram/GraphModeling";
@@ -10,6 +11,7 @@ import type { GraphNavigation } from "./diagram/GraphNavigation";
 import { isConnectionElement, isNodeElement, type GraphElement } from "./diagram/model";
 import type { GraphData, GraphEdit, GraphEditSender } from "./graph-types";
 import type { KeyBinding } from "./keymap";
+import { noFilter, type CanvasFilter } from "./type-list";
 import { zoomPercent, type Point, type View, type ViewMemory } from "./view";
 
 export type CanvasTarget = { id: string; kind: "node" | "connection" | "root" };
@@ -28,6 +30,8 @@ export type ShadowCanvasHandle = {
   actualSize(): void;
   /** Centres the drawing area on a canvas point, keeping the zoom. */
   centreOn(point: Point): void;
+  /** Centres on a node (the drawing's own position of it, so an unsaved move counts); with `zoom` also zooms in to at least 100 %. False when the node is not drawn. */
+  centreOnNode(id: string, options?: { zoom?: boolean }): boolean;
   getView(): View | null;
   /** Adds a key to the canvas keymap (it only fires while focus is inside the drawing and not in a text field); returns the function that removes it. */
   registerKey(binding: KeyBinding): () => void;
@@ -49,12 +53,16 @@ type Props = {
   onEscape?(): boolean;
   /** What the line remembers of its view: restored after a remount, fitted once after the line's first load. */
   view: ViewMemory;
+  /** Which types are hidden and which nodes match a search; applied as markers on the drawn elements. */
+  filter?: CanvasFilter;
+  /** Keys of the parent's panels, registered on every diagram this component creates (read when the diagram is created; their `run` should read refs). Registering through the handle instead would be lost when the diagram is recreated. */
+  keyBindings?: KeyBinding[];
   toolbarTexts: CanvasToolbarTexts;
   label: string;
   ref?: Ref<ShadowCanvasHandle>;
 };
 
-type Services = { importer: GraphImporter; modeling: GraphModeling; navigation: GraphNavigation; keys: GraphKeys };
+type Services = { importer: GraphImporter; filter: GraphFilter; registry: { get(id: string): GraphElement | undefined }; modeling: GraphModeling; navigation: GraphNavigation; keys: GraphKeys };
 
 const kindOf = (element: GraphElement | undefined): CanvasTarget["kind"] => (isNodeElement(element) ? "node" : isConnectionElement(element) ? "connection" : "root");
 
@@ -63,12 +71,12 @@ const kindOf = (element: GraphElement | undefined): CanvasTarget["kind"] => (isN
  * which updates shapes in place, and the diagram reports selection and edits back through the props. The container is observed so the
  * diagram follows the size the page gives it.
  */
-export function ShadowCanvas({ graph, readOnly, selectedId, onSelect, onElementClick, send, connecting = false, onEscape, view, toolbarTexts, label, ref }: Props) {
+export function ShadowCanvas({ graph, readOnly, selectedId, onSelect, onElementClick, send, connecting = false, onEscape, view, filter = noFilter, keyBindings, toolbarTexts, label, ref }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const diagram = useRef<Diagram | null>(null);
   const services = useRef<Services | null>(null);
-  const props = useRef({ onSelect, onElementClick, onEscape, send, selectedId, view });
-  props.current = { onSelect, onElementClick, onEscape, send, selectedId, view };
+  const props = useRef({ onSelect, onElementClick, onEscape, send, selectedId, view, keyBindings });
+  props.current = { onSelect, onElementClick, onEscape, send, selectedId, view, keyBindings };
   const [scale, setScale] = useState(1);
   // False until the first graph of this canvas has been placed (fitted or restored); before that the view is not remembered.
   const placed = useRef(false);
@@ -84,6 +92,13 @@ export function ShadowCanvas({ graph, readOnly, selectedId, onSelect, onElementC
       zoomOut: () => navigation()?.zoomStep(-1),
       actualSize: () => navigation()?.actualSize(),
       centreOn: (point) => navigation()?.centreOn(point),
+      centreOnNode: (id, options) => {
+        const element = services.current?.registry.get(id);
+        if (!element || !isNodeElement(element)) return false;
+        const point = { x: element.x + element.width / 2, y: element.y + element.height / 2 };
+        if (options?.zoom) navigation()?.focus(point); else navigation()?.centreOn(point);
+        return true;
+      },
       getView: () => navigation()?.getView() ?? null,
       registerKey: (binding) => services.current?.keys.keymap.register(binding) ?? (() => undefined),
     };
@@ -99,11 +114,11 @@ export function ShadowCanvas({ graph, readOnly, selectedId, onSelect, onElementC
     const modeling = get<GraphModeling>("graphModeling");
     const navigation = get<GraphNavigation>("graphNavigation");
     const keys = get<GraphKeys>("graphKeys");
-    services.current = { importer: get<GraphImporter>("graphImporter"), modeling, navigation, keys };
+    const registry = get<{ get(id: string): GraphElement | undefined }>("elementRegistry");
+    services.current = { importer: get<GraphImporter>("graphImporter"), filter: get<GraphFilter>("graphFilter"), registry, modeling, navigation, keys };
     modeling.setSender((edit) => props.current.send(edit));
     const eventBus = get<{ on(event: string, priority: number, handler: (event: never) => unknown): void; off(event: string, handler: unknown): void }>("eventBus");
     const selection = get<{ get(): GraphElement[]; select(element: GraphElement | null): void }>("selection");
-    const registry = get<{ get(id: string): GraphElement | undefined }>("elementRegistry");
     const canvas = get<{ resized(): void }>("canvas");
 
     // The readout follows the view; the line remembers it once the first graph has been placed.
@@ -123,6 +138,8 @@ export function ShadowCanvas({ graph, readOnly, selectedId, onSelect, onElementC
         return true;
       },
     });
+
+    const unregisterParentKeys = (props.current.keyBindings ?? []).map((binding) => keys.keymap.register(binding));
 
     // Clicks reach the parent first; when it handles one (connect mode) the diagram's own selection does not run.
     const activate = (element: GraphElement | undefined) => props.current.onElementClick?.({ id: element?.id ?? "", kind: kindOf(element) }) === true;
@@ -154,6 +171,7 @@ export function ShadowCanvas({ graph, readOnly, selectedId, onSelect, onElementC
     return () => {
       observer?.disconnect();
       unregisterEscape();
+      for (const unregister of unregisterParentKeys) unregister();
       host.removeEventListener("keydown", onKey);
       // Moves still waiting for their quiet time are saved when the canvas closes.
       void modeling.flush();
@@ -192,6 +210,9 @@ export function ShadowCanvas({ graph, readOnly, selectedId, onSelect, onElementC
       settle();
     }
   }, [graph, readOnly]);
+
+  // Hide and dim after every load or choice of the panel (a load may add elements; the markers are idempotent).
+  useEffect(() => { services.current?.filter.apply(filter); }, [graph, filter]);
 
   // Follow the parent's selection.
   useEffect(() => {

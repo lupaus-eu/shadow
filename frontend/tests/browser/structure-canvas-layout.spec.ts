@@ -83,5 +83,5 @@ test("at 375 px the panels are a bottom sheet and the canvas fills the width", a
   await expect(handle).toHaveAttribute("aria-expanded", "false");
   await handle.click();
   await expect(page.getByRole("button", { name: "Hide panels" })).toHaveAttribute("aria-expanded", "true");
-  await expect(page.getByRole("button", { name: "Add" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Add", exact: true })).toBeVisible();
 });

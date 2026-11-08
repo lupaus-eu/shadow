@@ -428,6 +428,19 @@
   .shadow-canvas .shadow-updated .shadow-node-body {
     stroke-dasharray: 5 3;
   }
+  /* Set by the type panel (GraphFilter): a hidden type's nodes and their connections stay in the model but are not drawn; a search dims
+     what does not match and outlines what does (the heavier outline is not colour alone). */
+  .shadow-canvas .shadow-hidden {
+    /* diagram-js sets an inline `display: block` on every element's group when it draws it. */
+    display: none !important;
+  }
+  .shadow-canvas .shadow-dim {
+    opacity: 0.3;
+  }
+  .shadow-canvas .shadow-match .shadow-node-body {
+    stroke: var(--color-accent);
+    stroke-width: 2.5;
+  }
   .shadow-node-label {
     user-select: none;
   }

@@ -101,7 +101,8 @@ export class GraphNavigation {
 
   /** The rectangle that holds every node (the connections run between nodes, so they are inside), or null when there are none. */
   graphBounds() {
-    const nodes = this.registry.filter(isNodeElement);
+    // Nodes hidden by the type panel are not part of what Fit shows.
+    const nodes = this.registry.filter((element) => isNodeElement(element) && !this.canvas.hasMarker(element as never, "shadow-hidden"));
     return unionBounds(nodes.map((node: GraphElement) => ({ x: node.x, y: node.y, width: node.width, height: node.height })));
   }
 
@@ -119,6 +120,14 @@ export class GraphNavigation {
     const view = this.base();
     const { width, height } = this.size();
     this.setView({ scale: view.scale, x: point.x - width / (2 * view.scale), y: point.y - height / (2 * view.scale) }, animate);
+  }
+
+  /** Centres on a point and zooms in to at least `minScale` (a view that is already closer keeps its zoom). Eases unless reduced motion. */
+  focus(point: Point, minScale = 1, animate = true): void {
+    const view = this.base();
+    const scale = Math.max(view.scale, minScale);
+    const { width, height } = this.size();
+    this.setView({ scale, x: point.x - width / (2 * scale), y: point.y - height / (2 * scale) }, animate);
   }
 
   /**

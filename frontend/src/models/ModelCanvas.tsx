@@ -12,6 +12,9 @@ import { EditRefused } from "./canvas/diagram";
 import type { GraphData, GraphEdit } from "./canvas/graph-types";
 import { ShadowCanvas, type CanvasTarget, type ShadowCanvasHandle } from "./canvas/ShadowCanvas";
 import { useCanvasView } from "./canvas/useCanvasView";
+import { TypePanel } from "./canvas/TypePanel";
+import { readTypeCollapse, writeTypeCollapse, type TypeCollapse } from "./canvas/type-collapse";
+import { groupNodes, hideAllTypes, nextPlacement, searchMatches, showAllTypes, toggleType, type CanvasFilter } from "./canvas/type-list";
 import { useGraphState } from "./canvas/useGraphState";
 import { modelMessages } from "./messages";
 import { readPanels, writePanels, type PanelState } from "./panel-state";
@@ -68,6 +71,11 @@ export function ModelCanvas() {
   const [panels, setPanels] = useState<PanelState>(() => readPanels());
   const [sheetOpen, setSheetOpen] = useState(false);
   const areaHeight = useFillHeight(area, phone ? SHEET_HANDLE : 0);
+  // The type panel: which types are hidden and the search live in memory; the collapse choices are remembered per model.
+  const [hiddenTypes, setHiddenTypes] = useState<ReadonlySet<string>>(() => new Set());
+  const [query, setQuery] = useState("");
+  const [collapse, setCollapse] = useState<TypeCollapse>(() => readTypeCollapse(modelId));
+  const searchInput = useRef<HTMLInputElement>(null);
   const toggle = (side: keyof PanelState) => setPanels((old) => { const next = { ...old, [side]: !old[side] }; writePanels(next); return next; });
 
   // Edits of an event go one after the other, each against the event's current version, which is read again after every write.
@@ -77,7 +85,10 @@ export function ModelCanvas() {
 
   const nodes = graph?.nodes ?? [];
   const byId = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
-  const types = useMemo(() => new Map((graph?.nodeTypes ?? []).map((type) => [type.id, type])), [graph]);
+  const groups = useMemo(() => (graph ? groupNodes(graph) : []), [graph]);
+  const found = useMemo(() => searchMatches(groups, query, hiddenTypes), [groups, query, hiddenTypes]);
+  const filter = useMemo<CanvasFilter>(() => ({ hiddenTypeIds: hiddenTypes, matchIds: found ? new Set(found.map((node) => node.id)) : null }), [hiddenTypes, found]);
+  const matchIds = filter.matchIds;
   const connectionTypes = useMemo(() => new Map((graph?.connectionTypes ?? []).map((type) => [type.id, type])), [graph]);
   const selectedNode = selectedId ? byId.get(selectedId) : undefined;
   const selectedConnection = selectedId && !selectedNode ? graph?.connections.find((item) => item.id === selectedId) : undefined;
@@ -140,6 +151,9 @@ export function ModelCanvas() {
   }
   const toolbarTexts = { toolbar: text.zoomToolbar, zoomIn: text.zoomIn, zoomOut: text.zoomOut, fit: text.zoomFit, actualSize: text.zoomActual, zoomLevel: text.zoomLevel };
 
+  // "/" focuses the search box (the canvas keymap only delivers keys while focus is in the drawing and not in a text field).
+  const keyBindings = useMemo(() => [{ id: "panel.search", keys: ["/"], run: () => { searchInput.current?.focus(); searchInput.current?.select(); } }], []);
+
   if (status === "failed") return <Alert tone="danger" role="alert">{text.failed}</Alert>;
   if (!graph) return <p role="status" className="text-ink-muted">{text.loading}</p>;
 
@@ -159,19 +173,28 @@ export function ModelCanvas() {
       {connecting ? <Alert tone="info" role="status">{text.connectHint}</Alert> : null}
     </>
   );
+  const hiding = (next: ReadonlySet<string>) => {
+    setHiddenTypes(next);
+    // A node that is no longer drawn cannot stay selected.
+    if (selectedNode && next.has(selectedNode.node_type_id)) setSelectedId(null);
+  };
+  const addOfType = (typeId: string) => {
+    const type = graph.nodeTypes.find((item) => item.id === typeId);
+    if (!type) return;
+    const sameType = nodes.filter((node) => node.node_type_id === typeId).length;
+    void edit({ kind: "node.create", nodeTypeId: typeId, name: `${type.name} ${sameType + 1}`, ...nextPlacement(nodes.length) });
+  };
   const nodeList = (
-    <ul className="m-0 flex list-none flex-col gap-1 p-0">
-      {nodes.length === 0 ? <li className="text-[13px] text-ink-muted">{text.noNodes}</li> : null}
-      {nodes.map((node) => (
-        <li key={node.id}>
-          <button type="button" aria-pressed={selectedId === node.id} onClick={() => setSelectedId(node.id)} className="flex min-h-8 w-full cursor-pointer items-center gap-2 rounded-[6px] border-0 bg-transparent px-2 py-1 text-left text-[13px] text-ink hover:bg-surface-sunken aria-pressed:bg-accent-soft pointer-coarse:min-h-11">
-            <span aria-hidden="true" className="size-3 shrink-0 rounded-[3px] border border-line" style={{ background: types.get(node.node_type_id)?.color ?? "#ddd" }} />
-            <span className="min-w-0 flex-1 truncate">{node.name}</span>
-            <span className="shrink-0 text-xs text-ink-muted">{types.get(node.node_type_id)?.name}</span>
-          </button>
-        </li>
-      ))}
-    </ul>
+    <TypePanel
+      groups={groups} hidden={hiddenTypes} collapse={collapse} query={query} matches={matchIds} selectedId={selectedId} markers={graph.markers} writable={writable}
+      texts={{ ...text, selectAll: text.selectAllTypes, deselectAll: text.deselectAllTypes }} searchRef={searchInput} onQuery={setQuery}
+      onSubmitSearch={() => { const first = found?.[0]; if (first) canvas.current?.centreOnNode(first.id); }}
+      onToggleType={(typeId) => hiding(toggleType(hiddenTypes, typeId))}
+      onSelectAll={() => hiding(showAllTypes())} onDeselectAll={() => hiding(hideAllTypes(groups))}
+      onToggleCollapse={(typeId, wasOpen) => setCollapse((old) => { const next = { ...old, [typeId]: wasOpen }; writeTypeCollapse(modelId, next); return next; })}
+      onAdd={addOfType}
+      onSelectNode={(id) => { setSelectedId(id); canvas.current?.centreOnNode(id, { zoom: true }); }}
+    />
   );
   const rightContent = <>{addNode}{details}</>;
 
@@ -182,7 +205,7 @@ export function ModelCanvas() {
       <div ref={area} style={{ height: areaHeight }} className="flex min-h-0 gap-3">
         {phone ? null : <Panel side="left" title={text.panelNodes} collapsed={panels.left} onToggle={() => toggle("left")} text={text}>{nodeList}</Panel>}
         <div className="min-w-0 flex-1 overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface">
-          <ShadowCanvas ref={canvas} graph={graph} readOnly={!writable} selectedId={selectedId} onSelect={setSelectedId} onElementClick={onElementClick} send={send} connecting={connecting !== null} onEscape={cancelConnect} view={view} toolbarTexts={toolbarTexts} label={text.canvasLabel} />
+          <ShadowCanvas ref={canvas} graph={graph} readOnly={!writable} selectedId={selectedId} onSelect={setSelectedId} onElementClick={onElementClick} send={send} connecting={connecting !== null} onEscape={cancelConnect} view={view} filter={filter} keyBindings={keyBindings} toolbarTexts={toolbarTexts} label={text.canvasLabel} />
         </div>
         {phone ? null : <Panel side="right" title={text.panelDetails} collapsed={panels.right} onToggle={() => toggle("right")} text={text}>{rightContent}</Panel>}
       </div>
@@ -225,10 +248,9 @@ type Text = ReturnType<typeof modelMessages>;
 function AddNode({ graph, onAdd, text, count }: { graph: GraphData; onAdd: (input: { node_type_id: string; name: string; x: number; y: number }) => Promise<void>; text: Text; count: number }) {
   const [typeId, setTypeId] = useState(graph.nodeTypes[0]?.id ?? "");
   const [name, setName] = useState("");
-  const column = count % 8;
-  const row = Math.floor(count / 8) % 14;
+  const place = nextPlacement(count);
   return (
-    <form className="flex flex-col gap-3 rounded-[var(--radius-card)] border border-line bg-surface p-4" onSubmit={(event) => { event.preventDefault(); if (name.trim() && typeId) void onAdd({ node_type_id: typeId, name, x: 30 + column * 170, y: 30 + row * 60 }).then(() => setName("")); }}>
+    <form className="flex flex-col gap-3 rounded-[var(--radius-card)] border border-line bg-surface p-4" onSubmit={(event) => { event.preventDefault(); if (name.trim() && typeId) void onAdd({ node_type_id: typeId, name, ...place }).then(() => setName("")); }}>
       <h2 className="m-0 text-[14px] font-semibold">{text.addNode}</h2>
       <Field label={text.nodeType}>{(control) => <Select {...control} value={typeId} onChange={(event) => setTypeId(event.target.value)}>{graph.nodeTypes.map((type) => <option key={type.id} value={type.id}>{type.name}</option>)}</Select>}</Field>
       <Field label={text.nodeName}>{(control) => <TextInput {...control} value={name} onChange={(event) => setName(event.target.value)} />}</Field>
