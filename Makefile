@@ -8,7 +8,7 @@ DBML_CLI ?= npx --yes -p @dbml/cli@10.2.0 dbml2sql
 STRIPE_WEBHOOK_URL ?= http://localhost:8100/api/v1/billing/stripe/webhook
 STRIPE_EVENTS ?= checkout.session.completed,customer.subscription.updated,customer.subscription.deleted,customer.subscription.pending_update_applied,customer.subscription.pending_update_expired,invoice.paid,invoice.payment_failed
 
-.PHONY: dev dev-down dev-worker help up down restart ps logs test test-backend test-frontend check-ports stripe-listen models c4 dbml
+.PHONY: dev-org dev dev-down dev-worker help up down restart ps logs test test-backend test-frontend check-ports stripe-listen models c4 dbml
 
 help: ## List the targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  %-15s %s\n", $$1, $$2}'
@@ -62,6 +62,9 @@ c4: ## Browse the C4 views at http://localhost:8176
 
 dbml: ## Regenerate docs/architecture/dbml/shadow.dbml from the migrated test database
 	cd backend && UPDATE_DBML=1 ../.venv/bin/python -m pytest -q tests/test_dbml_model.py
+
+dev-org: ## Create an active Organization without Stripe (EMAIL=you@example.com NAME="Dev Oy")
+	$(COMPOSE_DEV) exec backend python -m app.dev_organization --email "$(EMAIL)" --name "$(or $(NAME),Dev Organization)"
 
 stripe-listen: ## Forward Stripe test-mode webhooks to the local backend
 	@set -a; . ./.env; set +a; stripe listen --api-key "$$STRIPE_SECRET_KEY" --forward-to $(STRIPE_WEBHOOK_URL) --events $(STRIPE_EVENTS)

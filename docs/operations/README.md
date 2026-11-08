@@ -41,6 +41,10 @@ database URLs, session cookie settings, Stripe, Authentik and OIDC, and the
 shared Scaleway (`SCW_*`) and Transactional Email settings. Never commit
 `.env`. Add new keys to `.env.example` in the same change that uses them.
 
+### Local Organization without Stripe
+
+On a development machine, `make dev-org EMAIL=you@example.com NAME="Dev Oy"` creates an active Organization with that user as Owner (the user must have signed in once). The Stripe identifiers are placeholders, so billing pages that call Stripe do not work. The command refuses to run with a live Stripe key.
+
 ### MCP interface
 
 The MCP interface for agents is off by default. Its settings (`MCP_ENABLED`, `MCP_OIDC_ISSUER`,
