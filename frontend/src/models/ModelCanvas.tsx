@@ -28,6 +28,8 @@ import type { Locale } from "../i18n";
 import { timelineMessages } from "./timeline-messages";
 import { readPanels, writePanels, type PanelState } from "./panel-state";
 import { readSnap, writeSnap } from "./canvas/snap";
+import { noMarkers } from "./canvas/graph-types";
+import { startReadOnly } from "./timeline";
 import { canvasWritable, markCounts, shouldClearHistory, sourceChangeId } from "./canvas/edit-target";
 import { ghostSummary } from "./canvas/ghosts";
 import { nextAnnouncement, nodeConnectionRows, selectionAnnouncement } from "./canvas/a11y";
@@ -69,15 +71,20 @@ function useIsPhone() {
 /** `/organizations/:organizationId/models/:modelId`: the nodes and connections of a line on a canvas. Edits are changes of the line's last change (ticket 09 of the model timeline adds the change list and the choice of change). */
 export function ModelCanvas() {
   const { locale } = useOrganization();
-  const { organizationId, modelId, model, line, writable: subscriptionWritable, change: shownChangeRow, changeIsLast, reloadChanges, canWriteLine } = useModel();
+  const { organizationId, modelId, model, line, writable: subscriptionWritable, change: ownChangeRow, changeIsLast: ownIsLast, reloadChanges, canWriteLine, start, startShown } = useModel();
   // Drawing edits the shown change, whichever it is; a line the person's role may not write (Members on the Base line) and a read-only subscription show the canvas read-only.
-  const writable = canvasWritable({ subscriptionWritable, canWriteLine });
-  const lineId = line.id;
+  // The Start row draws the PARENT line's state after the branch change, read-only (it is not a Change of this line).
+  const writable = startReadOnly(startShown, canvasWritable({ subscriptionWritable, canWriteLine }));
+  const lineId = startShown && start ? start.parentLineId : line.id;
+  const shownChangeRow = startShown ? null : ownChangeRow;
+  const changeIsLast = startShown ? true : ownIsLast;
   const text = modelMessages(locale);
   // Without a chosen change the canvas shows the line's last one (the one an edit goes into), which it finds itself.
-  const shownId = sourceChangeId(changeIsLast, shownChangeRow);
+  const shownId = startShown && start ? start.changeId : sourceChangeId(changeIsLast, shownChangeRow);
   const source = useMemo(() => ({ organizationId, modelId, lineId, changeId: shownId }), [organizationId, modelId, lineId, shownId]);
-  const { graph, change, status, reload } = useGraphState(source);
+  const { graph: loadedGraph, change, status, reload } = useGraphState(source);
+  // The Start state shows no marks of added, changed or removed elements: it is not a Change.
+  const graph = useMemo(() => (loadedGraph && startShown ? { ...loadedGraph, markers: noMarkers, ghosts: undefined } : loadedGraph), [loadedGraph, startShown]);
   // The view (pan and zoom) is kept while this line stays open on this tab; another line or another tab starts fresh.
   const view = useCanvasView(`${organizationId}|${modelId}|${lineId}`);
   const [notice, setNotice] = useState<string | null>(null);
@@ -371,6 +378,7 @@ export function ModelCanvas() {
     <div className="flex flex-col gap-3">
       {!subscriptionWritable ? <Alert tone="warning">{text.readOnly}</Alert> : null}
       {subscriptionWritable && !changeIsLast && shownChangeRow ? <Alert tone="info" role="status" action={<Button size="sm" onClick={() => setSearch((old) => { const next = new URLSearchParams(old); next.delete("change"); return next; })}>{timelineMessages(locale).showLatest}</Button>}>{timelineMessages(locale).pastNotice(shownChangeRow.title, shownChangeRow.occurred_on, writable)}</Alert> : null}
+      {startShown && start ? <div data-testid="start-caption"><Alert tone="info" role="status">{timelineMessages(locale).startCaption}</Alert></div> : null}
       {shownChangeRow?.planned ? <Alert tone="warning">{timelineMessages(locale).plannedNotice}</Alert> : null}
       {notice ? <Alert tone="danger" role="alert">{notice}</Alert> : null}
       <div role="status" aria-live="polite" className="sr-only">{announcement}</div>
@@ -391,7 +399,7 @@ export function ModelCanvas() {
             drawingTexts={{ connect: text.padConnect, remove: text.padRemove, nodeName: text.nodeName, namePlaceholder: text.namePlaceholder }}
             readGraph={readGraph} isRefusal={(error) => error instanceof StaleVersionError || error instanceof RuleError || error instanceof ForbiddenError} onHistory={onHistory}
             onToggleConnect={() => setConnecting((old) => (old ? null : { sourceId: null, connectionTypeId: null }))} onElementClick={onElementClick} send={send} connecting={connecting !== null} onEscape={cancelConnect} view={view} filter={filter} keyBindings={keyBindings} snap={snap} onSnapChange={changeSnap} exportName={{ model: model.name, line: line.name }} onToolResult={onToolResult} toolbarTexts={toolbarTexts} label={text.canvasLabel} description={text.canvasHelp} />
-          <CanvasCaption locale={locale} kind={line.kind} lineName={line.name} change={shownChangeRow} markers={graph.markers} />
+          <CanvasCaption locale={locale} kind={startShown ? "scenario" : line.kind} lineName={startShown && start ? start.parentLineName : line.name} change={startShown ? change : shownChangeRow} markers={graph.markers} />
         </div>
         {phone ? null : <Panel side="right" title={text.panelDetails} collapsed={panels.right} onToggle={() => toggle("right")} text={text}>{rightContent}</Panel>}
       </div>

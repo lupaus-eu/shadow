@@ -10,6 +10,7 @@ const BASE = "00000000-0000-4000-8000-000000000003";
 const E1 = "00000000-0000-4000-8000-0000000000e1";
 const E2 = "00000000-0000-4000-8000-0000000000e2";
 const E3 = "00000000-0000-4000-8000-0000000000e3";
+const SC1 = "00000000-0000-4000-8000-0000000000c1";
 const SCENARIO = "00000000-0000-4000-8000-0000000000s1";
 
 const types = [{ id: "t1", key: "unit", name: "Unit", color: "#cfe3ff", shape: "rectangle", version: 1 }];
@@ -23,9 +24,10 @@ function createApi() {
     { id: E2, line_id: BASE, occurred_on: "2026-02-01", title: "Support team", note: null, version: 1, planned: false, edit_count: 1, edit_counts: { add_node: 1 }, branches: [] as { line_id: string; name: string }[] },
     { id: E3, line_id: BASE, occurred_on: "2099-01-01", title: "Expansion", note: "Next year", version: 1, planned: true, edit_count: 1, edit_counts: { add_node: 1 }, branches: [] as { line_id: string; name: string }[] },
   ];
-  const nodesAfter: Record<string, typeof sales[]> = { [E1]: [sales], [E2]: [sales, support], [E3]: [sales, support, growth] };
+  const scenarioChange = { id: SC1, line_id: SCENARIO, occurred_on: "2026-03-01", title: "Plan B draft", note: null, version: 1, planned: false, edit_count: 1, edit_counts: { add_node: 1 }, branches: [] as { line_id: string; name: string }[] };
+  const nodesAfter: Record<string, typeof sales[]> = { [E1]: [sales], [E2]: [sales, support], [E3]: [sales, support, growth], [SC1]: [sales, growth] };
   const lines = [{ id: BASE, name: "Base line", description: null, kind: "base", parent_line_id: null, branch_change_id: null, version: 1, change_count: 3, latest_change_date: "2099-01-01", start_changed_at: null, created_by_user_account_id: null }] as Record<string, unknown>[];
-  const state = { patches: [] as unknown[], created: [] as unknown[] };
+  const state = { patches: [] as unknown[], created: [] as unknown[], stateRequests: [] as { line: string; change: string | null }[] };
   async function mock(page: Page) {
     await page.route("**/api/v1/**", async (route) => {
       const request = route.request();
@@ -50,11 +52,12 @@ function createApi() {
         return json(created, 201);
       }
       if (path === `${model}/lines/${BASE}/changes`) return json(changes);
-      if (path === `${model}/lines/${SCENARIO}/changes`) return json([]);
+      if (path === `${model}/lines/${SCENARIO}/changes`) return json([scenarioChange]);
       const stateMatch = new RegExp(`${model}/lines/(${BASE}|${SCENARIO})/state`).exec(path);
       if (stateMatch) {
+        state.stateRequests.push({ line: stateMatch[1], change: url.searchParams.get("change_id") });
         const id = url.searchParams.get("change_id") ?? E3;
-        const change = changes.find((item) => item.id === id) ?? null;
+        const change = [...changes, scenarioChange].find((item) => item.id === id) ?? null;
         return json({ change, node_types: types, connection_types: [], allowed_connections: [], nodes: nodesAfter[id] ?? [sales, support], connections: [] });
       }
       const changeMatch = new RegExp(`${model}/changes/(${E1}|${E2}|${E3})$`).exec(path);
@@ -165,4 +168,57 @@ test("the line bar, change list and change dialog have no automatically detectab
   await page.getByRole("button", { name: "Edit the change Support team" }).click();
   await expect(page.getByRole("dialog", { name: "Change" }).getByRole("list")).toBeVisible();
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+});
+
+test("the Start row of a Scenario shows the parent's state after the branch change read-only, and the first Change restores editing", async ({ page }) => {
+  const api = await open(page);
+  await list(page).getByRole("button", { name: /^\d{4}-\d\d-\d\d Initial situation/ }).click();
+  await page.getByRole("button", { name: "New scenario from here" }).click();
+  const dialog = page.getByRole("dialog", { name: "New scenario" });
+  await dialog.getByLabel("Scenario name").fill("Plan B");
+  await dialog.getByRole("button", { name: "Create scenario" }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page).toHaveURL(new RegExp(`line=${SCENARIO}`));
+  const scenarioList = page.getByRole("list", { name: "Changes of Plan B" });
+  const startRow = scenarioList.getByTestId("start-row");
+  await expect(startRow).toContainText("Start");
+  await expect(startRow).toContainText("Starts from: Base line, after the change Initial situation (2026-01-01)");
+  await expect(startRow.getByRole("link", { name: "Base line" })).toBeVisible();
+  await expect(startRow.getByRole("link", { name: "Initial situation" })).toBeVisible();
+  // A Scenario opened without ?change= shows its present state (not the Start row's state).
+  await expect(node(page, "Growth")).toBeVisible();
+  await expect(page.getByTestId("start-caption")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Undo" })).toBeVisible();
+
+  // Select it by keyboard.
+  const startButton = startRow.getByRole("button", { name: /^Start/ });
+  await startButton.focus();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/change=start/);
+  await expect(startButton).toHaveAttribute("aria-current", "true");
+  await expect(page.getByTestId("start-caption")).toHaveText("Start state, not editable. Change it in the parent line.");
+  await expect(page.getByTestId("start-caption").getByRole("status")).toHaveText("Start state, not editable. Change it in the parent line.");
+  expect(api.state.stateRequests.at(-1)).toEqual({ line: BASE, change: E1 });
+  await expect(node(page, "Sales")).toBeVisible();
+  await expect(node(page, "Support")).toHaveCount(0);
+  // Nothing is drawn, undone, deleted or edited.
+  await expect(page.getByRole("button", { name: "Undo" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Add a Unit node" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "New change" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "New scenario from here" })).toBeDisabled();
+  await expect(page.getByTestId("canvas-legend")).toHaveCount(0);
+
+  // Back to the Scenario's present state restores editing.
+  await scenarioList.getByRole("button", { name: /^2026-03-01 Plan B draft/ }).click();
+  await expect(page.getByTestId("start-caption")).toHaveCount(0);
+  await expect(startButton).not.toHaveAttribute("aria-current", "true");
+  await expect(node(page, "Growth")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Undo" })).toBeVisible();
+});
+
+test("the Base line has no Start row and counts only its Changes", async ({ page }) => {
+  await open(page);
+  await expect(list(page).getByTestId("start-row")).toHaveCount(0);
+  await expect(list(page).getByRole("button", { name: /^Start/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^Changes \(3\)/ })).toBeVisible();
 });

@@ -291,3 +291,9 @@ work stays. The undo history is dropped when the shown event or line changes (th
 link show the same thing; no browser storage is used. `models/timeline.ts` holds the pure rules (line tree order, who may rename, delete,
 adopt and write, event rows with the Now divider, `chainBrokenMessage` and the adopt and delete messages); `client.ts` keeps the structured
 answer of a refusal on `RuleError.detail` and `ChainBrokenError.hint`, and answers 403 as `ForbiddenError`.
+
+**Start row (ticket 12).** `timeline.ts` has `startInfo` (the row of a Scenario from its line, the lines and the parent's changes; null for the
+Base line), `startShown` (`?change=start`), `startRequest` (the PARENT line's state route with `change_id` = the branch change; no backend
+change) and `startReadOnly`; `changeRows` puts a `start` row first. `ModelShell` reads the parent's changes again whenever the lines are read
+again and puts `start` and `startShown` in the outlet; `ModelCanvas` then loads the parent's state, is read-only, hides the marks and shows the
+caption.

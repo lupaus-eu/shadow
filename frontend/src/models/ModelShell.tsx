@@ -8,7 +8,7 @@ import { useOrganization, type OrganizationOutlet } from "../shell/organization-
 import { Alert, Button, useConfirm } from "../ui";
 import { acknowledgeStart, adoptLine, createScenario, deleteLine, loadChanges, loadLines, loadModels, renameLine, RuleError, StaleVersionError, type LineChange, type ModelLine, type ModelSummary } from "./client";
 import { modelMessages } from "./messages";
-import { adoptMessage, canAdopt, canManageLine, canWriteLine, deleteLineMessage, shownChange, tabQuery, type Role } from "./timeline";
+import { adoptMessage, canAdopt, canManageLine, canWriteLine, deleteLineMessage, shownChange, START_PARAM, startInfo, startShown as isStartShown, tabQuery, type Role, type StartInfo } from "./timeline";
 import { timelineMessages } from "./timeline-messages";
 import { ChangeEditor, type EditorTarget } from "./timeline/ChangeEditor";
 import { ChangePanel } from "./timeline/ChangePanel";
@@ -25,6 +25,9 @@ export type ModelOutlet = {
   changeIsLast: boolean;
   /** Reads the changes (and the lines' counts) again after an edit. */
   reloadChanges: () => Promise<void>;
+  /** The Start row of a Scenario (null on the Base line); `startShown` is true while it is selected (`?change=start`): the canvas then draws the parent's state read-only. */
+  start: StartInfo | null;
+  startShown: boolean;
   role: Role;
   /** The person's role may write the selected line (Base line: Owner or Admin; Scenario: any Member). */
   canWriteLine: boolean;
@@ -96,12 +99,26 @@ export function ModelShell() {
     return () => { current = false; };
   }, [organizationId, modelId, lineId]);
 
+  // The Start row names the Change the Scenario starts after, which is a Change of the parent line: read the parent's changes (again whenever the lines are read again, so a corrected history shows).
+  const parentId = line?.kind === "scenario" ? line.parent_line_id : null;
+  const [parentChanges, setParentChanges] = useState<{ lineId: string; items: LineChange[] } | null>(null);
+  useEffect(() => {
+    if (!parentId) return;
+    let current = true;
+    loadChanges(organizationId, modelId, parentId).then((items) => { if (current) setParentChanges({ lineId: parentId, items }); }, () => { if (current) setParentChanges(null); });
+    return () => { current = false; };
+  }, [organizationId, modelId, parentId, lines, line?.branch_change_id]);
+
   const changes = useMemo(() => (loadedChanges && loadedChanges.lineId === lineId ? loadedChanges.items : null), [loadedChanges, lineId]);
   const shown = useMemo(() => shownChange(changes ?? [], search.get("change")), [changes, search]);
 
   /** Shows a line (and optionally one of its changes); the Base line and the last change are the defaults and stay out of the address. */
   const show = (target: ModelLine | null, changeId: string | null = null) => setSearch(new URLSearchParams(tabQuery(target && target.kind !== "base" ? target.id : null, changeId)));
   const showChange = (change: LineChange) => show(line ?? null, change.id === changes?.[changes.length - 1]?.id ? null : change.id);
+
+  const start = line && lines ? startInfo(line, lines, parentChanges && parentChanges.lineId === parentId ? parentChanges.items : []) : null;
+  const startOpen = isStartShown(search.get("change"), start);
+  const showStart = () => setSearch(new URLSearchParams(tabQuery(line && line.kind !== "base" ? line.id : null, START_PARAM)));
 
   if (failed) return <Alert tone="danger" role="alert">{text.failed}</Alert>;
   if (!model || !lines || !line || !changes) return <p role="status" className="text-ink-muted">{text.loading}</p>;
@@ -154,10 +171,10 @@ export function ModelShell() {
   }
 
   const tab = (path: string, label: string, end = false, keepChange = false) => (
-    <NavLink end={end} className={TAB} to={`${modelHref(organizationId, modelId)}${path}${tabQuery(line.kind === "base" ? null : line.id, keepChange && !shown.isLast ? shown.change?.id ?? null : null)}`}>{label}</NavLink>
+    <NavLink end={end} className={TAB} to={`${modelHref(organizationId, modelId)}${path}${tabQuery(line.kind === "base" ? null : line.id, startOpen && keepChange ? START_PARAM : keepChange && !shown.isLast ? shown.change?.id ?? null : null)}`}>{label}</NavLink>
   );
   const outlet = (
-    <Outlet context={{ ...organization, organizationId, modelId, model, line, lines, writable, reloadLines, changes, change: shown.change, changeIsLast: shown.isLast, reloadChanges, role, canWriteLine: canWriteLine(line, role) } satisfies ModelOutlet & OrganizationOutlet} />
+    <Outlet context={{ ...organization, organizationId, modelId, model, line, lines, writable, reloadLines, changes, change: shown.change, changeIsLast: shown.isLast, reloadChanges, start, startShown: startOpen, role, canWriteLine: canWriteLine(line, role) } satisfies ModelOutlet & OrganizationOutlet} />
   );
   return (
     <div className="flex flex-col gap-4">
@@ -166,7 +183,7 @@ export function ModelShell() {
       <div data-line-kind={line.kind} className={`flex flex-wrap items-end gap-3 rounded-[var(--radius-card)] border-l-4 pl-3 ${line.kind === "base" ? "border-accent bg-accent-soft" : "border-info-ink bg-info-soft"}`}>
         <LinePicker lines={lines} line={line} locale={locale} onSelect={(next) => { setNotice(null); show(next); }} />
         <div className="flex h-9 items-center"><LineKind line={line} locale={locale} /></div>
-        {writable ? <Button disabled={!branchChangeId} onClick={() => setDialog({ kind: "scenario" })}>{lineText.newScenarioHere}</Button> : null}
+        {writable ? <Button disabled={!branchChangeId || startOpen} onClick={() => setDialog({ kind: "scenario" })}>{lineText.newScenarioHere}</Button> : null}
         {manage ? <Button onClick={() => setDialog({ kind: "rename" })}>{lineText.rename}</Button> : null}
         {adoptable ? <Button onClick={() => void adopt()}>{lineText.adopt}</Button> : null}
         {manage && line.kind !== "base" ? <Button variant="ghost-danger" onClick={() => void remove()}>{lineText.deleteScenario}</Button> : null}
@@ -186,7 +203,7 @@ export function ModelShell() {
         <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start">
           <div className="flex min-w-0 flex-1 flex-col gap-2">{outlet}</div>
           <div id="change-panel" hidden={!panelOpen} className="min-w-0 lg:w-72 lg:shrink-0">
-            <ChangePanel lineName={line.name} changes={changes} selectedId={shown.change?.id ?? null} canWrite={write} locale={locale} onSelect={showChange} onNew={() => setDialog({ kind: "change", target: { mode: "new" } })}
+            <ChangePanel lineName={line.name} changes={changes} selectedId={shown.change?.id ?? null} canWrite={write && !startOpen} locale={locale} start={start} startSelected={startOpen} onSelectStart={showStart} onSelect={showChange} onNew={() => setDialog({ kind: "change", target: { mode: "new" } })}
               onEdit={(change) => setDialog({ kind: "change", target: { mode: "edit", change } })} onOpenLine={(id) => { const next = lines.find((item) => item.id === id); if (next) show(next); }} />
           </div>
         </div>

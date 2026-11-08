@@ -45,17 +45,53 @@ export function canAdopt(line: TimelineLine, lines: readonly TimelineLine[], rol
 }
 
 export type ListedChange = { id: string; planned: boolean };
-export type ChangeRow<T extends ListedChange> = { kind: "change"; change: T; selected: boolean; last: boolean } | { kind: "now" };
+
+/** The value of `?change=` that selects the Start row of a Scenario (the id of a Change is a UUID, so it cannot clash). */
+export const START_PARAM = "start";
+
+/** What the Start row says: the parent line and the Change the Scenario starts after (null while the parent's changes are not read yet). */
+export type StartInfo = { parentLineId: string; parentLineName: string; parentIsBase: boolean; changeId: string | null; changeTitle: string | null; changeDate: string | null };
 
 /**
- * The change list as rows: the changes in the server's order with a single "Now" divider between the last happened change and the first
- * planned one (at the end when nothing is planned). `selectedId` marks the shown change; when none is given it is the last one.
+ * The Start row of a Scenario, read from its line, the parent line and the parent's changes. The Base line has none, and neither has a
+ * Scenario whose parent cannot be found. It reads the current branch change, so it follows a corrected history.
  */
-export function changeRows<T extends ListedChange>(changes: readonly T[], selectedId: string | null): ChangeRow<T>[] {
+export function startInfo(line: TimelineLine, lines: readonly TimelineLine[], parentChanges: readonly { id: string; title: string; occurred_on: string }[]): StartInfo | null {
+  if (line.kind !== "scenario" || !line.parent_line_id || !line.branch_change_id) return null;
+  const parent = lines.find((item) => item.id === line.parent_line_id);
+  if (!parent) return null;
+  const change = parentChanges.find((item) => item.id === line.branch_change_id) ?? null;
+  return { parentLineId: parent.id, parentLineName: parent.name, parentIsBase: parent.kind === "base", changeId: line.branch_change_id, changeTitle: change?.title ?? null, changeDate: change?.occurred_on ?? null };
+}
+
+/** True when the address asks for the Start row and the line has one. */
+export function startShown(requested: string | null, start: StartInfo | null): boolean {
+  return start !== null && requested === START_PARAM;
+}
+
+/** The state route request of the Start row: the PARENT line's state after the branch change. */
+export function startRequest(start: StartInfo): { lineId: string; changeId: string | null } {
+  return { lineId: start.parentLineId, changeId: start.changeId };
+}
+
+/** The Start state cannot be changed from the Scenario: nothing is drawn, undone, deleted or edited while it is shown. */
+export function startReadOnly(shown: boolean, writable: boolean): boolean {
+  return shown ? false : writable;
+}
+
+export type ChangeRow<T extends ListedChange> = { kind: "start"; start: StartInfo; selected: boolean } | { kind: "change"; change: T; selected: boolean; last: boolean } | { kind: "now" };
+
+/**
+ * The change list as rows: a fixed Start row first for a Scenario (`start`; it is not a Change), then the changes in the server's order with a
+ * single "Now" divider between the last happened change and the first planned one (at the end when nothing is planned). `selectedId` marks the
+ * shown change; when none is given it is the last one. While the Start row is selected (`startSelected`) no Change is marked.
+ */
+export function changeRows<T extends ListedChange>(changes: readonly T[], selectedId: string | null, start: StartInfo | null = null, startSelected = false): ChangeRow<T>[] {
   const firstPlanned = changes.findIndex((change) => change.planned);
   const nowAt = firstPlanned === -1 ? changes.length : firstPlanned;
-  const shown = selectedId ?? changes[changes.length - 1]?.id ?? null;
+  const shown = startSelected ? null : selectedId ?? changes[changes.length - 1]?.id ?? null;
   const rows: ChangeRow<T>[] = [];
+  if (start) rows.push({ kind: "start", start, selected: startSelected });
   changes.forEach((change, index) => {
     if (index === nowAt) rows.push({ kind: "now" });
     rows.push({ kind: "change", change, selected: change.id === shown, last: index === changes.length - 1 });

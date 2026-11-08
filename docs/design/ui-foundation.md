@@ -393,6 +393,12 @@ keep the reading column. `OrganizationLayout` turns `wide` on for that route.
   Nothing animates for the marks, so reduced motion needs no variant. A refused edit (stale, a chain that would break, a branch point, 403) is
   reverted and explained in an alert in words naming the event and element and what to do first (`chainBrokenMessage`); the person's other
   work stays on the canvas. "New event" and "New scenario from here" stay in the line bar and the event list of the model page above the canvas.
+- **Start row (model timeline ticket 12).** The change list of a Scenario begins with a fixed row **Start** (Finnish "Lähtötilanne") in the info
+  colour: "Starts from: <parent line>, after the change <title> (<date>)", the parent line and the Change being links. It is a button with
+  `aria-current` when selected (URL `?change=start`), reachable by keyboard; it is not a Change (no date edit, no delete, not in the change count,
+  no Now divider). Selecting it draws the parent line's state after the branch Change, read-only, with no added, changed or removed marks and an
+  info alert (`role="status"`, so it is announced): "Start state, not editable. Change it in the parent line." Drawing, undo, delete, the
+  change editor, "New change", the edit buttons and "New scenario from here" are unavailable while it is shown. The Base line has no Start row.
 - A click on the element that is already the only selection keeps it selected (diagram-js would toggle it off); a click on
   the background clears the selection.
 

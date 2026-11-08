@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { adoptMessage, branchPointMessage, canAdopt, canManageLine, canWriteLine, CHAIN_HINT_CODES, chainBrokenMessage, deleteLineMessage, changeRows, lineTree, shownChange, tabQuery, type ChainHint } from "../../src/models/timeline";
+import { adoptMessage, branchPointMessage, canAdopt, canManageLine, canWriteLine, CHAIN_HINT_CODES, chainBrokenMessage, deleteLineMessage, changeRows, lineTree, shownChange, START_PARAM, startInfo, startReadOnly, startRequest, startShown, tabQuery, type ChainHint } from "../../src/models/timeline";
 import { describeEdit } from "../../src/models/timeline-messages";
 
 const hint = (code: string, extra: Partial<ChainHint> = {}): ChainHint => ({ code, change_title: "Hire", change_date: "2026-03-01", element_name: "Sales", element_kind: "node", ...extra });
@@ -129,5 +129,54 @@ describe("describeEdit", () => {
     expect(describeEdit({ op: "add_node", element_id: "n1", payload: { name: "Sales", node_type_id: "t1" } }, names, "en")).toBe('Add the node "Sales" (Team)');
     expect(describeEdit({ op: "add_connection", element_id: "c1", payload: { source_node_id: "n1", target_node_id: "n2" } }, names, "fi")).toContain('"Sales" -> "Support"');
     expect(describeEdit({ op: "remove_node", element_id: "n2", payload: {} }, names, "en")).toBe('Remove the node "Support"');
+  });
+});
+
+describe("the Start row", () => {
+  const base = { id: "b", name: "Base line", kind: "base" as const, parent_line_id: null, branch_change_id: null };
+  const plan = { id: "s", name: "Plan B", kind: "scenario" as const, parent_line_id: "b", branch_change_id: "e1" };
+  const parentChanges = [{ id: "e1", title: "Reorg", occurred_on: "2026-02-01" }, { id: "e2", title: "Hire", occurred_on: "2026-03-01" }];
+  const own = [{ id: "c1", planned: false }, { id: "c2", planned: true }];
+
+  it("exists only for a Scenario and names the parent line, the branch change and its date", () => {
+    expect(startInfo(base, [base, plan], [])).toBeNull();
+    expect(startInfo({ ...plan, parent_line_id: "gone" }, [base, plan], parentChanges)).toBeNull();
+    expect(startInfo(plan, [base, plan], parentChanges)).toEqual({ parentLineId: "b", parentLineName: "Base line", parentIsBase: true, changeId: "e1", changeTitle: "Reorg", changeDate: "2026-02-01" });
+    expect(startInfo(plan, [base, plan], [])).toMatchObject({ changeId: "e1", changeTitle: null, changeDate: null });
+  });
+
+  it("follows a corrected history: it reads the current branch change and the current parent changes", () => {
+    const moved = [{ id: "e1", title: "Reorg", occurred_on: "2026-01-15" }];
+    expect(startInfo(plan, [base, plan], moved)?.changeDate).toBe("2026-01-15");
+    expect(startInfo({ ...plan, branch_change_id: "e2" }, [base, plan], parentChanges)?.changeTitle).toBe("Hire");
+  });
+
+  it("is the first row, not a Change: it takes no Now divider, no change count and no selection of a Change", () => {
+    const info = startInfo(plan, [base, plan], parentChanges)!;
+    const rows = changeRows(own, null, info, false);
+    expect(rows.map((row) => row.kind)).toEqual(["start", "change", "now", "change"]);
+    expect(rows.filter((row) => row.kind === "change")).toHaveLength(own.length);
+    expect(rows.find((row) => row.kind === "change" && row.selected)).toMatchObject({ change: { id: "c2" } });
+    const selected = changeRows(own, "c1", info, true);
+    expect(selected[0]).toMatchObject({ kind: "start", selected: true });
+    expect(selected.some((row) => row.kind === "change" && row.selected)).toBe(false);
+    expect(changeRows(own, null).some((row) => row.kind === "start")).toBe(false);
+  });
+
+  it("is shown by ?change=start only when the line has one, and the canvas is then read-only whatever the role", () => {
+    const info = startInfo(plan, [base, plan], parentChanges);
+    expect(START_PARAM).toBe("start");
+    expect(startShown("start", info)).toBe(true);
+    expect(startShown("start", null)).toBe(false);
+    expect(startShown("c1", info)).toBe(false);
+    expect(startShown(null, info)).toBe(false);
+    expect(startReadOnly(true, true)).toBe(false);
+    expect(startReadOnly(false, true)).toBe(true);
+    expect(startReadOnly(false, false)).toBe(false);
+  });
+
+  it("reads the PARENT line's state after the branch change", () => {
+    expect(startRequest(startInfo(plan, [base, plan], parentChanges)!)).toEqual({ lineId: "b", changeId: "e1" });
+    expect(tabQuery("s", START_PARAM)).toBe("?line=s&change=start");
   });
 });

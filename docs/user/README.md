@@ -40,6 +40,11 @@ label and colour, and the Scenarios under the line they start from.
   remove or update a node, add or remove a connection, re-route a connection, change its type. Events are
   ordered by date and then by when they were entered. The event list on the model page shows them; choose one
   to see the state after it (read-only unless you may write that line).
+- **Start row.** The change list of a Scenario begins with **Start** (Finnish: Lähtötilanne), which says which line the
+  Scenario starts from and after which Change (with its date), with links to that line and Change. Choose it to see the
+  state the Scenario started from: it is shown read-only with the note "Start state, not editable. Change it in the parent
+  line.", and you cannot draw, undo, delete or edit Changes while it is shown. It is not a Change and is not counted in the
+  change count. If the parent line's history is corrected, the row shows the current start. The Base line has no Start row.
 - **Planned events.** An Event dated after today (in the Organization's time zone) is planned. It is marked with
   the label **Planned**, a different colour and a dashed frame, and a **Now** divider sits between the last Event
   that has happened and the first planned one. The present state of a line ignores planned Events until their date

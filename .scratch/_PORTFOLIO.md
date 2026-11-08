@@ -6,7 +6,7 @@
 | --- | --- | ---: | --- | --- |
 | [Feature: All AI use happens in the user's own agent](agent-owned-ai/PRD.md) | implemented | 5/5 | — | — |
 | [Feature: Sign in with Authentik](authentik-sign-in/PRD.md) | implemented | 5/5 | — | — |
-| [Feature: Model timeline (Base line, events and scenarios)](model-timeline/PRD.md) | ready for implementation | 11/12 | [12 start row in the change list](model-timeline/issues/12-start-row-in-the-change-list.md) — ready-for-agent | — |
+| [Feature: Model timeline (Base line, events and scenarios)](model-timeline/PRD.md) | implemented | 12/12 | — | — |
 | [Feature: Shadow models (digital twin of an organisation)](shadow-models/PRD.md) | implemented (written after the fact, 2026-11-07; the features were built in | 0/0 | — | — |
 | [Feature: Structure canvas (full-width drawing tool)](structure-canvas/PRD.md) | implemented | 9/9 | — | — |
 | [Feature: Companies (tenants) and roles](tenants-and-roles/PRD.md) | wontfix | 2/11 | — | — |
@@ -24,12 +24,6 @@
 ## Avoimet ticketit
 
 > *Aloitettavissa* tarkoittaa, että kaikki ticketin estäjät ovat `implemented` tai `resolved`. *Avoimia kriteerejä* laskee ticketin rastittamattomat hyväksymiskriteerit.
-
-### Feature: Model timeline (Base line, events and scenarios)
-
-| Ticket | Tila | Avoimia kriteerejä | Aloitettavissa | Odottaa ticketejä |
-| --- | --- | ---: | --- | --- |
-| [12 start row in the change list](model-timeline/issues/12-start-row-in-the-change-list.md) | ready-for-agent | 4 | kyllä | — |
 
 ### Technical design: Change terminology (rename event to Change, change to Edit)
 
