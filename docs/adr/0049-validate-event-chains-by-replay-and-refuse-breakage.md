@@ -22,3 +22,5 @@ Records contain mistakes, so every event must be changeable afterwards: its date
 - Corrections are always possible, and a correction can never leave the model unreadable.
 - The cost of a write grows with the chain length and the number of dependent Scenarios. Limits on events per line and a snapshot cache are the planned answer if this becomes slow.
 - The refusal messages are a product feature and need Finnish and English texts for every cause.
+
+ADR-0052 renames the vocabulary of this decision: read "event" as Change and "change" (a step) as Edit.

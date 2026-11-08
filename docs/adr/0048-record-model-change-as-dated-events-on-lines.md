@@ -27,3 +27,5 @@ A Version is a full copy of a Model's graph with no time, and the change list is
 - Every API route, MCP tool and test that takes a `version_id` changes to a line and, where it reads a graph, an event.
 
 Refines ADR-0043 (the metamodel stays per model and shared by all lines). Replaces the version model of ADR-0045 together with ADR-0050.
+
+ADR-0052 renames the vocabulary of this decision: read "event" as Change and "change" (a step) as Edit.

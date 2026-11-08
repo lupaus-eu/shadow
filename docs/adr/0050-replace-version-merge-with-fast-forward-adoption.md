@@ -22,3 +22,5 @@ ADR-0045 merged a Version into its base by applying its change list. With events
 - Planned events dated in the future can be adopted into the Base line and then show as planned.
 
 Supersedes ADR-0045. Part of the change set of ADR-0048. Implemented in ticket 08 of the model timeline, which also retired the version routes and tables.
+
+ADR-0052 renames the vocabulary of this decision: read "event" as Change and "change" (a step) as Edit.
