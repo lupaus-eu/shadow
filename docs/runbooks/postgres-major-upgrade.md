@@ -69,6 +69,19 @@ Do this once, on the machine that has data. Commands run from the repository roo
 If something goes wrong, nothing is lost: `make dev-down`, restore the previous definitions with
 `git checkout`, and `make dev` starts PostgreSQL 17 on the old volume again.
 
+### If you already started the whole stack on PostgreSQL 18
+
+Then the cluster is no longer empty: `migrate` created the schema and Authentik created its tables, and
+the `shadow_app` role exists, so steps 3 and 4 are done. Stop the services that hold database
+connections, restore over the fresh schema, and start again (use the `dc` shortcut from step 3):
+
+```bash
+dc stop frontend backend worker authentik-server authentik-worker
+dc exec -T db pg_restore --clean --if-exists --no-owner --role=shadow -U shadow -d shadow < backups/shadow-<stamp>.dump
+dc exec -T db pg_restore --clean --if-exists --no-owner --role=authentik -U shadow -d authentik < backups/authentik-<stamp>.dump
+make dev
+```
+
 ## What was rehearsed
 
 On 2026-11-09 the dumps of the running PostgreSQL 17 development stack were restored into a
