@@ -11,36 +11,79 @@ A short message to one Organization User about a change in their role or members
 An Owner's request to end an Organization's subscription at the end of the paid period. It keeps full access until then, can be undone until then, and leaves the content intact when the Organization becomes read-only.
 
 **Model**:
-An Organization-owned digital twin of an organisation: a graph of nodes and connections that is described by a Metamodel, has Versions, and carries Metrics.
+An Organization-owned digital twin of an organisation: a graph of nodes and connections that is described by a Metamodel, has a history of dated Events in Lines, and carries Metrics.
 _Avoid_: Diagram, workspace
 
 **Metamodel**:
-The node types, connection types, and allowed connections of one Model. It starts from the default metamodel and the Model's editors can change it. A type or rule that nodes or connections still use cannot be deleted. All Versions of a Model share it.
+The node types, connection types, and allowed connections of one Model. It starts from the default metamodel and the Model's editors can change it. A type or rule that nodes or connections still use cannot be deleted. All Lines of a Model share it.
 _Avoid_: Schema, template
 
 **Node**:
-One element of the organisation in a Version of a Model (for example a team, a system, or a process), with a name, a description, and a node type.
+One element of the organisation in a State of a Model (for example a team, a system, or a process), with a name, a description, and a node type.
 
 **Connection**:
-A typed, directed link between two Nodes of the same Version. The Metamodel must allow its connection type between those node types.
+A typed, directed link between two Nodes of the same State. The Metamodel must allow its connection type between those node types.
 _Avoid_: Edge, relation
 
-**Version**:
-A complete copy of a Model's graph and Metrics. The Baseline is the Model's current state; other Versions are forked from a base Version to explore a change. Each Node remembers its origin, so a Version can list its changes against the base.
-_Avoid_: Branch, scenario
+**Line**:
+An ordered history of Events of one Model. A Line is either the Base line or a Scenario. A Line's graph is never stored whole; it is computed from its Chain.
+_Avoid_: Version, branch
 
-**Baseline**:
-The Version of a Model that describes the organisation as it is now and is the base of forks.
+**Base line**:
+The one Line of a Model that records what has really happened to the organisation. It can be renamed and never deleted; its Present state is the organisation as it is now. Only Owners and Admins write it.
+_Avoid_: Baseline, main
 
-**Change list**:
-The added, removed, and changed Nodes and Connections of a Version compared with its base.
+**Scenario**:
+Any Line other than the Base line: a what-if with a name, a parent Line, a Branch point, and Events of its own. It can start from another Scenario. A Member may write it; an Owner or Admin may Adopt it.
+_Avoid_: Fork, Version
 
-**Merge**:
-Applying a Version's change list to its base Version. Only an Owner or Admin may merge. Metrics are not merged, and afterwards the Version shows no changes.
-_Avoid_: Promote, publish
+**Event**:
+A dated set of Changes in one Line: a title, an optional note, a required date, and an ordered list of Changes. Events sort by date, then by the order they were entered. Any Event can be corrected or deleted afterwards as long as the Chain stays valid.
+
+**Change**:
+One step inside an Event on one element: add node, remove node, update node (name, description, type), add connection, remove connection, re-route connection, or change connection type. Removing a Node removes its Connections in the same step.
+
+**Planned event**:
+An Event dated after today in the Organization's time zone. It is an ordinary Event that has not happened yet; it joins the Present state when its date arrives.
+
+**State**:
+The graph (Nodes and Connections with their types) after one Event of one Line, computed by replaying the Chain. It can also be asked for a date: the State after the last Event dated that day or earlier.
+
+**Present state**:
+The State after the last Event of a Line dated today or earlier. Planned events are not part of it.
+
+**Branch point**:
+The Event of a parent Line from which a Scenario starts. The Scenario refers to the Event; it is not a copy, so the Event cannot be deleted while a Scenario starts from it.
+
+**Chain**:
+The sequence of Events a State is replayed from: the Events of every ancestor Line up to the Branch point, then the Line's own Events up to the chosen Event. Every write is checked by replaying the Chains it touches; a write that would break one is refused ("chain broken") and nothing is saved.
+
+**Adopt**:
+Appending a Scenario's own Events to its parent Line when the parent has not moved on since the Branch point and no adopted Event is dated before the parent's last Event. Metrics are not adopted. Replaces Merge.
+
+**Position**:
+Where a Node is drawn on the Structure canvas. A property of the drawing per Line and Node, not an Event; moving a Node writes no Event.
+
+**Canvas**:
+The drawing surface of a Model's Structure tab. It shows the State of one Line after one Event, and drawing on it edits that Event.
+
+**View**:
+The current pan and zoom of the Canvas. It is kept in the browser's memory only, never stored on the server, and is separate from Positions.
+
+**Version** (retired):
+Replaced by **Line**. A Model's complete copies of its graph no longer exist; each former Version became a Line (the former Baseline the Base line, each fork a Scenario with one Event holding its difference).
+
+**Baseline** (retired):
+Replaced by **Base line**.
+
+**Change list** (retired):
+Replaced by the Changes inside Events; the Structure canvas marks what the shown Event changed.
+
+**Merge** (retired):
+Replaced by **Adopt**, which appends events instead of applying a difference, and only while the parent has not moved on.
 
 **Metric**:
-A named measure of a Version with a unit and monthly values. An entered Metric holds its values; a derived Metric is computed from a formula over other Metrics of the same Version.
+A named measure of a Line with a unit and monthly values. An entered Metric holds its values; a derived Metric is computed from a formula over other Metrics of the same Line.
 _Avoid_: KPI, series
 
 **Formula**:
@@ -50,7 +93,7 @@ An expression over the keys of other Metrics that defines a derived Metric. Cycl
 Predicted monthly values of a Metric by one method: linear, seasonal, Holt, or Prophet, with an uncertainty band. Each method needs a minimum history (Prophet 12 months, seasonal 24).
 
 **Simulation**:
-A stored run of Forecasts for a Version, optionally with what-if adjustments. Derived Metrics follow the adjusted values.
+A stored run of Forecasts for a Line, optionally with what-if adjustments. Derived Metrics follow the adjusted values. It is not a Scenario: a Scenario is a Line of Events, a Simulation adjusts Metric values.
 _Avoid_: Scenario, projection
 
 **Analysis**:
@@ -74,13 +117,13 @@ One MCP tool call, successful, refused or failed, recorded without its arguments
 Where a Proposal came from: `rule` (generated from the forecast rules) or `agent` (written through MCP). There is one agent Proposal per Metric; repeating the call replaces it.
 
 **Import**:
-Reading Metric values for a Version from a CSV or Excel file, in a wide layout (months as rows, Metrics as columns) or a long layout (metric, period, value). Unknown or derived Metrics and unreadable cells are reported and skipped.
+Reading Metric values for a Line from a CSV or Excel file, in a wide layout (months as rows, Metrics as columns) or a long layout (metric, period, value). Unknown or derived Metrics and unreadable cells are reported and skipped.
 
 **Export**:
 Writing the Metric series as CSV or Excel, or an Analysis as an Excel workbook. Cells that could run as formulas are neutralised.
 
 **Agent tool**:
-An MCP tool that lets an AI agent the person chooses read or change Models, Versions, Metrics, Simulations, and Analyses under the person's own rights and the same rules as the web application. Every change is audited as made through MCP.
+An MCP tool that lets an AI agent the person chooses read or change Models, Lines, Events, Metrics, Simulations, and Analyses under the person's own rights and the same rules as the web application. Every change is audited as made through MCP.
 
 **Next charge**:
 The date and amount of an Organization's next regular invoice, as Stripe previews it for the current seats and any scheduled seat decrease or cancellation. Only Owners see it in the product; Shadow stores and computes nothing.
@@ -120,7 +163,7 @@ The Organization role of an Organization User who is neither an Owner nor an Adm
 _Avoid_: Organization User (for this role), basic user, guest
 
 **Organization Admin**:
-A customer-side role that can manage Organization Users, including other Admins, merge Versions into their base, and connect agents. It cannot manage billing or seats, delete the Organization, or add, change, or remove Organization Owners.
+A customer-side role that can manage Organization Users, including other Admins, write the Base line, adopt Scenarios into it, and connect agents. It cannot manage billing or seats, delete the Organization, or add, change, or remove Organization Owners.
 _Avoid_: Customer admin, tenant admin
 
 **Organization Owner**:
